@@ -16,6 +16,7 @@ This repository contains machine-checked proofs in Lean 4 that each Jolt bytecod
 | Instruction | RISC-V Description | Status | Proof |
 |---|---|---|---|
 | `MULH` | Signed high multiplication | ✅ | [`BytecodeExpansions/Mulh.lean`](JoltBytecode/BytecodeExpansions/Mulh.lean) |
+| `SUBW` |  | ✅ | [`BytecodeExpansions/SUBW.lean`](JoltBytecode/BytecodeExpansions/SUBW.lean) |
 
 > More instructions will be added as proofs are completed.
 
