@@ -1,3 +1,5 @@
+**NOTE**: This is mostly AI generated SPAM, asked to run my Lean proofs. I wanted to understand what it can generate.
+
 # Lecture 1: Formalising Hardware Correctness in Lean 4
 
 > *"Testing shows the presence of bugs, not their absence."* — Dijkstra
