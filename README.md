@@ -7,9 +7,12 @@ TODO:
 
 ## Verified Instructions
 
-+ Mulh
-+ Subw 
-+ Lw - In progress 
+1. Mulh
+2. Subw 
+3. Lw - In progress 
+4. srliw - Next 
+5. sra - Next 
+6. AMOMAXUW - Next (this is quite complex) 
 
 > More instructions will be added as proofs are completed.
 
@@ -61,6 +64,7 @@ A successful `lake build` with no errors means every theorem in the repository h
 
 ## References
 
+1. [Guide To Writing Proofs](TODO)
 TODO:
 
 ## License
