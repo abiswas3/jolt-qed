@@ -13,6 +13,7 @@ TODO:
 4. srliw - Next 
 5. sra - Next 
 6. AMOMAXUW - Next (this is quite complex) 
+7. 
 
 > More instructions will be added as proofs are completed.
 
