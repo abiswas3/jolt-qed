@@ -1,4 +1,12 @@
 -- This module serves as the root of the `JoltBytecode` library.
 -- Import modules here that should be built as part of the library.
-import JoltBytecode.BytecodeExpansions.Mulh
--- import JoltBytecode.BytecodeExpansions.MulhNew  -- New compositional version (same names, import separately)
+
+-- Common definitions
+import JoltBytecode.BytecodeExpansions.Common.Cpu
+import JoltBytecode.BytecodeExpansions.Common.Riscv
+import JoltBytecode.BytecodeExpansions.Common.Virtual
+
+-- Instruction proofs
+import JoltBytecode.BytecodeExpansions.Instructions.Subw
+import JoltBytecode.BytecodeExpansions.Instructions.SubwState
+import JoltBytecode.BytecodeExpansions.Instructions.Mulh
