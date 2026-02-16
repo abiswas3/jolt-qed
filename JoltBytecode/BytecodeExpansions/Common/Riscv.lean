@@ -22,6 +22,12 @@ def add (x y : BitVec w) : BitVec w :=
 def subw (x y : BitVec 64) : BitVec 64 :=
   (x.setWidth 32 - y.setWidth 32).signExtend 64
 
+/-- SRLIW rd, rs1, shamt (RV64I): logical right shift of lower 32 bits by shamt,
+    sign-extend the 32-bit result to 64 bits.
+    rd = signExtend(rs1[31:0] >>> shamt) -/
+def srliw (x : BitVec 64) (shamt : BitVec 64) : BitVec 64 :=
+  ((x.setWidth 32) >>> shamt.toNat).signExtend 64
+
 -- ============================================================================
 -- Multiply Extension (generic over width)
 -- ============================================================================

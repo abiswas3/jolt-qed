@@ -8,6 +8,23 @@ variable {w : Nat}
 def signExtract (x : BitVec w) : Int :=
   if x.msb then -1 else 0
 
+/-- Count trailing zeros of a natural number. Returns 0 for input 0. -/
+def ctz (n : Nat) : Nat :=
+  if n = 0 then 0
+  else if n % 2 = 1 then 0
+  else 1 + ctz (n / 2)
+termination_by n
+
+@[simp] lemma ctz_pow2 (n : Nat) : ctz (2 ^ n) = n := by
+  induction n with
+  | zero => unfold ctz; simp
+  | succ k ih =>
+    unfold ctz
+    rw [if_neg (show 2 ^ (k + 1) ≠ 0 from Nat.pos_iff_ne_zero.mp (by positivity))]
+    rw [if_neg (show ¬(2 ^ (k + 1) % 2 = 1) from by rw [pow_succ]; omega)]
+    rw [show 2 ^ (k + 1) / 2 = 2 ^ k from by rw [pow_succ]; omega]
+    rw [ih]; omega
+
 -- Virtual instruction definitions for Jolt's bytecode expansion.
 namespace Jolt
 
@@ -22,6 +39,12 @@ def virtualMovSign (x : BitVec w) : BitVec w :=
       floor(toNat(x) * toNat(y) / 2^w) -/
 def mulhu (x y : BitVec w) : BitVec w :=
   BitVec.ofNat w (x.toNat * y.toNat / 2 ^ w)
+
+/-- VirtualSRLI: logical right shift by an immediate amount.
+    The shift amount is the number of trailing zeros of the immediate operand,
+    matching the Jolt/Rust implementation: `imm.trailing_zeros()`. -/
+def virtualSRLI (x : BitVec w) (imm : Nat) : BitVec w :=
+  x >>> ctz imm
 
 /-- VirtualSignExtendWord: sign-extends the lower 32 bits of a 64-bit value.
     Interprets bits [31:0] as a signed 32-bit integer and produces the
