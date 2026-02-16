@@ -56,7 +56,7 @@ def jolt_lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
 -- Nat-level bounds and extraction lemmas
 -- ============================================================================
 
-private lemma read_word_val_lt (addr : BitVec 64) (s : State) :
+lemma read_word_val_lt (addr : BitVec 64) (s : State) :
     read_word_val addr s < 2^32 := by
   unfold read_word_val
   have := (read_mem addr s).isLt
@@ -65,7 +65,7 @@ private lemma read_word_val_lt (addr : BitVec 64) (s : State) :
   have := (read_mem (addr + 3) s).isLt
   omega
 
-private lemma read_dword_val_lt (addr : BitVec 64) (s : State) :
+lemma read_dword_val_lt (addr : BitVec 64) (s : State) :
     read_dword_val addr s < 2^64 := by
   unfold read_dword_val
   have := read_word_val_lt addr s
@@ -93,12 +93,12 @@ private lemma extract_upper_word (lo hi : BitVec 64) (s : State)
 -- Bridge lemmas: BitVec ↔ Nat
 -- ============================================================================
 
-private lemma read_word_toNat (addr : BitVec 64) (s : State) :
+lemma read_word_toNat (addr : BitVec 64) (s : State) :
     (read_word addr s).toNat = read_word_val addr s := by
   unfold read_word; rw [BitVec.toNat_ofNat]
   exact Nat.mod_eq_of_lt (read_word_val_lt addr s)
 
-private lemma read_dword_toNat (addr : BitVec 64) (s : State) :
+lemma read_dword_toNat (addr : BitVec 64) (s : State) :
     (read_dword addr s).toNat = read_dword_val addr s := by
   unfold read_dword; rw [BitVec.toNat_ofNat]
   exact Nat.mod_eq_of_lt (read_dword_val_lt addr s)
@@ -114,25 +114,25 @@ private lemma and_neg4_and_3_eq_0 (x : BitVec 64) :
   rw [BitVec.and_assoc]; simp [this]
 
 -- Dword-aligned: addr &&& -8 = addr when addr &&& 7 = 0
-private lemma dword_align_eq (addr : BitVec 64)
+lemma dword_align_eq (addr : BitVec 64)
     (h : addr &&& 7#64 = 0#64) : addr &&& (-8#64) = addr := by
   bv_decide
 
 -- Not dword-aligned: addr &&& -8 = addr - 4 when addr &&& 3 = 0 and addr &&& 7 ≠ 0
-private lemma dword_align_sub4 (addr : BitVec 64)
+lemma dword_align_sub4 (addr : BitVec 64)
     (h3 : addr &&& 3#64 = 0#64) (h7 : ¬(addr &&& 7#64 = 0#64)) :
     addr &&& (-8#64) = addr - 4 := by
   bv_decide
 
 -- Shift = 0 when dword-aligned
-private lemma shift_eq_zero (addr : BitVec 64)
+lemma shift_eq_zero (addr : BitVec 64)
     (h : addr &&& 7#64 = 0#64) :
     ((addr <<< 3).setWidth 6).toNat = 0 := by
   have : (addr <<< 3).setWidth 6 = 0#6 := by bv_decide
   simp [this]
 
 -- Shift = 32 when word-aligned but not dword-aligned
-private lemma shift_eq_32 (addr : BitVec 64)
+lemma shift_eq_32 (addr : BitVec 64)
     (h3 : addr &&& 3#64 = 0#64) (h7 : ¬(addr &&& 7#64 = 0#64)) :
     ((addr <<< 3).setWidth 6).toNat = 32 := by
   have : (addr <<< 3).setWidth 6 = 32#6 := by bv_decide
@@ -141,7 +141,6 @@ private lemma shift_eq_32 (addr : BitVec 64)
 -- ============================================================================
 -- Key lemma: word read = extract from dword (via Nat bridge)
 -- ============================================================================
-
 lemma read_word_eq_dword_extract (addr : BitVec 64) (s : State)
     (h_aligned : addr &&& 3#64 = 0#64) :
     read_word addr s =
@@ -185,3 +184,4 @@ theorem lw_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State)
     · simp [hx]
   · -- Misaligned: both sides panic with { s with error := true }
     simp only [ne_eq, h, not_false_eq_true, ↓reduceIte]
+

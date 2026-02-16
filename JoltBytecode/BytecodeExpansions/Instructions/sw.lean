@@ -35,7 +35,10 @@ SD             v_dword_addr,   v_dword, 0
 
 Show that byte-level word write equals the dword-level XOR-AND-XOR
 read-modify-write, by reducing both sides to Nat arithmetic on
-little-endian byte sums.
+little-endian byte sums. The outer structure mirrors `lw_eq`: case split
+on alignment (misaligned = both panic), then case split on dword alignment
+(shift = 0 or shift = 32). The key lemma `write_word_eq_dword_splice`
+is the write-side analogue of `read_word_eq_dword_extract`.
 -/
 
 -- Write a 64-bit dword to memory (little-endian, 8 bytes).
@@ -62,6 +65,72 @@ def jolt_sw (rs1 rs2 : BitVec 5) (imm : BitVec 12) (s : State) : State :=
     let v_dword         := Riscv.xor v_dword v_word                    -- XOR v_dword, v_dword, v_word
     write_dword v_dword_addr v_dword s                                  -- SD v_dword_addr, v_dword, 0
 
-theorem sw_eq (rs1 rs2 : BitVec 5) (imm : BitVec 12) (s : State) :
-    Riscv.sw rs1 rs2 imm s = jolt_sw rs1 rs2 imm s := by
+-- ============================================================================
+-- Key lemma: byte-level word write = dword-level XOR-AND-XOR splice
+-- ============================================================================
+
+-- The XOR-AND-XOR pattern: d ^^^ ((d ^^^ v) &&& m) replaces the bits
+-- selected by mask m in d with the corresponding bits from v.
+-- For SW, m is a 32-bit window (0xFFFFFFFF) shifted to the correct lane.
+
+-- Dword-aligned case (shift = 0): writing lower 4 bytes = writing 8 bytes
+-- with lower half replaced.
+private lemma write_word_eq_dword_splice_lower (addr : BitVec 64)
+    (val : BitVec 64) (s : State)
+    (h7 : addr &&& 7#64 = 0#64) :
+    write_word addr (val.setWidth 32) s =
+    write_dword addr
+      (read_dword addr s ^^^
+        ((read_dword addr s ^^^ val) &&& ((0#64 ||| (-1#64)) >>> 32)))
+      s := by
   sorry
+
+-- Word-aligned, not dword-aligned case (shift = 32): writing upper 4 bytes
+-- = writing 8 bytes with upper half replaced.
+private lemma write_word_eq_dword_splice_upper (addr : BitVec 64)
+    (val : BitVec 64) (s : State)
+    (h3 : addr &&& 3#64 = 0#64) (h7 : ¬(addr &&& 7#64 = 0#64)) :
+    write_word addr (val.setWidth 32) s =
+    write_dword (addr - 4)
+      (read_dword (addr - 4) s ^^^
+        ((read_dword (addr - 4) s ^^^ (val <<< 32)) &&&
+         (((0#64 ||| (-1#64)) >>> 32) <<< 32)))
+      s := by
+  sorry
+
+-- Combined key lemma: write_word = dword-level XOR-AND-XOR splice.
+-- Analogous to read_word_eq_dword_extract from lw.lean.
+lemma write_word_eq_dword_splice (addr : BitVec 64) (val : BitVec 64) (s : State)
+    (h_aligned : addr &&& 3#64 = 0#64) :
+    write_word addr (val.setWidth 32) s =
+    (let dword_addr := addr &&& (-8#64)
+     let dword := read_dword dword_addr s
+     let shift := ((addr <<< 3).setWidth 6).toNat
+     let mask  := ((0#64 ||| (-1#64)) >>> 32) <<< shift
+     let v     := val <<< shift
+     write_dword dword_addr (dword ^^^ ((dword ^^^ v) &&& mask)) s) := by
+  by_cases h7 : addr &&& 7#64 = 0#64
+  · -- Dword-aligned: dword_addr = addr, shift = 0
+    simp only [dword_align_eq addr h7, shift_eq_zero addr h7]
+    simp only [BitVec.shiftLeft_zero_eq]
+    exact write_word_eq_dword_splice_lower addr val s h7
+  · -- Word-aligned, not dword-aligned: dword_addr = addr - 4, shift = 32
+    simp only [dword_align_sub4 addr h_aligned h7, shift_eq_32 addr h_aligned h7]
+    exact write_word_eq_dword_splice_upper addr val s h_aligned h7
+
+-- ============================================================================
+-- Main theorem
+-- ============================================================================
+
+theorem sw_eq (rs1 rs2 : BitVec 5) (imm : BitVec 12) (s : State)
+    (h_no_error : s.error = false) :
+    Riscv.sw rs1 rs2 imm s = jolt_sw rs1 rs2 imm s := by
+  simp only [Riscv.sw, jolt_sw, Riscv.addi, Jolt.virtualAssertWordAlignment,
+             Riscv.andi, Riscv.slli, Riscv.ori, Riscv.srli,
+             Riscv.sll, Riscv.xor, Riscv.and]
+  by_cases h : (imm.setWidth 64 + read rs1 s.reg) &&& 3#64 = 0#64
+  · -- Aligned: both sides perform the store
+    simp only [ne_eq, h, not_true_eq_false, ↓reduceIte, h_no_error]
+    exact write_word_eq_dword_splice _ _ s h
+  · -- Misaligned: both sides panic with { s with error := true }
+    simp only [ne_eq, h, not_false_eq_true, ↓reduceIte]
