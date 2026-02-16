@@ -12,3 +12,4 @@ import JoltBytecode.BytecodeExpansions.Common.FormatI
 import JoltBytecode.BytecodeExpansions.Instructions.Subw
 import JoltBytecode.BytecodeExpansions.Instructions.Mulh
 import JoltBytecode.BytecodeExpansions.Instructions.Lw
+import JoltBytecode.BytecodeExpansions.Instructions.Srliw

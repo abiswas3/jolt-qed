@@ -7,12 +7,13 @@ TODO:
 
 ## Verified Instructions
 
-1. Mulh
-2. Subw 
-3. Lw - In progress 
-4. srliw - Next 
-5. sra - Next 
-6. AMOMAXUW - Next (this is quite complex) 
+1. Mulh DONE: 
+2. Subw DONE:
+3. Lw - DONE:
+4. srliw - DONE:
+5. sra - NEXT: 
+6. AMOMAXUW - NEXT: 
+7. sw - NEXT: 
 
 > More instructions will be added as proofs are completed.
 
