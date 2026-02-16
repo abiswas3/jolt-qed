@@ -113,8 +113,49 @@ def mulhRiscv (r1 r2 rd : BitVec 5) (s : State) : State :=
   let new_reg := writedata rd rdval s.reg
   { s with reg := new_reg }
 
+theorem foo8 (x : BitVec 5) : x.setWidth 6 < 32 := by sorry
+
+theorem foo9 (x : BitVec w) (hk : k > w) (n : Nat) (h : n ≥ 2^w) : BitVec.setWidth k x ≠ BitVec.ofNat k n := by 
+  refine BitVec.ne_of_lt ?_
+  sorry
+
 theorem jolt_mulh_eq_riscv_mulh (r1 r2 rd : BitVec 5) (s : State) : mulhJolt r1 r2 rd s = mulhRiscv r1 r2 rd s := by
-  unfold mulhJolt mulhRiscv jolt_VirtualMovSign jolt_mulhu jolt_mul jolt_add
+  unfold mulhJolt mulhRiscv
   simp_all
   ext1
-  . 
+  . sorry
+  . ext1 x
+    by_cases h : x = rd
+    . unfold riscv_to_jolt
+      simp_all
+      unfold jolt_VirtualMovSign readdata signExtract writedata
+      simp_all
+      have h3 : ¬ (32#6 = BitVec.setWidth 6 r1) := by sorry
+      have h4 : ¬ (33#6 = BitVec.setWidth 6 r1) := by sorry
+      have h5 : ¬ (34#6 = BitVec.setWidth 6 r1) := by sorry
+      have h6 : ¬ (32#6 = BitVec.setWidth 6 rd) := by sorry
+      have h7 : ¬ (33#6 = BitVec.setWidth 6 rd) := by sorry
+      have h8 : ¬ (34#6 = BitVec.setWidth 6 rd) := by sorry
+      simp [h3]
+      unfold jolt_mulhu readdata writedata
+      simp_all
+      unfold jolt_mul readdata writedata
+      simp_all
+      unfold jolt_add readdata writedata
+      simp_all
+      unfold jolt_to_riscv
+      simp_all
+      have h9 : BitVec.setWidth 6 rd ≠ 33#6 := by sorry
+      have h10 : BitVec.setWidth 6 rd ≠ 32#6 := by sorry
+      simp [h9,h10]
+      by_cases hh : r1 = rd
+      . simp [hh]
+        sorry
+      . by_cases hhh : r2 = rd
+        . simp [hhh]
+          sorry
+        . have hhh1: BitVec.setWidth 6 rd ≠ BitVec.setWidth 6 r1 := by sorry
+          have hhh2: BitVec.setWidth 6 rd ≠ BitVec.setWidth 6 r2 := by sorry
+          simp [hhh1,hhh2]
+
+
