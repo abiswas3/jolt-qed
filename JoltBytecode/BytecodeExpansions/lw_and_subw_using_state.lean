@@ -121,7 +121,7 @@ theorem foo6 (x1 x2 x3 x4 x5 x6 x7 x8: BitVec 8) : BitVec.setWidth 32 ((x1 ++ x2
 theorem foo7 (x : BitVec 64) (y z : Nat) : x - BitVec.ofNat 64 y + BitVec.ofNat 64 z = (x + BitVec.ofNat 64 (z-y)) := by sorry
 
 
-theorem read_word_eq_read_dword_shift (addr : BitVec 64) (s : State) (h : addr &&& 3#64 == 0): 
+lemma read_word_eq_read_dword_shift (addr : BitVec 64) (s : State) (h : addr &&& 3#64 == 0): 
   read_mem_word addr s =
   BitVec.setWidth 32 (read_mem_dword (addr &&& -8#64) s >>> ((addr.toNat <<< 3) % 64))
        := by
