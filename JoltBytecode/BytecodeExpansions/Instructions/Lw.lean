@@ -1,4 +1,4 @@
-import JoltBytecode.BytecodeExpansions.Common.Cpu
+import JoltBytecode.BytecodeExpansions.Common.Riscv
 
 /-!
 # LW: RISC-V ≡ Jolt Decomposition
@@ -20,31 +20,13 @@ byte sums. The dword is just two words: `dword = lo_word + hi_word * 2^32`.
 Extraction is then pure Nat arithmetic (mod/div by 2^32), handled by omega.
 -/
 
--- Nat value of 4 little-endian bytes at addr.
-def read_word_val (addr : BitVec 64) (s : State) : Nat :=
-  (read_mem addr s).toNat +
-  (read_mem (addr + 1) s).toNat * 2^8 +
-  (read_mem (addr + 2) s).toNat * 2^16 +
-  (read_mem (addr + 3) s).toNat * 2^24
-
 -- Nat value of 8 little-endian bytes at addr = two consecutive words.
 def read_dword_val (addr : BitVec 64) (s : State) : Nat :=
   read_word_val addr s + read_word_val (addr + 4) s * 2^32
 
--- BitVec wrappers.
-def read_word (addr : BitVec 64) (s : State) : BitVec 32 :=
-  BitVec.ofNat 32 (read_word_val addr s)
-
+-- BitVec wrapper: read a 64-bit dword from memory.
 def read_dword (addr : BitVec 64) (s : State) : BitVec 64 :=
   BitVec.ofNat 64 (read_dword_val addr s)
-
--- RISC-V LW
-def riscv_lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
-  let base := read rs1 s.reg
-  let addr := (imm.setWidth 64 + base) &&& (-4#64)
-  let word := read_word addr s
-  let new_reg := write rd (word.signExtend 64) s.reg
-  { s with reg := new_reg }
 
 -- Jolt's LW: read dword, shift, truncate.
 def jolt_lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
@@ -173,8 +155,8 @@ lemma read_word_eq_dword_extract (addr : BitVec 64) (s : State)
 -- ============================================================================
 
 theorem lw_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) :
-    riscv_lw rs1 rd imm s = jolt_lw rs1 rd imm s := by
-  simp only [riscv_lw, jolt_lw]
+    Riscv.lw rs1 rd imm s = jolt_lw rs1 rd imm s := by
+  simp only [Riscv.lw, jolt_lw]
   congr 1
   funext x
   simp only [write]

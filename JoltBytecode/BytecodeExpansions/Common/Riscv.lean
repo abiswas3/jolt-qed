@@ -1,5 +1,6 @@
 import Mathlib.Tactic
 import Mathlib.Data.BitVec
+import JoltBytecode.BytecodeExpansions.Common.Cpu
 
 variable {w : Nat}
 
@@ -45,5 +46,34 @@ def mulhu (x y : BitVec w) : BitVec w :=
     Returns upper w bits of the signed 2w-bit product. -/
 def mulh (x y : BitVec w) : BitVec w :=
   BitVec.ofInt w (x.toInt * y.toInt / (2 ^ w : Int))
+
+end Riscv
+
+-- ============================================================================
+-- Load/Store helpers and instructions (require State)
+-- ============================================================================
+
+-- Nat value of 4 little-endian bytes at addr.
+def read_word_val (addr : BitVec 64) (s : State) : Nat :=
+  (read_mem addr s).toNat +
+  (read_mem (addr + 1) s).toNat * 2^8 +
+  (read_mem (addr + 2) s).toNat * 2^16 +
+  (read_mem (addr + 3) s).toNat * 2^24
+
+-- BitVec wrapper: read a 32-bit word from memory.
+def read_word (addr : BitVec 64) (s : State) : BitVec 32 :=
+  BitVec.ofNat 32 (read_word_val addr s)
+
+namespace Riscv
+
+/-- LW rd, offset(rs1) (RV32I/RV64I): load a 32-bit word from memory at the
+    word-aligned address (rs1 + sign_extend(offset)) & ~3, sign-extend to 64 bits.
+    rd = signExtend(mem[addr..addr+3]) -/
+def lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
+  let base := read rs1 s.reg
+  let addr := (imm.setWidth 64 + base) &&& (-4#64)
+  let word := read_word addr s
+  let new_reg := write rd (word.signExtend 64) s.reg
+  { s with reg := new_reg }
 
 end Riscv
