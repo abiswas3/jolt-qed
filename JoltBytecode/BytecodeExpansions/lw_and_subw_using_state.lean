@@ -1,3 +1,7 @@
+import Mathlib.Tactic
+import Mathlib.Data.BitVec
+
+
 abbrev ByteDataStore addr_bits := BitVec addr_bits → BitVec 8
 
 abbrev DataStore α β := α → β
