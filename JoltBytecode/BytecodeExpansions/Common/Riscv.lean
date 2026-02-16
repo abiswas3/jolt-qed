@@ -18,6 +18,24 @@ def sub (x y : BitVec w) : BitVec w :=
 def add (x y : BitVec w) : BitVec w :=
   x + y
 
+/-- ADDI rd, rs1, imm: add immediate (zero-extended to 64 bits).
+    rd = rs1 + zeroExtend(imm) -/
+def addi (x : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  imm.setWidth 64 + x
+
+/-- ANDI rd, rs1, rs2: bitwise AND. rd = rs1 & rs2 -/
+def andi (x y : BitVec w) : BitVec w :=
+  x &&& y
+
+/-- SLLI rd, rs1, shamt: logical left shift by immediate. rd = rs1 << shamt -/
+def slli (x : BitVec w) (shamt : Nat) : BitVec w :=
+  x <<< shamt
+
+/-- SRL rd, rs1, rs2 (RV64): logical right shift.
+    rd = rs1 >> rs2[5:0] -/
+def srl (x y : BitVec 64) : BitVec 64 :=
+  x >>> (y.setWidth 6).toNat
+
 /-- SUBW rd, rs1, rs2 (RV64I): subtract lower 32 bits and sign-extend to 64 bits.
     rd = signExtend(rs1[31:0] - rs2[31:0]) -/
 def subw (x y : BitVec 64) : BitVec 64 :=

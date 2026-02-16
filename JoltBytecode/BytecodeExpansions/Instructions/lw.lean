@@ -1,4 +1,5 @@
 import JoltBytecode.BytecodeExpansions.Common.Riscv
+import JoltBytecode.BytecodeExpansions.Common.Virtual
 
 /-!
 # LW: RISC-V ≡ Jolt Decomposition
@@ -28,15 +29,25 @@ def read_dword_val (addr : BitVec 64) (s : State) : Nat :=
 def read_dword (addr : BitVec 64) (s : State) : BitVec 64 :=
   BitVec.ofNat 64 (read_dword_val addr s)
 
--- Jolt's LW: read dword, shift, truncate.
+-- Jolt's LW decomposition: sequence of RISC-V and virtual instructions.
+-- Mirrors the Jolt Rust expansion:
+--   VirtualAssertWordAlignment  rs1, imm
+--   ADDI           v_address,      rs1,    imm
+--   ANDI           v_dword_addr,   v_address, -8
+--   LD             v_dword,        v_dword_addr, 0
+--   SLLI           v_shift,        v_address, 3
+--   SRL            rd,             v_dword, v_shift
+--   VirtualSignExtendWord rd,      rd, 0
 def jolt_lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
-  let base := read rs1 s.reg
-  let addr := (imm.setWidth 64 + base) &&& (-4#64)
-  let dword_addr := addr &&& (-8#64)
-  let dword := read_dword dword_addr s
-  let shift := (addr <<< 3).setWidth 6
-  let word := (dword >>> shift.toNat).setWidth 32
-  let new_reg := write rd (word.signExtend 64) s.reg
+  let base           := read rs1 s.reg
+  let v_address      := Riscv.addi base imm                       -- ADDI v_address, rs1, imm
+  let v_address      := Jolt.virtualAssertWordAlignment v_address  -- VirtualAssertWordAlignment
+  let v_dword_addr   := Riscv.andi v_address (-8#64)              -- ANDI v_dword_addr, v_address, -8
+  let v_dword        := read_dword v_dword_addr s                 -- LD v_dword, v_dword_addr, 0
+  let v_shift        := Riscv.slli v_address 3                    -- SLLI v_shift, v_address, 3
+  let v_word         := Riscv.srl v_dword v_shift                 -- SRL rd, v_dword, v_shift
+  let result         := Jolt.virtualSignExtendWord v_word          -- VirtualSignExtendWord rd, rd, 0
+  let new_reg        := write rd result s.reg
   { s with reg := new_reg }
 
 -- ============================================================================
@@ -156,7 +167,8 @@ lemma read_word_eq_dword_extract (addr : BitVec 64) (s : State)
 
 theorem lw_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) :
     Riscv.lw rs1 rd imm s = jolt_lw rs1 rd imm s := by
-  simp only [Riscv.lw, jolt_lw]
+  simp only [Riscv.lw, jolt_lw, Riscv.addi, Jolt.virtualAssertWordAlignment,
+             Riscv.andi, Riscv.slli, Riscv.srl, Jolt.virtualSignExtendWord]
   congr 1
   funext x
   simp only [write]
