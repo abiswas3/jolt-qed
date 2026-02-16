@@ -5,8 +5,9 @@
 import JoltBytecode.BytecodeExpansions.Common.Cpu
 import JoltBytecode.BytecodeExpansions.Common.Riscv
 import JoltBytecode.BytecodeExpansions.Common.Virtual
+import JoltBytecode.BytecodeExpansions.Common.FormatR
+import JoltBytecode.BytecodeExpansions.Common.FormatI
 
 -- Instruction proofs
 import JoltBytecode.BytecodeExpansions.Instructions.Subw
-import JoltBytecode.BytecodeExpansions.Instructions.SubwState
 import JoltBytecode.BytecodeExpansions.Instructions.Mulh
