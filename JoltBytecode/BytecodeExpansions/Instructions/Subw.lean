@@ -1,5 +1,5 @@
-import Mathlib.Tactic
-import Mathlib.Data.BitVec
+import JoltBytecode.BytecodeExpansions.Common.Virtual
+import JoltBytecode.BytecodeExpansions.Common.Riscv
 
 /-!
 # SUBW Equivalence Theorem
@@ -39,26 +39,14 @@ section SUBW
 -- DEFINITIONS
 -- ============================================================================
 
-namespace Jolt
-
-/-- VirtualSignExtendWord: sign-extends the lower 32 bits of a 64-bit value.
-    Interprets bits [31:0] as a signed 32-bit integer and produces the
-    64-bit sign-extended result. -/
-def virtualSignExtendWord (z : BitVec 64) : BitVec 64 :=
-  (z.setWidth 32).signExtend 64
-
-end Jolt
-
-/-- The RISC-V SUBW instruction (RV64I): subtracts the lower 32 bits of rs2
-    from the lower 32 bits of rs1, and sign-extends the 32-bit result to 64 bits. -/
-def subw (x y : BitVec 64) : BitVec 64 :=
-  (x.setWidth 32 - y.setWidth 32).signExtend 64
+-- Riscv.subw, Riscv.sub imported from Riscv
+-- Jolt.virtualSignExtendWord imported from Virtual
 
 /-- The Jolt virtual instruction decomposition for SUBW.
     SUB performs a full 64-bit subtraction, then VirtualSignExtendWord
     sign-extends the lower 32 bits of the result. -/
 def subwJolt (x y : BitVec 64) : BitVec 64 :=
-  let sub := x - y                        -- SUB rd, rs1, rs2
+  let sub := Riscv.sub x y                 -- SUB rd, rs1, rs2
   Jolt.virtualSignExtendWord sub           -- VirtualSignExtendWord rd, rd, 0
 
 -- ============================================================================
@@ -79,8 +67,8 @@ lemma setWidth_sub_32 (x y : BitVec 64) :
 
 /-- The RISC-V SUBW instruction computes the same result as Jolt's
     decomposition (SUB followed by VirtualSignExtendWord). -/
-theorem subw_eq_subwJolt (x y : BitVec 64) : subw x y = subwJolt x y := by
-  unfold subw subwJolt Jolt.virtualSignExtendWord
+theorem subw_eq_subwJolt (x y : BitVec 64) : Riscv.subw x y = subwJolt x y := by
+  unfold Riscv.subw subwJolt Riscv.sub Jolt.virtualSignExtendWord
   simp only [setWidth_sub_32]
 
 end SUBW
@@ -95,7 +83,7 @@ section Evals
 def traceSubw (x y : BitVec 64) : String :=
   let sub := x - y
   let result_jolt := subwJolt x y
-  let result_spec := subw x y
+  let result_spec := Riscv.subw x y
   s!"  x = {x.toInt}, y = {y.toInt}\n" ++
   s!"  SUB:              {sub.toInt}\n" ++
   s!"  SignExtendWord:   {result_jolt.toInt}\n" ++
@@ -140,7 +128,7 @@ def traceSubw (x y : BitVec 64) : String :=
     for j in List.range 256 do
       let x : BitVec 64 := BitVec.ofNat 64 i
       let y : BitVec 64 := BitVec.ofNat 64 j
-      if subw x y != subwJolt x y then
+      if Riscv.subw x y != subwJolt x y then
         failures := failures + 1
   if failures == 0 then
     IO.println "✓ Exhaustive check passed: subw == subwJolt for all 65536 test pairs"

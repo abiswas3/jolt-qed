@@ -1,5 +1,5 @@
-import Mathlib.Tactic
-import Mathlib.Data.BitVec
+import JoltBytecode.BytecodeExpansions.Common.Virtual
+import JoltBytecode.BytecodeExpansions.Common.Riscv
 
 /-!
 # MULH Equivalence Theorem (Compositional Version)
@@ -67,33 +67,8 @@ variable {w : Nat}
 -- DEFINITIONS
 -- ============================================================================
 
-/-- Sign extraction: returns -1 if the bitvector is negative (msb set), 0 otherwise.
-    This is the Int-valued version used in mathematical reasoning. -/
-def signExtract (x : BitVec w) : Int :=
-  if x.msb then -1 else 0
-
--- Virtual instruction definitions for Jolt's bytecode expansion.
-namespace Jolt
-
-/-- VirtualMovSign: extracts the sign bit as a w-bit register value.
-    Produces allOnes (two's complement -1) if negative, 0 otherwise.
-    This is the BitVec-valued counterpart of `signExtract`. -/
-def virtualMovSign (x : BitVec w) : BitVec w :=
-  BitVec.ofInt w (signExtract x)
-
-/-- MULHU: unsigned high multiplication.
-    Computes the upper w bits of the unsigned product of x and y:
-      floor(toNat(x) * toNat(y) / 2^w) -/
-def mulhu (x y : BitVec w) : BitVec w :=
-  BitVec.ofNat w (x.toNat * y.toNat / 2 ^ w)
-
-end Jolt
-
-/-- The RISC-V MULH instruction: computes the upper w bits of the signed product.
-    Given two w-bit signed integers x and y, MULH returns:
-      floor(toInt(x) * toInt(y) / 2^w)  mod 2^w -/
-def mulh (x y : BitVec w) : BitVec w :=
-  BitVec.ofInt w (x.toInt * y.toInt / (2 ^ w : Int))
+-- signExtract, Jolt.virtualMovSign, Jolt.mulhu imported from Virtual
+-- Riscv.mulh imported from Riscv
 
 /-- The Jolt virtual instruction decomposition for MULH.
     Each line corresponds to a virtual instruction in the expansion sequence.
@@ -233,11 +208,11 @@ From Lemma 3:
 The difference between mulh and mulhJolt is `s_x * s_y * 2^w`, which
 vanishes under mod 2^w via `Int.bmod_add_mul_cancel`. -/
 
-theorem mulh_eq_mulhJolt (x y : BitVec w) : mulh x y = mulhJolt x y := by
+theorem mulh_eq_mulhJolt (x y : BitVec w) : Riscv.mulh x y = mulhJolt x y := by
   -- Step 0: Rewrite the composed mulhJolt to its flat ofInt form
   rw [mulhJolt_eq_ofInt]
   -- From here, the proof is identical to the monolithic version:
-  unfold mulh
+  unfold Riscv.mulh
   apply BitVec.eq_of_toInt_eq
   simp only [BitVec.toInt_ofInt]
   rw [div_signed_product]
@@ -278,9 +253,9 @@ def traceVirtualMulh8 (x y : BitVec 8) : String :=
   s!"  ADD:    v_0  = {v_0'.toInt}\n" ++
   s!"  ADD:    rd   = {rd.toInt}\n" ++
   s!"  Expected (MULH): floor({x.toInt}*{y.toInt}/256) = {x.toInt * y.toInt / 256}\n" ++
-  s!"  mulh result:     {(mulh x y).toInt}\n" ++
+  s!"  mulh result:     {(Riscv.mulh x y).toInt}\n" ++
   s!"  mulhJolt result: {(mulhJolt x y).toInt}\n" ++
-  s!"  Match: {mulh x y == mulhJolt x y}"
+  s!"  Match: {Riscv.mulh x y == mulhJolt x y}"
 
 -- Example 1: Both positive (7 * 3 = 21, high bits = 0)
 #eval do
@@ -317,17 +292,17 @@ def traceVirtualMulh8 (x y : BitVec 8) : String :=
   IO.println "=== Example 7: 0 * -128 ==="
   IO.println (traceVirtualMulh8 (BitVec.ofInt 8 0) (BitVec.ofInt 8 (-128)))
 
--- Exhaustive check: verify mulh == mulhJolt for ALL 8-bit pairs
+-- Exhaustive check: verify Riscv.mulh == mulhJolt for ALL 8-bit pairs
 #eval do
   let mut failures := 0
   for i in List.range 256 do
     for j in List.range 256 do
       let x : BitVec 8 := BitVec.ofNat 8 i
       let y : BitVec 8 := BitVec.ofNat 8 j
-      if mulh x y != mulhJolt x y then
+      if Riscv.mulh x y != mulhJolt x y then
         failures := failures + 1
   if failures == 0 then
-    IO.println "✓ Exhaustive check passed: mulh == mulhJolt for all 65536 8-bit pairs"
+    IO.println "✓ Exhaustive check passed: Riscv.mulh == mulhJolt for all 65536 8-bit pairs"
   else
     IO.println s!"✗ FAILED: {failures} mismatches found"
 
