@@ -11,3 +11,4 @@ import JoltBytecode.BytecodeExpansions.Common.FormatI
 -- Instruction proofs
 import JoltBytecode.BytecodeExpansions.Instructions.Subw
 import JoltBytecode.BytecodeExpansions.Instructions.Mulh
+import JoltBytecode.BytecodeExpansions.Instructions.Lw
