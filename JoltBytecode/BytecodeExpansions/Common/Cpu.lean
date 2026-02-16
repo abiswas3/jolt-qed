@@ -38,7 +38,7 @@ def write {α β : Type} [DecidableEq α] (a : α) (b : β) (datastore : DataSto
 structure State where
   mem : Memory
   reg : RegFile
-  -- flags
+  error : Bool := false
   -- pc
 
 -- Read 8 Bytes from memory

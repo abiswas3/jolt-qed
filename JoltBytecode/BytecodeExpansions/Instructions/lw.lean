@@ -39,16 +39,18 @@ def read_dword (addr : BitVec 64) (s : State) : BitVec 64 :=
 --   SRL            rd,             v_dword, v_shift
 --   VirtualSignExtendWord rd,      rd, 0
 def jolt_lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
-  let base           := read rs1 s.reg
-  let v_address      := Riscv.addi base imm                       -- ADDI v_address, rs1, imm
-  let v_address      := Jolt.virtualAssertWordAlignment v_address  -- VirtualAssertWordAlignment
-  let v_dword_addr   := Riscv.andi v_address (-8#64)              -- ANDI v_dword_addr, v_address, -8
-  let v_dword        := read_dword v_dword_addr s                 -- LD v_dword, v_dword_addr, 0
-  let v_shift        := Riscv.slli v_address 3                    -- SLLI v_shift, v_address, 3
-  let v_word         := Riscv.srl v_dword v_shift                 -- SRL rd, v_dword, v_shift
-  let result         := Jolt.virtualSignExtendWord v_word          -- VirtualSignExtendWord rd, rd, 0
-  let new_reg        := write rd result s.reg
-  { s with reg := new_reg }
+  let base              := read rs1 s.reg
+  let v_address         := Riscv.addi base imm                          -- ADDI v_address, rs1, imm
+  let (v_address, s)    := Jolt.virtualAssertWordAlignment v_address s  -- VirtualAssertWordAlignment
+  if s.error then s                                                     -- panic: early exit
+  else
+    let v_dword_addr    := Riscv.andi v_address (-8#64)                -- ANDI v_dword_addr, v_address, -8
+    let v_dword         := read_dword v_dword_addr s                   -- LD v_dword, v_dword_addr, 0
+    let v_shift         := Riscv.slli v_address 3                      -- SLLI v_shift, v_address, 3
+    let v_word          := Riscv.srl v_dword v_shift                   -- SRL rd, v_dword, v_shift
+    let result          := Jolt.virtualSignExtendWord v_word            -- VirtualSignExtendWord rd, rd, 0
+    let new_reg         := write rd result s.reg
+    { s with reg := new_reg }
 
 -- ============================================================================
 -- Nat-level bounds and extraction lemmas
@@ -165,15 +167,21 @@ lemma read_word_eq_dword_extract (addr : BitVec 64) (s : State)
 -- Main theorem
 -- ============================================================================
 
-theorem lw_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) :
+theorem lw_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State)
+    (h_no_error : s.error = false) :
     Riscv.lw rs1 rd imm s = jolt_lw rs1 rd imm s := by
   simp only [Riscv.lw, jolt_lw, Riscv.addi, Jolt.virtualAssertWordAlignment,
              Riscv.andi, Riscv.slli, Riscv.srl, Jolt.virtualSignExtendWord]
-  congr 1
-  funext x
-  simp only [write]
-  by_cases h : x = rd
-  · simp only [h, ↓reduceIte]
+  by_cases h : (imm.setWidth 64 + read rs1 s.reg) &&& 3#64 = 0#64
+  · -- Aligned: both sides perform the load
+    simp only [ne_eq, h, not_true_eq_false, ↓reduceIte, h_no_error]
     congr 1
-    exact read_word_eq_dword_extract _ s (and_neg4_and_3_eq_0 _)
-  · simp [h]
+    funext x
+    simp only [write]
+    by_cases hx : x = rd
+    · simp only [hx, ↓reduceIte]
+      congr 1
+      exact read_word_eq_dword_extract _ s h
+    · simp [hx]
+  · -- Misaligned: both sides panic with { s with error := true }
+    simp only [ne_eq, h, not_false_eq_true, ↓reduceIte]

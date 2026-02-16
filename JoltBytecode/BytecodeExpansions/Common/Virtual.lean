@@ -1,5 +1,6 @@
 import Mathlib.Tactic
 import Mathlib.Data.BitVec
+import JoltBytecode.BytecodeExpansions.Common.Cpu
 
 variable {w : Nat}
 
@@ -46,11 +47,12 @@ def mulhu (x y : BitVec w) : BitVec w :=
 def virtualSRLI (x : BitVec w) (imm : Nat) : BitVec w :=
   x >>> ctz imm
 
-/-- VirtualAssertWordAlignment: ensures the address is word-aligned by masking
-    with -4 (clearing the lower 2 bits). In the ideal model this would set a
-    state error flag if the address is not already aligned. -/
-def virtualAssertWordAlignment (addr : BitVec 64) : BitVec 64 :=
-  addr &&& (-4#64)
+/-- VirtualAssertWordAlignment: checks word alignment. If misaligned, sets the
+    state error flag (like a panic). The returned address is unchanged; on error
+    subsequent operations should not execute. -/
+def virtualAssertWordAlignment (addr : BitVec 64) (s : State) : BitVec 64 × State :=
+  if addr &&& 3#64 ≠ 0#64 then (addr, { s with error := true })
+  else (addr, s)
 
 /-- VirtualSignExtendWord: sign-extends the lower 32 bits of a 64-bit value.
     Interprets bits [31:0] as a signed 32-bit integer and produces the

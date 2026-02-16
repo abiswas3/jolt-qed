@@ -36,6 +36,27 @@ def slli (x : BitVec w) (shamt : Nat) : BitVec w :=
 def srl (x y : BitVec 64) : BitVec 64 :=
   x >>> (y.setWidth 6).toNat
 
+/-- ORI rd, rs1, imm: bitwise OR with immediate. rd = rs1 | imm -/
+def ori (x imm : BitVec w) : BitVec w :=
+  x ||| imm
+
+/-- SRLI rd, rs1, shamt: logical right shift by immediate. rd = rs1 >>> shamt -/
+def srli (x : BitVec w) (shamt : Nat) : BitVec w :=
+  x >>> shamt
+
+/-- SLL rd, rs1, rs2 (RV64): logical left shift.
+    rd = rs1 << rs2[5:0] -/
+def sll (x y : BitVec 64) : BitVec 64 :=
+  x <<< (y.setWidth 6).toNat
+
+/-- XOR rd, rs1, rs2: bitwise exclusive OR. rd = rs1 ^ rs2 -/
+def xor (x y : BitVec w) : BitVec w :=
+  x ^^^ y
+
+/-- AND rd, rs1, rs2: bitwise AND. rd = rs1 & rs2 -/
+def and (x y : BitVec w) : BitVec w :=
+  x &&& y
+
 /-- SUBW rd, rs1, rs2 (RV64I): subtract lower 32 bits and sign-extend to 64 bits.
     rd = signExtend(rs1[31:0] - rs2[31:0]) -/
 def subw (x y : BitVec 64) : BitVec 64 :=
@@ -82,16 +103,33 @@ def read_word_val (addr : BitVec 64) (s : State) : Nat :=
 def read_word (addr : BitVec 64) (s : State) : BitVec 32 :=
   BitVec.ofNat 32 (read_word_val addr s)
 
+-- Write a 32-bit word to memory (little-endian, 4 bytes).
+def write_word (addr : BitVec 64) (val : BitVec 32) (s : State) : State :=
+  write_mem_bytes 4 addr val s
+
 namespace Riscv
 
-/-- LW rd, offset(rs1) (RV32I/RV64I): load a 32-bit word from memory at the
-    word-aligned address (rs1 + sign_extend(offset)) & ~3, sign-extend to 64 bits.
+/-- LW rd, offset(rs1) (RV32I/RV64I): load a 32-bit word from memory,
+    sign-extend to 64 bits. Panics (sets error) if address is not word-aligned.
     rd = signExtend(mem[addr..addr+3]) -/
 def lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
   let base := read rs1 s.reg
-  let addr := (imm.setWidth 64 + base) &&& (-4#64)
-  let word := read_word addr s
-  let new_reg := write rd (word.signExtend 64) s.reg
-  { s with reg := new_reg }
+  let addr := imm.setWidth 64 + base
+  if addr &&& 3#64 ≠ 0#64 then { s with error := true }
+  else
+    let word := read_word addr s
+    let new_reg := write rd (word.signExtend 64) s.reg
+    { s with reg := new_reg }
+
+/-- SW rs2, offset(rs1) (RV32I/RV64I): store the lower 32 bits of rs2 to memory.
+    Panics (sets error) if address is not word-aligned.
+    mem[addr..addr+3] = rs2[31:0] -/
+def sw (rs1 rs2 : BitVec 5) (imm : BitVec 12) (s : State) : State :=
+  let base := read rs1 s.reg
+  let addr := imm.setWidth 64 + base
+  if addr &&& 3#64 ≠ 0#64 then { s with error := true }
+  else
+    let word := (read rs2 s.reg).setWidth 32
+    write_word addr word s
 
 end Riscv
