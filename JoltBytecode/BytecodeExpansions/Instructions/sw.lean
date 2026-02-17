@@ -75,6 +75,7 @@ def jolt_sw (rs1 rs2 : BitVec 5) (imm : BitVec 12) (s : State) : State :=
 
 -- Dword-aligned case (shift = 0): writing lower 4 bytes = writing 8 bytes
 -- with lower half replaced.
+set_option maxHeartbeats 400000 in
 private lemma write_word_eq_dword_splice_lower (addr : BitVec 64)
     (val : BitVec 64) (s : State)
     (h7 : addr &&& 7#64 = 0#64) :
@@ -87,6 +88,7 @@ private lemma write_word_eq_dword_splice_lower (addr : BitVec 64)
 
 -- Word-aligned, not dword-aligned case (shift = 32): writing upper 4 bytes
 -- = writing 8 bytes with upper half replaced.
+set_option maxHeartbeats 400000 in
 private lemma write_word_eq_dword_splice_upper (addr : BitVec 64)
     (val : BitVec 64) (s : State)
     (h3 : addr &&& 3#64 = 0#64) (h7 : ¬(addr &&& 7#64 = 0#64)) :

@@ -41,14 +41,58 @@ structure State where
   error : Bool := false
   -- pc
 
--- Read 8 Bytes from memory
+-- ============================================================================
+-- DataStore read/write interaction lemmas
+-- ============================================================================
+
+@[simp] lemma read_write_eq {α β : Type} [DecidableEq α] (a : α) (b : β) (ds : DataStore α β) :
+    _root_.read a (_root_.write a b ds) = b := by
+  unfold _root_.read _root_.write; simp
+
+@[simp] lemma read_write_ne {α β : Type} [DecidableEq α] (a₁ a₂ : α) (b : β) (ds : DataStore α β)
+    (h : a₂ ≠ a₁) :
+    _root_.read a₂ (_root_.write a₁ b ds) = _root_.read a₂ ds := by
+  unfold _root_.read _root_.write; simp [h]
+
+lemma write_read_id {α β : Type} [DecidableEq α] (a : α) (ds : DataStore α β) :
+    _root_.write a (_root_.read a ds) ds = ds := by
+  unfold _root_.write _root_.read; funext x; simp; intro h; rw [h]
+
+-- ============================================================================
+-- Memory read/write operations
+-- ============================================================================
+
+-- Read a byte from memory
 def read_mem (addr : BitVec 64) (s : State) : BitVec 8 :=
   read addr s.mem
 
--- Write 8 Bytes To memory
+-- Write a byte to memory
 def write_mem (addr : BitVec 64) (val : BitVec 8) (s : State) : State :=
   let new_mem := write addr val s.mem
   { s with mem := new_mem }
+
+-- write_mem preserves reg and error
+@[simp] lemma write_mem_reg (a : BitVec 64) (v : BitVec 8) (s : State) :
+    (write_mem a v s).reg = s.reg := by unfold write_mem; simp
+
+@[simp] lemma write_mem_error (a : BitVec 64) (v : BitVec 8) (s : State) :
+    (write_mem a v s).error = s.error := by unfold write_mem; simp
+
+-- read_mem / write_mem interaction
+@[simp] lemma read_mem_write_mem_eq (a : BitVec 64) (v : BitVec 8) (s : State) :
+    read_mem a (write_mem a v s) = v := by
+  unfold read_mem write_mem; simp [read_write_eq]
+
+@[simp] lemma read_mem_write_mem_ne (a₁ a₂ : BitVec 64) (v : BitVec 8) (s : State)
+    (h : a₂ ≠ a₁) :
+    read_mem a₂ (write_mem a₁ v s) = read_mem a₂ s := by
+  unfold read_mem write_mem; simp [read_write_ne _ _ _ _ h]
+
+-- Writing back the same byte is identity
+lemma write_mem_id (addr : BitVec 64) (s : State) :
+    write_mem addr (read_mem addr s) s = s := by
+  unfold write_mem read_mem
+  simp [write_read_id]
 
 
 -- Read n bytes from memory (defined recursively)
@@ -69,3 +113,35 @@ def write_mem_bytes (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : Sta
     let s := write_mem addr byte s
     let val_rest := BitVec.setWidth (n' * 8) (val >>> 8)
     write_mem_bytes n' (addr + 1#64) val_rest s
+
+-- write_mem_bytes preserves reg and error
+@[simp] lemma write_mem_bytes_reg (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : State) :
+    (write_mem_bytes n addr val s).reg = s.reg := by
+  induction n generalizing addr s with
+  | zero => unfold write_mem_bytes; rfl
+  | succ n ih => unfold write_mem_bytes; simp [ih]
+
+@[simp] lemma write_mem_bytes_error (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : State) :
+    (write_mem_bytes n addr val s).error = s.error := by
+  induction n generalizing addr s with
+  | zero => unfold write_mem_bytes; rfl
+  | succ n ih => unfold write_mem_bytes; simp [ih]
+
+-- Reading outside the write range returns the original value.
+lemma read_mem_write_mem_bytes_outside (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8))
+    (s : State) (a : BitVec 64)
+    (h : ∀ (k : Nat), k < n → a ≠ addr + BitVec.ofNat 64 k) :
+    read_mem a (write_mem_bytes n addr val s) = read_mem a s := by
+  induction n generalizing addr s with
+  | zero => unfold write_mem_bytes; rfl
+  | succ n ih =>
+    unfold write_mem_bytes
+    dsimp only
+    have h0 : a ≠ addr := by have := h 0 (Nat.zero_lt_succ n); simpa using this
+    trans (read_mem a (write_mem addr (BitVec.extractLsb' 0 8 val) s))
+    · apply ih
+      intro k hk
+      have hk1 := h (k + 1) (by omega)
+      intro heq; apply hk1
+      rw [heq]; bv_omega
+    · exact read_mem_write_mem_ne addr a _ s h0
