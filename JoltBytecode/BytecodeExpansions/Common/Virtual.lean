@@ -10,12 +10,15 @@ def signExtract (x : BitVec w) : Int :=
   if x.msb then -1 else 0
 
 /-- Count trailing zeros of a natural number. Returns 0 for input 0. -/
+-- Add a bit more documentation on this still of functin 
 def ctz (n : Nat) : Nat :=
   if n = 0 then 0
   else if n % 2 = 1 then 0
   else 1 + ctz (n / 2)
 termination_by n
 
+-- Given natural number n -- The binary representation of 
+-- This theorem proves that 2^n has exactly n trailing zeroes
 @[simp] lemma ctz_pow2 (n : Nat) : ctz (2 ^ n) = n := by
   induction n with
   | zero => unfold ctz; simp
