@@ -31,6 +31,7 @@ equivalence.
 
 -- Jolt's decomposition: SLLI by 32, VirtualSRLI with imm=2^(shamt+32), VirtualSignExtendWord.
 -- The immediate 2^(shamt+32) encodes the shift amount in its trailing zeros.
+-- FIXME: This is wrong 
 def srliwJolt (x shamt : BitVec 64) : BitVec 64 :=
   Jolt.virtualSignExtendWord (Jolt.virtualSRLI (x <<< 32) (2 ^ (shamt.toNat + 32)))
 

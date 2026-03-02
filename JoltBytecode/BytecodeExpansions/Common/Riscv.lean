@@ -62,6 +62,8 @@ def and (x y : BitVec w) : BitVec w :=
 def subw (x y : BitVec 64) : BitVec 64 :=
   (x.setWidth 32 - y.setWidth 32).signExtend 64
 
+
+-- NOTE: This is the PURE FUNCTION DEFINTION OF SRLIW
 /-- SRLIW rd, rs1, shamt (RV64I): logical right shift of lower 32 bits by shamt,
     sign-extend the 32-bit result to 64 bits.
     rd = signExtend(rs1[31:0] >>> shamt) -/
@@ -92,7 +94,8 @@ end Riscv
 -- Load/Store helpers and instructions (require State)
 -- ============================================================================
 
--- Nat value of 4 little-endian bytes at addr.
+-- Nat value of 4 little-endian bytes at addr
+-- NOTE: the value at address might be a negative value
 def read_word_val (addr : BitVec 64) (s : State) : Nat :=
   (read_mem addr s).toNat +
   (read_mem (addr + 1) s).toNat * 2^8 +
@@ -125,8 +128,8 @@ def lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
     Panics (sets error) if address is not word-aligned.
     mem[addr..addr+3] = rs2[31:0] -/
 def sw (rs1 rs2 : BitVec 5) (imm : BitVec 12) (s : State) : State :=
-  let base := read rs1 s.reg
-  let addr := imm.setWidth 64 + base
+  let base := read rs1 s.reg -- get value inside rs1 
+  let addr := imm.setWidth 64 + base -- comput address to be loaded
   if addr &&& 3#64 ≠ 0#64 then { s with error := true }
   else
     let word := (read rs2 s.reg).setWidth 32

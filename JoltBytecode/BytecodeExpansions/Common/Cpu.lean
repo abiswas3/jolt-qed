@@ -47,7 +47,7 @@ structure State where
 
 @[simp] lemma read_write_eq {α β : Type} [DecidableEq α] (a : α) (b : β) (ds : DataStore α β) :
     _root_.read a (_root_.write a b ds) = b := by
-  unfold _root_.read _root_.write; simp
+  unfold _root_.read _root_.write; simp only [↓reduceIte]
 
 @[simp] lemma read_write_ne {α β : Type} [DecidableEq α] (a₁ a₂ : α) (b : β) (ds : DataStore α β)
     (h : a₂ ≠ a₁) :
@@ -73,10 +73,10 @@ def write_mem (addr : BitVec 64) (val : BitVec 8) (s : State) : State :=
 
 -- write_mem preserves reg and error
 @[simp] lemma write_mem_reg (a : BitVec 64) (v : BitVec 8) (s : State) :
-    (write_mem a v s).reg = s.reg := by unfold write_mem; simp
+    (write_mem a v s).reg = s.reg := by unfold write_mem; simp only
 
 @[simp] lemma write_mem_error (a : BitVec 64) (v : BitVec 8) (s : State) :
-    (write_mem a v s).error = s.error := by unfold write_mem; simp
+    (write_mem a v s).error = s.error := by unfold write_mem; simp only
 
 -- read_mem / write_mem interaction
 @[simp] lemma read_mem_write_mem_eq (a : BitVec 64) (v : BitVec 8) (s : State) :
@@ -95,6 +95,7 @@ lemma write_mem_id (addr : BitVec 64) (s : State) :
   simp [write_read_id]
 
 
+-- NOTE: Currently not used in the code 
 -- Read n bytes from memory (defined recursively)
 def read_mem_bytes (n : Nat) (addr : BitVec 64) (s : State) : BitVec (n * 8) :=
   match n with
@@ -104,6 +105,7 @@ def read_mem_bytes (n : Nat) (addr : BitVec 64) (s : State) : BitVec (n * 8) :=
     let rest := read_mem_bytes n' (addr + 1#64) s
     (rest ++ byte).cast (by omega)
 
+-- NOTE: Currently not used in the code
 -- Write n bytes to memory (defined recursively)
 def write_mem_bytes (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : State) : State :=
   match n with
