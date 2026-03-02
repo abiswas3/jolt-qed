@@ -1,6 +1,7 @@
 import JoltBytecode.BytecodeExpansions.Common.FormatI
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
+import JoltBytecode.BytecodeExpansions.Common.SimpLemmas
 
 /-!
 # SRAIW: RISC-V ≡ Jolt Decomposition
@@ -49,38 +50,6 @@ def sraiw_bitmask (shamt : BitVec 64) : Nat :=
   let ones := (1 <<< (64 - shift)) - 1
   ones <<< shift
 
--- ============================================================================
--- ctz lemmas
--- ============================================================================
-
-private lemma ctz_of_odd {n : Nat} (h : n % 2 = 1) : ctz n = 0 := by
-  have hne : n ≠ 0 := by omega
-  unfold ctz; rw [if_neg hne, if_pos h]
-
-private lemma ctz_of_double {n : Nat} (hn : 0 < n) : ctz (2 * n) = 1 + ctz n := by
-  have h1 : 2 * n ≠ 0 := by omega
-  have h2 : ¬(2 * n % 2 = 1) := by omega
-  have h3 : (2 * n) / 2 = n := by omega
-  conv_lhs => unfold ctz
-  rw [if_neg h1, if_neg h2, h3]
-
-private lemma ctz_mul_pow2 (k : Nat) {m : Nat} (hm : 0 < m) :
-    ctz (2 ^ k * m) = k + ctz m := by
-  induction k with
-  | zero => simp
-  | succ k ih =>
-    have h_rw : 2 ^ (k + 1) * m = 2 * (2 ^ k * m) := by ring
-    rw [h_rw, ctz_of_double (by positivity), ih]
-    omega
-
-private lemma pow2_sub_one_odd {k : Nat} (hk : 0 < k) : (2 ^ k - 1) % 2 = 1 := by
-  cases k with
-  | zero => omega
-  | succ n =>
-    rw [pow_succ, mul_comm]
-    have : 0 < 2 ^ n := by positivity
-    omega
-
 -- ctz of the bitmask recovers the shift amount.
 lemma ctz_sraiw_bitmask (shamt : BitVec 64) :
     ctz (sraiw_bitmask shamt) = (shamt.setWidth 5).toNat := by
@@ -114,16 +83,6 @@ def sraiwJolt (rs1_val shamt : BitVec 64) : BitVec 64 :=
 -- ============================================================================
 -- Core lemma
 -- ============================================================================
-
--- Arithmetic right shift of a 32-bit value equals: sign-extend to 64,
--- logical right shift, truncate back to 32.
-private lemma sshiftRight_eq_signExtend_ushr_trunc (x : BitVec 32) (s : Nat) (hs : s < 32) :
-    x.sshiftRight s = (x.signExtend 64 >>> s).setWidth 32 := by
-  ext i
-  simp only [BitVec.getLsbD_sshiftRight, BitVec.getLsbD_setWidth,
-             BitVec.getLsbD_ushiftRight, BitVec.getLsbD_signExtend]
-  simp [i.isLt, show ¬(32 ≤ (↑i : Nat)) from by omega,
-        show s + (↑i : Nat) < 64 from by omega]
 
 -- ============================================================================
 -- Main theorems

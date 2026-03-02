@@ -1,6 +1,7 @@
 import JoltBytecode.BytecodeExpansions.Common.FormatI
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
+import JoltBytecode.BytecodeExpansions.Common.SimpLemmas
 
 /-!
 # SRLIW: RISC-V ≡ Jolt Decomposition
@@ -47,44 +48,6 @@ def srliw_imm (shamt : BitVec 64) : Nat :=
   let len := 64
   let ones := (1 <<< (len - shift)) - 1
   ones <<< shift
-
--- ============================================================================
--- ctz lemmas for the bitmask
--- ============================================================================
-
--- An odd number has zero trailing zeros.
-private lemma ctz_of_odd {n : Nat} (h : n % 2 = 1) : ctz n = 0 := by
-  have hne : n ≠ 0 := by omega
-  unfold ctz
-  rw [if_neg hne]
-  rw [if_pos h]
-
--- Doubling a positive number adds one trailing zero.
-private lemma ctz_of_double {n : Nat} (hn : 0 < n) : ctz (2 * n) = 1 + ctz n := by
-  have h1 : 2 * n ≠ 0 := by omega
-  have h2 : ¬(2 * n % 2 = 1) := by omega
-  have h3 : (2 * n) / 2 = n := by omega
-  conv_lhs => unfold ctz
-  rw [if_neg h1, if_neg h2, h3]
-
--- Multiplying by 2^k adds k trailing zeros.
-private lemma ctz_mul_pow2 (k : Nat) {m : Nat} (hm : 0 < m) :
-    ctz (2 ^ k * m) = k + ctz m := by
-  induction k with
-  | zero => simp
-  | succ k ih =>
-    have h_rw : 2 ^ (k + 1) * m = 2 * (2 ^ k * m) := by ring
-    rw [h_rw, ctz_of_double (by positivity), ih]
-    omega
-
--- 2^k - 1 is odd for k > 0.
-private lemma pow2_sub_one_odd {k : Nat} (hk : 0 < k) : (2 ^ k - 1) % 2 = 1 := by
-  cases k with
-  | zero => omega
-  | succ n =>
-    rw [pow_succ, mul_comm]
-    have : 0 < 2 ^ n := by positivity
-    omega
 
 -- ctz of Jolt's bitmask recovers the shift amount.
 -- The number of trailing zeros in srliw_imm x 

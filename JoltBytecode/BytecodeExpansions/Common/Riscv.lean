@@ -88,6 +88,34 @@ def slliw (rs1_val shamt : BitVec 64) : BitVec 64 :=
   ((rs1_val.setWidth 32) <<< (shamt.setWidth 5).toNat).signExtend 64
 
 -- ============================================================================
+-- Full 64-bit immediate shift/add (RV64I, Format I)
+-- ============================================================================
+
+/-- ADDIW rd, rs1, imm (RV64I): add immediate to rs1, truncate to 32 bits,
+    sign-extend to 64 bits.
+    rd = signExtend((rs1 + imm)[31:0]) -/
+def addiw (rs1_val imm : BitVec 64) : BitVec 64 :=
+  ((rs1_val + imm).setWidth 32).signExtend 64
+
+/-- SLLI rd, rs1, shamt (RV64I, Format I): logical left shift of full 64-bit value
+    by shamt[5:0].
+    rd = rs1 << shamt[5:0] -/
+def slli64 (rs1_val shamt : BitVec 64) : BitVec 64 :=
+  rs1_val <<< (shamt.setWidth 6).toNat
+
+/-- SRLI rd, rs1, shamt (RV64I, Format I): logical right shift of full 64-bit value
+    by shamt[5:0].
+    rd = rs1 >>> shamt[5:0] -/
+def srli64 (rs1_val shamt : BitVec 64) : BitVec 64 :=
+  rs1_val >>> (shamt.setWidth 6).toNat
+
+/-- SRAI rd, rs1, shamt (RV64I, Format I): arithmetic right shift of full 64-bit value
+    by shamt[5:0].
+    rd = rs1 >>_arith shamt[5:0] -/
+def srai64 (rs1_val shamt : BitVec 64) : BitVec 64 :=
+  rs1_val.sshiftRight (shamt.setWidth 6).toNat
+
+-- ============================================================================
 -- Multiply Extension (generic over width)
 -- ============================================================================
 
