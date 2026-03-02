@@ -1,4 +1,4 @@
-import JoltBytecode.BytecodeExpansions.Instructions.lw
+import JoltBytecode.BytecodeExpansions.Instructions.Lw
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 
 /-!

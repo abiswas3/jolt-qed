@@ -1,5 +1,5 @@
-import JoltBytecode.BytecodeExpansions.Instructions.lw
-import JoltBytecode.BytecodeExpansions.Instructions.sw
+import JoltBytecode.BytecodeExpansions.Instructions.Lw
+import JoltBytecode.BytecodeExpansions.Instructions.Sw
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
 
