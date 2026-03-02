@@ -133,6 +133,37 @@ def mulhu (x y : BitVec w) : BitVec w :=
 def mulh (x y : BitVec w) : BitVec w :=
   BitVec.ofInt w (x.toInt * y.toInt / (2 ^ w : Int))
 
+/-- MULHSU rd, rs1, rs2: signed×unsigned high multiplication.
+    Returns upper w bits of the mixed-sign 2w-bit product. -/
+def mulhsu (x y : BitVec w) : BitVec w :=
+  BitVec.ofInt w (x.toInt * (y.toNat : Int) / (2 ^ w : Int))
+
+/-- MULW rd, rs1, rs2 (RV64M): multiply rs1 and rs2, truncate to 32 bits,
+    sign-extend to 64 bits.
+    rd = signExtend((rs1 * rs2)[31:0]) -/
+def mulw (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  ((rs1_val * rs2_val).setWidth 32).signExtend 64
+
+-- ============================================================================
+-- Register-register shifts (RV64I, Format R, word variants)
+-- ============================================================================
+
+/-- SLLW rd, rs1, rs2 (RV64I): logical left shift of lower 32 bits by rs2[4:0],
+    sign-extend the 32-bit result to 64 bits. -/
+def sllw (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32) <<< (rs2_val.setWidth 5).toNat).signExtend 64
+
+/-- SRA rd, rs1, rs2 (RV64I): arithmetic right shift of full 64-bit value
+    by rs2[5:0].
+    rd = rs1 >>_arith rs2[5:0] -/
+def sra (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  rs1_val.sshiftRight (rs2_val.setWidth 6).toNat
+
+/-- SRLW rd, rs1, rs2 (RV64I): logical right shift of lower 32 bits by rs2[4:0],
+    sign-extend the 32-bit result to 64 bits. -/
+def srlw (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32) >>> (rs2_val.setWidth 5).toNat).signExtend 64
+
 end Riscv
 
 -- ============================================================================

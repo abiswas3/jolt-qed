@@ -63,4 +63,14 @@ def virtualAssertWordAlignment (addr : BitVec 64) (s : State) : BitVec 64 × Sta
 def virtualSignExtendWord (z : BitVec 64) : BitVec 64 :=
   (z.setWidth 32).signExtend 64
 
+/-- VirtualPow2: compute 2^(x[5:0]) as a 64-bit value.
+    Used by SLL to convert 6-bit shift amounts to multiplicands. -/
+def virtualPow2 (x : BitVec 64) : BitVec 64 :=
+  BitVec.ofNat 64 (2 ^ (x.setWidth 6).toNat)
+
+/-- VirtualPow2W: compute 2^(x[4:0]) as a 64-bit value.
+    Used by SLLW to convert 5-bit shift amounts to multiplicands. -/
+def virtualPow2W (x : BitVec 64) : BitVec 64 :=
+  BitVec.ofNat 64 (2 ^ (x.setWidth 5).toNat)
+
 end Jolt

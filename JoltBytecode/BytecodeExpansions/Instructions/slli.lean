@@ -1,3 +1,4 @@
+-- TODO: prove sll_64_eq_mul (x <<< s = x * 2^s for BitVec 64)
 import JoltBytecode.BytecodeExpansions.Common.FormatI
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv

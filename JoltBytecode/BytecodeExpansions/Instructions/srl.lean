@@ -4,40 +4,39 @@ import JoltBytecode.BytecodeExpansions.Common.Riscv
 import JoltBytecode.BytecodeExpansions.Common.SimpLemmas
 
 /-!
-# SRA: RISC-V ≡ Jolt Decomposition
+# SRL: RISC-V ≡ Jolt Decomposition
 
 ## Instruction (RV64I, Format R)
 
-`SRA rd, rs1, rs2` arithmetically right-shifts rs1 by rs2[5:0] bits
-(sign-filling the upper bits) and writes to rd.
+`SRL rd, rs1, rs2` logically right-shifts rs1 by rs2[5:0] bits and writes
+the result to rd.
 
 ## Jolt Decomposition (faithful to Rust implementation)
 
 ```
 VirtualShiftRightBitmask v_bitmask, rs2, 0           -- compute bitmask from rs2
-VirtualSRA               rd, rs1, v_bitmask           -- arith right shift via ctz(bitmask)
+VirtualSRL               rd, rs1, v_bitmask           -- logical right shift via ctz(bitmask)
 ```
 
 ## Proof
 
 The bitmask has `shift` trailing zeros, so `ctz(bitmask) = shift = rs2[5:0]`.
-VirtualSRA performs arithmetic right shift by ctz(bitmask), which equals
-the RISC-V SRA semantics.
+Both sides compute `rs1 >>> shift`.
 -/
 
 -- ============================================================================
 -- Bitmask computation (VirtualShiftRightBitmask, 64-bit mode)
 -- ============================================================================
 
-def sra_bitmask (rs2_val : BitVec 64) : Nat :=
+def srl_bitmask (rs2_val : BitVec 64) : Nat :=
   let shift := (rs2_val.setWidth 6).toNat
   let ones := (1 <<< (64 - shift)) - 1
   ones <<< shift
 
 -- ctz of the bitmask recovers the shift amount.
-lemma ctz_sra_bitmask (rs2_val : BitVec 64) :
-    ctz (sra_bitmask rs2_val) = (rs2_val.setWidth 6).toNat := by
-  unfold sra_bitmask
+lemma ctz_srl_bitmask (rs2_val : BitVec 64) :
+    ctz (srl_bitmask rs2_val) = (rs2_val.setWidth 6).toNat := by
+  unfold srl_bitmask
   simp only [Nat.shiftLeft_eq, one_mul]
   set shift := (rs2_val.setWidth 6).toNat
   have h_lt : shift < 64 := by
@@ -57,25 +56,25 @@ lemma ctz_sra_bitmask (rs2_val : BitVec 64) :
 -- Jolt decomposition
 -- ============================================================================
 
--- Jolt's decomposition: VirtualShiftRightBitmask → VirtualSRA.
-def sraJolt (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
-  rs1_val.sshiftRight (ctz (sra_bitmask rs2_val))
+-- Jolt's decomposition: VirtualShiftRightBitmask → VirtualSRL.
+def srlJolt (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  rs1_val >>> ctz (srl_bitmask rs2_val)
 
 -- ============================================================================
 -- Main theorems
 -- ============================================================================
 
--- Pure-function equivalence: Riscv.sra = sraJolt
-theorem sra_eq_sraJolt (rs1_val rs2_val : BitVec 64) :
-    Riscv.sra rs1_val rs2_val = sraJolt rs1_val rs2_val := by
-  unfold Riscv.sra sraJolt
-  rw [ctz_sra_bitmask]
+-- Pure-function equivalence: Riscv.srl = srlJolt
+theorem srl_eq_srlJolt (rs1_val rs2_val : BitVec 64) :
+    Riscv.srl rs1_val rs2_val = srlJolt rs1_val rs2_val := by
+  unfold Riscv.srl srlJolt
+  rw [ctz_srl_bitmask]
 
 -- State-level equivalence via Format R lifting.
-theorem sra_state_eq (rs1 rs2 rd : BitVec 5) (s : State) :
-    format_r_exec rs1 rs2 rd Riscv.sra s = format_r_exec rs1 rs2 rd sraJolt s :=
-  format_r_ops_eq_of_fns_eq Riscv.sra sraJolt rs1 rs2 rd s
-    (by funext rs1_val rs2_val; exact sra_eq_sraJolt rs1_val rs2_val)
+theorem srl_state_eq (rs1 rs2 rd : BitVec 5) (s : State) :
+    format_r_exec rs1 rs2 rd Riscv.srl s = format_r_exec rs1 rs2 rd srlJolt s :=
+  format_r_ops_eq_of_fns_eq Riscv.srl srlJolt rs1 rs2 rd s
+    (by funext rs1_val rs2_val; exact srl_eq_srlJolt rs1_val rs2_val)
 
 /-SANITY CHECKS-/
 #eval do
@@ -84,9 +83,9 @@ theorem sra_state_eq (rs1 rs2 rd : BitVec 5) (s : State) :
     for s in List.range 64 do
       let rs1_val : BitVec 64 := BitVec.ofNat 64 i
       let rs2_val : BitVec 64 := BitVec.ofNat 64 s
-      if Riscv.sra rs1_val rs2_val != sraJolt rs1_val rs2_val then
+      if Riscv.srl rs1_val rs2_val != srlJolt rs1_val rs2_val then
         failures := failures + 1
   if failures == 0 then
-    IO.println "✓ Exhaustive check passed: sra == sraJolt for all 16384 test pairs"
+    IO.println "✓ Exhaustive check passed: srl == srlJolt for all 16384 test pairs"
   else
     IO.println s!"✗ FAILED: {failures} mismatches found"
