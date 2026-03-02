@@ -34,16 +34,20 @@ private lemma setWidth_sub_32 (x y : BitVec 64) :
     (x - y).setWidth 32 = x.setWidth 32 - y.setWidth 32 := by
   bv_omega
 
+-- THIS IS THE PURE FUNCTION THEOREM 
 -- Pure-function equivalence: Riscv.subw = subwJolt
 theorem subw_eq_subwJolt (x y : BitVec 64) : Riscv.subw x y = subwJolt x y := by
   unfold Riscv.subw subwJolt Riscv.sub Jolt.virtualSignExtendWord
-  simp only [setWidth_sub_32]
+  simp only [setWidth_sub_32] -- which simp lemmas to use
 
 -- State-level equivalence via Format R lifting.
 theorem subw_state_eq (r1 r2 rd : BitVec 5) (s : State) :
     format_r_exec r1 r2 rd Riscv.subw s = format_r_exec r1 r2 rd subwJolt s :=
-  format_r_ops_eq_of_fns_eq Riscv.subw subwJolt r1 r2 rd s
-    (by funext x y; exact subw_eq_subwJolt x y)
+  -- IS THIS APPLY ?
+  -- funext : If you want to show two functions are equal, then 
+  -- this tactic reduces to showing the truth tables are the same (every eval is the same for all 
+  -- inputs)
+  format_r_ops_eq_of_fns_eq Riscv.subw subwJolt r1 r2 rd s (by funext x y; exact subw_eq_subwJolt x y)
 
 /-SANITY CHECKS-/
 -- Sanity check: exhaustive 8-bit test

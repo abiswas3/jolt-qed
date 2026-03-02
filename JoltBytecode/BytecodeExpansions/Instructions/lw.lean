@@ -165,22 +165,22 @@ lemma read_word_eq_dword_extract (addr : BitVec 64) (s : State)
 -- ============================================================================
 -- Main theorem
 -- ============================================================================
-
 theorem lw_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State)
     (h_no_error : s.error = false) :
     Riscv.lw rs1 rd imm s = jolt_lw rs1 rd imm s := by
-  simp only [Riscv.lw, jolt_lw, Riscv.addi, Jolt.virtualAssertWordAlignment,
-             Riscv.andi, Riscv.slli, Riscv.srl, Jolt.virtualSignExtendWord]
+  simp only [Riscv.lw, jolt_lw, Riscv.addi, Jolt.virtualAssertWordAlignment, 
+              Riscv.andi, Riscv.slli, Riscv.srl, Jolt.virtualSignExtendWord]
   by_cases h : (imm.setWidth 64 + read rs1 s.reg) &&& 3#64 = 0#64
   · -- Aligned: both sides perform the load
     simp only [ne_eq, h, not_true_eq_false, ↓reduceIte, h_no_error]
-    congr 1
-    funext x
+    congr -- this might doing some simp to get rid of if else  
+    funext x  
     simp only [write]
     by_cases hx : x = rd
-    · simp only [hx, ↓reduceIte]
-      congr 1
-      exact read_word_eq_dword_extract _ s h
+    · simp only [hx] -- backslash down 
+      simp only [↓reduceIte] -- backslash down 
+      congr
+      exact read_word_eq_dword_extract _ s h -- THIS IS THE ACTUAL PROOF OF MY CLAIM (can deduce addr from h)
     · simp [hx]
   · -- Misaligned: both sides panic with { s with error := true }
     simp only [ne_eq, h, not_false_eq_true, ↓reduceIte]

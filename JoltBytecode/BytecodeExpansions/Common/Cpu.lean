@@ -34,12 +34,12 @@ def write {α β : Type} [DecidableEq α] (a : α) (b : β) (datastore : DataSto
 -- Register
 -- Prpgram Counter
 -- Flags
+-- Componentwise equality -> Equality Of State
 @[ext]
 structure State where
   mem : Memory
   reg : RegFile
   error : Bool := false
-  -- pc
 
 -- ============================================================================
 -- DataStore read/write interaction lemmas
