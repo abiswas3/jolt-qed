@@ -75,6 +75,18 @@ def srliw (rs1_val shamt : BitVec 64) : BitVec 64 :=
 def sraw (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   ((rs1_val.setWidth 32).sshiftRight (rs2_val.setWidth 5).toNat).signExtend 64
 
+/-- SRAIW rd, rs1, shamt (RV64I): arithmetic right shift of lower 32 bits by shamt[4:0],
+    sign-extend the 32-bit result to 64 bits.
+    rd = signExtend(rs1[31:0] >>_arith shamt[4:0]) -/
+def sraiw (rs1_val shamt : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32).sshiftRight (shamt.setWidth 5).toNat).signExtend 64
+
+/-- SLLIW rd, rs1, shamt (RV64I): logical left shift of lower 32 bits by shamt[4:0],
+    sign-extend the 32-bit result to 64 bits.
+    rd = signExtend(rs1[31:0] << shamt[4:0]) -/
+def slliw (rs1_val shamt : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32) <<< (shamt.setWidth 5).toNat).signExtend 64
+
 -- ============================================================================
 -- Multiply Extension (generic over width)
 -- ============================================================================

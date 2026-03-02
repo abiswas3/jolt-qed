@@ -14,3 +14,5 @@ import JoltBytecode.BytecodeExpansions.Instructions.Mulh
 import JoltBytecode.BytecodeExpansions.Instructions.Lw
 import JoltBytecode.BytecodeExpansions.Instructions.Srliw
 import JoltBytecode.BytecodeExpansions.Instructions.Sraw
+import JoltBytecode.BytecodeExpansions.Instructions.Sraiw
+import JoltBytecode.BytecodeExpansions.Instructions.Slliw
