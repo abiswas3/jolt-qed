@@ -14,6 +14,9 @@ abbrev Memory := DataStore (BitVec 64) (BitVec 8)
 -- β : Bitvec 8
 abbrev RegFile := DataStore (BitVec 5) (BitVec 64)
 
+-- CSR address space is 12-bit in RISC-V (4096 possible CSRs)
+abbrev CsrFile := DataStore (BitVec 12) (BitVec 64)
+
 
 -- This models a data store where the input is a bit vector and the output
 -- is a byte of data (more specifically a bit vector of size 8).
@@ -39,6 +42,7 @@ def write {α β : Type} [DecidableEq α] (a : α) (b : β) (datastore : DataSto
 structure State where
   mem : Memory
   reg : RegFile
+  csr : CsrFile := fun _ => 0#64
   error : Bool := false
 
 -- ============================================================================
@@ -95,7 +99,54 @@ lemma write_mem_id (addr : BitVec 64) (s : State) :
   simp [write_read_id]
 
 
--- NOTE: Currently not used in the code 
+-- ============================================================================
+-- CSR read/write operations
+-- ============================================================================
+
+-- Read a CSR value
+def read_csr (addr : BitVec 12) (s : State) : BitVec 64 :=
+  read addr s.csr
+
+-- Write a CSR value
+def write_csr (addr : BitVec 12) (val : BitVec 64) (s : State) : State :=
+  { s with csr := write addr val s.csr }
+
+-- write_csr preserves reg, mem, error
+@[simp] lemma write_csr_reg (a : BitVec 12) (v : BitVec 64) (s : State) :
+    (write_csr a v s).reg = s.reg := by unfold write_csr; simp only
+
+@[simp] lemma write_csr_mem (a : BitVec 12) (v : BitVec 64) (s : State) :
+    (write_csr a v s).mem = s.mem := by unfold write_csr; simp only
+
+@[simp] lemma write_csr_error (a : BitVec 12) (v : BitVec 64) (s : State) :
+    (write_csr a v s).error = s.error := by unfold write_csr; simp only
+
+-- read_csr / write_csr interaction
+@[simp] lemma read_csr_write_csr_eq (a : BitVec 12) (v : BitVec 64) (s : State) :
+    read_csr a (write_csr a v s) = v := by
+  unfold read_csr write_csr; simp [read_write_eq]
+
+@[simp] lemma read_csr_write_csr_ne (a₁ a₂ : BitVec 12) (v : BitVec 64) (s : State)
+    (h : a₂ ≠ a₁) :
+    read_csr a₂ (write_csr a₁ v s) = read_csr a₂ s := by
+  unfold read_csr write_csr; simp [read_write_ne _ _ _ _ h]
+
+-- write_mem preserves csr
+@[simp] lemma write_mem_csr (a : BitVec 64) (v : BitVec 8) (s : State) :
+    (write_mem a v s).csr = s.csr := by unfold write_mem; simp only
+
+-- ============================================================================
+-- CSR address constants (supported by Jolt)
+-- ============================================================================
+
+def CSR_MSTATUS  : BitVec 12 := 0x300#12
+def CSR_MTVEC    : BitVec 12 := 0x305#12
+def CSR_MSCRATCH : BitVec 12 := 0x340#12
+def CSR_MEPC     : BitVec 12 := 0x341#12
+def CSR_MCAUSE   : BitVec 12 := 0x342#12
+def CSR_MTVAL    : BitVec 12 := 0x343#12
+
+-- NOTE: Currently not used in the code
 -- Read n bytes from memory (defined recursively)
 def read_mem_bytes (n : Nat) (addr : BitVec 64) (s : State) : BitVec (n * 8) :=
   match n with
@@ -125,6 +176,12 @@ def write_mem_bytes (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : Sta
 
 @[simp] lemma write_mem_bytes_error (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : State) :
     (write_mem_bytes n addr val s).error = s.error := by
+  induction n generalizing addr s with
+  | zero => unfold write_mem_bytes; rfl
+  | succ n ih => unfold write_mem_bytes; simp [ih]
+
+@[simp] lemma write_mem_bytes_csr (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : State) :
+    (write_mem_bytes n addr val s).csr = s.csr := by
   induction n generalizing addr s with
   | zero => unfold write_mem_bytes; rfl
   | succ n ih => unfold write_mem_bytes; simp [ih]

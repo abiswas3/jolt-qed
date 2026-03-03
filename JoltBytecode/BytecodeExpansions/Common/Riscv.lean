@@ -259,4 +259,17 @@ def sw (rs1 rs2 : BitVec 5) (imm : BitVec 12) (s : State) : State :=
     let word := (read rs2 s.reg).setWidth 32
     write_word addr word s
 
+-- ============================================================================
+-- CSR Instructions (RV64 Zicsr)
+-- ============================================================================
+
+/-- CSRRW rd, csr, rs1: atomically read CSR into rd and write rs1 to CSR.
+    If rd = x0, the read is suppressed (write-only). -/
+def csrrw (rs1 rd : BitVec 5) (csr_addr : BitVec 12) (s : State) : State :=
+  let rs1_val := read rs1 s.reg
+  let old_csr := read_csr csr_addr s
+  let s := write_csr csr_addr rs1_val s
+  if rd = 0#5 then s
+  else { s with reg := write rd old_csr s.reg }
+
 end Riscv
