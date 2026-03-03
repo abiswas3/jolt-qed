@@ -34,7 +34,7 @@ import JoltBytecode.BytecodeExpansions.Instructions.Slliw      -- DONE: SLLIW
 import JoltBytecode.BytecodeExpansions.Instructions.Addiw      -- DONE: ADDIW
 import JoltBytecode.BytecodeExpansions.Instructions.Srli       -- DONE: SRLI
 import JoltBytecode.BytecodeExpansions.Instructions.Srai       -- DONE: SRAI
-import JoltBytecode.BytecodeExpansions.Instructions.Slli       -- TODO: sorry in sll_64_eq_mul (shift = multiply, 64-bit)
+import JoltBytecode.BytecodeExpansions.Instructions.Slli       -- DONE: : SLLI  
 import JoltBytecode.BytecodeExpansions.Instructions.Csrrw      -- TODO: needs CSR state modeling
 import JoltBytecode.BytecodeExpansions.Instructions.Csrrs      -- TODO: needs CSR state modeling
 

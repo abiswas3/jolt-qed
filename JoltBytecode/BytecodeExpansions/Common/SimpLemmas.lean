@@ -44,6 +44,17 @@ lemma pow2_sub_one_odd {k : Nat} (hk : 0 < k) : (2 ^ k - 1) % 2 = 1 := by
     omega
 
 -- ============================================================================
+-- Shift-as-multiply
+-- ============================================================================
+
+-- Left-shifting by s equals multiplying by 2^s (any width).
+@[simp]
+lemma shiftLeft_eq_mul_pow2 (x : BitVec 64) (s : Nat) :
+    x <<< s = x * BitVec.ofNat 64 (2 ^ s) := by
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_shiftLeft, BitVec.toNat_mul, BitVec.toNat_ofNat, Nat.shiftLeft_eq]
+
+-- ============================================================================
 -- Arithmetic right shift via sign-extend + logical shift
 -- ============================================================================
 
