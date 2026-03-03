@@ -24,6 +24,7 @@ import JoltBytecode.BytecodeExpansions.Instructions.Sll        -- TODO: sorry in
 import JoltBytecode.BytecodeExpansions.Instructions.Sllw       -- TODO: sorry in sll_32_eq_mul_trunc (32-bit shift = multiply truncated)
 import JoltBytecode.BytecodeExpansions.Instructions.Srlw       -- TODO: sorry in ctz_srlw_bitmask, srlw_eq_srlwJolt
 import JoltBytecode.BytecodeExpansions.Instructions.Mulhsu     -- TODO: sorry in mulhsu_eq_mulhsuJolt (signed×unsigned high multiply)
+import JoltBytecode.BytecodeExpansions.Instructions.Div        -- TODO: sorry in 3 lemmas (no_overflow, div_validation_sound, div_identity) (oracle-based DIV)
 
 -- DONE: Format I (register-immediate)
 import JoltBytecode.BytecodeExpansions.Instructions.Srliw      -- DONE: SRLIW

@@ -145,6 +145,19 @@ def mulw (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   ((rs1_val * rs2_val).setWidth 32).signExtend 64
 
 -- ============================================================================
+-- Division Extension (RV64M, Format R)
+-- ============================================================================
+
+/-- DIV rd, rs1, rs2 (RV64M): signed division truncated toward zero.
+    Division by zero returns -1 (all ones).
+    Overflow (INT_MIN / -1) returns INT_MIN, handled by BitVec.ofInt wrapping.
+    Uses Int.tdiv (truncated toward zero) matching RISC-V semantics.
+    Note: Lean's `/` for Int is Euclidean (floors toward -∞), NOT truncated. -/
+def sdiv (x y : BitVec 64) : BitVec 64 :=
+  if y = (0 : BitVec 64) then BitVec.ofInt 64 (-1)
+  else BitVec.ofInt 64 (x.toInt.tdiv y.toInt)
+
+-- ============================================================================
 -- Register-register shifts (RV64I, Format R, word variants)
 -- ============================================================================
 
