@@ -17,21 +17,22 @@ JALR    rd=0, rs1=mepc_vr, imm=0     -- jump to mepc (no link write)
 
 ## Proof
 
-Since the program counter is not modeled in State, neither the RISC-V
-MRET nor the Jolt JALR (with rd=0) modify any observable state
-(registers, memory, CSRs, error flag). Both are identity on State.
+Both sides set `pc := read_csr CSR_MEPC s`. The definitions are
+structurally identical so the proof is `rfl`.
 -/
 
 -- ============================================================================
 -- Definitions
 -- ============================================================================
 
-/-- RISC-V MRET: jump to mepc. No observable state change (PC not modeled). -/
-def Riscv.mret (s : State) : State := s
+/-- RISC-V MRET: jump to mepc by setting pc := mepc. -/
+def Riscv.mret (s : State) : State :=
+  { s with pc := read_csr CSR_MEPC s }
 
 /-- Jolt decomposition of MRET: JALR rd=0, rs1=mepc_vr, imm=0.
-    With rd=0 the link-register write is suppressed, so no state change. -/
-def jolt_mret (s : State) : State := s
+    With rd=0 the link-register write is suppressed; sets pc := mepc. -/
+def jolt_mret (s : State) : State :=
+  { s with pc := read_csr CSR_MEPC s }
 
 -- ============================================================================
 -- Main theorem

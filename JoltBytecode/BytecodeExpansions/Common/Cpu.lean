@@ -43,6 +43,7 @@ structure State where
   mem : Memory
   reg : RegFile
   csr : CsrFile := fun _ => 0#64
+  pc  : BitVec 64 := 0#64
   error : Bool := false
 
 -- ============================================================================
@@ -78,6 +79,9 @@ def write_mem (addr : BitVec 64) (val : BitVec 8) (s : State) : State :=
 -- write_mem preserves reg and error
 @[simp] lemma write_mem_reg (a : BitVec 64) (v : BitVec 8) (s : State) :
     (write_mem a v s).reg = s.reg := by unfold write_mem; simp only
+
+@[simp] lemma write_mem_pc (a : BitVec 64) (v : BitVec 8) (s : State) :
+    (write_mem a v s).pc = s.pc := by unfold write_mem; simp only
 
 @[simp] lemma write_mem_error (a : BitVec 64) (v : BitVec 8) (s : State) :
     (write_mem a v s).error = s.error := by unfold write_mem; simp only
@@ -117,6 +121,9 @@ def write_csr (addr : BitVec 12) (val : BitVec 64) (s : State) : State :=
 
 @[simp] lemma write_csr_mem (a : BitVec 12) (v : BitVec 64) (s : State) :
     (write_csr a v s).mem = s.mem := by unfold write_csr; simp only
+
+@[simp] lemma write_csr_pc (a : BitVec 12) (v : BitVec 64) (s : State) :
+    (write_csr a v s).pc = s.pc := by unfold write_csr; simp only
 
 @[simp] lemma write_csr_error (a : BitVec 12) (v : BitVec 64) (s : State) :
     (write_csr a v s).error = s.error := by unfold write_csr; simp only
@@ -182,6 +189,12 @@ def write_mem_bytes (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : Sta
 
 @[simp] lemma write_mem_bytes_csr (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : State) :
     (write_mem_bytes n addr val s).csr = s.csr := by
+  induction n generalizing addr s with
+  | zero => unfold write_mem_bytes; rfl
+  | succ n ih => unfold write_mem_bytes; simp [ih]
+
+@[simp] lemma write_mem_bytes_pc (n : Nat) (addr : BitVec 64) (val : BitVec (n * 8)) (s : State) :
+    (write_mem_bytes n addr val s).pc = s.pc := by
   induction n generalizing addr s with
   | zero => unfold write_mem_bytes; rfl
   | succ n ih => unfold write_mem_bytes; simp [ih]

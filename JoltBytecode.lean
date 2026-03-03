@@ -48,7 +48,7 @@ import JoltBytecode.BytecodeExpansions.Instructions.Srai       -- DONE: SRAI
 import JoltBytecode.BytecodeExpansions.Instructions.Sraiw      -- DONE: SRAIW
 import JoltBytecode.BytecodeExpansions.Instructions.Csrrw      -- DONE: CSRRW
 import JoltBytecode.BytecodeExpansions.Instructions.Csrrs      -- TODO: needs CSR proof (CSR state now available)
--- import JoltBytecode.BytecodeExpansions.Instructions.Ecall   -- TODO: stub only
+import JoltBytecode.BytecodeExpansions.Instructions.Ecall       -- DONE: ECALL
 import JoltBytecode.BytecodeExpansions.Instructions.Mret       -- DONE: MRET
 
 -- ============================================================================

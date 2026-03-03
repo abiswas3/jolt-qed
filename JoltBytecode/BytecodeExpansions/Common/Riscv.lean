@@ -272,4 +272,14 @@ def csrrw (rs1 rd : BitVec 5) (csr_addr : BitVec 12) (s : State) : State :=
   if rd = 0#5 then s
   else { s with reg := write rd old_csr s.reg }
 
+/-- ECALL (RV64, Machine Mode): environment call from U/S/M-mode.
+    Saves current PC to mepc, sets mcause to 11 (environment call from M-mode),
+    clears mtval, sets MPP bits in mstatus, and jumps to mtvec. -/
+def ecall (s : State) : State :=
+  let s := write_csr CSR_MEPC s.pc s
+  let s := write_csr CSR_MCAUSE 11#64 s
+  let s := write_csr CSR_MTVAL 0#64 s
+  let s := write_csr CSR_MSTATUS (read_csr CSR_MSTATUS s ||| (3#64 <<< 11)) s
+  { s with pc := read_csr CSR_MTVEC s }
+
 end Riscv
