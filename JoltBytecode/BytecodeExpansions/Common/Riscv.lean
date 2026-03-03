@@ -282,4 +282,24 @@ def ecall (s : State) : State :=
   let s := write_csr CSR_MSTATUS (read_csr CSR_MSTATUS s ||| (3#64 <<< 11)) s
   { s with pc := read_csr CSR_MTVEC s }
 
+-- ============================================================================
+-- Advice (virtual) instructions — load from advice tape
+-- ============================================================================
+
+/-- ADVICELB: load 1 byte from the advice tape, sign-extend to 64 bits. -/
+def advicelb (rd : BitVec 5) (advice : BitVec 8) (s : State) : State :=
+  { s with reg := write rd (advice.signExtend 64) s.reg }
+
+/-- ADVICELH: load 2 bytes from the advice tape, sign-extend to 64 bits. -/
+def advicelh (rd : BitVec 5) (advice : BitVec 16) (s : State) : State :=
+  { s with reg := write rd (advice.signExtend 64) s.reg }
+
+/-- ADVICELW: load 4 bytes from the advice tape, sign-extend to 64 bits. -/
+def advicelw (rd : BitVec 5) (advice : BitVec 32) (s : State) : State :=
+  { s with reg := write rd (advice.signExtend 64) s.reg }
+
+/-- ADVICELD: load 8 bytes from the advice tape into rd. -/
+def adviceld (rd : BitVec 5) (advice : BitVec 64) (s : State) : State :=
+  { s with reg := write rd advice s.reg }
+
 end Riscv

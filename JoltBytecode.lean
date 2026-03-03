@@ -99,7 +99,7 @@ import JoltBytecode.BytecodeExpansions.Instructions.Amoaddd    -- DONE: AMOADD.D
 -- Instruction proofs — Advice (hints)
 -- ============================================================================
 
--- import JoltBytecode.BytecodeExpansions.Instructions.Advicelb   -- TODO: stub only
--- import JoltBytecode.BytecodeExpansions.Instructions.Adviceld   -- TODO: stub only
--- import JoltBytecode.BytecodeExpansions.Instructions.Advicelh   -- TODO: stub only
--- import JoltBytecode.BytecodeExpansions.Instructions.Advicelw   -- TODO: stub only
+import JoltBytecode.BytecodeExpansions.Instructions.Advicelb   -- DONE: ADVICELB (sorry: sign-ext lemma)
+import JoltBytecode.BytecodeExpansions.Instructions.Adviceld   -- DONE: ADVICELD (rfl)
+import JoltBytecode.BytecodeExpansions.Instructions.Advicelh   -- DONE: ADVICELH (sorry: sign-ext lemma)
+import JoltBytecode.BytecodeExpansions.Instructions.Advicelw   -- DONE: ADVICELW (sorry: sign-ext lemma)
