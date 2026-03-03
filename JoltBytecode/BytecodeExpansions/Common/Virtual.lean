@@ -73,4 +73,10 @@ def virtualPow2 (x : BitVec 64) : BitVec 64 :=
 def virtualPow2W (x : BitVec 64) : BitVec 64 :=
   BitVec.ofNat 64 (2 ^ (x.setWidth 5).toNat)
 
+/-- VirtualAssertHalfwordAlignment: checks halfword alignment (addr & 1 == 0).
+    If misaligned, sets the state error flag (like a panic). -/
+def virtualAssertHalfwordAlignment (addr : BitVec 64) (s : State) : BitVec 64 × State :=
+  if addr &&& 1#64 ≠ 0#64 then (addr, { s with error := true })
+  else (addr, s)
+
 end Jolt
