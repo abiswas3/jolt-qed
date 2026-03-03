@@ -4,6 +4,7 @@
 import JoltBytecode.BytecodeExpansions.Common.FormatR
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
+import JoltBytecode.BytecodeExpansions.Common.NoOverflow
 
 /-!
 # DIV: RISC-V ≡ Jolt Decomposition
@@ -219,17 +220,6 @@ private lemma xor_sub_allOnes (v : BitVec 64) :
 --   distinguishing truncated from Euclidean division.
 --
 -- Together these uniquely determine q as the RISC-V truncated quotient.
-
-/-- No-overflow helper: when MULH(a,b) = sign-extend(MUL(a,b)), the true
-    signed product fits in 64 bits: MUL(a,b).toInt = a.toInt * b.toInt.
-
-    Proof sketch: MULH gives the high 64 bits of the 128-bit signed product.
-    If these equal the sign extension of the low 64 bits, the 128-bit value
-    is just the sign-extended 64-bit value, meaning no overflow occurred. -/
-lemma no_overflow_implies_mul_toInt_eq (a b : BitVec 64)
-    (h : Riscv.mulh a b = (Riscv.mul a b).sshiftRight 63) :
-    (Riscv.mul a b).toInt = a.toInt * b.toInt := by
-  sorry
 
 /-- When `a < 0`, `tmod a b ≤ 0`. The sign of tmod matches the dividend. -/
 private lemma Int.tmod_nonpos_of_neg {a : Int} (b : Int) (ha : a < 0) :
