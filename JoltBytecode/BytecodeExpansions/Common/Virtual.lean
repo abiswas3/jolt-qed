@@ -57,6 +57,12 @@ def virtualAssertWordAlignment (addr : BitVec 64) (s : State) : BitVec 64 × Sta
   if addr &&& 3#64 ≠ 0#64 then (addr, { s with error := true })
   else (addr, s)
 
+/-- VirtualAssertHalfwordAlignment: checks halfword alignment (addr & 1 = 0).
+    If misaligned, sets the state error flag. -/
+def virtualAssertHalfwordAlignment (addr : BitVec 64) (s : State) : BitVec 64 × State :=
+  if addr &&& 1#64 ≠ 0#64 then (addr, { s with error := true })
+  else (addr, s)
+
 /-- VirtualSignExtendWord: sign-extends the lower 32 bits of a 64-bit value.
     Interprets bits [31:0] as a signed 32-bit integer and produces the
     64-bit sign-extended result. -/

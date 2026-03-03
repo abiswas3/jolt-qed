@@ -199,6 +199,14 @@ def read_word_val (addr : BitVec 64) (s : State) : Nat :=
 def read_word (addr : BitVec 64) (s : State) : BitVec 32 :=
   BitVec.ofNat 32 (read_word_val addr s)
 
+-- Nat value of 2 little-endian bytes at addr (halfword).
+def read_halfword_val (addr : BitVec 64) (s : State) : Nat :=
+  (read_mem addr s).toNat + (read_mem (addr + 1) s).toNat * 2^8
+
+-- BitVec wrapper: read a 16-bit halfword from memory.
+def read_halfword (addr : BitVec 64) (s : State) : BitVec 16 :=
+  BitVec.ofNat 16 (read_halfword_val addr s)
+
 -- Write a 32-bit word to memory (little-endian, 4 bytes).
 def write_word (addr : BitVec 64) (val : BitVec 32) (s : State) : State :=
   write_mem_bytes 4 addr val s
@@ -215,6 +223,18 @@ def lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
   else
     let word := read_word addr s
     let new_reg := write rd (word.signExtend 64) s.reg
+    { s with reg := new_reg }
+
+/-- LH rd, offset(rs1) (RV32I/RV64I): load a 16-bit halfword from memory,
+    sign-extend to 64 bits. Panics (sets error) if address is not halfword-aligned.
+    rd = signExtend(mem[addr..addr+1]) -/
+def lh (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
+  let base := read rs1 s.reg
+  let addr := imm.setWidth 64 + base
+  if addr &&& 1#64 ≠ 0#64 then { s with error := true }
+  else
+    let half := read_halfword addr s
+    let new_reg := write rd (half.signExtend 64) s.reg
     { s with reg := new_reg }
 
 /-- SW rs2, offset(rs1) (RV32I/RV64I): store the lower 32 bits of rs2 to memory.
