@@ -1,3 +1,4 @@
+-- This might unnecessary, should remove them later as need be.
 import Mathlib.Tactic
 import Mathlib.Data.BitVec
 import JoltBytecode.BytecodeExpansions.Common.Riscv
@@ -12,7 +13,7 @@ When MULH(a,b) = sign-extend(MUL(a,b)), the true signed product fits in
 -/
 
 /-- `Int.bmod x m = x` when `x` lies in the balanced range `[-(m/2), (m+1)/2)`. -/
-private lemma Int.bmod_eq_of_range {x : Int} {m : Nat} (hm : 0 < m)
+lemma Int.bmod_eq_of_range {x : Int} {m : Nat} (hm : 0 < m)
     (h_lo : -((m : Int) / 2) ≤ x) (h_hi : x < ((m : Int) + 1) / 2) :
     Int.bmod x m = x := by
   set b := Int.bmod x m

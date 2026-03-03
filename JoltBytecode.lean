@@ -13,8 +13,8 @@ import JoltBytecode.BytecodeExpansions.Common.SimpLemmas
 -- Instruction proofs
 -- ============================================================================
 
--- DONE: Format R (register-register)
-import JoltBytecode.BytecodeExpansions.Instructions.Subw      -- DONE: SUBW
+--Format R (register-register)
+import JoltBytecode.BytecodeExpansions.Instructions.Subw       -- DONE: SUBW
 import JoltBytecode.BytecodeExpansions.Instructions.Mulh       -- DONE: MULH
 import JoltBytecode.BytecodeExpansions.Instructions.Sraw       -- DONE: SRAW
 import JoltBytecode.BytecodeExpansions.Instructions.Sra        -- DONE: SRA
@@ -25,6 +25,7 @@ import JoltBytecode.BytecodeExpansions.Instructions.Sllw       -- TODO: sorry in
 import JoltBytecode.BytecodeExpansions.Instructions.Srlw       -- TODO: sorry in ctz_srlw_bitmask, srlw_eq_srlwJolt
 import JoltBytecode.BytecodeExpansions.Instructions.Mulhsu     -- TODO: sorry in mulhsu_eq_mulhsuJolt (signed×unsigned high multiply)
 import JoltBytecode.BytecodeExpansions.Instructions.Div        -- TODO: sorry in 3 lemmas (no_overflow, div_validation_sound, div_identity) (oracle-based DIV)
+import JoltBytecode.BytecodeExpansions.Instructions.Addw       -- DONE: 
 
 -- DONE: Format I (register-immediate)
 import JoltBytecode.BytecodeExpansions.Instructions.Srliw      -- DONE: SRLIW
@@ -43,5 +44,5 @@ import JoltBytecode.BytecodeExpansions.Instructions.Lw         -- DONE: LW
 -- Memory (load/store) - sorry in splice lemmas
 -- import JoltBytecode.BytecodeExpansions.Instructions.Sw      -- TODO: sorry in 2 splice lemmas
 
--- DONE: Atomic
+-- Atomic
 import JoltBytecode.BytecodeExpansions.Instructions.Amoaddd    -- DONE: AMOADD.D

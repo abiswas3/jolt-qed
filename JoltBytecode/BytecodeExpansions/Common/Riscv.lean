@@ -97,6 +97,10 @@ def slliw (rs1_val shamt : BitVec 64) : BitVec 64 :=
 def addiw (rs1_val imm : BitVec 64) : BitVec 64 :=
   ((rs1_val + imm).setWidth 32).signExtend 64
 
+/-- TODO: Write proper docstrings --/ 
+def addw (rs1_val rs2_val : BitVec 64): BitVec 64 := 
+  ((rs1_val + rs2_val).setWidth 32).signExtend 64
+
 /-- SLLI rd, rs1, shamt (RV64I, Format I): logical left shift of full 64-bit value
     by shamt[5:0].
     rd = rs1 << shamt[5:0] -/
