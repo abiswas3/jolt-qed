@@ -177,8 +177,8 @@ theorem lw_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State)
     funext x  
     simp only [write]
     by_cases hx : x = rd
-    · simp only [hx] -- backslash down 
-      simp only [↓reduceIte] -- backslash down 
+    · simp only [hx]
+      simp only [↓reduceIte] -- gets rid of the if true then 
       congr
       exact read_word_eq_dword_extract _ s h -- THIS IS THE ACTUAL PROOF OF MY CLAIM (can deduce addr from h)
     · simp [hx]

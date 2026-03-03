@@ -199,9 +199,10 @@ def read_word_val (addr : BitVec 64) (s : State) : Nat :=
 def read_word (addr : BitVec 64) (s : State) : BitVec 32 :=
   BitVec.ofNat 32 (read_word_val addr s)
 
--- Nat value of 2 little-endian bytes at addr (halfword).
+-- Nat value of 2 little-endian bytes at addr
 def read_halfword_val (addr : BitVec 64) (s : State) : Nat :=
-  (read_mem addr s).toNat + (read_mem (addr + 1) s).toNat * 2^8
+  (read_mem addr s).toNat +
+  (read_mem (addr + 1) s).toNat * 2^8
 
 -- BitVec wrapper: read a 16-bit halfword from memory.
 def read_halfword (addr : BitVec 64) (s : State) : BitVec 16 :=
@@ -225,6 +226,16 @@ def lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
     let new_reg := write rd (word.signExtend 64) s.reg
     { s with reg := new_reg }
 
+/-- LB rd, offset(rs1) (RV32I/RV64I): load a byte from memory,
+    sign-extend to 64 bits. No alignment check needed for byte loads.
+    rd = signExtend(mem[addr]) -/
+def lb (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
+  let base := read rs1 s.reg
+  let addr := imm.setWidth 64 + base
+  let byte := read_mem addr s
+  let new_reg := write rd (byte.signExtend 64) s.reg
+  { s with reg := new_reg }
+
 /-- LH rd, offset(rs1) (RV32I/RV64I): load a 16-bit halfword from memory,
     sign-extend to 64 bits. Panics (sets error) if address is not halfword-aligned.
     rd = signExtend(mem[addr..addr+1]) -/
@@ -233,19 +244,32 @@ def lh (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State) : State :=
   let addr := imm.setWidth 64 + base
   if addr &&& 1#64 ≠ 0#64 then { s with error := true }
   else
-    let half := read_halfword addr s
-    let new_reg := write rd (half.signExtend 64) s.reg
+    let halfword := read_halfword addr s
+    let new_reg := write rd (halfword.signExtend 64) s.reg
     { s with reg := new_reg }
 
 /-- SW rs2, offset(rs1) (RV32I/RV64I): store the lower 32 bits of rs2 to memory.
     Panics (sets error) if address is not word-aligned.
     mem[addr..addr+3] = rs2[31:0] -/
 def sw (rs1 rs2 : BitVec 5) (imm : BitVec 12) (s : State) : State :=
-  let base := read rs1 s.reg -- get value inside rs1 
+  let base := read rs1 s.reg -- get value inside rs1
   let addr := imm.setWidth 64 + base -- comput address to be loaded
   if addr &&& 3#64 ≠ 0#64 then { s with error := true }
   else
     let word := (read rs2 s.reg).setWidth 32
     write_word addr word s
+
+-- ============================================================================
+-- CSR Instructions (RV64 Zicsr)
+-- ============================================================================
+
+/-- CSRRW rd, csr, rs1: atomically read CSR into rd and write rs1 to CSR.
+    If rd = x0, the read is suppressed (write-only). -/
+def csrrw (rs1 rd : BitVec 5) (csr_addr : BitVec 12) (s : State) : State :=
+  let rs1_val := read rs1 s.reg
+  let old_csr := read_csr csr_addr s
+  let s := write_csr csr_addr rs1_val s
+  if rd = 0#5 then s
+  else { s with reg := write rd old_csr s.reg }
 
 end Riscv
