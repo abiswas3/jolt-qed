@@ -46,10 +46,10 @@ import JoltBytecode.BytecodeExpansions.Instructions.Srli       -- DONE: SRLI
 import JoltBytecode.BytecodeExpansions.Instructions.Srliw      -- DONE: SRLIW
 import JoltBytecode.BytecodeExpansions.Instructions.Srai       -- DONE: SRAI
 import JoltBytecode.BytecodeExpansions.Instructions.Sraiw      -- DONE: SRAIW
-import JoltBytecode.BytecodeExpansions.Instructions.Csrrw      -- TODO: needs CSR state modeling
-import JoltBytecode.BytecodeExpansions.Instructions.Csrrs      -- TODO: needs CSR state modeling
+import JoltBytecode.BytecodeExpansions.Instructions.Csrrw      -- DONE: CSRRW
+import JoltBytecode.BytecodeExpansions.Instructions.Csrrs      -- TODO: needs CSR proof (CSR state now available)
 -- import JoltBytecode.BytecodeExpansions.Instructions.Ecall   -- TODO: stub only
--- import JoltBytecode.BytecodeExpansions.Instructions.Mret    -- TODO: stub only
+import JoltBytecode.BytecodeExpansions.Instructions.Mret       -- DONE: MRET
 
 -- ============================================================================
 -- Instruction proofs — Memory (load)
