@@ -4,6 +4,7 @@
 -- Jolt State model (128 registers, stateful instruction sequences)
 import JoltBytecode.JoltInstructions.JoltState
 import JoltBytecode.JoltInstructions.JoltOps
+import JoltBytecode.JoltInstructions.RiscvState
 import JoltBytecode.JoltInstructions.Addw
 import JoltBytecode.JoltInstructions.Lw
 

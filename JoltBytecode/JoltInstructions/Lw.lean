@@ -1,3 +1,4 @@
+import JoltBytecode.JoltInstructions.RiscvState
 import JoltBytecode.JoltInstructions.JoltOps
 import JoltBytecode.BytecodeExpansions.Instructions.Lw -- for read_dword, lw_eq lemmas
 
@@ -159,5 +160,98 @@ theorem jolt_lw_seq_pc_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State)
   · simp [JoltState.toState, State.toJoltState]
   · simp [h_no_error, jolt_addi, jolt_andi, jolt_ld, jolt_slli, jolt_srl,
           jolt_virtual_sign_extend_word, JoltState.toState, State.toJoltState]
+
+-- ============================================================================
+-- RiscvState: single whole-state equality theorem
+-- ============================================================================
+
+/-- LW on RiscvState: load 32-bit word, sign-extend to 64 bits.
+    Sets error if address is not word-aligned. -/
+def riscv_lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : RiscvState) : RiscvState :=
+  let addr := Riscv.addi (read (embedReg rs1) s.reg) imm
+  if addr &&& 3#64 ≠ 0#64 then { s with error := true }
+  else
+    let word := riscv_read_word addr s
+    { s with reg := write (embedReg rd) (word.signExtend 64) s.reg }
+
+/-- Bridge: jolt_read_dword on a JoltState with modified registers
+    still equals jolt_read_dword on the original (memory unchanged). -/
+@[simp] private lemma jolt_read_dword_with_reg_eq (addr : BitVec 64) (js : JoltState)
+    (f : JoltRegFile) :
+    jolt_read_dword addr { js with reg := f } = jolt_read_dword addr js := rfl
+
+/-- The toRiscvState.reg read at embedReg equals the raw js.reg read. -/
+private lemma toRiscvState_read_embedReg' (js : JoltState) (r : BitVec 5) :
+    _root_.read (embedReg r) js.toRiscvState.reg = _root_.read (embedReg r) js.reg := by
+  simp [_root_.read, JoltState.toRiscvState,
+        show (embedReg r).toNat < 40 from by have := embedReg_toNat_lt r; omega]
+
+/-- Whole-state correctness: Jolt LW sequence projected to RiscvState
+    equals RISC-V LW on the projected RiscvState. -/
+theorem jolt_lw_seq_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (js : JoltState)
+    (h_no_error : js.error = false) :
+    (jolt_lw_seq (embedReg rs1) (embedReg rd) imm js).toRiscvState
+    = riscv_lw rs1 rd imm js.toRiscvState := by
+  -- Normalize the RHS address read
+  have h_rhs_addr : _root_.read (embedReg rs1) js.toRiscvState.reg = _root_.read (embedReg rs1) js.reg :=
+    toRiscvState_read_embedReg' js rs1
+  -- Unfold the LHS alignment check
+  simp only [jolt_lw_seq, jolt_virtual_assert_word_align, Riscv.addi]
+  -- Split on alignment (matches the LHS if)
+  by_cases h_align : (imm.setWidth 64 + _root_.read (embedReg rs1) js.reg) &&& 3#64 = 0#64
+  · -- ===== Aligned case =====
+    -- Resolve LHS: alignment ok → error stays false → proceed
+    have h_not_ne : ¬ ((imm.setWidth 64 + _root_.read (embedReg rs1) js.reg) &&& 3#64 ≠ 0#64) :=
+      not_not.mpr h_align
+    -- Simplify LHS: reduce alignment check, error check
+    simp only [h_not_ne, ↓reduceIte, h_no_error]
+    -- Unfold all jolt ops
+    simp only [jolt_addi, jolt_andi, jolt_ld, jolt_slli, jolt_srl,
+               jolt_virtual_sign_extend_word,
+               read_write_eq, read_v0_write_embedReg, read_embedReg_write_v0, write_write_eq,
+               jolt_read_dword_with_reg, jolt_read_dword_with_reg_eq,
+               Riscv.addi, Riscv.andi, Riscv.slli, Riscv.srl, Jolt.virtualSignExtendWord]
+    -- Unfold RHS
+    simp only [riscv_lw, h_rhs_addr, Riscv.addi, h_not_ne, ↓reduceIte]
+    -- Bridge: riscv_read_word on toRiscvState = jolt_read_word = dword extract
+    rw [riscv_read_word_toRiscvState, jolt_read_word_eq,
+        read_word_eq_dword_extract _ js.toState h_align]
+    -- Now LHS has jolt_read_dword, RHS has read_dword — they're equal since mem matches
+    have h_dword : jolt_read_dword
+        ((imm.setWidth 64 + _root_.read (embedReg rs1) js.reg) &&& -8#64) js =
+        read_dword ((imm.setWidth 64 + _root_.read (embedReg rs1) js.reg) &&& -8#64) js.toState := rfl
+    rw [h_dword]
+    -- Structural equality
+    apply RiscvState.ext
+    · simp [JoltState.toRiscvState]
+    · funext r
+      simp only [JoltState.toRiscvState, _root_.read, write]
+      by_cases hr40 : r.toNat < 40
+      · rw [if_pos hr40]
+        by_cases hrd : r = embedReg rd
+        · subst hrd; simp [_root_.write, ↓reduceIte]
+        · have hne_rd : ¬ (embedReg rd = r) := fun h => hrd h.symm
+          have hne_v0 : ¬ (v0_reg = r) := by
+            intro h; rw [← h] at hr40; simp [v0_reg] at hr40
+          have hne_v0' : ¬ (r = v0_reg) := Ne.symm hne_v0
+          simp [hne_rd, hne_v0', _root_.write, hrd, if_pos hr40]
+      · rw [if_neg hr40]
+        have hne_rd : r ≠ embedReg rd := by
+          intro h; have := embedReg_toNat_lt rd; rw [h] at hr40; omega
+        simp [_root_.write, hne_rd, if_neg hr40]
+    · simp [JoltState.toRiscvState]
+    · simp [JoltState.toRiscvState, h_no_error]
+  · -- ===== Misaligned case =====
+    -- Resolve LHS: alignment fails → error set → early return
+    -- h_align : ¬ (... = 0#64), which is ≠ 0#64
+    -- Resolve LHS if (... ≠ 0#64)
+    simp only [ne_eq, h_align, not_false_eq_true, ↓reduceIte]
+    -- Unfold RHS: misaligned too
+    simp only [riscv_lw, h_rhs_addr, Riscv.addi, ne_eq, h_align, not_false_eq_true, ↓reduceIte]
+    apply RiscvState.ext
+    · simp [JoltState.toRiscvState]
+    · funext r; simp [JoltState.toRiscvState]
+    · simp [JoltState.toRiscvState]
+    · simp [JoltState.toRiscvState]
 
 end JoltLw

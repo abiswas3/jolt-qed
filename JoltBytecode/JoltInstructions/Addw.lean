@@ -1,3 +1,4 @@
+import JoltBytecode.JoltInstructions.RiscvState
 import JoltBytecode.JoltInstructions.JoltOps
 import JoltBytecode.BytecodeExpansions.Common.FormatR
 
@@ -86,5 +87,37 @@ theorem jolt_addw_seq_pc_eq (rs1 rs2 rd : BitVec 5) (s : State) :
     = s.pc := by
   simp [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word,
         JoltState.toState, State.toJoltState]
+
+-- ============================================================================
+-- RiscvState: single whole-state equality theorem
+-- ============================================================================
+
+/-- ADDW on RiscvState: rd = signext32(rs1 + rs2). -/
+def riscv_addw (rs1 rs2 rd : BitVec 5) (s : RiscvState) : RiscvState :=
+  let val := Riscv.addw (read (embedReg rs1) s.reg) (read (embedReg rs2) s.reg)
+  { s with reg := write (embedReg rd) val s.reg }
+
+/-- Whole-state correctness: Jolt ADDW sequence on JoltState, projected to RiscvState,
+    equals RISC-V ADDW on the projected RiscvState. -/
+theorem jolt_addw_seq_eq (rs1 rs2 rd : BitVec 5) (js : JoltState) :
+    (jolt_addw_seq (embedReg rs1) (embedReg rs2) (embedReg rd) js).toRiscvState
+    = riscv_addw rs1 rs2 rd js.toRiscvState := by
+  apply RiscvState.ext
+  · -- mem
+    simp [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word, riscv_addw]
+  · -- reg: funext r, split on r.toNat < 40 vs ≥ 40, r = embedReg rd vs not
+    funext r
+    simp only [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word,
+               read_write_eq, write_write_eq,
+               riscv_addw, JoltState.toRiscvState, _root_.read, write,
+               Riscv.addw, Jolt.virtualSignExtendWord]
+    have hrs1 : (embedReg rs1).toNat < 40 := by have := embedReg_toNat_lt rs1; omega
+    have hrs2 : (embedReg rs2).toNat < 40 := by have := embedReg_toNat_lt rs2; omega
+    split_ifs <;> simp_all <;> (try omega)
+    all_goals (try (have := embedReg_toNat_lt rd; omega))
+  · -- pc
+    simp [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word, riscv_addw]
+  · -- error
+    simp [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word, riscv_addw]
 
 end JoltAddw
