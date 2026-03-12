@@ -56,15 +56,8 @@ def jolt_lw_seq (rs1 rd : BitVec 7) (imm : BitVec 12) (js : JoltState) : JoltSta
   js
 
 -- ============================================================================
--- Bridge lemmas (jolt_read_dword ↔ read_dword)
+-- Helper lemmas
 -- ============================================================================
-
-@[simp] private lemma jolt_read_dword_toJoltState (addr : BitVec 64) (s : State) :
-    jolt_read_dword addr s.toJoltState = read_dword addr s := rfl
-
-@[simp] private lemma jolt_read_dword_mk_mem (addr : BitVec 64) (s : State)
-    (reg : JoltRegFile) (pc : BitVec 64) (err : Bool) :
-    jolt_read_dword addr ⟨s.mem, reg, pc, err⟩ = read_dword addr s := rfl
 
 -- Unconditional cross-register read lemmas (avoids simp discharger issues with read_write_ne)
 @[simp] private lemma read_v0_write_embedReg (r : BitVec 5) (v : BitVec 64) (ds : JoltRegFile) :
@@ -75,91 +68,15 @@ def jolt_lw_seq (rs1 rd : BitVec 7) (imm : BitVec 12) (js : JoltState) : JoltSta
     _root_.read (embedReg r) (write v0_reg v ds) = _root_.read (embedReg r) ds :=
   read_write_ne _ _ _ _ (embedReg_ne_v0 r)
 
--- ============================================================================
--- Main theorem: register file correctness
--- ============================================================================
-
-/-- The result's register file matches RISC-V LW for every register. -/
-theorem jolt_lw_seq_reg_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State)
-    (h_no_error : s.error = false) (r : BitVec 5) :
-    (jolt_lw_seq (embedReg rs1) (embedReg rd) imm s.toJoltState).toState.reg r
-    = (Riscv.lw rs1 rd imm s).reg r := by
-  -- Unfold both sides and split on alignment
-  simp only [jolt_lw_seq, jolt_virtual_assert_word_align, toJoltState_read_embedReg,
-             Riscv.lw, Riscv.addi]
-  split
-  · -- Misaligned: both sides set error, register file unchanged
-    rename_i h
-    simp only [h, ↓reduceIte, JoltState.toState, toJoltState_read_embedReg]
-    rfl
-  · -- Aligned: both sides compute the LW value
-    rename_i h_aligned
-    simp only [ne_eq, not_not] at h_aligned
-    -- Phase 0: Resolve error check and alignment condition
-    simp only [toJoltState_error, h_no_error, h_aligned, ne_eq, not_true_eq_false,
-               ↓reduceIte, Bool.false_eq_true, not_false_eq_true]
-    -- Phase 1: Unfold jolt ops, simplify register chain, convert jolt_read_dword → read_dword
-    simp only [jolt_addi, jolt_andi, jolt_ld, jolt_slli, jolt_srl,
-               jolt_virtual_sign_extend_word,
-               read_write_eq, read_v0_write_embedReg, read_embedReg_write_v0, write_write_eq,
-               toJoltState_read_embedReg,
-               toJoltState_mem, toJoltState_pc, toJoltState_error,
-               jolt_read_dword_mk_mem,
-               Riscv.addi, Riscv.andi, Riscv.slli, Riscv.srl, Jolt.virtualSignExtendWord]
-    -- Phase 2: Bridge read_word to dword extract so both sides have the same value
-    rw [read_word_eq_dword_extract _ s h_aligned]
-    -- Phase 3: Project to State, case split on r = rd
-    simp only [JoltState.toState]
-    by_cases hr : r = rd
-    · -- r = rd: both sides compute the same value
-      subst hr; simp only [read_write_eq, _root_.write, ↓reduceIte]
-    · -- r ≠ rd: register unchanged by LW
-      have hne : embedReg r ≠ embedReg rd := fun h => hr (embedReg_injective h)
-      rw [read_write_ne _ _ _ _ hne, read_embedReg_write_v0,
-          read_write_ne _ _ _ _ hne, read_embedReg_write_v0,
-          toJoltState_read_embedReg]
-      simp only [_root_.write, hr, ↓reduceIte]
-      rfl
-
-/-- Memory is unchanged by LW (all steps only write registers). -/
-theorem jolt_lw_seq_mem_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State)
-    (h_no_error : s.error = false) :
-    (jolt_lw_seq (embedReg rs1) (embedReg rd) imm s.toJoltState).toState.mem
-    = s.mem := by
-  simp only [jolt_lw_seq, jolt_virtual_assert_word_align, toJoltState_read_embedReg]
-  split
-  · -- Misaligned: early exit, state unchanged except error
-    simp [JoltState.toState, State.toJoltState]
-  · -- Aligned: 6 register-only ops, memory preserved
-    simp [h_no_error, jolt_addi, jolt_andi, jolt_ld, jolt_slli, jolt_srl,
-          jolt_virtual_sign_extend_word, JoltState.toState, State.toJoltState]
-
-/-- Error flag matches RISC-V LW. -/
-theorem jolt_lw_seq_error_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State)
-    (h_no_error : s.error = false) :
-    (jolt_lw_seq (embedReg rs1) (embedReg rd) imm s.toJoltState).toState.error
-    = (Riscv.lw rs1 rd imm s).error := by
-  simp only [jolt_lw_seq, jolt_virtual_assert_word_align, toJoltState_read_embedReg,
-             Riscv.lw, Riscv.addi]
-  split
-  · -- Misaligned
-    simp [JoltState.toState, State.toJoltState, h_no_error]
-  · -- Aligned
-    rename_i h
-    simp only [ne_eq, not_not] at h
-    simp [h, h_no_error, jolt_addi, jolt_andi, jolt_ld, jolt_slli, jolt_srl,
-          jolt_virtual_sign_extend_word, JoltState.toState, State.toJoltState]
-
-/-- PC is unchanged by LW. -/
-theorem jolt_lw_seq_pc_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (s : State)
-    (h_no_error : s.error = false) :
-    (jolt_lw_seq (embedReg rs1) (embedReg rd) imm s.toJoltState).toState.pc
-    = s.pc := by
-  simp only [jolt_lw_seq, jolt_virtual_assert_word_align, toJoltState_read_embedReg]
-  split
-  · simp [JoltState.toState, State.toJoltState]
-  · simp [h_no_error, jolt_addi, jolt_andi, jolt_ld, jolt_slli, jolt_srl,
-          jolt_virtual_sign_extend_word, JoltState.toState, State.toJoltState]
+/-- jolt_read_word equals the dword-extract formula (bridges to read_word_eq_dword_extract). -/
+private lemma jolt_read_word_eq_dword_extract (addr : BitVec 64) (js : JoltState)
+    (h_aligned : addr &&& 3#64 = 0#64) :
+    jolt_read_word addr js =
+    (jolt_read_dword (addr &&& (-8#64)) js >>> ((addr <<< 3).setWidth 6).toNat).setWidth 32 := by
+  -- Construct a State with same memory to reuse existing read_word_eq_dword_extract
+  let s : State := ⟨js.mem, fun _ => 0#64, fun _ => 0#64, 0#64, false⟩
+  -- jolt_read_* and read_* agree when memory matches (definitional equality)
+  exact read_word_eq_dword_extract addr s h_aligned
 
 -- ============================================================================
 -- RiscvState: single whole-state equality theorem
@@ -173,12 +90,6 @@ def riscv_lw (rs1 rd : BitVec 5) (imm : BitVec 12) (s : RiscvState) : RiscvState
   else
     let word := riscv_read_word addr s
     { s with reg := write (embedReg rd) (word.signExtend 64) s.reg }
-
-/-- Bridge: jolt_read_dword on a JoltState with modified registers
-    still equals jolt_read_dword on the original (memory unchanged). -/
-@[simp] private lemma jolt_read_dword_with_reg_eq (addr : BitVec 64) (js : JoltState)
-    (f : JoltRegFile) :
-    jolt_read_dword addr { js with reg := f } = jolt_read_dword addr js := rfl
 
 /-- The toRiscvState.reg read at embedReg equals the raw js.reg read. -/
 private lemma toRiscvState_read_embedReg' (js : JoltState) (r : BitVec 5) :
@@ -209,18 +120,13 @@ theorem jolt_lw_seq_eq (rs1 rd : BitVec 5) (imm : BitVec 12) (js : JoltState)
     simp only [jolt_addi, jolt_andi, jolt_ld, jolt_slli, jolt_srl,
                jolt_virtual_sign_extend_word,
                read_write_eq, read_v0_write_embedReg, read_embedReg_write_v0, write_write_eq,
-               jolt_read_dword_with_reg, jolt_read_dword_with_reg_eq,
+               jolt_read_dword_with_reg,
                Riscv.addi, Riscv.andi, Riscv.slli, Riscv.srl, Jolt.virtualSignExtendWord]
     -- Unfold RHS
     simp only [riscv_lw, h_rhs_addr, Riscv.addi, h_not_ne, ↓reduceIte]
     -- Bridge: riscv_read_word on toRiscvState = jolt_read_word = dword extract
-    rw [riscv_read_word_toRiscvState, jolt_read_word_eq,
-        read_word_eq_dword_extract _ js.toState h_align]
-    -- Now LHS has jolt_read_dword, RHS has read_dword — they're equal since mem matches
-    have h_dword : jolt_read_dword
-        ((imm.setWidth 64 + _root_.read (embedReg rs1) js.reg) &&& -8#64) js =
-        read_dword ((imm.setWidth 64 + _root_.read (embedReg rs1) js.reg) &&& -8#64) js.toState := rfl
-    rw [h_dword]
+    rw [riscv_read_word_toRiscvState,
+        jolt_read_word_eq_dword_extract _ js h_align]
     -- Structural equality
     apply RiscvState.ext
     · simp [JoltState.toRiscvState]

@@ -1,6 +1,4 @@
-import JoltBytecode.JoltInstructions.RiscvState
 import JoltBytecode.JoltInstructions.JoltOps
-import JoltBytecode.BytecodeExpansions.Common.FormatR
 
 /-!
 # ADDW: Jolt Stateful Inline Sequence
@@ -50,71 +48,39 @@ def jolt_addw_seq (rs1 rs2 rd : BitVec 7) (js : JoltState) : JoltState :=
   js
 
 -- ============================================================================
--- Main theorem
+-- State: single whole-state equality theorem
 -- ============================================================================
 
-/-- The result's register file matches: rd gets addw result, others unchanged. -/
-theorem jolt_addw_seq_reg_eq (rs1 rs2 rd : BitVec 5) (s : State) (r : BitVec 5) :
-    (jolt_addw_seq (embedReg rs1) (embedReg rs2) (embedReg rd) s.toJoltState).toState.reg r
-    = (format_r_exec rs1 rs2 rd Riscv.addw s).reg r := by
-  simp only [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word,
-             read_write_eq, write_write_eq, toJoltState_read_embedReg]
-  simp only [JoltState.toState, _root_.read, write]
-  simp only [format_r_exec, Riscv.addw, Jolt.virtualSignExtendWord, write]
-  by_cases hr : embedReg r = embedReg rd
-  · have := embedReg_injective hr; simp [this, _root_.read]
-  · have hr' : r ≠ rd := fun h => hr (congrArg embedReg h)
-    simp [hr, hr']
-    exact toState_toJoltState_reg s r
+/-- ADDW on State: rd = signext32(rs1 + rs2). -/
+def riscv_addw (rs1 rs2 rd : BitVec 5) (s : State) : State :=
+  let val := Riscv.addw (read rs1 s.reg) (read rs2 s.reg)
+  { s with reg := write rd val s.reg }
 
-/-- Memory is unchanged by ADDW. -/
-theorem jolt_addw_seq_mem_eq (rs1 rs2 rd : BitVec 5) (s : State) :
-    (jolt_addw_seq (embedReg rs1) (embedReg rs2) (embedReg rd) s.toJoltState).toState.mem
-    = s.mem := by
-  simp [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word,
-        JoltState.toState, State.toJoltState]
-
-/-- Error is unchanged by ADDW. -/
-theorem jolt_addw_seq_error_eq (rs1 rs2 rd : BitVec 5) (s : State) :
-    (jolt_addw_seq (embedReg rs1) (embedReg rs2) (embedReg rd) s.toJoltState).toState.error
-    = s.error := by
-  simp [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word,
-        JoltState.toState, State.toJoltState]
-
-/-- PC is unchanged by ADDW. -/
-theorem jolt_addw_seq_pc_eq (rs1 rs2 rd : BitVec 5) (s : State) :
-    (jolt_addw_seq (embedReg rs1) (embedReg rs2) (embedReg rd) s.toJoltState).toState.pc
-    = s.pc := by
-  simp [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word,
-        JoltState.toState, State.toJoltState]
-
--- ============================================================================
--- RiscvState: single whole-state equality theorem
--- ============================================================================
-
-/-- ADDW on RiscvState: rd = signext32(rs1 + rs2). -/
-def riscv_addw (rs1 rs2 rd : BitVec 5) (s : RiscvState) : RiscvState :=
-  let val := Riscv.addw (read (embedReg rs1) s.reg) (read (embedReg rs2) s.reg)
-  { s with reg := write (embedReg rd) val s.reg }
-
-/-- Whole-state correctness: Jolt ADDW sequence on JoltState, projected to RiscvState,
-    equals RISC-V ADDW on the projected RiscvState. -/
+/-- Whole-state correctness: Jolt ADDW sequence on JoltState, projected to State,
+    equals RISC-V ADDW on the projected State. -/
 theorem jolt_addw_seq_eq (rs1 rs2 rd : BitVec 5) (js : JoltState) :
-    (jolt_addw_seq (embedReg rs1) (embedReg rs2) (embedReg rd) js).toRiscvState
-    = riscv_addw rs1 rs2 rd js.toRiscvState := by
-  apply RiscvState.ext
+    (jolt_addw_seq (embedReg rs1) (embedReg rs2) (embedReg rd) js).toState
+    = riscv_addw rs1 rs2 rd js.toState := by
+  apply State.ext
   · -- mem
     simp [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word, riscv_addw]
-  · -- reg: funext r, split on r.toNat < 40 vs ≥ 40, r = embedReg rd vs not
+  · -- reg
     funext r
     simp only [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word,
+               riscv_addw, JoltState.toState, _root_.read, write,
                read_write_eq, write_write_eq,
-               riscv_addw, JoltState.toRiscvState, _root_.read, write,
                Riscv.addw, Jolt.virtualSignExtendWord]
-    have hrs1 : (embedReg rs1).toNat < 40 := by have := embedReg_toNat_lt rs1; omega
-    have hrs2 : (embedReg rs2).toNat < 40 := by have := embedReg_toNat_lt rs2; omega
-    split_ifs <;> simp_all <;> (try omega)
-    all_goals (try (have := embedReg_toNat_lt rd; omega))
+    by_cases hrd : r = rd
+    · subst hrd; simp [embedReg_inj]
+    · have : embedReg r ≠ embedReg rd := by rwa [Ne, embedReg_inj]
+      simp [this, hrd]
+  · -- csr
+    exact toState_csr_preserved js _ (by
+      intro vr hge _
+      simp only [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word, write, read_write_eq, write_write_eq]
+      have : embedReg rd ≠ vr := by
+        intro h; have := embedReg_toNat_lt rd; rw [h] at this; omega
+      simp [this])
   · -- pc
     simp [jolt_addw_seq, jolt_add, jolt_virtual_sign_extend_word, riscv_addw]
   · -- error

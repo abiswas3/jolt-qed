@@ -1,4 +1,5 @@
 import JoltBytecode.JoltInstructions.JoltState
+import JoltBytecode.BytecodeExpansions.Common.Riscv
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 
 /-!
