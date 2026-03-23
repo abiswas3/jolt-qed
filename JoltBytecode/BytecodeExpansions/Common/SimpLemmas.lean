@@ -62,8 +62,10 @@ lemma shiftLeft_eq_mul_pow2 (x : BitVec 64) (s : Nat) :
 -- logical right shift, truncate back to 32.
 lemma sshiftRight_eq_signExtend_ushr_trunc (x : BitVec 32) (s : Nat) (hs : s < 32) :
     x.sshiftRight s = (x.signExtend 64 >>> s).setWidth 32 := by
-  ext i
-  simp only [BitVec.getLsbD_sshiftRight, BitVec.getLsbD_setWidth,
+  ext i hi
+  simp only [BitVec.getElem_sshiftRight, BitVec.getElem_setWidth,
              BitVec.getLsbD_ushiftRight, BitVec.getLsbD_signExtend]
-  simp [i.isLt, show ¬(32 ≤ (↑i : Nat)) from by omega,
-        show s + (↑i : Nat) < 64 from by omega]
+  simp only [show s + i < 64 from by omega, decide_true, Bool.true_and]
+  split
+  · rename_i hsi; simp [BitVec.getLsbD_eq_getElem, hsi]
+  · rfl

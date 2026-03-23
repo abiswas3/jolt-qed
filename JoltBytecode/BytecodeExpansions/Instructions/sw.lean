@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari
+-/
+
 import JoltBytecode.BytecodeExpansions.Instructions.Lw
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 
@@ -112,7 +118,7 @@ lemma write_word_eq_dword_splice (addr : BitVec 64) (val : BitVec 64) (s : State
   by_cases h7 : addr &&& 7#64 = 0#64
   · -- Dword-aligned: dword_addr = addr, shift = 0
     simp only [dword_align_eq addr h7, shift_eq_zero addr h7]
-    simp only [BitVec.shiftLeft_zero_eq]
+    simp only [BitVec.shiftLeft_zero]
     exact write_word_eq_dword_splice_lower addr val s h7
   · -- Word-aligned, not dword-aligned: dword_addr = addr - 4, shift = 32
     simp only [dword_align_sub4 addr h_aligned h7, shift_eq_32 addr h_aligned h7]

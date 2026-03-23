@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari
+-/
+
 import JoltBytecode.BytecodeExpansions.Common.FormatR
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
@@ -77,10 +83,10 @@ theorem srl_state_eq (rs1 rs2 rd : BitVec 5) (s : State) :
     (by funext rs1_val rs2_val; exact srl_eq_srlJolt rs1_val rs2_val)
 
 /-SANITY CHECKS-/
-#eval do
+#eval show IO Unit from do
   let mut failures := 0
-  for i in List.range 256 do
-    for s in List.range 64 do
+  for i in [0:256] do
+    for s in [0:64] do
       let rs1_val : BitVec 64 := BitVec.ofNat 64 i
       let rs2_val : BitVec 64 := BitVec.ofNat 64 s
       if Riscv.srl rs1_val rs2_val != srlJolt rs1_val rs2_val then

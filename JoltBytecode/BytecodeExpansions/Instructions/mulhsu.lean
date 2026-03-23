@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari
+-/
+
 -- TODO: prove mulhsu_eq_mulhsuJolt (signed×unsigned high multiply)
 import JoltBytecode.BytecodeExpansions.Common.FormatR
 import JoltBytecode.BytecodeExpansions.Common.Virtual
@@ -66,10 +72,10 @@ theorem mulhsu_state_eq (rs1 rs2 rd : BitVec 5) (s : State) :
     (by funext x y; exact mulhsu_eq_mulhsuJolt x y)
 
 /-SANITY CHECKS-/
-#eval do
+#eval show IO Unit from do
   let mut failures := 0
-  for i in List.range 256 do
-    for j in List.range 256 do
+  for i in [0:256] do
+    for j in [0:256] do
       let x : BitVec 8 := BitVec.ofNat 8 i
       let y : BitVec 8 := BitVec.ofNat 8 j
       if Riscv.mulhsu x y != mulhsuJolt x y then

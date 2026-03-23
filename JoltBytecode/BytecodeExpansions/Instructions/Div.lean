@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari
+-/
+
 -- TODO: sorry in soundness helper (no_overflow_implies_mul_toInt_eq)
 -- TODO: sorry in main soundness theorem (div_validation_sound, depends on above)
 -- TODO: sorry in completeness helper (div_identity)
@@ -264,8 +270,8 @@ private lemma natAbs_sub_lt_of_nonneg {s t : Int} {N : Nat}
     (hs0 : 0 ≤ s) (ht0 : 0 ≤ t)
     (hs : s.natAbs < N) (ht : t.natAbs < N) :
     (s - t).natAbs < N := by
-  have heqs : s = ↑s.natAbs := Int.eq_natAbs_of_zero_le hs0
-  have heqt : t = ↑t.natAbs := Int.eq_natAbs_of_zero_le ht0
+  have heqs : ↑s.natAbs = s := Int.natAbs_of_nonneg hs0
+  have heqt : ↑t.natAbs = t := Int.natAbs_of_nonneg ht0
   omega
 
 /-- When two nonpos integers both have natAbs < N, their difference has natAbs < N. -/
@@ -463,10 +469,10 @@ theorem div_identity (x y : BitVec 64) (hy : y ≠ (0 : BitVec 64)) :
 
 /-SANITY CHECKS-/
 -- Check sdiv == divJolt for small positive values
-#eval do
+#eval show IO Unit from do
   let mut failures := 0
-  for i in List.range 256 do
-    for j in List.range 256 do
+  for i in [0:256] do
+    for j in [0:256] do
       let x : BitVec 64 := BitVec.ofNat 64 i
       let y : BitVec 64 := BitVec.ofNat 64 j
       if Riscv.sdiv x y != divJolt x y then
@@ -477,10 +483,10 @@ theorem div_identity (x y : BitVec 64) (hy : y ≠ (0 : BitVec 64)) :
     IO.println s!"✗ FAILED: {failures} mismatches found"
 
 -- Test division by zero
-#eval do
+#eval show IO Unit from do
   let cases : List (BitVec 64) := [0, 1, 42, BitVec.intMin 64, BitVec.ofInt 64 (-1)]
   let mut ok := true
-  for x in cases do
+  for x in cases.toArray do
     if Riscv.sdiv x (0 : BitVec 64) != divJolt x (0 : BitVec 64) then
       ok := false
   if ok then
@@ -489,7 +495,7 @@ theorem div_identity (x y : BitVec 64) (hy : y ≠ (0 : BitVec 64)) :
     IO.println "✗ Division by zero: MISMATCH"
 
 -- Test overflow: INT_MIN / -1
-#eval do
+#eval show IO Unit from do
   let x := BitVec.intMin 64
   let y := BitVec.ofInt 64 (-1)
   if Riscv.sdiv x y == divJolt x y then
@@ -498,10 +504,10 @@ theorem div_identity (x y : BitVec 64) (hy : y ≠ (0 : BitVec 64)) :
     IO.println "✗ Overflow (INT_MIN / -1): MISMATCH"
 
 -- Test with negative values (validates tdiv gives correct RISC-V semantics)
-#eval do
+#eval show IO Unit from do
   let mut failures := 0
-  for i in List.range 128 do
-    for j in List.range 128 do
+  for i in [0:128] do
+    for j in [0:128] do
       let x : BitVec 64 := BitVec.ofInt 64 (-(i : Int) - 1)
       let y : BitVec 64 := BitVec.ofNat 64 (j + 1)
       if Riscv.sdiv x y != divJolt x y then

@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari
+-/
+
 import JoltBytecode.BytecodeExpansions.Common.FormatR
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
@@ -51,10 +57,10 @@ theorem subw_state_eq (r1 r2 rd : BitVec 5) (s : State) :
 
 /-SANITY CHECKS-/
 -- Sanity check: exhaustive 8-bit test
-#eval do
+#eval show IO Unit from do
   let mut failures := 0
-  for i in List.range 256 do
-    for j in List.range 256 do
+  for i in [0:256] do
+    for j in [0:256] do
       let x : BitVec 64 := BitVec.ofNat 64 i
       let y : BitVec 64 := BitVec.ofNat 64 j
       if Riscv.subw x y != subwJolt x y then
