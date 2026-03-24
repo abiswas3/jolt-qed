@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari
+-/
+
 import JoltBytecode.BytecodeExpansions.Common.FormatR
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
@@ -130,7 +136,7 @@ theorem mulh_eq_mulhJolt (x y : BitVec w) : Riscv.mulh x y = mulhJolt x y := by
   have key : signExtract x * signExtract y * (2 : Int) ^ w =
     ↑(2 ^ w : Nat) * (signExtract x * signExtract y) := by
     push_cast; ring
-  rw [key, Int.bmod_add_mul_cancel]
+  rw [key, Int.add_mul_bmod_self_left]
 
 -- State-level equivalence via Format R lifting (specialized to w=64).
 theorem mulh_state_eq (r1 r2 rd : BitVec 5) (s : State) :
@@ -141,10 +147,10 @@ theorem mulh_state_eq (r1 r2 rd : BitVec 5) (s : State) :
 
 /-SANITY CHECKS-/
 -- Exhaustive check: verify Riscv.mulh == mulhJolt for all 8-bit pairs
-#eval do
+#eval show IO Unit from do
   let mut failures := 0
-  for i in List.range 256 do
-    for j in List.range 256 do
+  for i in [0:256] do
+    for j in [0:256] do
       let x : BitVec 8 := BitVec.ofNat 8 i
       let y : BitVec 8 := BitVec.ofNat 8 j
       if Riscv.mulh x y != mulhJolt x y then

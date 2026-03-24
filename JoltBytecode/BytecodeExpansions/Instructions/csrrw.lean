@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari
+-/
+
 import JoltBytecode.BytecodeExpansions.Common.FormatI
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
@@ -91,10 +97,10 @@ private def statesAgree (s1 s2 : State) (csr_addr : BitVec 12) : Bool :=
   (read_csr csr_addr s1 == read_csr csr_addr s2) &&
   (s1.error == s2.error)
 
-#eval do
+#eval show IO Unit from do
   let mut failures := 0
-  for i in List.range 32 do
-    for j in List.range 32 do
+  for i in [0:32] do
+    for j in [0:32] do
       let rs1 : BitVec 5 := BitVec.ofNat 5 i
       let rd : BitVec 5 := BitVec.ofNat 5 j
       let csr_addr : BitVec 12 := 0x300#12

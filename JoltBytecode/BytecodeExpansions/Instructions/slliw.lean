@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari
+-/
+
 import JoltBytecode.BytecodeExpansions.Common.FormatI
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
@@ -54,7 +60,7 @@ private lemma sll_32_eq_mul_trunc (x : BitVec 64) (s : Nat) (hs : s < 32) :
   -- Step 2: ... % 2^64 % 2^32 = ... % 2^32
   rw [Nat.mod_mod_of_dvd _ (show (2:Nat) ^ 32 ∣ 2 ^ 64 from ⟨2 ^ 32, by norm_num⟩)]
   -- Step 3: (a % n) * b % n = a * b % n
-  exact Nat.mod_mul_mod
+  rw [Nat.mul_mod, Nat.mod_mod, ← Nat.mul_mod]
 
 -- ============================================================================
 -- Main theorems
@@ -76,10 +82,10 @@ theorem slliw_state_eq (rs1 rd : BitVec 5) (imm : BitVec 64) (s : State) :
 
 /-SANITY CHECKS-/
 -- Exhaustive check: verify Riscv.slliw == slliwJolt for 256 values × 32 shift amounts
-#eval do
+#eval show IO Unit from do
   let mut failures := 0
-  for i in List.range 256 do
-    for s in List.range 32 do
+  for i in [0:256] do
+    for s in [0:32] do
       let rs1_val : BitVec 64 := BitVec.ofNat 64 i
       let shamt : BitVec 64 := BitVec.ofNat 64 s
       if Riscv.slliw rs1_val shamt != slliwJolt rs1_val shamt then

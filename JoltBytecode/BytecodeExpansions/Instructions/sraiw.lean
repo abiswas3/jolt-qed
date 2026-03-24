@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari
+-/
+
 import JoltBytecode.BytecodeExpansions.Common.FormatI
 import JoltBytecode.BytecodeExpansions.Common.Virtual
 import JoltBytecode.BytecodeExpansions.Common.Riscv
@@ -107,10 +113,10 @@ theorem sraiw_state_eq (rs1 rd : BitVec 5) (imm : BitVec 64) (s : State) :
 
 /-SANITY CHECKS-/
 -- Exhaustive check: verify Riscv.sraiw == sraiwJolt for 256 values × 32 shift amounts
-#eval do
+#eval show IO Unit from do
   let mut failures := 0
-  for i in List.range 256 do
-    for s in List.range 32 do
+  for i in [0:256] do
+    for s in [0:32] do
       let rs1_val : BitVec 64 := BitVec.ofNat 64 i
       let shamt : BitVec 64 := BitVec.ofNat 64 s
       if Riscv.sraiw rs1_val shamt != sraiwJolt rs1_val shamt then
