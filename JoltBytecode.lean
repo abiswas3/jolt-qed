@@ -1,6 +1,13 @@
 -- This module serves as the root of the `JoltBytecode` library.
 -- Import modules here that should be built as part of the library.
 
+-- Jolt State model (128 registers, stateful instruction sequences)
+import JoltBytecode.JoltInstructions.JoltState
+import JoltBytecode.JoltInstructions.JoltOps
+import JoltBytecode.JoltInstructions.RiscvState
+import JoltBytecode.JoltInstructions.Addw
+import JoltBytecode.JoltInstructions.Lw
+
 -- Common definitions
 import JoltBytecode.BytecodeExpansions.Common.Cpu
 import JoltBytecode.BytecodeExpansions.Common.Riscv
