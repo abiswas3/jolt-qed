@@ -103,7 +103,7 @@ theorem rX_bits_error_uniform (a b : regidx) (s : SailState)
     | inr h' => rw [h] at ha; rw [h'] at hb; cases ha; cases hb; rfl
 
 -- ─── Main theorem: ADD is commutative ────────────────────────
-
+-- this is an example of how to prove theorems about Galois RISC-V CPU.
 theorem execute_RTYPE_ADD_comm (a b rd : regidx) :
     execute_RTYPE a b rd rop.ADD = execute_RTYPE b a rd rop.ADD := by
   funext s
