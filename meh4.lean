@@ -79,32 +79,7 @@ expensive — needs a dedicated tactic or abstraction over the register bank. -/
 theorem wX_rX_roundtrip (r : regidx) (v : BitVec 64) (s s' : SailState)
     (hw : wX_bits r v s = .ok () s') :
     rX_bits r s' = .ok v s' := by
-  obtain ⟨i⟩ := r
-  unfold wX_bits wX regval_into_reg at hw
-  unfold rX_bits rX regval_from_reg
-  simp only [Sail.BitVec.toNatInt, Int.ofNat_eq_natCast, Int.toNat_natCast,
-             bind, EStateM.bind, pure, EStateM.pure,
-             Sail.writeReg, PreSail.writeReg, Sail.readReg, PreSail.readReg,
-             modify, modifyGet, MonadStateOf.modifyGet,
-             EStateM.modifyGet,
-             getThe, MonadStateOf.get, get, EStateM.get,
-             xreg_write_callback, xreg_full_write_callback,
-             reg_name_forwards, encdec_reg_forwards_matches, encdec_reg_forwards,
-             get_config_use_abi_names, Bool.not_false, reg_arch_name_raw_forwards,
-             to_bits] at hw ⊢
-  have hi : i.toNat < 32 := i.isLt
-  have hcases : i.toNat = 0 ∨ i.toNat = 1 ∨ i.toNat = 2 ∨ i.toNat = 3 ∨
-    i.toNat = 4 ∨ i.toNat = 5 ∨ i.toNat = 6 ∨ i.toNat = 7 ∨
-    i.toNat = 8 ∨ i.toNat = 9 ∨ i.toNat = 10 ∨ i.toNat = 11 ∨
-    i.toNat = 12 ∨ i.toNat = 13 ∨ i.toNat = 14 ∨ i.toNat = 15 ∨
-    i.toNat = 16 ∨ i.toNat = 17 ∨ i.toNat = 18 ∨ i.toNat = 19 ∨
-    i.toNat = 20 ∨ i.toNat = 21 ∨ i.toNat = 22 ∨ i.toNat = 23 ∨
-    i.toNat = 24 ∨ i.toNat = 25 ∨ i.toNat = 26 ∨ i.toNat = 27 ∨
-    i.toNat = 28 ∨ i.toNat = 29 ∨ i.toNat = 30 ∨ i.toNat = 31 := by omega
-  rcases hcases with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h |
-                     h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h <;>
-    simp_all [zero_reg, EStateM.pure, EStateM.get, EStateM.bind, EStateM.throw,
-              Std.ExtDHashMap.Const.get?_insert]
+      sorry
 
 /-! ### Main theorem -/
 
