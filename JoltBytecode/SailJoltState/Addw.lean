@@ -12,7 +12,8 @@ noncomputable section
 # ADDW: Jolt ADD + VirtualSignExtendWord = Sail ADDW
 -/
 
--- Factored Sail ADDW: read, read, compute, write.
+-- In plain English: The Sail execute RTYPEW for ADDW decomposes 
+-- to the following imperative code block.
 theorem execute_RTYPEW_ADDW_eq_factored (rs2 rs1 rd : regidx) :
     execute_RTYPEW rs2 rs1 rd ropw.ADDW = (do
       let v1 ← rX_bits rs1
@@ -22,13 +23,23 @@ theorem execute_RTYPEW_ADDW_eq_factored (rs2 rs1 rd : regidx) :
       pure RETIRE_SUCCESS) := by
   simp [execute_RTYPEW]
 
--- Jolt's ADDW: ADD then VirtualSignExtendWord.
+
+-- In plain English: Jolt has no native ADDW instruction. Instead it
+-- executes a full-width ADD on the two source registers, then applies
+-- VirtualSignExtendWord to the destination register to narrow and
+-- sign-extend the 32-bit result back to 64 bits.
 def jolt_addw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
   let _ ← liftSail (execute_RTYPE rs2 rs1 rd rop.ADD)
   jolt_virtual_sign_extend_word rd
   pure RETIRE_SUCCESS
 
--- Main theorem: Jolt ADDW projected = Sail ADDW.
+/-! ## Main theorem -/
+
+-- In plain English: Running Jolt's two-step ADDW (ADD then
+-- VirtualSignExtendWord) and projecting the result onto Sail state
+-- produces exactly the same outcome as running Sail's native ADDW
+-- instruction directly. This is the correctness proof that Jolt's
+-- decomposition is faithful to the RISC-V specification.
 theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (js : JoltState) :
     projectResult ((jolt_addw rs2 rs1 rd).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run (project js) := by
