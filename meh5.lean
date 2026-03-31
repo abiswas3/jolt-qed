@@ -100,8 +100,7 @@ def write_reg_state (s : SailState) (r : Register) (v : RegisterType r) : SailSt
 theorem writeReg_state_success (r : Register) (v : RegisterType r) (s : SailState) :
     Sail.writeReg r v s = .ok () (write_reg_state s r v) := by
   simp [Sail.writeReg, PreSail.writeReg, write_reg_state,
-        modify, modifyGet, MonadStateOf.modifyGet, MonadState.modifyGet, EStateM.modifyGet,
-        set, MonadStateOf.set, EStateM.set]
+        modify, modifyGet, MonadStateOf.modifyGet, MonadState.modifyGet, EStateM.modifyGet]
 
 -- After inserting (r, v), looking up r gives v.
 @[simp] theorem writeReg_read_same (s : SailState) (r : Register) (v : RegisterType r) :
@@ -193,7 +192,7 @@ theorem wX_shape (r : regidx) (v : BitVec 64) (s : SailState) :
   obtain ⟨i⟩ := r
   unfold wX_bits wX regval_into_reg
   simp only [Sail.BitVec.toNatInt, Int.ofNat_eq_natCast, Int.toNat_natCast,
-             bind, EStateM.bind, pure, EStateM.pure]
+             bind, pure]
   have hi : i.toNat < 32 := i.isLt
   have hcases : i.toNat = 0 ∨ i.toNat = 1 ∨ i.toNat = 2 ∨ i.toNat = 3 ∨
     i.toNat = 4 ∨ i.toNat = 5 ∨ i.toNat = 6 ∨ i.toNat = 7 ∨
@@ -206,8 +205,7 @@ theorem wX_shape (r : regidx) (v : BitVec 64) (s : SailState) :
   rcases hcases with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h |
                      h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h <;>
     simp_all [Sail.writeReg, PreSail.writeReg, xreg_write_callback,
-              EStateM.pure, EStateM.set, EStateM.modifyGet,
-              MonadStateOf.modifyGet, modifyGet, reg_name_forwards, to_bits] <;>
+              reg_name_forwards, to_bits] <;>
     exact ⟨_, rfl⟩
 
 -- ============================================================================
@@ -225,7 +223,6 @@ theorem extractLsb_add (a b : BitVec 64) :
 -- ============================================================================
 -- wX/rX round-trip and collapse (sorry — need OpenVM-style proof)
 -- ============================================================================
-
 -- After writing v to rd, reading rd gives v back.
 theorem wX_rX_roundtrip (r : regidx) (v : BitVec 64) (s s' : SailState)
     (hw : wX_bits r v s = .ok () s') :
@@ -254,9 +251,8 @@ def jolt_addw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
   pure RETIRE_SUCCESS
 
 -- ============================================================================
--- Simpler theorems (all proved, no sorry)
+-- Simpler theorems 
 -- ============================================================================
-
 -- Noop projected = noop.
 theorem noop_eq (js : JoltState) :
     projectResult ((pure () : JoltMonad Unit).run js) =
@@ -295,20 +291,18 @@ theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (js : JoltState) :
   -- Unfold both sides to raw EStateM chains
   simp only [jolt_addw, jolt_virtual_sign_extend_word, execute_RTYPEW',
         execute_RTYPEW_pure, liftSail, projectResult, project,
-        bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-        get, getThe, MonadStateOf.get, EStateM.get,
-        modify, modifyGet, MonadStateOf.modifyGet, MonadState.modifyGet, EStateM.modifyGet]
+        bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   -- Unfold execute_RTYPE (the ADD inside jolt_addw)
   simp only [execute_RTYPE, bind, EStateM.bind, pure, EStateM.pure]
   -- Both sides read rs1 then rs2. Case split on success/failure.
-  cases hrs1 : rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩ with
-  | error e s => simp [hrs1]
+  cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩ with
+  | error e s => simp
   | ok v1 s1 =>
-    simp [hrs1]
-    cases hrs2 : rX_bits rs2 s1 with
-    | error e s => simp [hrs2]
+    simp
+    cases rX_bits rs2 s1 with
+    | error e s => simp
     | ok v2 s2 =>
-      simp [hrs2]
+      simp
       -- Jolt: wX_bits rd (v1+v2), rX_bits rd, wX_bits rd (sign_extend(extractLsb(v1+v2)))
       -- Sail: wX_bits rd (sign_extend(extractLsb v1 + extractLsb v2))
       -- Step 1: first write succeeds
