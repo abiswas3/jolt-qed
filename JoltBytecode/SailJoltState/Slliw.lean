@@ -1,3 +1,5 @@
+-- TODO: This file depends on sorry'd lemmas in Common.lean (wX_rX_roundtrip, wX_wX_collapse)
+-- TODO: Main theorem needs shift-truncation commutativity BitVec lemma
 import JoltBytecode.SailJoltState.Common
 
 set_option maxHeartbeats 1_000_000_000
