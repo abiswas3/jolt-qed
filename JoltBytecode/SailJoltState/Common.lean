@@ -113,7 +113,10 @@ theorem wX_rX_roundtrip (r : regidx) (v : BitVec 64) (s s' : SailState)
     (hw : wX_bits r v s = .ok () s') :
     rX_bits r s' = .ok v s' := by sorry
 
--- Double write to same register collapses.
+-- In plain English: If you write v1 to register r (taking state s to s1),
+-- then write v2 to the same register r (taking state s1 to s2), the net
+-- effect is the same as writing v2 directly from the original state s.
+-- The first write is "overwritten" — only the final value matters.
 theorem wX_wX_collapse (r : regidx) (v1 v2 : BitVec 64) (s s1 s2 : SailState)
     (hw1 : wX_bits r v1 s = .ok () s1) (hw2 : wX_bits r v2 s1 = .ok () s2) :
     wX_bits r v2 s = .ok () s2 := by sorry
