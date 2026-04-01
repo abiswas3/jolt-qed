@@ -40,7 +40,7 @@ def jolt_addw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
 -- produces exactly the same outcome as running Sail's native ADDW
 -- instruction directly. This is the correctness proof that Jolt's
 -- decomposition is faithful to the RISC-V specification.
-theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (js : JoltState) :
+theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState) :
     projectResult ((jolt_addw rs2 rs1 rd).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run (project js) := by
   rw [execute_RTYPEW_ADDW_eq_factored]

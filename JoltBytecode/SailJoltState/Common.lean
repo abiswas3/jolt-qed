@@ -14,7 +14,7 @@ noncomputable section
 /-!
 # Common infrastructure for Jolt ↔ SailM equivalence proofs
 
-Contains: JoltState, JoltMonad, projection, liftSail, register lemmas,
+Contains: SailJoltState, JoltMonad, projection, liftSail, register lemmas,
 BitVec lemmas, jolt_virtual_sign_extend_word.
 
 Individual instruction proofs (Addw.lean, Subw.lean, etc.) import this.
@@ -26,7 +26,7 @@ Individual instruction proofs (Addw.lean, Subw.lean, etc.) import this.
 
 abbrev SailState := SequentialState RegisterType trivialChoiceSource
 
-structure JoltState where
+structure SailJoltState where
   regs        : Std.ExtDHashMap Register RegisterType
   choiceState : Unit
   mem         : Std.ExtHashMap Nat (BitVec 8)
@@ -35,17 +35,17 @@ structure JoltState where
   sailOutput  : Array String
   vregs       : BitVec 7 → BitVec 64 := fun _ => 0
 
-abbrev JoltMonad (α : Type) := EStateM (Error exception) JoltState α
+abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
 
 -- ============================================================================
 -- Projection
 -- ============================================================================
 
-def project (js : JoltState) : SailState where
+def project (js : SailJoltState) : SailState where
   regs := js.regs; choiceState := js.choiceState; mem := js.mem
   tags := js.tags; cycleCount := js.cycleCount; sailOutput := js.sailOutput
 
-def projectResult (r : EStateM.Result (Error exception) JoltState α) :
+def projectResult (r : EStateM.Result (Error exception) SailJoltState α) :
     EStateM.Result (Error exception) SailState α :=
   match r with
   | .ok a js' => .ok a (project js')
@@ -66,7 +66,7 @@ def liftSail (m : SailM α) : JoltMonad α := fun js =>
                                 cycleCount := ss'.cycleCount, sailOutput := ss'.sailOutput,
                                 vregs := js.vregs }
 
-theorem liftSail_project (m : SailM α) (js : JoltState) :
+theorem liftSail_project (m : SailM α) (js : SailJoltState) :
     projectResult ((liftSail m).run js) = m.run (project js) := by
   simp only [liftSail, projectResult, project, EStateM.run]
   cases m ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩ <;> simp_all

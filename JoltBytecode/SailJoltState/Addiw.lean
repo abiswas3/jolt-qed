@@ -60,7 +60,7 @@ def jolt_addiw (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult :
 -- Main theorem: Jolt ADDIW projected = Sail ADDIW
 -- ============================================================================
 
-theorem jolt_addiw_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (js : JoltState) :
+theorem jolt_addiw_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState) :
     projectResult ((jolt_addiw imm rs1 rd).run js) =
     (execute_ADDIW imm rs1 rd).run (project js) := by
   rw [execute_ADDIW_eq_factored]
