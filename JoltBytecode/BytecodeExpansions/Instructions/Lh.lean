@@ -6,7 +6,7 @@ Authors: Ari
 
 import JoltBytecode.BytecodeExpansions.Common.Riscv
 import JoltBytecode.BytecodeExpansions.Common.Virtual
-import JoltBytecode.BytecodeExpansions.Instructions.lw
+import JoltBytecode.BytecodeExpansions.Instructions.Lw
 
 /-!
 # LH: RISC-V ≡ Jolt Decomposition
