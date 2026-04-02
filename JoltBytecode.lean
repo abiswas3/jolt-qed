@@ -110,3 +110,37 @@ import JoltBytecode.BytecodeExpansions.Instructions.Advicelb   -- DONE: ADVICELB
 import JoltBytecode.BytecodeExpansions.Instructions.Adviceld   -- DONE: ADVICELD (rfl)
 import JoltBytecode.BytecodeExpansions.Instructions.Advicelh   -- DONE: ADVICELH (sorry: sign-ext lemma)
 import JoltBytecode.BytecodeExpansions.Instructions.Advicelw   -- DONE: ADVICELW (sorry: sign-ext lemma)
+
+-- ============================================================================
+-- SailJoltState: Jolt ↔ SailM equivalence proofs (monadic, ground truth = SailM)
+--
+-- These redo instruction proofs from Instructions/ in the SailM world:
+--   JoltState wraps SequentialState + virtual registers.
+--   JoltMonad = EStateM over JoltState (same error type as SailM).
+--   project : JoltState → SailState drops virtual registers.
+--   liftSail : SailM α → JoltMonad α runs Sail on the projected state.
+--   Theorem shape: projectResult(jolt_instr.run js) = sail_instr.run (project js)
+--
+-- Register lemmas (wX_rX_roundtrip, wX_wX_collapse) are fully proved.
+-- Instruction proofs require rd ≠ x0 (since writes to x0 are no-ops in RISC-V).
+-- ============================================================================
+
+import JoltBytecode.SailJoltState.Common                       -- Shared infra (no sorry)
+import JoltBytecode.SailJoltState.RegisterLemmas               -- wX_rX_roundtrip (no sorry)
+
+-- Format R (register-register) W-variants
+import JoltBytecode.SailJoltState.Addw                         -- DONE: ADDW (requires rd ≠ x0)
+import JoltBytecode.SailJoltState.Subw                         -- DONE: SUBW (requires rd ≠ x0)
+
+-- Format I (register-immediate)
+import JoltBytecode.SailJoltState.Addiw                        -- DONE: ADDIW (requires rd ≠ x0)
+import JoltBytecode.SailJoltState.Srai                         -- DONE: SRAI (clean, no sorry)
+
+-- Format I W-variants (shift-immediate word)
+import JoltBytecode.SailJoltState.Sraiw                        -- DONE: SRAIW (requires rd ≠ x0)
+--
+-- TODO: SLLI, SRLI — were clean (trivial via liftSail_project), deleted, need recreation
+-- TODO: SLLIW, SRLIW — need shift-truncation BitVec lemmas, deleted, need recreation
+-- TODO: Port remaining Instructions/ proofs to SailJoltState/
+--       (Mulw, Div, Lw, Sw, AMO, CSR, memory instructions)
+-- ============================================================================
