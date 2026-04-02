@@ -34,7 +34,8 @@ def jolt_addw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
   pure RETIRE_SUCCESS
 
 /-! ## Main theorem -/
-
+-- TODO: Investigate if this cases nightmare can be solved with 
+-- mvcgen
 -- In plain English: Running Jolt's two-step ADDW (ADD then
 -- VirtualSignExtendWord) and projecting the result onto Sail state
 -- produces exactly the same outcome as running Sail's native ADDW

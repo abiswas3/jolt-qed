@@ -23,7 +23,6 @@ Individual instruction proofs (Addw.lean, Subw.lean, etc.) import this.
 -- ============================================================================
 -- Types
 -- ============================================================================
-
 abbrev SailState := SequentialState RegisterType trivialChoiceSource
 
 structure SailJoltState where
@@ -33,6 +32,9 @@ structure SailJoltState where
   tags        : Unit
   cycleCount  : Nat
   sailOutput  : Array String
+  -- These are extra Jolt specific things
+  -- NOTE: We do not use the first 32 registers, instead we use regs as those regs 
+  -- are already in RISCV-CPU
   vregs       : BitVec 7 → BitVec 64 := fun _ => 0
 
 abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
@@ -42,8 +44,12 @@ abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
 -- ============================================================================
 
 def project (js : SailJoltState) : SailState where
-  regs := js.regs; choiceState := js.choiceState; mem := js.mem
-  tags := js.tags; cycleCount := js.cycleCount; sailOutput := js.sailOutput
+  regs := js.regs; 
+  choiceState := js.choiceState; 
+  mem := js.mem
+  tags := js.tags; 
+  cycleCount := js.cycleCount; 
+  sailOutput := js.sailOutput
 
 def projectResult (r : EStateM.Result (Error exception) SailJoltState α) :
     EStateM.Result (Error exception) SailState α :=
@@ -123,6 +129,7 @@ theorem wX_wX_collapse (r : regidx) (v1 v2 : BitVec 64) (s s1 s2 : SailState)
 
 -- ============================================================================
 -- Shared Jolt instructions
+-- TODO: Add the remaining ones we need as needed.
 -- ============================================================================
 
 -- Virtual sign-extend-word: read rd, sign-extend lower 32 bits, write back.
@@ -134,7 +141,7 @@ def jolt_virtual_sign_extend_word (rd : regidx) : JoltMonad Unit := do
 -- BitVec lemmas
 -- ============================================================================
 
--- Truncating to 32 bits distributes over addition.
+-- Adding and then truncating is the same as truncating and then adding
 theorem extractLsb_add (a b : BitVec 64) :
     Sail.BitVec.extractLsb (a + b) 31 0 =
     Sail.BitVec.extractLsb a 31 0 + Sail.BitVec.extractLsb b 31 0 := by
@@ -142,6 +149,7 @@ theorem extractLsb_add (a b : BitVec 64) :
   apply BitVec.eq_of_toNat_eq
   simp [BitVec.toNat_add, Nat.add_mod]
 
+-- Similar to above but for subtraction.
 -- Truncating to 32 bits distributes over subtraction.
 theorem extractLsb_sub (a b : BitVec 64) :
     Sail.BitVec.extractLsb (a - b) 31 0 =
