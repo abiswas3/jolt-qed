@@ -29,7 +29,7 @@ def jolt_subw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
   pure RETIRE_SUCCESS
 
 -- Main theorem: Jolt SUBW projected = Sail SUBW.
-theorem jolt_subw_eq_sail (rs2 rs1 rd : regidx) (js : JoltState) :
+theorem jolt_subw_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState) :
     projectResult ((jolt_subw rs2 rs1 rd).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SUBW).run (project js) := by
   rw [execute_RTYPEW_SUBW_eq_factored]

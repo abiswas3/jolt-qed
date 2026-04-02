@@ -56,12 +56,12 @@ def jolt_sraiw (shamt : BitVec 5) (rs1 rd : regidx) :
   jolt_virtual_sign_extend_word rd
   pure RETIRE_SUCCESS
 
--- Virtual register expansion: writeVReg applied to a JoltState.
-@[simp] private lemma writeVReg_apply (vr : BitVec 7) (val : BitVec 64) (js : JoltState) :
+-- Virtual register expansion: writeVReg applied to a SailJoltState.
+@[simp] private lemma writeVReg_apply (vr : BitVec 7) (val : BitVec 64) (js : SailJoltState) :
     writeVReg vr val js = .ok () { js with vregs := fun r => if r = vr then val else js.vregs r } := rfl
 
--- Virtual register expansion: readVReg applied to a JoltState.
-@[simp] private lemma readVReg_apply (vr : BitVec 7) (js : JoltState) :
+-- Virtual register expansion: readVReg applied to a SailJoltState.
+@[simp] private lemma readVReg_apply (vr : BitVec 7) (js : SailJoltState) :
     readVReg vr js = .ok (js.vregs vr) js := rfl
 
 -- LHS helper: the three-step Jolt value equals sraiwJolt.
@@ -97,7 +97,7 @@ lemma sraiw_three_step_value (v : BitVec 64) (shamt : BitVec 5) :
 -- In plain English: Running Jolt's three-step SRAIW decomposition
 -- and projecting the result onto Sail state produces exactly the same
 -- outcome as running Sail's native SRAIW instruction directly.
-theorem jolt_sraiw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : JoltState) :
+theorem jolt_sraiw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState) :
     projectResult ((jolt_sraiw shamt rs1 rd).run js) =
     (execute_SHIFTIWOP shamt rs1 rd sopw.SRAIW).run (project js) := by
   rw [execute_SHIFTIWOP_SRAIW_eq_factored]
