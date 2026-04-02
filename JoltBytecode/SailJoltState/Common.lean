@@ -183,7 +183,12 @@ noncomputable def wX_update_regs (r : regidx) (v : BitVec 64)
     | 29 => regs.insert Register.x29 w | 30 => regs.insert Register.x30 w
     | _ => regs.insert Register.x31 w
 
--- wX_bits r v s produces a state whose regs = wX_update_regs r v s.regs.
+-- Factoring lemma: Sail's wX_bits goes through a long chain
+-- (wX_bits → wX → writeReg → modify → regs.insert), but the net effect
+-- on the regs field is just wX_update_regs — a simple match-then-insert.
+-- This lets us reason about the regs output without unfolding all the
+-- Sail monadic machinery, similar to how we factor Sail instructions
+-- into simpler equivalent forms for the main correctness proofs.
 theorem wX_regs_spec (r : regidx) (v : BitVec 64) (s : SailState) :
     ∃ s', wX_bits r v s = .ok () s' ∧ s'.regs = wX_update_regs r v s.regs := by
   unfold wX_bits wX regval_into_reg wX_update_regs
