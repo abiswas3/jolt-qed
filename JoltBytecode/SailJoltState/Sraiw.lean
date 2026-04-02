@@ -103,7 +103,7 @@ theorem jolt_sraiw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltSt
   rw [execute_SHIFTIWOP_SRAIW_eq_factored]
   simp only [jolt_sraiw, jolt_virtual_sign_extend_word,
         writeVReg_apply, readVReg_apply,
-        liftSail, projectResult, project,
+        liftSail, inject, projectResult, project,
         bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   sail_cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩
   rename_i v s1

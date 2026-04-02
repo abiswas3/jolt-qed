@@ -65,7 +65,7 @@ theorem jolt_addiw_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltSta
     (execute_ADDIW imm rs1 rd).run (project js) := by
   rw [execute_ADDIW_eq_factored]
   simp only [jolt_addiw, jolt_virtual_sign_extend_word,
-        liftSail, projectResult, project,
+        liftSail, inject, projectResult, project,
         bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   -- Unfold execute_ITYPE ADDI: reads rs1, adds signext(imm), writes to rd
   simp only [execute_ITYPE, bind, EStateM.bind, pure, EStateM.pure]

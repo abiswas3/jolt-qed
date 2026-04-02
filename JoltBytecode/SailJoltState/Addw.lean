@@ -51,7 +51,7 @@ theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState) :
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run (project js) := by
   rw [execute_RTYPEW_ADDW_eq_factored]
   simp only [jolt_addw, jolt_virtual_sign_extend_word,
-        liftSail, projectResult, project,
+        liftSail, inject, projectResult, project,
         bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   simp only [execute_RTYPE, bind, EStateM.bind, pure, EStateM.pure]
   sail_cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩

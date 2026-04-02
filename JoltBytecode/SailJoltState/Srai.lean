@@ -66,7 +66,7 @@ theorem jolt_srai_eq_sail (shamt : BitVec 6) (rs1 rd : regidx) (js : SailJoltSta
     (execute_SHIFTIOP shamt rs1 rd sop.SRAI).run (project js) := by
   rw [execute_SHIFTIOP_SRAI_eq_factored]
   simp only [jolt_srai,
-        liftSail, projectResult, project,
+        liftSail, inject, projectResult, project,
         bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩ with
   | error e s => simp
