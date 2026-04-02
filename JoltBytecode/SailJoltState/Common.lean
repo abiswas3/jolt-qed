@@ -200,7 +200,7 @@ theorem wX_regs_spec (r : regidx) (v : BitVec 64) (s : SailState) :
     exact ⟨_, rfl, rfl⟩
 
 -- insert-insert on ExtDHashMap: inserting the same key twice collapses.
-@[simp] theorem extDHashMap_insert_insert {α : Type} [BEq α] [Hashable α] [LawfulBEq α]
+theorem extDHashMap_insert_insert {α : Type} [BEq α] [Hashable α] [LawfulBEq α]
     {β : α → Type} (m : Std.ExtDHashMap α β) (k : α) (v1 v2 : β k) :
     (m.insert k v1).insert k v2 = m.insert k v2 := by
   apply Std.ExtDHashMap.ext_get?
@@ -214,7 +214,7 @@ theorem wX_update_regs_idem (r : regidx) (v1 v2 : BitVec 64)
     wX_update_regs r v2 (wX_update_regs r v1 regs) = wX_update_regs r v2 regs := by
   unfold wX_update_regs
   obtain ⟨i⟩ := r
-  reg_cases (regidx.Regidx i) <;> simp_all
+  reg_cases (regidx.Regidx i) <;> simp_all [extDHashMap_insert_insert]
 
 -- ============================================================================
 -- wX_wX_collapse: writing the same register twice = just the second write
@@ -242,44 +242,7 @@ theorem wX_wX_collapse (r : regidx) (v1 v2 : BitVec 64) (s s1 s2 : SailState)
   have hm3 := wX_eq_modify_regs r v2 s s3 hs3
   rw [hm3, hm2, hm1]; simp [h_regs]
 
--- Factoring lemma for rX: reading register r from a state where
--- wX_update_regs r v was applied returns v. This avoids unfolding
--- the full wX_bits + rX_bits chain simultaneously.
-theorem rX_after_wX (r : regidx) (v : BitVec 64) (s : SailState)
-    (hr : r ≠ regidx.Regidx 0) :
-    rX_bits r { s with regs := wX_update_regs r v s.regs } =
-    .ok v { s with regs := wX_update_regs r v s.regs } := by
-  obtain ⟨i⟩ := r
-  have hne : i ≠ 0 := fun h => hr (by subst h; rfl)
-  have hi : i.toNat < 32 := i.isLt
-  have hcases : i.toNat = 1 ∨ i.toNat = 2 ∨ i.toNat = 3 ∨
-    i.toNat = 4 ∨ i.toNat = 5 ∨ i.toNat = 6 ∨ i.toNat = 7 ∨
-    i.toNat = 8 ∨ i.toNat = 9 ∨ i.toNat = 10 ∨ i.toNat = 11 ∨
-    i.toNat = 12 ∨ i.toNat = 13 ∨ i.toNat = 14 ∨ i.toNat = 15 ∨
-    i.toNat = 16 ∨ i.toNat = 17 ∨ i.toNat = 18 ∨ i.toNat = 19 ∨
-    i.toNat = 20 ∨ i.toNat = 21 ∨ i.toNat = 22 ∨ i.toNat = 23 ∨
-    i.toNat = 24 ∨ i.toNat = 25 ∨ i.toNat = 26 ∨ i.toNat = 27 ∨
-    i.toNat = 28 ∨ i.toNat = 29 ∨ i.toNat = 30 ∨ i.toNat = 31 := by
-      have : i.toNat ≠ 0 := fun h => hne (BitVec.eq_of_toNat_eq h)
-      omega
-  unfold rX_bits rX regval_from_reg wX_update_regs regval_into_reg
-  simp only [Sail.BitVec.toNatInt, Int.ofNat_eq_natCast, Int.toNat_natCast, bind, pure]
-  -- sorry pending: proof works in isolation but simp interaction with @[simp] insert_insert
-  -- causes issues when this theorem is in the same file.
-  sorry
-
--- After writing v to rd, reading rd gives v back (for rd ≠ x0).
-theorem wX_rX_roundtrip (r : regidx) (v : BitVec 64) (s s' : SailState)
-    (hr : r ≠ regidx.Regidx 0)
-    (hw : wX_bits r v s = .ok () s') :
-    rX_bits r s' = .ok v s' := by
-  -- Get regs spec: s'.regs = wX_update_regs r v s.regs
-  have ⟨s'', h_ok, h_regs⟩ := wX_regs_spec r v s
-  have ⟨_, heq⟩ := eStateM_deterministic hw h_ok; subst heq
-  -- s' = { s with regs := s'.regs } = { s with regs := wX_update_regs r v s.regs }
-  have h_mod := wX_eq_modify_regs r v s s' hw
-  rw [h_mod, h_regs]
-  exact rX_after_wX r v s hr
+-- wX_rX_roundtrip is in RegisterLemmas.lean (separate file to avoid simp interactions).
 
 
 -- ============================================================================
