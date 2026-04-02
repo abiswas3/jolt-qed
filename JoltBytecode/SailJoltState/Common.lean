@@ -128,6 +128,45 @@ theorem wX_wX_collapse (r : regidx) (v1 v2 : BitVec 64) (s s1 s2 : SailState)
     wX_bits r v2 s = .ok () s2 := by sorry
 
 -- ============================================================================
+-- Tactic: sail_cases
+--
+-- Problem: In the monadic simulation proofs (e.g., jolt_addw_eq_sail),
+-- after unfolding definitions with `simp only [...]`, the goal has the form:
+--
+--   (match rX_bits rs1 s with | .ok v s' => ... | .error e s' => ...) =
+--   (match rX_bits rs1 s with | .ok v s' => ... | .error e s' => ...)
+--
+-- Both sides share the same match discriminant (e.g., `rX_bits rs1 s`).
+-- We need to case-split on that shared term so both sides reduce together.
+--
+-- Why not `split`? The `split` tactic targets the outermost match in the
+-- goal, which is typically a `liftSail`/`projectResult` wrapper — not the
+-- inner `rX_bits` call we care about. It also doesn't substitute on both
+-- sides simultaneously.
+--
+-- How it works:
+--   1. `generalize t = _sc` — replaces ALL occurrences of `t` in the goal
+--      with a fresh variable `_sc`. This is key: it captures the term on
+--      BOTH sides of the equation.
+--   2. `cases _sc` — case-splits `_sc : EStateM.Result` into `.ok` / `.error`.
+--   3. `<;> simp` — applied to ALL resulting goals:
+--      - Error branches: `simp` closes them (both sides reduce to .error).
+--      - Ok branches: `simp` normalizes, leaving the next monadic step.
+--
+-- Usage (in proof):
+--   sail_cases rX_bits rs1 ⟨js.regs, js.choiceState, ...⟩
+--   rename_i v1 s1          -- name the auto-generated ok-branch variables
+--   sail_cases rX_bits rs2 s1
+--   rename_i v2 s2
+--   -- now at the domain-specific part of the proof
+-- ============================================================================
+
+syntax "sail_cases" term : tactic
+macro_rules
+  | `(tactic| sail_cases $t:term) => `(tactic|
+      (generalize $t = _sc; cases _sc <;> simp))
+
+-- ============================================================================
 -- Shared Jolt instructions
 -- TODO: Add the remaining ones we need as needed.
 -- ============================================================================

@@ -105,27 +105,25 @@ theorem jolt_sraiw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltSt
         writeVReg_apply, readVReg_apply,
         liftSail, projectResult, project,
         bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
-  cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩ with
-  | error e s => simp
-  | ok v s1 =>
-    simp
-    -- Two Sail-visible writes to rd (vreg round-trip is transparent to projection).
-    obtain ⟨s2, hw1⟩ := wX_shape rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0) >>>
-          ctz (sraiw_bitmask (shamt.setWidth 64))) s1
-    simp [hw1]
-    have hrx := wX_rX_roundtrip rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0) >>>
-          ctz (sraiw_bitmask (shamt.setWidth 64))) s1 s2 hw1
-    simp [hrx]
-    rw [sraiw_three_step_value]
-    obtain ⟨s3, hw2⟩ := wX_shape rd
-        (sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt)) s2
-    have hc := wX_wX_collapse rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0) >>>
-          ctz (sraiw_bitmask (shamt.setWidth 64)))
-        (sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt))
-        s1 s2 s3 hw1 hw2
-    simp [hw2, hc]
+  sail_cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩
+  rename_i v s1
+  -- Two Sail-visible writes to rd (vreg round-trip is transparent to projection).
+  obtain ⟨s2, hw1⟩ := wX_shape rd
+      (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0) >>>
+        ctz (sraiw_bitmask (shamt.setWidth 64))) s1
+  simp [hw1]
+  have hrx := wX_rX_roundtrip rd
+      (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0) >>>
+        ctz (sraiw_bitmask (shamt.setWidth 64))) s1 s2 hw1
+  simp [hrx]
+  rw [sraiw_three_step_value]
+  obtain ⟨s3, hw2⟩ := wX_shape rd
+      (sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt)) s2
+  have hc := wX_wX_collapse rd
+      (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0) >>>
+        ctz (sraiw_bitmask (shamt.setWidth 64)))
+      (sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt))
+      s1 s2 s3 hw1 hw2
+  simp [hw2, hc]
 
 end

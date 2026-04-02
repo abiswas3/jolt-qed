@@ -70,27 +70,25 @@ theorem jolt_addiw_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltSta
   -- Unfold execute_ITYPE ADDI: reads rs1, adds signext(imm), writes to rd
   simp only [execute_ITYPE, bind, EStateM.bind, pure, EStateM.pure]
   -- Both sides read rs1
-  cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩ with
-  | error e s => simp
-  | ok v1 s1 =>
-    simp
-    -- Jolt ADDI writes (v1 + signext(imm)) to rd. Sail ADDIW writes sign_extend(extractLsb(v1 + signext(imm))).
-    -- Since ADDI writes the same value that ADDIW starts with, and VirtualSignExtendWord
-    -- reads it back and sign-extends, the results match.
-    -- Step 1: ADDI write succeeds
-    obtain ⟨s2, hwx⟩ := wX_shape rd (v1 + sign_extend (m := 64) imm) s1
-    simp [hwx]
-    -- Step 2: read-back gives the written value
-    have hrx := wX_rX_roundtrip rd (v1 + sign_extend (m := 64) imm) s1 s2 hwx
-    simp [hrx]
-    -- Step 3: the values written are the same (no extractLsb_add needed here —
-    -- both sides sign-extend extractLsb of the same value: v1 + signext(imm))
-    -- Step 4: double write collapses
-    obtain ⟨s3, hwx2⟩ := wX_shape rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb (v1 + sign_extend (m := 64) imm) 31 0)) s2
-    have hcollapse := wX_wX_collapse rd (v1 + sign_extend (m := 64) imm)
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb (v1 + sign_extend (m := 64) imm) 31 0))
-        s1 s2 s3 hwx hwx2
-    simp [hwx2, hcollapse]
+  sail_cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩
+  rename_i v1 s1
+  -- Jolt ADDI writes (v1 + signext(imm)) to rd. Sail ADDIW writes sign_extend(extractLsb(v1 + signext(imm))).
+  -- Since ADDI writes the same value that ADDIW starts with, and VirtualSignExtendWord
+  -- reads it back and sign-extends, the results match.
+  -- Step 1: ADDI write succeeds
+  obtain ⟨s2, hwx⟩ := wX_shape rd (v1 + sign_extend (m := 64) imm) s1
+  simp [hwx]
+  -- Step 2: read-back gives the written value
+  have hrx := wX_rX_roundtrip rd (v1 + sign_extend (m := 64) imm) s1 s2 hwx
+  simp [hrx]
+  -- Step 3: the values written are the same (no extractLsb_add needed here —
+  -- both sides sign-extend extractLsb of the same value: v1 + signext(imm))
+  -- Step 4: double write collapses
+  obtain ⟨s3, hwx2⟩ := wX_shape rd
+      (sign_extend (m := 64) (Sail.BitVec.extractLsb (v1 + sign_extend (m := 64) imm) 31 0)) s2
+  have hcollapse := wX_wX_collapse rd (v1 + sign_extend (m := 64) imm)
+      (sign_extend (m := 64) (Sail.BitVec.extractLsb (v1 + sign_extend (m := 64) imm) 31 0))
+      s1 s2 s3 hwx hwx2
+  simp [hwx2, hcollapse]
 
 end

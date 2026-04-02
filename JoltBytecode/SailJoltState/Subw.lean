@@ -37,24 +37,20 @@ theorem jolt_subw_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState) :
         liftSail, projectResult, project,
         bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   simp only [execute_RTYPE, bind, EStateM.bind, pure, EStateM.pure]
-  cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩ with
-  | error e s => simp
-  | ok v1 s1 =>
-    simp
-    cases rX_bits rs2 s1 with
-    | error e s => simp
-    | ok v2 s2 =>
-      simp
-      obtain ⟨s3, hwx⟩ := wX_shape rd (v1 - v2) s2
-      simp [hwx]
-      have hrx := wX_rX_roundtrip rd (v1 - v2) s2 s3 hwx
-      simp [hrx]
-      rw [extractLsb_sub v1 v2]
-      obtain ⟨s4, hwx2⟩ := wX_shape rd
-          (sign_extend (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0)) s3
-      have hcollapse := wX_wX_collapse rd (v1 - v2)
-          (sign_extend (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0))
-          s2 s3 s4 hwx hwx2
-      simp [hwx2, hcollapse]
+  sail_cases rX_bits rs1 ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩
+  rename_i v1 s1
+  sail_cases rX_bits rs2 s1
+  rename_i v2 s2
+  obtain ⟨s3, hwx⟩ := wX_shape rd (v1 - v2) s2
+  simp [hwx]
+  have hrx := wX_rX_roundtrip rd (v1 - v2) s2 s3 hwx
+  simp [hrx]
+  rw [extractLsb_sub v1 v2]
+  obtain ⟨s4, hwx2⟩ := wX_shape rd
+      (sign_extend (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0)) s3
+  have hcollapse := wX_wX_collapse rd (v1 - v2)
+      (sign_extend (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0))
+      s2 s3 s4 hwx hwx2
+  simp [hwx2, hcollapse]
 
 end
