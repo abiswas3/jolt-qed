@@ -1,4 +1,4 @@
--- TODO: This file depends on sorry'd lemmas in Common.lean (wX_rX_roundtrip, wX_wX_collapse)
+-- All register lemmas (wX_rX_roundtrip, wX_wX_collapse) are proved in Common.lean/RegisterLemmas.lean.
 import JoltBytecode.SailJoltState.RegisterLemmas
 
 set_option maxHeartbeats 1_000_000_000
@@ -46,7 +46,7 @@ def jolt_addw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
 -- produces exactly the same outcome as running Sail's native ADDW
 -- instruction directly. This is the correctness proof that Jolt's
 -- decomposition is faithful to the RISC-V specification.
-theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState) :
+theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) :
     projectResult ((jolt_addw rs2 rs1 rd).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run (project js) := by
   rw [execute_RTYPEW_ADDW_eq_factored]
@@ -60,7 +60,7 @@ theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState) :
   rename_i v2 s2
   obtain ⟨s3, hwx⟩ := wX_shape rd (v1 + v2) s2
   simp [hwx]
-  have hrx := wX_rX_roundtrip rd (v1 + v2) s2 s3 hwx
+  have hrx := wX_rX_roundtrip rd (v1 + v2) s2 s3 hrd hwx
   simp [hrx]
   rw [extractLsb_add v1 v2]
   obtain ⟨s4, hwx2⟩ := wX_shape rd

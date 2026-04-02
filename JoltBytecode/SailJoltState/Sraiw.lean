@@ -1,4 +1,4 @@
--- TODO: This file depends on sorry'd lemmas in Common.lean (wX_rX_roundtrip, wX_wX_collapse)
+-- All register lemmas (wX_rX_roundtrip, wX_wX_collapse) are proved in Common.lean/RegisterLemmas.lean.
 import JoltBytecode.SailJoltState.RegisterLemmas
 import JoltBytecode.BytecodeExpansions.Instructions.Sraiw
 
@@ -97,7 +97,7 @@ lemma sraiw_three_step_value (v : BitVec 64) (shamt : BitVec 5) :
 -- In plain English: Running Jolt's three-step SRAIW decomposition
 -- and projecting the result onto Sail state produces exactly the same
 -- outcome as running Sail's native SRAIW instruction directly.
-theorem jolt_sraiw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState) :
+theorem jolt_sraiw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) :
     projectResult ((jolt_sraiw shamt rs1 rd).run js) =
     (execute_SHIFTIWOP shamt rs1 rd sopw.SRAIW).run (project js) := by
   rw [execute_SHIFTIWOP_SRAIW_eq_factored]
@@ -114,7 +114,7 @@ theorem jolt_sraiw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltSt
   simp [hw1]
   have hrx := wX_rX_roundtrip rd
       (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0) >>>
-        ctz (sraiw_bitmask (shamt.setWidth 64))) s1 s2 hw1
+        ctz (sraiw_bitmask (shamt.setWidth 64))) s1 s2 hrd hw1
   simp [hrx]
   rw [sraiw_three_step_value]
   obtain ⟨s3, hw2⟩ := wX_shape rd

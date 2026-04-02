@@ -92,7 +92,7 @@ def writeVReg (vr : BitVec 7) (val : BitVec 64) : JoltMonad Unit :=
 
 -- ============================================================================
 -- Sail register lemmas
--- wX_shape: proved. wX_rX_roundtrip, wX_wX_collapse: sorry (to be proved).
+-- wX_shape, wX_wX_collapse: proved here. wX_rX_roundtrip: proved in RegisterLemmas.lean.
 -- ============================================================================
 
 -- Exhaustively case-split a regidx (BitVec 5) into all 32 values.

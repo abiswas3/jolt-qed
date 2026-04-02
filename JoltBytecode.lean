@@ -121,29 +121,23 @@ import JoltBytecode.BytecodeExpansions.Instructions.Advicelw   -- DONE: ADVICELW
 --   liftSail : SailM α → JoltMonad α runs Sail on the projected state.
 --   Theorem shape: projectResult(jolt_instr.run js) = sail_instr.run (project js)
 --
--- WARNING: All proofs below depend on two sorry'd lemmas in Common.lean:
---   - wX_rX_roundtrip: write then read same register gives back the value
---   - wX_wX_collapse: double write to same register collapses
+-- Register lemmas (wX_rX_roundtrip, wX_wX_collapse) are fully proved.
+-- Instruction proofs require rd ≠ x0 (since writes to x0 are no-ops in RISC-V).
 -- ============================================================================
 
-import JoltBytecode.SailJoltState.Common                       -- Shared infra (2 sorry)
+import JoltBytecode.SailJoltState.Common                       -- Shared infra (no sorry)
+import JoltBytecode.SailJoltState.RegisterLemmas               -- wX_rX_roundtrip (no sorry)
 
 -- Format R (register-register) W-variants
-import JoltBytecode.SailJoltState.Addw                         -- DONE: ADDW (WARNING: depends on wX_rX_roundtrip, wX_wX_collapse)
-import JoltBytecode.SailJoltState.Subw                         -- DONE: SUBW (WARNING: depends on wX_rX_roundtrip, wX_wX_collapse)
+import JoltBytecode.SailJoltState.Addw                         -- DONE: ADDW (requires rd ≠ x0)
+import JoltBytecode.SailJoltState.Subw                         -- DONE: SUBW (requires rd ≠ x0)
 
 -- Format I (register-immediate)
-import JoltBytecode.SailJoltState.Addiw                        -- DONE: ADDIW (WARNING: depends on wX_rX_roundtrip, wX_wX_collapse)
+import JoltBytecode.SailJoltState.Addiw                        -- DONE: ADDIW (requires rd ≠ x0)
 import JoltBytecode.SailJoltState.Srai                         -- DONE: SRAI (clean, no sorry)
 
 -- Format I W-variants (shift-immediate word)
-import JoltBytecode.SailJoltState.Sraiw                        -- DONE: SRAIW (WARNING: depends on wX_rX_roundtrip, wX_wX_collapse)
-
--- ============================================================================
--- SailJoltState: NEXT / TODO
---
--- NEXT: Prove wX_rX_roundtrip and wX_wX_collapse in Common.lean
---       (32-way case split + hash map lemmas, one-time cost)
+import JoltBytecode.SailJoltState.Sraiw                        -- DONE: SRAIW (requires rd ≠ x0)
 --
 -- TODO: SLLI, SRLI — were clean (trivial via liftSail_project), deleted, need recreation
 -- TODO: SLLIW, SRLIW — need shift-truncation BitVec lemmas, deleted, need recreation

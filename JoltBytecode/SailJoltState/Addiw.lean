@@ -1,4 +1,4 @@
--- TODO: This file depends on sorry'd lemmas in Common.lean (wX_rX_roundtrip, wX_wX_collapse)
+-- All register lemmas (wX_rX_roundtrip, wX_wX_collapse) are proved in Common.lean/RegisterLemmas.lean.
 import JoltBytecode.SailJoltState.RegisterLemmas
 
 set_option maxHeartbeats 1_000_000_000
@@ -60,7 +60,7 @@ def jolt_addiw (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult :
 -- Main theorem: Jolt ADDIW projected = Sail ADDIW
 -- ============================================================================
 
-theorem jolt_addiw_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState) :
+theorem jolt_addiw_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) :
     projectResult ((jolt_addiw imm rs1 rd).run js) =
     (execute_ADDIW imm rs1 rd).run (project js) := by
   rw [execute_ADDIW_eq_factored]
@@ -79,7 +79,7 @@ theorem jolt_addiw_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltSta
   obtain ⟨s2, hwx⟩ := wX_shape rd (v1 + sign_extend (m := 64) imm) s1
   simp [hwx]
   -- Step 2: read-back gives the written value
-  have hrx := wX_rX_roundtrip rd (v1 + sign_extend (m := 64) imm) s1 s2 hwx
+  have hrx := wX_rX_roundtrip rd (v1 + sign_extend (m := 64) imm) s1 s2 hrd hwx
   simp [hrx]
   -- Step 3: the values written are the same (no extractLsb_add needed here —
   -- both sides sign-extend extractLsb of the same value: v1 + signext(imm))
