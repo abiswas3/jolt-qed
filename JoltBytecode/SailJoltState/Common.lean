@@ -44,12 +44,19 @@ abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
 -- ============================================================================
 
 def project (js : SailJoltState) : SailState where
-  regs := js.regs; 
-  choiceState := js.choiceState; 
+  regs := js.regs;
+  choiceState := js.choiceState;
   mem := js.mem
-  tags := js.tags; 
-  cycleCount := js.cycleCount; 
+  tags := js.tags;
+  cycleCount := js.cycleCount;
   sailOutput := js.sailOutput
+
+-- Replace all fields of SailJoltState that are common with SailState
+-- with the SailState values
+def inject (js : SailJoltState) (ss : SailState) : SailJoltState :=
+  { js with regs := ss.regs, choiceState := ss.choiceState,
+            mem := ss.mem, tags := ss.tags,
+            cycleCount := ss.cycleCount, sailOutput := ss.sailOutput }
 
 def projectResult (r : EStateM.Result (Error exception) SailJoltState α) :
     EStateM.Result (Error exception) SailState α :=
@@ -63,18 +70,12 @@ def projectResult (r : EStateM.Result (Error exception) SailJoltState α) :
 
 def liftSail (m : SailM α) : JoltMonad α := fun js =>
   match m (project js) with
-  | .ok a ss' => .ok a { regs := ss'.regs, choiceState := ss'.choiceState,
-                          mem := ss'.mem, tags := ss'.tags,
-                          cycleCount := ss'.cycleCount, sailOutput := ss'.sailOutput,
-                          vregs := js.vregs }
-  | .error e ss' => .error e { regs := ss'.regs, choiceState := ss'.choiceState,
-                                mem := ss'.mem, tags := ss'.tags,
-                                cycleCount := ss'.cycleCount, sailOutput := ss'.sailOutput,
-                                vregs := js.vregs }
+  | .ok a ss' => .ok a (inject js ss')
+  | .error e ss' => .error e (inject js ss')
 
 theorem liftSail_project (m : SailM α) (js : SailJoltState) :
     projectResult ((liftSail m).run js) = m.run (project js) := by
-  simp only [liftSail, projectResult, project, EStateM.run]
+  simp only [liftSail, projectResult, project, inject, EStateM.run]
   cases m ⟨js.regs, js.choiceState, js.mem, js.tags, js.cycleCount, js.sailOutput⟩ <;> simp_all
 
 -- ============================================================================

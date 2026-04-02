@@ -20,7 +20,11 @@ theorem execute_RTYPEW_SUBW_eq_factored (rs2 rs1 rd : regidx) :
       wX_bits rd (sign_extend (m := 64)
         (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0))
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPEW]
+  simp only [execute_RTYPEW]
+  simp only [Nat.sub_zero]
+  simp only [ Nat.reduceAdd]
+  simp only [bind_pure_comp]
+  simp only [pure_bind]
 
 -- Jolt's SUBW: SUB then VirtualSignExtendWord.
 def jolt_subw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
