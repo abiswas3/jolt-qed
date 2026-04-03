@@ -56,4 +56,32 @@ theorem wX_rX_roundtrip (r : regidx) (v : BitVec 64) (s s' : SailState)
   rw [h_mod, h_regs]
   exact rX_after_wX r v s hr
 
+-- At the Sail level: writing v to rd, reading it back, and writing
+-- sign_extend(extractLsb(v)) is the same as just writing
+-- sign_extend(extractLsb(v)). The first write and read-back cancel out.
+theorem write_read_write_collapse (rd : regidx) (v : BitVec 64)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    (do wX_bits rd v
+        let v' ← rX_bits rd
+        wX_bits rd (sign_extend (m := 64) (Sail.BitVec.extractLsb v' 31 0))
+        : SailM Unit) =
+    (wX_bits rd (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0))) := by
+  funext s
+  obtain ⟨s1, hw1⟩ := wX_shape rd v s
+  have hrx := wX_rX_roundtrip rd v s s1 hrd hw1
+  obtain ⟨s2, hw2⟩ := wX_shape rd (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0)) s1
+  have hc := wX_wX_collapse rd v (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0)) s s1 s2 hw1 hw2
+  simp only [bind, EStateM.bind, hw1, hrx, hw2, hc]
+
+-- Jolt's write-then-VSEW pattern collapses to a single sign-extended write.
+-- liftSail(wX rd v) >> jolt_virtual_sign_extend_word rd = liftSail(wX rd signext(extractLsb v))
+theorem liftSail_write_vsew (rd : regidx) (v : BitVec 64)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    (do liftSail (wX_bits rd v)
+        jolt_virtual_sign_extend_word rd : JoltMonad Unit) =
+    liftSail (wX_bits rd (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0))) := by
+  simp only [jolt_virtual_sign_extend_word, ← liftSail_bind]
+  congr 1
+  exact write_read_write_collapse rd v hrd
+
 end

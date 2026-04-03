@@ -118,4 +118,34 @@ theorem liftSail_project (m : SailM α) (js : SailJoltState) :
 @[simp] theorem inject_inject (js : SailJoltState) (ss1 ss2 : SailState) :
     inject (inject js ss1) ss2 = inject js ss2 := by rfl
 
+-- Injecting the projection of a JoltState gives back the original.
+-- project strips vregs, inject puts them back from js — round-trip.
+@[simp] theorem inject_project (js : SailJoltState) :
+    inject js (project js) = js := by cases js; rfl
+
+-- ============================================================================
+-- liftSail is a monad morphism
+-- ============================================================================
+
+-- liftSail(A then B) = liftSail(A) then liftSail(B).
+-- Because vregs is never touched by Sail code, stripping/restoring
+-- vregs once around the whole chain is the same as doing it per step.
+theorem liftSail_bind (m : SailM α) (f : α → SailM β) :
+    liftSail (m >>= f) = (do let a ← liftSail m; liftSail (f a) : JoltMonad β) := by
+  funext js
+  simp only [liftSail, bind, EStateM.bind]
+  cases m (project js) with
+  | ok a ss' =>
+    simp only [project_inject]
+    cases f a ss' with
+    | ok b ss2 => simp [inject_inject]
+    | error e ss2 => simp [inject_inject]
+  | error e ss' => rfl
+
+-- Lifting pure does nothing — just returns the value.
+theorem liftSail_pure (a : α) :
+    liftSail (pure a) = (pure a : JoltMonad α) := by
+  funext js
+  simp only [liftSail, pure, EStateM.pure, inject_project]
+
 end
