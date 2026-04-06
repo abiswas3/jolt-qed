@@ -26,6 +26,39 @@ The Sail instruction is execute_LOAD imm rs1 rd false 4 (signed, width 4).
 -/
 
 -- ============================================================================
+-- Memory read helper lemmas (sorry'd — pure byte arithmetic)
+-- ============================================================================
+
+-- sailReadDword succeeds when all memory addresses are populated,
+-- and does not change the Sail state (memory reads are pure).
+theorem sailReadDword_ok (addr : BitVec 64) (s : SailState)
+    (hmem : ∀ a : Nat, s.mem.get? a ≠ none) :
+    ∃ dword : BitVec 64, sailReadDword addr s = .ok dword s := by
+  sorry
+
+-- sailReadWord succeeds when all memory addresses are populated,
+-- and does not change the Sail state.
+theorem sailReadWord_ok (addr : BitVec 64) (s : SailState)
+    (hmem : ∀ a : Nat, s.mem.get? a ≠ none) :
+    ∃ word : BitVec 32, sailReadWord addr s = .ok word s := by
+  sorry
+
+-- The dword-extract identity: loading a 64-bit dword from the dword-aligned
+-- address and shifting right, truncated to 32 bits, equals loading the 32-bit
+-- word directly. This is the Sail-level version of read_word_eq_dword_extract
+-- from BytecodeExpansions/Lw.lean.
+-- The dword-extract identity: loading a 64-bit dword from the dword-aligned
+-- address and shifting right by (addr <<< 3).toNat, truncated to 32 bits,
+-- equals loading the 32-bit word directly.
+theorem sailReadWord_eq_dword_extract (addr : BitVec 64) (s : SailState)
+    (hmem : ∀ a : Nat, s.mem.get? a ≠ none) :
+    ∃ (dword : BitVec 64) (word : BitVec 32),
+      sailReadDword (addr &&& -8) s = .ok dword s ∧
+      sailReadWord addr s = .ok word s ∧
+      Sail.BitVec.extractLsb (dword >>> ((addr <<< 3)).toNat) 31 0 = word := by
+  sorry
+
+-- ============================================================================
 -- Jolt LW decomposition (faithful to Jolt bytecode expansion)
 -- ============================================================================
 
@@ -97,11 +130,15 @@ theorem jolt_lw_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     -- Now: sailReadDword((base + signext(imm)) &&& -8) js.sail on the Jolt side,
     -- sailReadWord(base + signext(imm)) js.sail on the Sail side.
     simp only [ite_true, ite_false]
-    -- Remaining: sailReadDword(addr &&& -8) >>> shift = sailReadWord(addr)
-    -- where addr = base + sign_extend(imm) and shift = (addr <<< 3).toNat.
-    -- This is the dword-extract identity from BytecodeExpansions/Lw.lean
-    -- (read_word_eq_dword_extract), lifted to Sail's memory model.
-    -- Also needs: sailReadDword succeeds (mem_populated), wX_bits succeeds (wX_shape).
-    sorry
+    -- Use the dword-extract identity to connect both sides.
+    obtain ⟨dword, word, hdword, hword, h_extract⟩ :=
+      sailReadWord_eq_dword_extract (base + sign_extend (m := 64) imm) js.sail hcfg.mem_populated
+    -- Substitute the memory reads and reduce remaining vreg conditions.
+    simp (config := { decide := true }) only [hdword, hword, h_extract, ite_true, ite_false, project]
+    -- Both sides now call wX_bits rd (sign_extend word) js.sail.
+    -- The Jolt side wraps with vregs, projectResult strips them.
+    cases wX_bits rd (sign_extend (m := 64) word) js.sail with
+    | error e s => simp [projectResult, project]
+    | ok a s => simp [projectResult, project]
 
 end
