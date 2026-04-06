@@ -18,15 +18,19 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 theorem execute_RTYPE_SRL_factored (rs2 rs1 rd : regidx) :
     execute_RTYPE rs2 rs1 rd rop.SRL = (do
       let v1 ← rX_bits rs1; let v2 ← rX_bits rs2
-      wX_bits rd (shift_bits_right v1 (Sail.BitVec.extractLsb v2 (_root_.log2_xlen -i 1) 0))
+      wX_bits rd (shift_bits_right v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
       pure RETIRE_SUCCESS) := by
-  sorry
+  funext s
+  simp only [execute_RTYPE, LeanRV64D.Functions.log2_xlen, bind, EStateM.bind, pure, EStateM.pure]
+  cases rX_bits rs1 s <;> simp only []
+  rename_i v1 s1
+  cases rX_bits rs2 s1 <;> simp only []
 
 -- Math bridge: truncating to 32 bits after a 64-bit logical right shift equals
 -- right-shifting the truncated values with a truncated shift amount.
 theorem extractLsb_srl (a b : BitVec 64) :
     Sail.BitVec.extractLsb
-      (shift_bits_right a (Sail.BitVec.extractLsb b (_root_.log2_xlen -i 1) 0)) 31 0 =
+      (shift_bits_right a (Sail.BitVec.extractLsb b (LeanRV64D.Functions.log2_xlen -i 1) 0)) 31 0 =
     shift_bits_right (Sail.BitVec.extractLsb a 31 0)
       (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb b 31 0) 4 0) := by
   sorry
@@ -43,7 +47,7 @@ theorem jolt_srlw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     projectResult ((jolt_srlw rs2 rs1 rd).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SRLW).run js.sail := by
   exact jolt_rtype_w_eq_sail rop.SRL ropw.SRLW
-    (fun v1 v2 => shift_bits_right v1 (Sail.BitVec.extractLsb v2 (_root_.log2_xlen -i 1) 0))
+    (fun v1 v2 => shift_bits_right v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
     execute_RTYPE_SRL_factored
     (by intro a b; exact extractLsb_srl a b) rs2 rs1 rd hrd js hwf
 

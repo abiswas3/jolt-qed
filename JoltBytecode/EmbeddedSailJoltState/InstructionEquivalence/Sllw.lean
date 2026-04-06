@@ -17,19 +17,27 @@ The math bridge: truncating to 32 bits after a 64-bit left shift
 equals left-shifting the truncated values with a truncated shift amount.
 -/
 
--- Factoring: execute_RTYPE SLL reads rs1, rs2, left-shifts v1 by extractLsb(v2, 5, 0).
+-- Factoring: execute_RTYPE for SLL reads rs1 and rs2, left-shifts v1
+-- by the lower 6 bits of v2 (LeanRV64D.Functions.log2_xlen - 1 = 5), and writes the result to rd.
 theorem execute_RTYPE_SLL_factored (rs2 rs1 rd : regidx) :
     execute_RTYPE rs2 rs1 rd rop.SLL = (do
       let v1 ← rX_bits rs1; let v2 ← rX_bits rs2
-      wX_bits rd (shift_bits_left v1 (Sail.BitVec.extractLsb v2 (_root_.log2_xlen -i 1) 0))
+      wX_bits rd (shift_bits_left v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
       pure RETIRE_SUCCESS) := by
-  sorry
+  funext s
+  simp only [execute_RTYPE, LeanRV64D.Functions.log2_xlen, bind, EStateM.bind, pure, EStateM.pure]
+  cases rX_bits rs1 s <;> simp only []
+  rename_i v1 s1
+  cases rX_bits rs2 s1 <;> simp only []
 
 -- Math bridge: truncating to 32 bits after a 64-bit left shift equals
--- left-shifting the truncated values with a truncated shift amount.
+-- left-shifting the truncated 32-bit value with a 5-bit shift amount.
+-- This holds because left-shift fills with zeros from the right, so
+-- the lower 32 bits of (a << s) depend only on the lower 32 bits of a
+-- and the lower 5 bits of s.
 theorem extractLsb_sll (a b : BitVec 64) :
     Sail.BitVec.extractLsb
-      (shift_bits_left a (Sail.BitVec.extractLsb b (_root_.log2_xlen -i 1) 0)) 31 0 =
+      (shift_bits_left a (Sail.BitVec.extractLsb b (LeanRV64D.Functions.log2_xlen -i 1) 0)) 31 0 =
     shift_bits_left (Sail.BitVec.extractLsb a 31 0)
       (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb b 31 0) 4 0) := by
   sorry
@@ -46,7 +54,7 @@ theorem jolt_sllw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     projectResult ((jolt_sllw rs2 rs1 rd).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SLLW).run js.sail := by
   exact jolt_rtype_w_eq_sail rop.SLL ropw.SLLW
-    (fun v1 v2 => shift_bits_left v1 (Sail.BitVec.extractLsb v2 (_root_.log2_xlen -i 1) 0))
+    (fun v1 v2 => shift_bits_left v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
     execute_RTYPE_SLL_factored
     (by intro a b; exact extractLsb_sll a b) rs2 rs1 rd hrd js hwf
 
