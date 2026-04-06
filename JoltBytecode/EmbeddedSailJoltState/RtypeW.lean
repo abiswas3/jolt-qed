@@ -1,4 +1,4 @@
-import JoltBytecode.SailJoltState.EmbeddedArch.RegisterOps
+import JoltBytecode.EmbeddedSailJoltState.RegisterOps
 import Std.Tactic.Do
 
 set_option maxHeartbeats 1_000_000_000

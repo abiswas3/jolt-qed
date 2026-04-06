@@ -1,4 +1,4 @@
-import JoltBytecode.SailJoltState.EmbeddedArch.RtypeW
+import JoltBytecode.EmbeddedSailJoltState.RtypeW
 import JoltBytecode.BytecodeExpansions.Instructions.Sraiw
 
 set_option maxHeartbeats 1_000_000_000

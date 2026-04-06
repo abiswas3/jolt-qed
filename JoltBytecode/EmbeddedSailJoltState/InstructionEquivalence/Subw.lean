@@ -1,4 +1,4 @@
-import JoltBytecode.SailJoltState.EmbeddedArch.RtypeW
+import JoltBytecode.EmbeddedSailJoltState.RtypeW
 
 open Sail PreSail LeanRV64D.Functions
 

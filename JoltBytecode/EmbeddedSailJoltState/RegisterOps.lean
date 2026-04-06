@@ -1,4 +1,4 @@
-import JoltBytecode.SailJoltState.EmbeddedArch.Defs
+import JoltBytecode.EmbeddedSailJoltState.Defs
 
 /-!
 # Register operation lemmas (independent of SailJoltState architecture)
