@@ -1,0 +1,122 @@
+import LeanRV64D
+
+/-!
+# Embedded Architecture: SailJoltState embeds SailState
+
+Instead of duplicating SailState's fields, SailJoltState embeds it directly.
+This makes project/inject trivial (field access/update) and may eliminate
+the monadic plumbing noise in proofs.
+-/
+
+set_option maxHeartbeats 1_000_000_000
+set_option maxRecDepth 1_000_000
+set_option linter.unusedVariables false
+set_option match.ignoreUnusedAlts true
+
+open Sail PreSail LeanRV64D.Functions
+
+set_option autoImplicit true
+
+noncomputable section
+
+-- ============================================================================
+-- Types
+-- ============================================================================
+
+abbrev SailState := SequentialState RegisterType trivialChoiceSource
+
+-- SailJoltState embeds SailState directly instead of duplicating fields.
+structure SailJoltState where
+  sail : SailState
+  vregs : BitVec 7 → BitVec 64 := fun _ => 0
+
+abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
+
+-- ============================================================================
+-- Projection: trivial field access/update
+-- ============================================================================
+
+-- project: just read the embedded SailState.
+@[simp] def project (js : SailJoltState) : SailState := js.sail
+
+-- inject: update the embedded SailState, keep vregs.
+@[simp] def inject (js : SailJoltState) (ss : SailState) : SailJoltState :=
+  { js with sail := ss }
+
+-- projectResult: strip vregs from an EStateM result.
+def projectResult (r : EStateM.Result (Error exception) SailJoltState α) :
+    EStateM.Result (Error exception) SailState α :=
+  match r with
+  | .ok a js' => .ok a (project js')
+  | .error e js' => .error e (project js')
+
+-- ============================================================================
+-- liftSail
+-- ============================================================================
+
+def liftSail (m : SailM α) : JoltMonad α := fun js =>
+  match m js.sail with
+  | .ok a ss' => .ok a { js with sail := ss' }
+  | .error e ss' => .error e { js with sail := ss' }
+
+-- ============================================================================
+-- Structural lemmas
+-- ============================================================================
+
+@[simp] theorem project_inject (js : SailJoltState) (ss : SailState) :
+    project (inject js ss) = ss := rfl
+
+@[simp] theorem inject_inject (js : SailJoltState) (ss1 ss2 : SailState) :
+    inject (inject js ss1) ss2 = inject js ss2 := rfl
+
+@[simp] theorem inject_project (js : SailJoltState) :
+    inject js (project js) = js := by simp
+
+theorem liftSail_project (m : SailM α) (js : SailJoltState) :
+    projectResult ((liftSail m).run js) = m.run js.sail := by
+  simp only [liftSail, projectResult, project, EStateM.run]
+  cases m js.sail <;> rfl
+
+-- liftSail preserves bind.
+theorem liftSail_bind (m : SailM α) (f : α → SailM β) :
+    liftSail (m >>= f) = (do let a ← liftSail m; liftSail (f a) : JoltMonad β) := by
+  funext js
+  simp only [liftSail, bind, EStateM.bind]
+  cases m js.sail with
+  | ok a ss' => rfl
+  | error e ss' => rfl
+
+-- liftSail preserves pure.
+theorem liftSail_pure (a : α) :
+    liftSail (pure a) = (pure a : JoltMonad α) := by
+  funext js
+  simp only [liftSail, pure, EStateM.pure]
+
+-- ============================================================================
+-- Virtual register operations
+-- ============================================================================
+
+def readVReg (vr : BitVec 7) : JoltMonad (BitVec 64) := do
+  let js ← get; pure (js.vregs vr)
+
+def writeVReg (vr : BitVec 7) (val : BitVec 64) : JoltMonad Unit :=
+  modify fun js => { js with vregs := fun r => if r = vr then val else js.vregs r }
+
+-- ============================================================================
+-- Shared Jolt instructions
+-- ============================================================================
+
+def jolt_virtual_sign_extend_word (rd : regidx) : JoltMonad Unit := do
+  let v ← liftSail (rX_bits rd)
+  liftSail (wX_bits rd (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0)))
+
+-- ============================================================================
+-- sail_cases tactic
+-- ============================================================================
+
+syntax "sail_cases" term : tactic
+macro_rules
+  | `(tactic| sail_cases $t:term) => `(tactic|
+      (generalize $t = _sc; cases _sc <;> simp))
+
+end
