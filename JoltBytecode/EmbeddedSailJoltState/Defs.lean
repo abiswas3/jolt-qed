@@ -146,15 +146,39 @@ def sailReadDword (addr : BitVec 64) : SailM (BitVec 64) := do
 -- These are captured as a predicate on SailState rather than baking in
 -- specific register values, so the proofs stay abstract.
 structure JoltConfig (s : SailState) : Prop where
-  -- Machine mode privilege
-  machine_mode : s.regs.get? Register.cur_privilege = some (Privilege.Machine : RegisterType Register.cur_privilege)
-  -- All memory addresses in the accessed range are populated in state.mem
+  -- Machine mode: cur_privilege register is Machine.
+  -- This makes translateAddr use Bare (identity) translation.
+  machine_mode : s.regs.get? Register.cur_privilege =
+    some (Privilege.Machine : RegisterType Register.cur_privilege)
+  -- mstatus register is readable and has MPRV=0.
+  -- MPRV=0 means effectivePrivilege returns the actual privilege (Machine),
+  -- not the MPP field. This ensures Bare translation mode.
+  mstatus_ok : ∃ mval : RegisterType Register.mstatus,
+    s.regs.get? Register.mstatus = some mval ∧
+    _get_Mstatus_MPRV mval = 0#1
+  -- All memory addresses are populated in state.mem.
+  -- This makes sailReadByte succeed for any address.
   mem_populated : ∀ addr : Nat, s.mem.get? addr ≠ none
-  -- vmem_read reduces to raw byte reads (captures all the checks above).
-  -- This is the key assumption: under Jolt's config, the Sail memory pipeline
-  -- is equivalent to directly reading bytes from state.mem.
-  -- TODO: decompose into individual PMP/PMA/MMIO/translation conditions
-  -- and prove this follows from them.
+
+-- ============================================================================
+-- Focused bridge lemmas for the vmem_read pipeline
+-- ============================================================================
+
+-- Under JoltConfig (Machine mode, MPRV=0), translateAddr is the identity:
+-- the virtual address becomes the physical address with no translation.
+-- This is because Machine mode → translationMode = Bare → paddr = vaddr.
+-- Under JoltConfig (Machine mode, MPRV=0), translateAddr is the identity:
+-- the virtual address becomes the physical address with no translation.
+-- This is because Machine mode → translationMode = Bare → paddr = vaddr.
+--
+-- Proof strategy: unfold translateAddr, show readReg succeeds for mstatus
+-- and cur_privilege (from JoltConfig), then effectivePrivilege returns Machine,
+-- translationMode returns Bare, and the Bare branch returns identity.
+theorem translateAddr_machine_bare (vAddr : virtaddr) (s : SailState)
+    (hcfg : JoltConfig s) :
+    translateAddr vAddr (MemoryAccessType.Load mem_payload.Data) s =
+    .ok (Ok (physaddr.Physaddr (zero_extend (m := 64) (bits_of_virtaddr vAddr)), init_ext_ptw)) s := by
+  sorry
 
 -- The bridge lemma: under JoltConfig, Sail's execute_LOAD for LW (width=4,
 -- signed) is equivalent to: read rs1, compute address, read 4 bytes raw
