@@ -36,6 +36,41 @@ def WellFormed (js : SailJoltState) : Prop :=
   ∀ r : regidx, ∃ v, rX_bits r js.sail = .ok v js.sail
 
 -- ============================================================================
+-- Primitive specs: liftSail(rX_bits) and liftSail(wX_bits)
+-- ============================================================================
+
+-- Reading register r via liftSail succeeds (given WellFormed), returns the
+-- register value, and does not change the state.
+@[spec]
+theorem liftSail_rX_spec (r : regidx) (js0 : SailJoltState) (hwf : WellFormed js0) :
+    ⦃fun js => ⌜js = js0⌝⦄
+    liftSail (rX_bits r)
+    ⦃⇓ v js' => ⌜rX_bits r js0.sail = .ok v js0.sail ∧ js' = js0⌝⦄ := by
+  unfold liftSail
+  intro js hjs; subst hjs
+  simp only [WP.wp, PredTrans.apply, PostCond.noThrow, SPred.pure]
+  dsimp only [EStateM.run]
+  obtain ⟨v, hok⟩ := hwf r
+  rw [hok]
+  cases js
+  exact ⟨rfl, rfl⟩
+
+-- Writing value v to register r via liftSail always succeeds and updates
+-- the sail state to stateAfterWrite.
+@[spec]
+theorem liftSail_wX_spec (r : regidx) (v : BitVec 64) (js0 : SailJoltState) :
+    ⦃fun js => ⌜js = js0⌝⦄
+    liftSail (wX_bits r v)
+    ⦃⇓ _ js' => ⌜js'.sail = stateAfterWrite js0.sail r v ∧ js'.vregs = js0.vregs⌝⦄ := by
+  unfold liftSail
+  intro js hjs; subst hjs
+  simp only [WP.wp, PredTrans.apply, PostCond.noThrow, SPred.pure]
+  dsimp only [EStateM.run]
+  obtain ⟨s', hw⟩ := wX_shape r v js.sail
+  rw [hw]
+  exact ⟨wX_bits_eq_stateAfterWrite r v js.sail s' hw, by cases js; rfl⟩
+
+-- ============================================================================
 -- Generic R-type spec (parameterized by a factoring hypothesis)
 -- ============================================================================
 
