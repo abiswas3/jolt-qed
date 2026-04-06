@@ -66,18 +66,36 @@ theorem readVReg_spec (vr : BitVec 7) (js0 : SailJoltState) :
 -- The three-step Jolt computation produces the same value as Sail's SRAIW.
 -- This is the mathematical core: sign-extend, logical shift, truncate, sign-extend
 -- equals arithmetic right shift then sign-extend.
--- The three-step Jolt computation produces the same value as Sail's SRAIW.
--- sign_extend(extractLsb(sign_extend(extractLsb(v)) >>> ctz(bitmask))) =
--- sign_extend(shift_bits_right_arith(extractLsb(v), shamt))
--- Follows from sraiw_eq_sraiwJolt (BytecodeExpansions): the bitmask roundtrip
--- recovers the arithmetic shift.
+-- LHS helper: the three-step Jolt value (sign-extend, shift, truncate, sign-extend)
+-- equals sraiwJolt (the pure-function decomposition from BytecodeExpansions).
+private lemma three_step_eq_sraiwJolt (v : BitVec 64) (shamt : BitVec 5) :
+    sign_extend (m := 64)
+      (Sail.BitVec.extractLsb
+        (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0) >>>
+          ctz (sraiw_bitmask (shamt.setWidth 64))) 31 0) =
+    sraiwJolt v (shamt.setWidth 64) := by
+  unfold sraiwJolt Jolt.virtualSignExtendWord sign_extend
+  simp [Sail.BitVec.signExtend, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.extractLsb']
+  congr 1
+
+-- RHS helper: Sail's SRAIW value (extract 32 bits, arithmetic shift, sign-extend)
+-- equals Riscv.sraiw (the reference RISC-V semantics from BytecodeExpansions).
+private lemma sail_sraiw_eq_riscv (v : BitVec 64) (shamt : BitVec 5) :
+    sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt) =
+    Riscv.sraiw v (shamt.setWidth 64) := by
+  unfold Riscv.sraiw sign_extend shift_bits_right_arith
+  simp [Sail.BitVec.signExtend, Sail.BitVec.toNatInt, Sail.BitVec.extractLsb,
+        BitVec.extractLsb, BitVec.extractLsb']
+
+-- Bridge: the three-step Jolt computation produces the same value as Sail's SRAIW.
+-- Chains: LHS = sraiwJolt = Riscv.sraiw = RHS.
 private lemma sraiw_three_step_value (v : BitVec 64) (shamt : BitVec 5) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
         (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0) >>>
           ctz (sraiw_bitmask (shamt.setWidth 64))) 31 0) =
     sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt) := by
-  sorry -- TODO: follows from sraiw_eq_sraiwJolt (BytecodeExpansions)
+  rw [three_step_eq_sraiwJolt, sail_sraiw_eq_riscv, sraiw_eq_sraiwJolt]
 
 -- ============================================================================
 -- Factoring
@@ -126,6 +144,9 @@ theorem jolt_sraiw_concrete (shamt : BitVec 5) (rs1 rd : regidx)
   generalize hrun : EStateM.run _ js = x
   apply EStateM.of_wp_run_eq hrun
   mvcgen
+  -- VC1: rd readable after step 2 write (follows from rX_after_stateAfterWrite)
+  -- VC2: connect 5-step chain to final result (mechanical plumbing)
+  -- TODO: close these VCs (mvcgen auto-generated variable names make manual proof brittle)
   all_goals sorry
 
 -- ============================================================================
