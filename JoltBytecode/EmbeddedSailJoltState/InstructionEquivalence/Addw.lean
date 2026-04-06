@@ -11,7 +11,7 @@ theorem execute_RTYPE_ADD_factored (rs2 rs1 rd : regidx) :
     execute_RTYPE rs2 rs1 rd rop.ADD = (do
       let v1 ← rX_bits rs1; let v2 ← rX_bits rs2
       wX_bits rd (v1 + v2); pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPE, bind_pure_comp, pure_bind]
+  simp [execute_RTYPE, bind_pure_comp]
 
 -- Jolt's ADDW decomposition: 64-bit ADD then sign-extend lower 32 bits.
 def jolt_addw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do

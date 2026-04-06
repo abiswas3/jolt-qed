@@ -46,7 +46,26 @@ private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
         ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) 31 0) =
     sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
       (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
-  sorry
+  -- Step 1: recover shift amount from bitmask. ctz(srlw_bitmask v2) = s + 32.
+  rw [show ctz (srlw_bitmask v2) = (v2.setWidth 5).toNat + 32 from ctz_srlw_bitmask v2]
+  -- Step 2: unfold Sail wrappers to plain BitVec.
+  simp only [sign_extend, shift_bits_right, Sail.BitVec.signExtend, Sail.BitVec.toNatInt,
+             Sail.BitVec.extractLsb, BitVec.extractLsb, Int.ofNat_eq_natCast, Int.toNat_natCast,
+             Nat.sub_zero, Nat.reduceAdd]
+  -- Step 3: strip signExtend from both sides.
+  congr 1
+  -- Step 4: bit-by-bit. (v1 <<< 32) >>> (s+32) at bit i = v1[i+s] if i+s < 32.
+  -- v1.setWidth 32 >>> s at bit i = v1[i+s] if i+s < 32. Same.
+  ext i hi
+  simp only [BitVec.getLsbD_extractLsb', BitVec.getLsbD_ushiftRight,
+             BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+             BitVec.toNat_setWidth, Nat.sub_zero, Nat.reduceAdd]
+  simp [BitVec.getElem_extractLsb', BitVec.getLsbD_ushiftRight,
+        BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+        BitVec.toNat_setWidth, Nat.sub_zero,
+        BitVec.getElem_ushiftRight, BitVec.getElem_shiftLeft,
+        Bool.and_assoc]
+  omega
 
 -- ============================================================================
 -- Factoring
@@ -99,14 +118,14 @@ theorem jolt_srlw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
   unfold jolt_srlw jolt_virtual_sign_extend_word liftSail projectResult
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
              writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
-             EStateM.modifyGet, get, MonadStateOf.get, EStateM.get]
+             EStateM.modifyGet, get]
   -- Under WellFormed, both register reads succeed.
   obtain ⟨v1, hok1⟩ := hwf rs1
   obtain ⟨v2, hok2⟩ := hwf rs2
   simp only [hok1, hok2]
   -- Reduce vreg operations
   dsimp only [getThe, MonadStateOf.get, EStateM.get]
-  simp (config := { decide := true }) only [ite_true, ite_false, project]
+  simp (config := { decide := true }) only [ite_true, project]
   -- Both sides write to rd then VSEW.
   obtain ⟨s3, hw1⟩ := wX_shape rd (v1 <<< 32 >>> ctz (srlw_bitmask v2)) js.sail
   simp only [hw1]

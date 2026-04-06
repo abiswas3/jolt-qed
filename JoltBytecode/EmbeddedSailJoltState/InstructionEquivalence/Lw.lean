@@ -111,14 +111,14 @@ theorem jolt_lw_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
   unfold jolt_lw projectResult liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
              writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
-             EStateM.modifyGet, get, MonadStateOf.get, EStateM.get]
+             EStateM.modifyGet, get]
   -- Both sides start with rX_bits rs1 js.sail.
   -- Case-split on whether the register read succeeds.
   cases hrx : rX_bits rs1 js.sail with
-  | error e s => simp [hrx]
+  | error e s => simp
   | ok base s =>
     have hs := rX_bits_pure rs1 js.sail base s hrx; subst hs
-    simp only [hrx]
+    simp only []
     -- Reduce all virtual register operations (readVReg/writeVReg always succeed).
     dsimp only [getThe, MonadStateOf.get, EStateM.get]
     simp only [project]
@@ -134,11 +134,11 @@ theorem jolt_lw_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     obtain ⟨dword, word, hdword, hword, h_extract⟩ :=
       sailReadWord_eq_dword_extract (base + sign_extend (m := 64) imm) js.sail hcfg.mem_populated
     -- Substitute the memory reads and reduce remaining vreg conditions.
-    simp (config := { decide := true }) only [hdword, hword, h_extract, ite_true, ite_false, project]
+    simp (config := { decide := true }) only [hdword, hword, h_extract, ite_true, ite_false]
     -- Both sides now call wX_bits rd (sign_extend word) js.sail.
     -- The Jolt side wraps with vregs, projectResult strips them.
     cases wX_bits rd (sign_extend (m := 64) word) js.sail with
-    | error e s => simp [projectResult, project]
-    | ok a s => simp [projectResult, project]
+    | error e s => simp
+    | ok a s => simp
 
 end
