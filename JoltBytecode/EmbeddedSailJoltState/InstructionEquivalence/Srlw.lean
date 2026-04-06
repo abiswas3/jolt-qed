@@ -34,19 +34,32 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -- Bridge lemma
 -- ============================================================================
 
+-- The core SRLW BitVec identity: left-shifting by 32 then right-shifting by (s+32),
+-- truncated to 32 bits, equals truncating to 32 bits then right-shifting by s.
+-- In other words: SLLI 32 followed by SRL (s+32) extracts the lower word shifted by s.
+--
+-- Decomposes into:
+--   (x <<< 32 >>> (s+32)) = x >>> s          (shift cancellation)
+--   (x >>> s).setWidth 32 = x.setWidth 32 >>> s  (truncation commutes with right shift)
+-- Both are pure BitVec facts — search Mathlib for existing lemmas.
+private lemma shl_shr_setWidth (v1 v2 : BitVec 64)
+    (hs : (v2.setWidth 5).toNat < 32) :
+    BitVec.extractLsb' 0 32 (v1 <<< 32 >>> ((v2.setWidth 5).toNat + 32)) =
+    BitVec.extractLsb' 0 32 v1 >>> BitVec.extractLsb' 0 5 (BitVec.extractLsb' 0 32 v2) := by
+  sorry
+
 -- The Jolt SRLW computation (SLLI 32, ORI 32, bitmask shift, VSEW) produces
 -- the same value as Sail's SRLW (extract 32 bits, logical right shift).
--- The SLLI+bitmask Jolt SRLW computation produces the same value as Sail's SRLW.
--- Jolt: left-shift by 32 (clear upper bits), right-shift by (rs2[4:0]+32) via bitmask.
--- Sail: extract lower 32, logical right shift by rs2[4:0].
--- These are equal: shifting up by 32 then down by (s+32) = extracting and shifting by s.
+-- Jolt: left-shift v1 by 32, right-shift by (rs2[4:0]+32) via bitmask.
+-- Sail: extract lower 32 bits of v1, logical right shift by rs2[4:0].
+-- Proof: by shl_shr_cancel (the <<< 32 cancels) then setWidth_shr_comm.
 private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
         ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) 31 0) =
     sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
       (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
-  -- Step 1: recover shift amount from bitmask. ctz(srlw_bitmask v2) = s + 32.
+  -- Step 1: recover shift amount. ctz(srlw_bitmask v2) = s + 32 where s = v2[4:0].
   rw [show ctz (srlw_bitmask v2) = (v2.setWidth 5).toNat + 32 from ctz_srlw_bitmask v2]
   -- Step 2: unfold Sail wrappers to plain BitVec.
   simp only [sign_extend, shift_bits_right, Sail.BitVec.signExtend, Sail.BitVec.toNatInt,
@@ -54,13 +67,13 @@ private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
              Nat.sub_zero, Nat.reduceAdd]
   -- Step 3: strip signExtend from both sides.
   congr 1
-  -- Step 4: bit-by-bit. (v1 <<< 32) >>> (s+32) at bit i = v1[i+s] if i+s < 32.
-  -- v1.setWidth 32 >>> s at bit i = v1[i+s] if i+s < 32. Same.
-  ext i hi
-  simp only [BitVec.getLsbD_extractLsb', BitVec.getLsbD_ushiftRight,
-             BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
-             BitVec.toNat_setWidth, Nat.sub_zero, Nat.reduceAdd]
-  sorry
+  -- Goal after congr 1:
+  --   extractLsb' 0 32 (v1 <<< 32 >>> (s + 32)) = extractLsb' 0 32 v1 >>> extractLsb' 0 5 (extractLsb' 0 32 v2)
+  -- which is: (v1 <<< 32 >>> (s+32)).setWidth 32 = v1.setWidth 32 >>> v2.setWidth 5
+  -- Apply the combined lemma.
+  have hs : (v2.setWidth 5).toNat < 32 := by
+    have := (v2.setWidth 5).isLt; norm_num at this; exact this
+  exact shl_shr_setWidth v1 v2 hs
 
 -- ============================================================================
 -- Factoring
