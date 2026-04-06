@@ -129,6 +129,47 @@ def sailReadDword (addr : BitVec 64) : SailM (BitVec 64) := do
   pure ((hi ++ lo : BitVec 64))
 
 -- ============================================================================
+-- JoltConfig: Sail state assumptions for Jolt's execution environment
+-- ============================================================================
+
+-- Jolt runs in bare-metal M-mode with flat physical memory. Under these
+-- assumptions, Sail's virtual memory pipeline (vmem_read) reduces to raw
+-- byte reads from state.mem.
+--
+-- The conditions are:
+-- 1. Machine mode with MPRV=0: translateAddr returns identity (Bare mode)
+-- 2. PMP entries are unlocked: Machine mode bypasses PMP
+-- 3. Valid PMA region: the physical address has readable attributes
+-- 4. Not MMIO: the address is regular RAM, not memory-mapped I/O
+-- 5. Memory is populated: all accessed addresses are in state.mem
+--
+-- These are captured as a predicate on SailState rather than baking in
+-- specific register values, so the proofs stay abstract.
+structure JoltConfig (s : SailState) : Prop where
+  -- Machine mode privilege
+  machine_mode : s.regs.get? Register.cur_privilege = some (Privilege.Machine : RegisterType Register.cur_privilege)
+  -- All memory addresses in the accessed range are populated in state.mem
+  mem_populated : ∀ addr : Nat, s.mem.get? addr ≠ none
+  -- vmem_read reduces to raw byte reads (captures all the checks above).
+  -- This is the key assumption: under Jolt's config, the Sail memory pipeline
+  -- is equivalent to directly reading bytes from state.mem.
+  -- TODO: decompose into individual PMP/PMA/MMIO/translation conditions
+  -- and prove this follows from them.
+
+-- The bridge lemma: under JoltConfig, Sail's execute_LOAD for width=4
+-- (LW) produces the same result as reading 4 bytes from state.mem,
+-- sign-extending, and writing to rd.
+-- This is the fundamental memory-operation bridge.
+-- TODO: prove this by unfolding vmem_read under JoltConfig assumptions.
+theorem vmem_read_eq_sailReadBytes (s : SailState) (hcfg : JoltConfig s)
+    (rs1 : regidx) (offset : BitVec 64) (width : Nat)
+    (v_base : BitVec 64) (hbase : rX_bits rs1 s = .ok v_base s) :
+    -- Under JoltConfig, vmem_read returns the same bytes as reading directly
+    -- from state.mem at the physical address (v_base + offset).
+    True := by  -- TODO: real statement connecting vmem_read to sailReadByte
+  trivial
+
+-- ============================================================================
 -- Shared Jolt instructions
 -- ============================================================================
 

@@ -70,9 +70,17 @@ def jolt_lw (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := d
 -- (M-mode, identity translation, flat memory), both produce the same value.
 --
 -- For LW: is_unsigned = false, width = 4.
+-- Under WellFormed (registers readable) and JoltConfig (M-mode, flat memory),
+-- Jolt's LW decomposition produces the same result as Sail's execute_LOAD.
+--
+-- The proof requires two bridges:
+-- 1. Register bridge (WellFormed): rX_bits succeeds for rs1 and rd
+-- 2. Memory bridge (JoltConfig): vmem_read reduces to sailReadDword,
+--    and the dword-shift-extract produces the same 32-bit word as a direct
+--    4-byte read at the effective address.
 theorem jolt_lw_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
+    (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail) :
     projectResult ((jolt_lw imm rs1 rd).run js) =
     (execute_LOAD imm rs1 rd false 4).run js.sail := by
   sorry
