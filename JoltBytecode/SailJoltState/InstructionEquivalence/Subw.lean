@@ -12,6 +12,19 @@ noncomputable section
 # SUBW: Jolt SUB + VirtualSignExtendWord = Sail SUBW
 -/
 
+-- Truncating to 32 bits distributes over subtraction.
+-- This is the mathematical core of the SUBW proof: Jolt computes
+-- v1 - v2 at 64 bits then truncates, while Sail truncates then subtracts.
+-- Both give the same 32-bit result because subtraction mod 2^32 doesn't
+-- depend on the upper bits.
+theorem extractLsb_sub (a b : BitVec 64) :
+    Sail.BitVec.extractLsb (a - b) 31 0 =
+    Sail.BitVec.extractLsb a 31 0 - Sail.BitVec.extractLsb b 31 0 := by
+  simp only [Sail.BitVec.extractLsb, BitVec.extractLsb]
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_sub]
+  omega
+
 -- Factored Sail SUBW: read, read, compute, write.
 theorem execute_RTYPEW_SUBW_eq_factored (rs2 rs1 rd : regidx) :
     execute_RTYPEW rs2 rs1 rd ropw.SUBW = (do

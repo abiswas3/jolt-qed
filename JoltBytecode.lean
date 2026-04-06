@@ -122,15 +122,15 @@ import JoltBytecode.SailJoltState.Common                       -- Shared infra (
 import JoltBytecode.SailJoltState.RegisterLemmas               -- wX_rX_roundtrip (no sorry)
 
 -- Format R (register-register) W-variants
-import JoltBytecode.SailJoltState.Addw                         -- DONE: ADDW (requires rd ≠ x0)
-import JoltBytecode.SailJoltState.Subw                         -- DONE: SUBW (requires rd ≠ x0)
+import JoltBytecode.SailJoltState.InstructionEquivalence.Addw                         -- DONE: ADDW (requires rd ≠ x0)
+import JoltBytecode.SailJoltState.InstructionEquivalence.Subw                         -- DONE: SUBW (requires rd ≠ x0)
 
 -- Format I (register-immediate)
-import JoltBytecode.SailJoltState.Addiw                        -- DONE: ADDIW (requires rd ≠ x0)
-import JoltBytecode.SailJoltState.Srai                         -- DONE: SRAI (clean, no sorry)
+import JoltBytecode.SailJoltState.InstructionEquivalence.Addiw                        -- DONE: ADDIW (requires rd ≠ x0)
+import JoltBytecode.SailJoltState.InstructionEquivalence.Srai                         -- DONE: SRAI (clean, no sorry)
 
 -- Format I W-variants (shift-immediate word)
-import JoltBytecode.SailJoltState.Sraiw                        -- DONE: SRAIW (requires rd ≠ x0)
+import JoltBytecode.SailJoltState.InstructionEquivalence.Sraiw                        -- DONE: SRAIW (requires rd ≠ x0)
 --
 -- TODO: SLLI, SRLI — were clean (trivial via liftSail_project), deleted, need recreation
 -- TODO: SLLIW, SRLIW — need shift-truncation BitVec lemmas, deleted, need recreation
