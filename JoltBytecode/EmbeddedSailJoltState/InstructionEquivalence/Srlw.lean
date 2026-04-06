@@ -1,54 +1,120 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
+import JoltBytecode.BytecodeExpansions.Instructions.Srlw
+
+set_option maxHeartbeats 1_000_000_000
+set_option linter.unusedVariables false
+set_option mvcgen.warning false
 
 open Sail PreSail LeanRV64D.Functions
+open Std.Do
+
+set_option autoImplicit true
 
 noncomputable section
 
-/-! ## SRLW: Jolt's 64-bit SRL then sign-extend-word = Sail's SRLW
+/-! ## SRLW: Jolt's SLLI+bitmask+VirtualSRL+VSEW = Sail SRLW
 
-Jolt decomposes SRLW as:
-1. SRL rd, rs1, rs2  — 64-bit logical right shift (shift amount = rs2[5:0])
-2. VSEW rd           — sign-extend lower 32 bits of rd
+Jolt decomposes SRLW into (from BytecodeExpansions/Srlw.lean):
+1. SLLI v_rs1, rs1, 32          — left-shift rs1 by 32 (clears upper 32 bits)
+2. ORI v_bitmask, rs2, 32       — set bit 5 of shift amount (shift + 32)
+3. VirtualShiftRightBitmask      — compute bitmask from (shift + 32)
+4. VirtualSRL rd, v_rs1, v_bitmask — logical right shift via ctz(bitmask)
+5. VirtualSignExtendWord rd, rd   — sign-extend lower 32 bits
+
+The SLLI 32 pushes the lower 32 bits of rs1 to the upper half.
+ORI 32 makes the shift amount (rs2[4:0] + 32). Right-shifting by
+(s+32) after left-shifting by 32 extracts the lower 32 bits shifted
+right by s — which is exactly what SRLW does.
 
 Sail's SRLW extracts lower 32 bits of rs1 and rs2, logically right-shifts
 the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -/
 
--- Factoring: execute_RTYPE SRL reads rs1, rs2, right-shifts v1 by extractLsb(v2, 5, 0).
-theorem execute_RTYPE_SRL_factored (rs2 rs1 rd : regidx) :
-    execute_RTYPE rs2 rs1 rd rop.SRL = (do
-      let v1 ← rX_bits rs1; let v2 ← rX_bits rs2
-      wX_bits rd (shift_bits_right v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
-      pure RETIRE_SUCCESS) := by
-  funext s
-  simp only [execute_RTYPE, LeanRV64D.Functions.log2_xlen, bind, EStateM.bind, pure, EStateM.pure]
-  cases rX_bits rs1 s <;> simp only []
-  rename_i v1 s1
-  cases rX_bits rs2 s1 <;> simp only []
+-- ============================================================================
+-- Bridge lemma
+-- ============================================================================
 
--- Math bridge: truncating to 32 bits after a 64-bit logical right shift equals
--- right-shifting the truncated values with a truncated shift amount.
-theorem extractLsb_srl (a b : BitVec 64) :
-    Sail.BitVec.extractLsb
-      (shift_bits_right a (Sail.BitVec.extractLsb b (LeanRV64D.Functions.log2_xlen -i 1) 0)) 31 0 =
-    shift_bits_right (Sail.BitVec.extractLsb a 31 0)
-      (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb b 31 0) 4 0) := by
+-- The Jolt SRLW computation (SLLI 32, ORI 32, bitmask shift, VSEW) produces
+-- the same value as Sail's SRLW (extract 32 bits, logical right shift).
+private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
+    sign_extend (m := 64)
+      (Sail.BitVec.extractLsb
+        ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) 31 0) =
+    sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
+      (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
   sorry
 
--- Jolt's SRLW: 64-bit SRL then sign-extend lower 32 bits.
+-- ============================================================================
+-- Factoring
+-- ============================================================================
+
+-- Sail's SRLW reads rs1, rs2, extracts lower 32 bits, logically right-shifts
+-- by rs2[4:0], sign-extends, writes to rd.
+theorem execute_RTYPEW_SRLW_eq_factored (rs2 rs1 rd : regidx) :
+    execute_RTYPEW rs2 rs1 rd ropw.SRLW = (do
+      let v1 ← rX_bits rs1; let v2 ← rX_bits rs2
+      wX_bits rd (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
+        (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)))
+      pure RETIRE_SUCCESS) := by
+  simp [execute_RTYPEW, bind_pure_comp, pure_bind, bind_assoc]
+
+-- ============================================================================
+-- Jolt SRLW definition (faithful to BytecodeExpansions/Srlw.lean)
+-- ============================================================================
+
+-- Jolt's SRLW decomposition: SLLI 32 + bitmask + VirtualSRL + VSEW.
+-- Step 1: Left-shift rs1 by 32 (pushes lower 32 bits to upper half).
+-- Step 2: Compute bitmask from ORI(rs2, 32) (shift amount + 32).
+-- Step 3: Logical right shift by ctz(bitmask), write to rd.
+-- Step 4: Sign-extend lower 32 bits (VSEW).
 def jolt_srlw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  let _ ← liftSail (execute_RTYPE rs2 rs1 rd rop.SRL)
+  -- Step 1: SLLI rs1, 32 → virtual register 0
+  let v1 ← liftSail (rX_bits rs1)
+  writeVReg 0 (v1 <<< 32)
+  -- Step 2: compute bitmask from rs2 (ORI 32 + VirtualShiftRightBitmask)
+  let v2 ← liftSail (rX_bits rs2)
+  let v_bitmask := srlw_bitmask v2
+  -- Step 3: VirtualSRL — logical right shift via ctz(bitmask), write to rd
+  let v_rs1 ← readVReg 0
+  liftSail (wX_bits rd (v_rs1 >>> ctz v_bitmask))
+  -- Step 4: VirtualSignExtendWord rd
   jolt_virtual_sign_extend_word rd
   pure RETIRE_SUCCESS
 
--- Running Jolt's SRLW and projecting equals running Sail's SRLW.
+-- ============================================================================
+-- Main theorem: Jolt SRLW = Sail SRLW
+-- ============================================================================
+
+-- Running Jolt's SRLW decomposition and projecting onto Sail state
+-- equals running Sail's native SRLW instruction.
 theorem jolt_srlw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) :
     projectResult ((jolt_srlw rs2 rs1 rd).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SRLW).run js.sail := by
-  exact jolt_rtype_w_eq_sail rop.SRL ropw.SRLW
-    (fun v1 v2 => shift_bits_right v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
-    execute_RTYPE_SRL_factored
-    (by intro a b; exact extractLsb_srl a b) rs2 rs1 rd hrd js hwf
+  rw [execute_RTYPEW_SRLW_eq_factored]
+  unfold jolt_srlw jolt_virtual_sign_extend_word liftSail projectResult
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+             writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
+             EStateM.modifyGet, get, MonadStateOf.get, EStateM.get]
+  -- Under WellFormed, both register reads succeed.
+  obtain ⟨v1, hok1⟩ := hwf rs1
+  obtain ⟨v2, hok2⟩ := hwf rs2
+  simp only [hok1, hok2]
+  -- Reduce vreg operations
+  dsimp only [getThe, MonadStateOf.get, EStateM.get]
+  simp (config := { decide := true }) only [ite_true, ite_false, project]
+  -- Both sides write to rd then VSEW.
+  obtain ⟨s3, hw1⟩ := wX_shape rd (v1 <<< 32 >>> ctz (srlw_bitmask v2)) js.sail
+  simp only [hw1]
+  have hrx := wX_rX_roundtrip rd _ js.sail s3 hrd hw1
+  simp only [hrx]
+  -- Apply the bridge: SLLI+bitmask+shift = SRLW
+  rw [srlw_shift_eq v1 v2]
+  -- Collapse double write
+  obtain ⟨s4, hw2⟩ := wX_shape rd
+    (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
+      (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0))) s3
+  have hc := wX_wX_collapse rd _ _ js.sail s3 s4 hw1 hw2
+  simp [hw2, hc]
 
 end
