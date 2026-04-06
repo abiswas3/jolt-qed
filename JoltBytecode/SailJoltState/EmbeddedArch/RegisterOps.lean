@@ -1,12 +1,10 @@
-import LeanRV64D
+import JoltBytecode.SailJoltState.EmbeddedArch.Defs
 
 /-!
 # Register operation lemmas (independent of SailJoltState architecture)
 
 These lemmas are about SailState operations (wX_bits, rX_bits).
 They don't reference SailJoltState at all.
-Copied from ../RegisterOps.lean and ../RegisterLemmas.lean to avoid
-import conflicts with the old SailJoltState definition.
 -/
 
 set_option maxHeartbeats 1_000_000_000
@@ -19,8 +17,6 @@ open Sail PreSail LeanRV64D.Functions
 set_option autoImplicit true
 
 noncomputable section
-
-abbrev SailState := SequentialState RegisterType trivialChoiceSource
 
 -- ============================================================================
 -- reg_cases tactic
@@ -191,6 +187,15 @@ theorem wX_wX_collapse (r : regidx) (v1 v2 : BitVec 64) (s s1 s2 : SailState)
 -- wX_rX_roundtrip (via rX_after_wX)
 -- ============================================================================
 
+-- readReg after insert on the same key returns the inserted value.
+theorem readReg_insert_self (reg : Register) (v : RegisterType reg) (s : SailState) :
+    (PreSail.readReg reg : SailM (RegisterType reg))
+      { s with regs := s.regs.insert reg v } =
+    .ok v { s with regs := s.regs.insert reg v } := by
+  unfold PreSail.readReg
+  simp only [bind, get, getThe, EStateM.bind, EStateM.get, MonadStateOf.get,
+             Std.ExtDHashMap.get?_insert_self, pure, EStateM.pure]
+
 theorem rX_after_wX (r : regidx) (v : BitVec 64) (s : SailState)
     (hr : r ≠ regidx.Regidx 0) :
     rX_bits r { s with regs := wX_update_regs r v s.regs } =
@@ -199,6 +204,7 @@ theorem rX_after_wX (r : regidx) (v : BitVec 64) (s : SailState)
   simp only [Sail.BitVec.toNatInt, Int.ofNat_eq_natCast, Int.toNat_natCast, bind, pure]
   obtain ⟨i⟩ := r
   have hne : i ≠ 0 := fun h => hr (by subst h; rfl)
+  have hi : i.toNat < 32 := i.isLt
   have hcases : i.toNat = 1 ∨ i.toNat = 2 ∨ i.toNat = 3 ∨
     i.toNat = 4 ∨ i.toNat = 5 ∨ i.toNat = 6 ∨ i.toNat = 7 ∨
     i.toNat = 8 ∨ i.toNat = 9 ∨ i.toNat = 10 ∨ i.toNat = 11 ∨
@@ -212,16 +218,7 @@ theorem rX_after_wX (r : regidx) (v : BitVec 64) (s : SailState)
   rcases hcases with h | h | h | h | h | h | h | h | h | h | h | h | h | h | h | h |
                      h | h | h | h | h | h | h | h | h | h | h | h | h | h | h <;> (
     simp only [h]
-    simp only [readReg_insert_self, bind, EStateM.bind, pure, EStateM.pure])
-
--- readReg after insert on the same key returns the inserted value.
-theorem readReg_insert_self (reg : Register) (v : RegisterType reg) (s : SailState) :
-    (PreSail.readReg reg : SailM (RegisterType reg))
-      { s with regs := s.regs.insert reg v } =
-    .ok v { s with regs := s.regs.insert reg v } := by
-  unfold PreSail.readReg
-  simp only [bind, get, getThe, EStateM.bind, EStateM.get, MonadStateOf.get,
-             Std.ExtDHashMap.get?_insert_self, pure, EStateM.pure]
+    simp only [readReg_insert_self, EStateM.bind, EStateM.pure])
 
 theorem wX_rX_roundtrip (r : regidx) (v : BitVec 64) (s s' : SailState)
     (hr : r ≠ regidx.Regidx 0)
@@ -243,5 +240,32 @@ theorem extractLsb_add (a b : BitVec 64) :
   simp only [Sail.BitVec.extractLsb, BitVec.extractLsb]
   apply BitVec.eq_of_toNat_eq
   simp [BitVec.toNat_add, Nat.add_mod]
+
+-- ============================================================================
+-- stateAfterWrite: pure model of a register write's effect on SailState
+-- ============================================================================
+
+noncomputable def stateAfterWrite (s : SailState) (rd : regidx) (val : BitVec 64) : SailState :=
+  { s with regs := wX_update_regs rd val s.regs }
+
+theorem stateAfterWrite_stateAfterWrite (rd : regidx) (v1 v2 : BitVec 64) (s : SailState) :
+    stateAfterWrite (stateAfterWrite s rd v1) rd v2 = stateAfterWrite s rd v2 := by
+  unfold stateAfterWrite
+  simp only [wX_update_regs_idem]
+
+theorem rX_after_stateAfterWrite (rd : regidx) (v : BitVec 64) (s : SailState)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    rX_bits rd (stateAfterWrite s rd v) = .ok v (stateAfterWrite s rd v) := by
+  unfold stateAfterWrite
+  exact rX_after_wX rd v s hrd
+
+theorem wX_bits_eq_stateAfterWrite (rd : regidx) (v : BitVec 64) (s s' : SailState)
+    (hw : wX_bits rd v s = .ok () s') :
+    s' = stateAfterWrite s rd v := by
+  unfold stateAfterWrite
+  have ⟨s'', h_ok, h_regs⟩ := wX_regs_spec rd v s
+  have ⟨_, heq⟩ := eStateM_deterministic hw h_ok; subst heq
+  have hmod := wX_eq_modify_regs rd v s s' hw
+  rw [hmod, h_regs]
 
 end
