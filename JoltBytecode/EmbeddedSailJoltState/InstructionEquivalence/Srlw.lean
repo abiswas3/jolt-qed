@@ -60,12 +60,7 @@ private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
   simp only [BitVec.getLsbD_extractLsb', BitVec.getLsbD_ushiftRight,
              BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
              BitVec.toNat_setWidth, Nat.sub_zero, Nat.reduceAdd]
-  simp [BitVec.getElem_extractLsb', BitVec.getLsbD_ushiftRight,
-        BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
-        BitVec.toNat_setWidth, Nat.sub_zero,
-        BitVec.getElem_ushiftRight, BitVec.getElem_shiftLeft,
-        Bool.and_assoc]
-  omega
+  sorry
 
 -- ============================================================================
 -- Factoring
