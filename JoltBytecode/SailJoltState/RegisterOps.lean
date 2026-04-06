@@ -69,18 +69,16 @@ theorem readReg_pure (reg : Register) (s : SailState) (v : RegisterType reg) (s'
 -- equals the input state. Each non-zero register branch calls readReg
 -- (which doesn't change state by readReg_pure). Register 0 returns
 -- pure zero_reg (also doesn't change state).
-theorem rX_bits_pure (r : regidx) (hr : r ≠ regidx.Regidx 0)
+theorem rX_bits_pure (r : regidx)
     (s : SailState) (v : BitVec 64) (s' : SailState)
     (h : rX_bits r s = .ok v s') : s' = s := by
   unfold rX_bits rX regval_from_reg at h
   simp only [Sail.BitVec.toNatInt, Int.ofNat_eq_natCast, Int.toNat_natCast,
              bind, EStateM.bind, pure, EStateM.pure] at h
+  -- Case-split on the register index. Use the manual 32-way split.
   obtain ⟨i⟩ := r
-  have hne : i ≠ 0 := fun hi => hr (by subst hi; rfl)
   have hi : i.toNat < 32 := i.isLt
-  have hne0 : i.toNat ≠ 0 := by
-    intro h0; apply hr; exact congrArg regidx.Regidx (BitVec.eq_of_toNat_eq h0)
-  have hcases : i.toNat = 1 ∨ i.toNat = 2 ∨ i.toNat = 3 ∨
+  have hcases : i.toNat = 0 ∨ i.toNat = 1 ∨ i.toNat = 2 ∨ i.toNat = 3 ∨
     i.toNat = 4 ∨ i.toNat = 5 ∨ i.toNat = 6 ∨ i.toNat = 7 ∨
     i.toNat = 8 ∨ i.toNat = 9 ∨ i.toNat = 10 ∨ i.toNat = 11 ∨
     i.toNat = 12 ∨ i.toNat = 13 ∨ i.toNat = 14 ∨ i.toNat = 15 ∨
@@ -89,8 +87,10 @@ theorem rX_bits_pure (r : regidx) (hr : r ≠ regidx.Regidx 0)
     i.toNat = 24 ∨ i.toNat = 25 ∨ i.toNat = 26 ∨ i.toNat = 27 ∨
     i.toNat = 28 ∨ i.toNat = 29 ∨ i.toNat = 30 ∨ i.toNat = 31 := by omega
   rcases hcases with h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' |
-                      h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h'
-  -- Each case: substitute h' to pick the register, generalize readReg, apply readReg_pure.
+                      h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h' | h'
+  -- r=0: pure zero_reg, h says .ok zero_reg s = .ok v s'. Trivially s' = s.
+  · simp only [h'] at h; cases h; rfl
+  -- r=1..31: each has readReg. Generalize and apply readReg_pure.
   all_goals (
     simp only [h'] at h
     generalize hread : Sail.readReg _ s = result at h
