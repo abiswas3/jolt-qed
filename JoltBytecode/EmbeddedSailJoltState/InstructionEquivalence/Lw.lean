@@ -83,6 +83,23 @@ theorem jolt_lw_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail) :
     projectResult ((jolt_lw imm rs1 rd).run js) =
     (execute_LOAD imm rs1 rd false 4).run js.sail := by
+  -- Proof sketch (two bridges needed):
+  --
+  -- Bridge 1 (memory): execute_LOAD_LW_factored rewrites the Sail side from
+  --   execute_LOAD → vmem_read pipeline
+  -- to
+  --   rX_bits rs1 → sailReadWord(addr) → sign_extend → wX_bits rd
+  -- This uses JoltConfig to collapse the vmem_read pipeline.
+  --
+  -- Bridge 2 (dword-extract): the Jolt side loads a 64-bit dword and shifts:
+  --   sailReadDword(dword_addr) >>> shift
+  -- The math shows this produces the same 32-bit word as:
+  --   sailReadWord(addr)
+  -- This is the same identity as read_word_eq_dword_extract in BytecodeExpansions.
+  --
+  -- After both bridges, both sides compute:
+  --   read rs1 → compute addr → read 4 bytes → sign_extend → write rd
+  -- and the mvcgen/register plumbing matches.
   sorry
 
 end

@@ -156,18 +156,43 @@ structure JoltConfig (s : SailState) : Prop where
   -- TODO: decompose into individual PMP/PMA/MMIO/translation conditions
   -- and prove this follows from them.
 
--- The bridge lemma: under JoltConfig, Sail's execute_LOAD for width=4
--- (LW) produces the same result as reading 4 bytes from state.mem,
--- sign-extending, and writing to rd.
--- This is the fundamental memory-operation bridge.
--- TODO: prove this by unfolding vmem_read under JoltConfig assumptions.
-theorem vmem_read_eq_sailReadBytes (s : SailState) (hcfg : JoltConfig s)
-    (rs1 : regidx) (offset : BitVec 64) (width : Nat)
-    (v_base : BitVec 64) (hbase : rX_bits rs1 s = .ok v_base s) :
-    -- Under JoltConfig, vmem_read returns the same bytes as reading directly
-    -- from state.mem at the physical address (v_base + offset).
-    True := by  -- TODO: real statement connecting vmem_read to sailReadByte
-  trivial
+-- The bridge lemma: under JoltConfig, Sail's execute_LOAD for LW (width=4,
+-- signed) is equivalent to: read rs1, compute address, read 4 bytes raw
+-- from state.mem via sailReadWord, sign-extend to 64 bits, write to rd.
+--
+-- This collapses the entire vmem_read pipeline (address translation, PMP,
+-- PMA, MMIO checks) down to a raw byte read. Each check passes trivially
+-- under JoltConfig:
+--   ext_data_get_addr: always succeeds (just computes vaddr = rX[rs1] + offset)
+--   misalignment: passes (plat_enable_misaligned_access = true)
+--   translateAddr: identity (Machine mode → Bare translation)
+--   pmpCheck: Machine mode bypasses
+--   pmaCheck: JoltConfig guarantees valid readable region
+--   MMIO: JoltConfig guarantees regular RAM
+--   sail_mem_read: reads from state.mem = same as sailReadByte
+--
+-- TODO: prove by unfolding vmem_read through 6 layers.
+theorem execute_LOAD_LW_factored (imm : BitVec 12) (rs1 rd : regidx)
+    (s : SailState) (hcfg : JoltConfig s) :
+    execute_LOAD imm rs1 rd false 4 s = (do
+      let v_base ← rX_bits rs1
+      let addr := v_base + sign_extend (m := 64) imm
+      let word ← sailReadWord addr
+      wX_bits rd (sign_extend (m := 64) word)
+      pure RETIRE_SUCCESS) s := by
+  -- The proof requires unfolding execute_LOAD → vmem_read → vmem_read_addr
+  -- → translateAddr → mem_read → checked_mem_read → read_ram → sail_mem_read,
+  -- showing each check (alignment, translation, PMP, PMA, MMIO) passes under
+  -- JoltConfig, and the final sail_mem_read = sailReadByte sequence.
+  --
+  -- Partial progress (layers 1-3 unfold cleanly):
+  --   Layer 1: execute_LOAD → vmem_read(rs1, offset, 4, Load Data, F, F, F)
+  --   Layer 2: vmem_read → ext_data_get_addr (trivial) → vmem_read_addr
+  --   Layer 3: misalignment passes (plat_enable_misaligned_access = true)
+  --   Layer 4: translateAddr → Bare (Machine mode from JoltConfig) → paddr = vaddr
+  --   Layer 5: checked_mem_read → pmpCheck (Machine bypasses) → pmaCheck → not MMIO
+  --   Layer 6: read_ram → sail_mem_read → readByte sequence = sailReadByte
+  sorry
 
 -- ============================================================================
 -- Shared Jolt instructions
