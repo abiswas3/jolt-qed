@@ -36,6 +36,10 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 
 -- The Jolt SRLW computation (SLLI 32, ORI 32, bitmask shift, VSEW) produces
 -- the same value as Sail's SRLW (extract 32 bits, logical right shift).
+-- The SLLI+bitmask Jolt SRLW computation produces the same value as Sail's SRLW.
+-- Jolt: left-shift by 32 (clear upper bits), right-shift by (rs2[4:0]+32) via bitmask.
+-- Sail: extract lower 32, logical right shift by rs2[4:0].
+-- These are equal: shifting up by 32 then down by (s+32) = extracting and shifting by s.
 private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
@@ -56,7 +60,7 @@ theorem execute_RTYPEW_SRLW_eq_factored (rs2 rs1 rd : regidx) :
       wX_bits rd (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
         (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)))
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPEW, bind_pure_comp, pure_bind, bind_assoc]
+  simp [execute_RTYPEW, bind_pure_comp, pure_bind]
 
 -- ============================================================================
 -- Jolt SRLW definition (faithful to BytecodeExpansions/Srlw.lean)

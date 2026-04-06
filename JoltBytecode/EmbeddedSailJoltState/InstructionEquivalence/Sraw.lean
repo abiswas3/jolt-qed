@@ -33,6 +33,31 @@ by rs2[4:0], sign-extends to 64, writes to rd.
 -- Sign-extend, mask shift, shift via bitmask, sign-extend =
 -- direct 32-bit arithmetic right shift then sign-extend.
 -- Uses sraw_eq_srawJolt from BytecodeExpansions.
+-- LHS helper: the Jolt 5-step value (sign-extend, mask, shift via bitmask,
+-- sign-extend) equals srawJolt (the pure-function decomposition).
+private lemma five_step_eq_srawJolt (v1 v2 : BitVec 64) :
+    sign_extend (m := 64)
+      (Sail.BitVec.extractLsb
+        (sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0) >>>
+          ctz (sraw_bitmask (v2 &&& 0x1f#64))) 31 0) =
+    srawJolt v1 v2 := by
+  unfold srawJolt Jolt.virtualSignExtendWord sign_extend Riscv.andi
+  simp [Sail.BitVec.signExtend, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.extractLsb']
+  congr 2
+
+-- RHS helper: Sail's SRAW value (extract 32, arith shift, sign-extend)
+-- equals Riscv.sraw (the reference semantics).
+private lemma sail_sraw_eq_riscv (v1 v2 : BitVec 64) :
+    sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v1 31 0)
+      (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) =
+    Riscv.sraw v1 v2 := by
+  unfold Riscv.sraw sign_extend shift_bits_right_arith
+  simp [Sail.BitVec.signExtend, Sail.BitVec.toNatInt, Sail.BitVec.extractLsb,
+        BitVec.extractLsb, BitVec.extractLsb']
+  congr 2
+
+-- The 5-step Jolt SRAW computation produces the same value as Sail's SRAW.
+-- Chains: LHS = srawJolt = Riscv.sraw = RHS.
 private lemma sraw_five_step_value (v1 v2 : BitVec 64) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
@@ -40,7 +65,7 @@ private lemma sraw_five_step_value (v1 v2 : BitVec 64) :
           ctz (sraw_bitmask (v2 &&& 0x1f#64))) 31 0) =
     sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v1 31 0)
       (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
-  sorry
+  rw [five_step_eq_srawJolt, sail_sraw_eq_riscv, sraw_eq_srawJolt]
 
 -- ============================================================================
 -- Factoring

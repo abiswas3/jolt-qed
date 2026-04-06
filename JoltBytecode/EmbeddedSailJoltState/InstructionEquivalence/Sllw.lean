@@ -33,11 +33,32 @@ Sail's SLLW extracts lower 32 bits of rs1 and rs2, left-shifts the
 -- Jolt computes rs1 * 2^(rs2[4:0]), truncates to 32, sign-extends.
 -- Sail computes (rs1[31:0]) << rs2[4:0], sign-extends.
 -- These are equal: multiplying by 2^s and taking lower 32 bits = left shift mod 2^32.
+-- LHS helper: Jolt's MUL-based computation equals sllwJolt.
+private lemma mul_eq_sllwJolt (v1 v2 : BitVec 64) :
+    sign_extend (m := 64) (Sail.BitVec.extractLsb (v1 * BitVec.ofNat 64 (2 ^ (v2.setWidth 5).toNat)) 31 0) =
+    sllwJolt v1 v2 := by
+  unfold sllwJolt Jolt.virtualSignExtendWord Jolt.virtualPow2W Riscv.mul sign_extend
+  simp [Sail.BitVec.signExtend, Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.extractLsb']
+  congr 1; apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_setWidth, BitVec.toNat_mul, BitVec.toNat_ofNat]
+
+-- RHS helper: Sail's SLLW value equals Riscv.sllw.
+private lemma sail_sllw_eq_riscv (v1 v2 : BitVec 64) :
+    sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v1 31 0)
+      (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) =
+    Riscv.sllw v1 v2 := by
+  unfold Riscv.sllw sign_extend shift_bits_left
+  simp [Sail.BitVec.signExtend, Sail.BitVec.extractLsb,
+        BitVec.extractLsb, BitVec.extractLsb']
+
+-- The MUL-based Jolt SLLW computation produces the same value as Sail's SLLW.
+-- Chains: LHS = sllwJolt = Riscv.sllw = RHS.
+-- Note: sllw_eq_sllwJolt depends on sll_32_eq_mul_trunc (sorry in BytecodeExpansions).
 private lemma sllw_mul_eq_shift (v1 v2 : BitVec 64) :
     sign_extend (m := 64) (Sail.BitVec.extractLsb (v1 * BitVec.ofNat 64 (2 ^ (v2.setWidth 5).toNat)) 31 0) =
     sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v1 31 0)
       (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
-  sorry
+  rw [mul_eq_sllwJolt, sail_sllw_eq_riscv, sllw_eq_sllwJolt]
 
 -- ============================================================================
 -- Factoring
@@ -51,7 +72,7 @@ theorem execute_RTYPEW_SLLW_eq_factored (rs2 rs1 rd : regidx) :
       wX_bits rd (sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v1 31 0)
         (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)))
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPEW, bind_pure_comp, pure_bind, bind_assoc]
+  simp [execute_RTYPEW, bind_pure_comp, pure_bind]
 
 -- ============================================================================
 -- Jolt SLLW definition (faithful to BytecodeExpansions/Sllw.lean)
@@ -88,14 +109,14 @@ theorem jolt_sllw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
   unfold jolt_sllw jolt_virtual_sign_extend_word liftSail projectResult
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
              writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
-             EStateM.modifyGet, get, MonadStateOf.get, EStateM.get]
+             EStateM.modifyGet, get]
   -- Under WellFormed, both register reads succeed.
   obtain ⟨v1, hok1⟩ := hwf rs1
   obtain ⟨v2, hok2⟩ := hwf rs2
   simp only [hok1, hok2]
   -- Reduce vreg operations
   dsimp only [getThe, MonadStateOf.get, EStateM.get]
-  simp (config := { decide := true }) only [ite_true, ite_false, project]
+  simp (config := { decide := true }) only [ite_true, project]
   -- Both sides write to rd then VSEW. Use wX_shape + wX_rX_roundtrip + wX_wX_collapse.
   obtain ⟨s3, hw1⟩ := wX_shape rd (v1 * BitVec.ofNat 64 (2 ^ (v2.setWidth 5).toNat)) js.sail
   simp only [hw1]
