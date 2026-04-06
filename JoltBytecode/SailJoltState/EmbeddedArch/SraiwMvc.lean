@@ -144,10 +144,17 @@ theorem jolt_sraiw_concrete (shamt : BitVec 5) (rs1 rd : regidx)
   generalize hrun : EStateM.run _ js = x
   apply EStateM.of_wp_run_eq hrun
   mvcgen
-  -- VC1: rd readable after step 2 write (follows from rX_after_stateAfterWrite)
-  -- VC2: connect 5-step chain to final result (mechanical plumbing)
-  -- TODO: close these VCs (mvcgen auto-generated variable names make manual proof brittle)
-  all_goals sorry
+  -- VC1: rd is readable after step 2 wrote to it.
+  -- simp_all propagates state equalities from steps 1-4 to normalize s✝.sail,
+  -- then rX_after_stateAfterWrite closes the goal.
+  · simp_all only [and_imp]
+    exact ⟨_, rX_after_stateAfterWrite rd _ _ hrd⟩
+  -- VC2: connect the 5-step chain to the existential conclusion.
+  -- simp_all normalizes all intermediate states, then we provide witnesses.
+  · -- Propagate all state equalities, collapse double writes, resolve reads-after-writes.
+    -- simp_all chains hypotheses (s✝¹.sail = stateAfterWrite ...) as rewrites.
+    simp_all [stateAfterWrite_stateAfterWrite, rX_after_stateAfterWrite _ _ _ hrd,
+              EStateM.Result.ok.injEq, true_and]
 
 -- ============================================================================
 -- Main theorem: Jolt SRAIW = Sail SRAIW
