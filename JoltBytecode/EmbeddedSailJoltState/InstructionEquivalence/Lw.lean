@@ -58,48 +58,50 @@ def jolt_lw (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := d
   pure RETIRE_SUCCESS
 
 -- ============================================================================
--- Main theorem statement: Jolt LW = Sail LW
+-- Main theorem: Jolt LW = Sail LW
 -- ============================================================================
 
 -- Running Jolt's LW decomposition and projecting onto Sail state produces
 -- exactly the same result as running Sail's native LW instruction.
---
--- The key bridge: Jolt loads a dword from the dword-aligned address and
--- shifts to extract the word. Sail's execute_LOAD with width=4 reads
--- the word directly via vmem_read. Under Jolt's execution assumptions
--- (M-mode, identity translation, flat memory), both produce the same value.
---
--- For LW: is_unsigned = false, width = 4.
--- Under WellFormed (registers readable) and JoltConfig (M-mode, flat memory),
--- Jolt's LW decomposition produces the same result as Sail's execute_LOAD.
---
--- The proof requires two bridges:
--- 1. Register bridge (WellFormed): rX_bits succeeds for rs1 and rd
--- 2. Memory bridge (JoltConfig): vmem_read reduces to sailReadDword,
---    and the dword-shift-extract produces the same 32-bit word as a direct
---    4-byte read at the effective address.
 theorem jolt_lw_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail) :
     projectResult ((jolt_lw imm rs1 rd).run js) =
     (execute_LOAD imm rs1 rd false 4).run js.sail := by
-  -- Proof sketch (two bridges needed):
-  --
-  -- Bridge 1 (memory): execute_LOAD_LW_factored rewrites the Sail side from
-  --   execute_LOAD → vmem_read pipeline
-  -- to
-  --   rX_bits rs1 → sailReadWord(addr) → sign_extend → wX_bits rd
-  -- This uses JoltConfig to collapse the vmem_read pipeline.
-  --
-  -- Bridge 2 (dword-extract): the Jolt side loads a 64-bit dword and shifts:
-  --   sailReadDword(dword_addr) >>> shift
-  -- The math shows this produces the same 32-bit word as:
-  --   sailReadWord(addr)
-  -- This is the same identity as read_word_eq_dword_extract in BytecodeExpansions.
-  --
-  -- After both bridges, both sides compute:
-  --   read rs1 → compute addr → read 4 bytes → sign_extend → write rd
-  -- and the mvcgen/register plumbing matches.
-  sorry
+  -- Sail side: use bridge to factor execute_LOAD into sailReadWord + wX_bits.
+  have h_sail := execute_LOAD_LW_factored imm rs1 rd js.sail hcfg
+  rw [show (execute_LOAD imm rs1 rd false 4).run js.sail =
+    (execute_LOAD imm rs1 rd false 4) js.sail from rfl]
+  rw [h_sail]
+  -- Now both sides are SailM computations starting with rX_bits rs1.
+  -- Jolt side: unfold jolt_lw to expose the do block.
+  unfold jolt_lw projectResult liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+             writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
+             EStateM.modifyGet, get, MonadStateOf.get, EStateM.get]
+  -- Both sides start with rX_bits rs1 js.sail.
+  -- Case-split on whether the register read succeeds.
+  cases hrx : rX_bits rs1 js.sail with
+  | error e s => simp [hrx]
+  | ok base s =>
+    have hs := rX_bits_pure rs1 js.sail base s hrx; subst hs
+    simp only [hrx]
+    -- Reduce all virtual register operations (readVReg/writeVReg always succeed).
+    dsimp only [getThe, MonadStateOf.get, EStateM.get]
+    simp only [project]
+    -- Now the Jolt side is: sailReadDword(dword_addr) on js.sail, then shift + wX_bits.
+    -- The Sail side is: sailReadWord(addr) on js.sail, then wX_bits.
+    -- These operate on the same js.sail (vreg ops don't touch sail state).
+    -- Reduce vreg index comparisons (0≠1, 0≠2, 1≠0, 2≠3, etc.)
+    simp (config := { decide := true }) only []
+    -- Now: sailReadDword((base + signext(imm)) &&& -8) js.sail on the Jolt side,
+    -- sailReadWord(base + signext(imm)) js.sail on the Sail side.
+    simp only [ite_true, ite_false]
+    -- Remaining: sailReadDword(addr &&& -8) >>> shift = sailReadWord(addr)
+    -- where addr = base + sign_extend(imm) and shift = (addr <<< 3).toNat.
+    -- This is the dword-extract identity from BytecodeExpansions/Lw.lean
+    -- (read_word_eq_dword_extract), lifted to Sail's memory model.
+    -- Also needs: sailReadDword succeeds (mem_populated), wX_bits succeeds (wX_shape).
+    sorry
 
 end
