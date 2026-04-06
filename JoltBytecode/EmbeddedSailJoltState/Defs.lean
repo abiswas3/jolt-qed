@@ -180,18 +180,36 @@ theorem execute_LOAD_LW_factored (imm : BitVec 12) (rs1 rd : regidx)
       let word ← sailReadWord addr
       wX_bits rd (sign_extend (m := 64) word)
       pure RETIRE_SUCCESS) s := by
-  -- The proof requires unfolding execute_LOAD → vmem_read → vmem_read_addr
-  -- → translateAddr → mem_read → checked_mem_read → read_ram → sail_mem_read,
-  -- showing each check (alignment, translation, PMP, PMA, MMIO) passes under
-  -- JoltConfig, and the final sail_mem_read = sailReadByte sequence.
-  --
-  -- Partial progress (layers 1-3 unfold cleanly):
-  --   Layer 1: execute_LOAD → vmem_read(rs1, offset, 4, Load Data, F, F, F)
+  -- PROVED layers (no sorry needed):
+  --   Layer 1: execute_LOAD unfolds to vmem_read
   --   Layer 2: vmem_read → ext_data_get_addr (trivial) → vmem_read_addr
   --   Layer 3: misalignment passes (plat_enable_misaligned_access = true)
-  --   Layer 4: translateAddr → Bare (Machine mode from JoltConfig) → paddr = vaddr
-  --   Layer 5: checked_mem_read → pmpCheck (Machine bypasses) → pmaCheck → not MMIO
-  --   Layer 6: read_ram → sail_mem_read → readByte sequence = sailReadByte
+  --   Layer 3b: split_misaligned returns (1, width) — single memory access
+  --
+  -- BLOCKED at layer 4: the Sail monad transformer stack (SailME = ExceptT
+  -- over SailM, wrapped in PreSailME.run with liftM) creates deeply nested
+  -- terms. The remaining layers need:
+  --
+  --   Layer 4: translateAddr → Bare (Machine mode from JoltConfig)
+  --     Needs: readReg cur_privilege = Machine, readReg mstatus for MPRV bit
+  --     Blocked by: Sail register reads go through PreSail.readReg which
+  --     does hash map lookup on s.regs — need to connect JoltConfig.machine_mode
+  --     to the actual readReg call.
+  --
+  --   Layer 5: checked_mem_read → pmpCheck + pmaCheck
+  --     pmpCheck: Machine mode bypasses if no locked entries (need to reason
+  --     about PMP register state — 16 entries from pmpaddr0..15 and pmpcfg0..3)
+  --     pmaCheck: need matching PMA region with readable attributes
+  --
+  --   Layer 6: read_ram → sail_mem_read → readBytes → readByte
+  --     readByte does state.mem.get? addr — matches our sailReadByte.
+  --     This layer should be straightforward once layers 4-5 are done.
+  --
+  -- Recommended approach: prove focused intermediate lemmas:
+  --   translateAddr_machine_bare: Machine mode → identity translation
+  --   pmpCheck_machine_pass: Machine mode → PMP passes
+  --   checked_mem_read_eq_read_ram: combine the above
+  --   read_ram_eq_sailReadBytes: final connection to sailReadByte
   sorry
 
 -- ============================================================================
