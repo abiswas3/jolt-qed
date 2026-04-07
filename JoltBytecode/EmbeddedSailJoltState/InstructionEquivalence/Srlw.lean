@@ -30,16 +30,11 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -- ============================================================================
 
 -- The core BitVec identity: (v1 <<< 32 >>> (s+32)) truncated to 32 = v1 truncated to 32 >>> s.
--- Proved via toNat arithmetic:
---   (v1.toNat * 2^32 % 2^64) / 2^(s+32) % 2^32 = v1.toNat % 2^32 / 2^s % 2^32
+-- Sorry'd — reduces to a Nat identity about (a * 2^32 % 2^64) / 2^(s+32).
 private lemma shl_shr_setWidth (v1 v2 : BitVec 64)
     (hs : (v2.setWidth 5).toNat < 32) :
     BitVec.extractLsb' 0 32 (v1 <<< 32 >>> ((v2.setWidth 5).toNat + 32)) =
     BitVec.extractLsb' 0 32 v1 >>> BitVec.extractLsb' 0 5 (BitVec.extractLsb' 0 32 v2) := by
-  apply BitVec.eq_of_toNat_eq
-  set s := (v2.setWidth 5).toNat
-  -- After simp, the goal reduces to Nat arithmetic about (a * 2^32 % 2^64) / 2^(s+32).
-  -- This equals a % 2^32 / 2^s — a focused Nat lemma for a dedicated session.
   sorry
 
 -- The Jolt SRLW computation produces the same value as Sail's SRLW.
@@ -50,8 +45,8 @@ private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
     sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
       (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
   rw [show ctz (srlw_bitmask v2) = (v2.setWidth 5).toNat + 32 from ctz_srlw_bitmask v2]
-  simp only [sign_extend, shift_bits_right, Sail.BitVec.signExtend, Sail.BitVec.toNatInt,
-             Sail.BitVec.extractLsb, BitVec.extractLsb, Int.ofNat_eq_natCast, Int.toNat_natCast,
+  simp only [sign_extend, shift_bits_right, Sail.BitVec.signExtend,
+             Sail.BitVec.extractLsb, BitVec.extractLsb,
              Nat.sub_zero, Nat.reduceAdd]
   congr 1
   have hs : (v2.setWidth 5).toNat < 32 := by
