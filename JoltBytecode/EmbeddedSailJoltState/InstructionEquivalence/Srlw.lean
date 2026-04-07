@@ -34,19 +34,38 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -- Bridge lemma
 -- ============================================================================
 
--- The core SRLW BitVec identity: left-shifting by 32 then right-shifting by (s+32),
--- truncated to 32 bits, equals truncating to 32 bits then right-shifting by s.
--- In other words: SLLI 32 followed by SRL (s+32) extracts the lower word shifted by s.
---
--- Decomposes into:
---   (x <<< 32 >>> (s+32)) = x >>> s          (shift cancellation)
---   (x >>> s).setWidth 32 = x.setWidth 32 >>> s  (truncation commutes with right shift)
--- Both are pure BitVec facts — search Mathlib for existing lemmas.
+-- Sub-lemma 1: Left-shifting by n then right-shifting by (n + s) cancels the left shift.
+-- Pure BitVec fact — search Mathlib for `BitVec.shiftLeft_shiftRight` or similar.
+-- Shifting left by n then right by (s + n) cancels the left shift, leaving right shift by s.
+private lemma shl_shr_cancel {w : Nat} (x : BitVec w) (n s : Nat) (h : s + n ≤ w) :
+    x <<< n >>> (s + n) = x >>> s := by
+  sorry
+
+-- Sub-lemma 2: Truncation (extractLsb') commutes with logical right shift.
+-- Pure BitVec fact — search Mathlib for `BitVec.extractLsb'_ushiftRight` or similar.
+private lemma extractLsb'_shr {w : Nat} (x : BitVec w) (s : Nat) (k : Nat) (hs : s < k) :
+    BitVec.extractLsb' 0 k (x >>> s) = BitVec.extractLsb' 0 k x >>> s := by
+  sorry
+
+-- Sub-lemma 3: Double extractLsb' collapses when inner width >= outer width.
+-- extractLsb' 0 5 (extractLsb' 0 32 v) = extractLsb' 0 5 v (since 5 ≤ 32).
+-- Pure BitVec fact — search Mathlib for `BitVec.extractLsb'_extractLsb'`.
+private lemma extractLsb'_extractLsb'_collapse (v : BitVec w) :
+    BitVec.extractLsb' 0 5 (BitVec.extractLsb' 0 32 v) = BitVec.extractLsb' 0 5 v := by
+  sorry
+
+-- The core identity, proved from the three sub-lemmas above.
+-- (v1 <<< 32 >>> (s+32)) truncated to 32 = v1 truncated to 32 >>> s.
 private lemma shl_shr_setWidth (v1 v2 : BitVec 64)
     (hs : (v2.setWidth 5).toNat < 32) :
     BitVec.extractLsb' 0 32 (v1 <<< 32 >>> ((v2.setWidth 5).toNat + 32)) =
     BitVec.extractLsb' 0 32 v1 >>> BitVec.extractLsb' 0 5 (BitVec.extractLsb' 0 32 v2) := by
-  sorry
+  simp only [shl_shr_cancel v1 32 (v2.setWidth 5).toNat (by omega),
+             extractLsb'_shr v1 (v2.setWidth 5).toNat 32 hs,
+             extractLsb'_extractLsb'_collapse v2]
+  -- Remaining: >>> Nat = >>> BitVec (same shift amount, different types).
+  -- setWidth 5 v2 and extractLsb' 0 5 v2 are the same BitVec 5.
+  rfl
 
 -- The Jolt SRLW computation (SLLI 32, ORI 32, bitmask shift, VSEW) produces
 -- the same value as Sail's SRLW (extract 32 bits, logical right shift).
