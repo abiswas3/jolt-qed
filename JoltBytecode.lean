@@ -142,17 +142,6 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraw           
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sll       -- TODO: read-compute-write, primitive specs
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srl       -- TODO: read-compute-write, primitive specs
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra       -- TODO: read-compute-write, primitive specs
-
--- Format I (register-immediate)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addiw                 -- DONE: ADDIW (ADDI + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srai                  -- DONE: SRAI (bitmask shift)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw                 -- DONE: SRAIW (3-step via virtual regs)
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slli      -- TODO: like SRAI
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srli      -- TODO: like SRAI
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slliw     -- TODO: like SRAIW
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw     -- TODO: like SRAIW
-
--- Multiply / Divide
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulw      -- TODO: execute_MULW, truncate + multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulh      -- TODO: execute_MUL, upper-half multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
@@ -164,6 +153,15 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw          
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remu      -- TODO: needs advice
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remw      -- TODO: needs advice
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remuw     -- TODO: needs advice
+
+-- Format I (register-immediate)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addiw                 -- DONE: ADDIW (ADDI + VSEW)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srai                  -- DONE: SRAI (bitmask shift)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw                 -- DONE: SRAIW (3-step via virtual regs)
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slli      -- TODO: like SRAI
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srli      -- TODO: like SRAI
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slliw     -- TODO: like SRAIW
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw     -- TODO: like SRAIW
 
 -- Memory (load) — need vmem_read bridge (JoltConfig)
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lw                    -- INPROGRESS: LW main thm passes, 5 sorry'd memory bridge helpers
