@@ -133,7 +133,10 @@ import JoltBytecode.EmbeddedSailJoltState.Defs                                  
 import JoltBytecode.EmbeddedSailJoltState.RegisterOps                                  -- register lemmas, stateAfterWrite
 import JoltBytecode.EmbeddedSailJoltState.RtypeW                                       -- @[spec], generic W-type framework
 
--- Format R (register-register)
+-- ============================================================================
+-- Instruction proofs — Format R (register-register)
+-- ============================================================================
+
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addw                  -- DONE: ADDW (ADD + VSEW)
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Subw                  -- DONE: SUBW (SUB + VSEW)
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sllw                  -- DONE: SLLW (VirtualPow2W + MUL + VSEW)
@@ -142,6 +145,7 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraw           
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sll       -- TODO: read-compute-write, primitive specs
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srl       -- TODO: read-compute-write, primitive specs
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra       -- TODO: read-compute-write, primitive specs
+-- Multiply / Divide / Remainder
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulw      -- TODO: execute_MULW, truncate + multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulh      -- TODO: execute_MUL, upper-half multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
@@ -154,7 +158,10 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraw           
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remw      -- TODO: needs advice
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remuw     -- TODO: needs advice
 
--- Format I (register-immediate)
+-- ============================================================================
+-- Instruction proofs — Format I (register-immediate)
+-- ============================================================================
+
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addiw                 -- DONE: ADDIW (ADDI + VSEW)
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srai                  -- DONE: SRAI (bitmask shift)
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw                 -- DONE: SRAIW (3-step via virtual regs)
@@ -163,7 +170,10 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw          
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slliw     -- TODO: like SRAIW
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw     -- TODO: like SRAIW
 
--- Memory (load) — need vmem_read bridge (JoltConfig)
+-- ============================================================================
+-- Instruction proofs — Memory (load)
+-- ============================================================================
+
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lw                    -- INPROGRESS: LW main thm passes, 5 sorry'd memory bridge helpers
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lb        -- TODO: width=1, signed
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lbu       -- TODO: width=1, unsigned
@@ -172,12 +182,18 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lw             
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lwu       -- TODO: width=4, unsigned
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Ld        -- TODO: width=8
 
--- Memory (store) — need vmem_write bridge
+-- ============================================================================
+-- Instruction proofs — Memory (store)
+-- ============================================================================
+
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sb        -- TODO: store byte
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sh        -- TODO: store halfword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sw        -- TODO: store word
 
--- Atomic (AMO) — need memory bridge + atomics
+-- ============================================================================
+-- Instruction proofs — Atomic (AMO)
+-- ============================================================================
+
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoaddd   -- TODO: atomic add dword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoaddw   -- TODO: atomic add word
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoandd   -- TODO: atomic and dword
@@ -201,7 +217,10 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lw             
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Scd       -- TODO: store conditional dword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Scw       -- TODO: store conditional word
 
--- Advice / System / CSR
+-- ============================================================================
+-- Instruction proofs — Advice / System / CSR
+-- ============================================================================
+
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelb  -- TODO: advice load byte
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Adviceld  -- TODO: advice load dword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelh  -- TODO: advice load halfword
@@ -210,4 +229,3 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lw             
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Csrrw     -- TODO: CSR read-write
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Ecall     -- TODO: environment call
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mret      -- TODO: machine return
--- ============================================================================
