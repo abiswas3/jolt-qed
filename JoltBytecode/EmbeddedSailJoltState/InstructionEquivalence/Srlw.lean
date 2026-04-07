@@ -21,11 +21,6 @@ Jolt decomposes SRLW into (from BytecodeExpansions/Srlw.lean):
 4. VirtualSRL rd, v_rs1, v_bitmask — logical right shift via ctz(bitmask)
 5. VirtualSignExtendWord rd, rd   — sign-extend lower 32 bits
 
-The SLLI 32 pushes the lower 32 bits of rs1 to the upper half.
-ORI 32 makes the shift amount (rs2[4:0] + 32). Right-shifting by
-(s+32) after left-shifting by 32 extracts the lower 32 bits shifted
-right by s — which is exactly what SRLW does.
-
 Sail's SRLW extracts lower 32 bits of rs1 and rs2, logically right-shifts
 the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -/
@@ -34,72 +29,31 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -- Bridge lemma
 -- ============================================================================
 
--- Sub-lemma 1: Left-shifting by n then right-shifting by (n + s) cancels the left shift.
--- Pure BitVec fact — search Mathlib for `BitVec.shiftLeft_shiftRight` or similar.
--- Shifting left by n then right by (s + n) cancels the left shift, leaving right shift by s.
--- (x <<< n >>> (s + n)) = x >>> s: the left shift is cancelled by the right shift.
--- Bit i of LHS: x[i + s + n - n] = x[i + s] if i + s + n < w and i + s + n ≥ n.
--- Bit i of RHS: x[i + s] if i + s < w.
--- Both conditions are equivalent when s + n ≤ w.
-private lemma shl_shr_cancel {w : Nat} (x : BitVec w) (n s : Nat) (h : s + n ≤ w) :
-    x <<< n >>> (s + n) = x >>> s := by
-  sorry
-
--- Sub-lemma 2: Truncation (extractLsb') commutes with logical right shift.
--- Pure BitVec fact — search Mathlib for `BitVec.extractLsb'_ushiftRight` or similar.
--- Truncating after a right shift = right shifting the truncated value.
--- Bit i of LHS: x[i+s] if i+s < w, else false. Bit i of RHS: x[i+s] if i+s < k, else false.
--- When k ≤ w and i < k: i+s < k ≤ w, so both are x[i+s]. Equal.
-private lemma extractLsb'_shr {w : Nat} (x : BitVec w) (s : Nat) (k : Nat) (hs : s < k) :
-    BitVec.extractLsb' 0 k (x >>> s) = BitVec.extractLsb' 0 k x >>> s := by
-  sorry
-
--- Sub-lemma 3: Double extractLsb' collapses when inner width >= outer width.
--- extractLsb' 0 5 (extractLsb' 0 32 v) = extractLsb' 0 5 v (since 5 ≤ 32).
--- Pure BitVec fact — search Mathlib for `BitVec.extractLsb'_extractLsb'`.
--- extractLsb' 0 k (extractLsb' 0 m v) = extractLsb' 0 k v when extracting from bit 0.
--- Both just take the lower bits: extractLsb' 0 5 (extractLsb' 0 32 v) = lower 5 of lower 32 = lower 5.
-private lemma extractLsb'_extractLsb'_collapse (v : BitVec w) :
-    BitVec.extractLsb' 0 5 (BitVec.extractLsb' 0 32 v) = BitVec.extractLsb' 0 5 v := by
-  ext i hi
-  simp [BitVec.getLsbD_extractLsb']
-
--- The core identity, proved from the three sub-lemmas above.
--- (v1 <<< 32 >>> (s+32)) truncated to 32 = v1 truncated to 32 >>> s.
+-- The core BitVec identity: (v1 <<< 32 >>> (s+32)) truncated to 32 = v1 truncated to 32 >>> s.
+-- Proved via toNat arithmetic:
+--   (v1.toNat * 2^32 % 2^64) / 2^(s+32) % 2^32 = v1.toNat % 2^32 / 2^s % 2^32
 private lemma shl_shr_setWidth (v1 v2 : BitVec 64)
     (hs : (v2.setWidth 5).toNat < 32) :
     BitVec.extractLsb' 0 32 (v1 <<< 32 >>> ((v2.setWidth 5).toNat + 32)) =
     BitVec.extractLsb' 0 32 v1 >>> BitVec.extractLsb' 0 5 (BitVec.extractLsb' 0 32 v2) := by
-  simp only [shl_shr_cancel v1 32 (v2.setWidth 5).toNat (by omega),
-             extractLsb'_shr v1 (v2.setWidth 5).toNat 32 hs,
-             extractLsb'_extractLsb'_collapse v2]
-  -- Remaining: >>> Nat = >>> BitVec (same shift amount, different types).
-  -- setWidth 5 v2 and extractLsb' 0 5 v2 are the same BitVec 5.
-  rfl
+  apply BitVec.eq_of_toNat_eq
+  set s := (v2.setWidth 5).toNat
+  -- After simp, the goal reduces to Nat arithmetic about (a * 2^32 % 2^64) / 2^(s+32).
+  -- This equals a % 2^32 / 2^s — a focused Nat lemma for a dedicated session.
+  sorry
 
--- The Jolt SRLW computation (SLLI 32, ORI 32, bitmask shift, VSEW) produces
--- the same value as Sail's SRLW (extract 32 bits, logical right shift).
--- Jolt: left-shift v1 by 32, right-shift by (rs2[4:0]+32) via bitmask.
--- Sail: extract lower 32 bits of v1, logical right shift by rs2[4:0].
--- Proof: by shl_shr_cancel (the <<< 32 cancels) then setWidth_shr_comm.
+-- The Jolt SRLW computation produces the same value as Sail's SRLW.
 private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
         ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) 31 0) =
     sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
       (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
-  -- Step 1: recover shift amount. ctz(srlw_bitmask v2) = s + 32 where s = v2[4:0].
   rw [show ctz (srlw_bitmask v2) = (v2.setWidth 5).toNat + 32 from ctz_srlw_bitmask v2]
-  -- Step 2: unfold Sail wrappers to plain BitVec.
   simp only [sign_extend, shift_bits_right, Sail.BitVec.signExtend, Sail.BitVec.toNatInt,
              Sail.BitVec.extractLsb, BitVec.extractLsb, Int.ofNat_eq_natCast, Int.toNat_natCast,
              Nat.sub_zero, Nat.reduceAdd]
-  -- Step 3: strip signExtend from both sides.
   congr 1
-  -- Goal after congr 1:
-  --   extractLsb' 0 32 (v1 <<< 32 >>> (s + 32)) = extractLsb' 0 32 v1 >>> extractLsb' 0 5 (extractLsb' 0 32 v2)
-  -- which is: (v1 <<< 32 >>> (s+32)).setWidth 32 = v1.setWidth 32 >>> v2.setWidth 5
-  -- Apply the combined lemma.
   have hs : (v2.setWidth 5).toNat < 32 := by
     have := (v2.setWidth 5).isLt; norm_num at this; exact this
   exact shl_shr_setWidth v1 v2 hs
@@ -123,21 +77,13 @@ theorem execute_RTYPEW_SRLW_eq_factored (rs2 rs1 rd : regidx) :
 -- ============================================================================
 
 -- Jolt's SRLW decomposition: SLLI 32 + bitmask + VirtualSRL + VSEW.
--- Step 1: Left-shift rs1 by 32 (pushes lower 32 bits to upper half).
--- Step 2: Compute bitmask from ORI(rs2, 32) (shift amount + 32).
--- Step 3: Logical right shift by ctz(bitmask), write to rd.
--- Step 4: Sign-extend lower 32 bits (VSEW).
 def jolt_srlw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  -- Step 1: SLLI rs1, 32 → virtual register 0
   let v1 ← liftSail (rX_bits rs1)
   writeVReg 0 (v1 <<< 32)
-  -- Step 2: compute bitmask from rs2 (ORI 32 + VirtualShiftRightBitmask)
   let v2 ← liftSail (rX_bits rs2)
   let v_bitmask := srlw_bitmask v2
-  -- Step 3: VirtualSRL — logical right shift via ctz(bitmask), write to rd
   let v_rs1 ← readVReg 0
   liftSail (wX_bits rd (v_rs1 >>> ctz v_bitmask))
-  -- Step 4: VirtualSignExtendWord rd
   jolt_virtual_sign_extend_word rd
   pure RETIRE_SUCCESS
 
@@ -155,22 +101,17 @@ theorem jolt_srlw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
   unfold jolt_srlw jolt_virtual_sign_extend_word liftSail projectResult
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
              writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
-             EStateM.modifyGet, get]
-  -- Under WellFormed, both register reads succeed.
+             EStateM.modifyGet, get, MonadStateOf.get, EStateM.get]
   obtain ⟨v1, hok1⟩ := hwf rs1
   obtain ⟨v2, hok2⟩ := hwf rs2
   simp only [hok1, hok2]
-  -- Reduce vreg operations
   dsimp only [getThe, MonadStateOf.get, EStateM.get]
-  simp (config := { decide := true }) only [ite_true, project]
-  -- Both sides write to rd then VSEW.
+  simp (config := { decide := true }) only [ite_true, ite_false, project]
   obtain ⟨s3, hw1⟩ := wX_shape rd (v1 <<< 32 >>> ctz (srlw_bitmask v2)) js.sail
   simp only [hw1]
   have hrx := wX_rX_roundtrip rd _ js.sail s3 hrd hw1
   simp only [hrx]
-  -- Apply the bridge: SLLI+bitmask+shift = SRLW
   rw [srlw_shift_eq v1 v2]
-  -- Collapse double write
   obtain ⟨s4, hw2⟩ := wX_shape rd
     (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
       (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0))) s3
