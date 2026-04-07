@@ -27,8 +27,9 @@ Same pattern as SRAI but with logical (not arithmetic) shift.
 private lemma srl_bitmask_eq_shift (v1 v2 : BitVec 64) :
     v1 >>> ctz (srl_bitmask v2) =
     shift_bits_right v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
-  unfold shift_bits_right
-  sorry
+  unfold shift_bits_right LeanRV64D.Functions.log2_xlen
+  simp [Sail.BitVec.toNatInt, Sail.BitVec.extractLsb, ctz_srl_bitmask]
+  congr 1
 
 -- Jolt's SRL: read rs1, logical right shift by ctz(bitmask of rs2), write to rd.
 def jolt_srl (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do

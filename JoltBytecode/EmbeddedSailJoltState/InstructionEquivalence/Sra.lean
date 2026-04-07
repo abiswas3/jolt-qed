@@ -26,7 +26,9 @@ Same pattern as SRAI but reading shift amount from rs2 instead of immediate.
 private lemma sra_bitmask_eq_shift (v1 v2 : BitVec 64) :
     v1.sshiftRight (ctz (sra_bitmask v2)) =
     shift_bits_right_arith v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
-  sorry
+  unfold shift_bits_right_arith LeanRV64D.Functions.log2_xlen
+  simp [Sail.BitVec.toNatInt, Sail.BitVec.extractLsb, ctz_sra_bitmask]
+  congr 1
 
 -- Factoring: execute_RTYPE SRA reads rs1, rs2, arith-right-shifts v1 by v2[5:0].
 private theorem execute_RTYPE_SRA_factored (rs2 rs1 rd : regidx) :
