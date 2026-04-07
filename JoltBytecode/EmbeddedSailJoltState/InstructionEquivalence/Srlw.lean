@@ -37,12 +37,19 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -- Sub-lemma 1: Left-shifting by n then right-shifting by (n + s) cancels the left shift.
 -- Pure BitVec fact — search Mathlib for `BitVec.shiftLeft_shiftRight` or similar.
 -- Shifting left by n then right by (s + n) cancels the left shift, leaving right shift by s.
+-- (x <<< n >>> (s + n)) = x >>> s: the left shift is cancelled by the right shift.
+-- Bit i of LHS: x[i + s + n - n] = x[i + s] if i + s + n < w and i + s + n ≥ n.
+-- Bit i of RHS: x[i + s] if i + s < w.
+-- Both conditions are equivalent when s + n ≤ w.
 private lemma shl_shr_cancel {w : Nat} (x : BitVec w) (n s : Nat) (h : s + n ≤ w) :
     x <<< n >>> (s + n) = x >>> s := by
   sorry
 
 -- Sub-lemma 2: Truncation (extractLsb') commutes with logical right shift.
 -- Pure BitVec fact — search Mathlib for `BitVec.extractLsb'_ushiftRight` or similar.
+-- Truncating after a right shift = right shifting the truncated value.
+-- Bit i of LHS: x[i+s] if i+s < w, else false. Bit i of RHS: x[i+s] if i+s < k, else false.
+-- When k ≤ w and i < k: i+s < k ≤ w, so both are x[i+s]. Equal.
 private lemma extractLsb'_shr {w : Nat} (x : BitVec w) (s : Nat) (k : Nat) (hs : s < k) :
     BitVec.extractLsb' 0 k (x >>> s) = BitVec.extractLsb' 0 k x >>> s := by
   sorry
@@ -50,9 +57,12 @@ private lemma extractLsb'_shr {w : Nat} (x : BitVec w) (s : Nat) (k : Nat) (hs :
 -- Sub-lemma 3: Double extractLsb' collapses when inner width >= outer width.
 -- extractLsb' 0 5 (extractLsb' 0 32 v) = extractLsb' 0 5 v (since 5 ≤ 32).
 -- Pure BitVec fact — search Mathlib for `BitVec.extractLsb'_extractLsb'`.
+-- extractLsb' 0 k (extractLsb' 0 m v) = extractLsb' 0 k v when extracting from bit 0.
+-- Both just take the lower bits: extractLsb' 0 5 (extractLsb' 0 32 v) = lower 5 of lower 32 = lower 5.
 private lemma extractLsb'_extractLsb'_collapse (v : BitVec w) :
     BitVec.extractLsb' 0 5 (BitVec.extractLsb' 0 32 v) = BitVec.extractLsb' 0 5 v := by
-  sorry
+  ext i hi
+  simp [BitVec.getLsbD_extractLsb']
 
 -- The core identity, proved from the three sub-lemmas above.
 -- (v1 <<< 32 >>> (s+32)) truncated to 32 = v1 truncated to 32 >>> s.
