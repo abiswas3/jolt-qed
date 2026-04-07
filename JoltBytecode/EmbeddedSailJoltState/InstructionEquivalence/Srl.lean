@@ -61,7 +61,7 @@ theorem jolt_srl_eq_sail (rs2 rs1 rd : regidx)
   -- Both sides now call wX_bits rd (same value) on js.sail.
   -- Jolt wraps with liftSail, projectResult strips the vregs.
   cases wX_bits rd _ js.sail with
-  | error e s => simp [projectResult, project]
-  | ok a s => simp [projectResult, project]
+  | error e s => simp [project]
+  | ok a s => simp [project]
 
 end
