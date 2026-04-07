@@ -42,7 +42,7 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -- that avoids touching the BitVec term).
 private lemma toNat_shl_32 (v : BitVec 64) :
     (v <<< 32).toNat = v.toNat * 2^32 % 2^64 := by
-  sorry
+  rw [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
 
 -- Helper 2: (a * 2^32 % 2^64) / 2^(s+32) = a % 2^32 / 2^s, for s < 32.
 -- Pure Nat identity about the shift-left-then-right cancellation.
