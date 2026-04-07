@@ -151,12 +151,12 @@ theorem jolt_srlw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
   unfold jolt_srlw jolt_virtual_sign_extend_word liftSail projectResult
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
              writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
-             EStateM.modifyGet, get, MonadStateOf.get, EStateM.get]
+             EStateM.modifyGet, get]
   obtain ⟨v1, hok1⟩ := hwf rs1
   obtain ⟨v2, hok2⟩ := hwf rs2
   simp only [hok1, hok2]
   dsimp only [getThe, MonadStateOf.get, EStateM.get]
-  simp (config := { decide := true }) only [ite_true, ite_false, project]
+  simp (config := { decide := true }) only [ite_true, project]
   obtain ⟨s3, hw1⟩ := wX_shape rd (v1 <<< 32 >>> ctz (srlw_bitmask v2)) js.sail
   simp only [hw1]
   have hrx := wX_rX_roundtrip rd _ js.sail s3 hrd hw1

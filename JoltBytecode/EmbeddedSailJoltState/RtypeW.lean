@@ -102,7 +102,7 @@ theorem liftSail_RTYPE_spec (rs2 rs1 rd : regidx) (op : rop)
   obtain ⟨v2, hok2⟩ := hwf rs2
   simp only [hok2]
   obtain ⟨s3, hw⟩ := wX_shape rd (f v1 v2) js.sail
-  simp only [hw, PostCond.noThrow, SPred.pure]
+  simp only [hw,  SPred.pure]
   exact ⟨trivial, v1, v2, rfl, rfl, wX_bits_eq_stateAfterWrite rd (f v1 v2) js.sail s3 hw⟩
 
 -- ============================================================================
@@ -122,7 +122,7 @@ theorem vsew_spec (rd : regidx) (js0 : SailJoltState) (hrd : rd ≠ regidx.Regid
         js'.sail = stateAfterWrite js0.sail rd
           (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0))⌝⦄ := by
   unfold jolt_virtual_sign_extend_word liftSail
-  simp only [bind, EStateM.bind, pure, EStateM.pure]
+  simp only [bind]
   intro js hjs; subst hjs
   simp only [WP.wp, PredTrans.apply, PostCond.noThrow, SPred.pure]
   dsimp only [EStateM.run, EStateM.bind]
