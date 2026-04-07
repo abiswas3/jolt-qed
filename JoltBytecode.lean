@@ -55,10 +55,10 @@ import JoltBytecode.BytecodeExpansions.Instructions.Mret       -- DONE: MRET
 -- Instruction proofs — Memory (load)
 -- ============================================================================
 
-import JoltBytecode.BytecodeExpansions.Instructions.Lw         -- DONE: LW
+-- import JoltBytecode.BytecodeExpansions.Instructions.Lw      -- DONE: LW (commented: name clash with EmbeddedSailJoltState.Lw)
 -- import JoltBytecode.BytecodeExpansions.Instructions.Lwu     -- NEXT: stub only
 -- import JoltBytecode.BytecodeExpansions.Instructions.Lhu     -- TODO: stub only
-import JoltBytecode.BytecodeExpansions.Instructions.Lb         -- DONE: LB
+-- import JoltBytecode.BytecodeExpansions.Instructions.Lb      -- DONE: LB (commented: imports Lw transitively)
 -- import JoltBytecode.BytecodeExpansions.Instructions.Lbu     -- TODO: stub only
 -- import JoltBytecode.BytecodeExpansions.Instructions.Lh      -- NEXT: stub only
 
@@ -68,7 +68,7 @@ import JoltBytecode.BytecodeExpansions.Instructions.Lb         -- DONE: LB
 
 -- import JoltBytecode.BytecodeExpansions.Instructions.Sb      -- TODO: stub only
 -- import JoltBytecode.BytecodeExpansions.Instructions.Sh      -- TODO: stub only
-import JoltBytecode.BytecodeExpansions.Instructions.Sw         -- NEXT:: sorry in 2 splice lemmas
+-- import JoltBytecode.BytecodeExpansions.Instructions.Sw      -- NEXT: sorry in 2 splice lemmas (commented: imports Lw transitively)
 -- import JoltBytecode.BytecodeExpansions.Instructions.Scd     -- TODO: stub only
 -- import JoltBytecode.BytecodeExpansions.Instructions.Scw     -- TODO: stub only
 
@@ -76,7 +76,7 @@ import JoltBytecode.BytecodeExpansions.Instructions.Sw         -- NEXT:: sorry i
 -- Instruction proofs — Atomic (AMO)
 -- ============================================================================
 
-import JoltBytecode.BytecodeExpansions.Instructions.Amoaddd    -- DONE: AMOADD.D
+-- import JoltBytecode.BytecodeExpansions.Instructions.Amoaddd -- DONE: AMOADD.D (commented: imports Lw transitively)
 -- import JoltBytecode.BytecodeExpansions.Instructions.Amoaddw    -- TODO: stub only
 -- import JoltBytecode.BytecodeExpansions.Instructions.Amoandd    -- NEXT: stub only
 -- import JoltBytecode.BytecodeExpansions.Instructions.Amoandw    -- TODO: stub only
@@ -105,35 +105,54 @@ import JoltBytecode.BytecodeExpansions.Instructions.Advicelh   -- DONE: ADVICELH
 import JoltBytecode.BytecodeExpansions.Instructions.Advicelw   -- DONE: ADVICELW (sorry: sign-ext lemma)
 
 -- ============================================================================
--- SailJoltState: Jolt ↔ SailM equivalence proofs (monadic, ground truth = SailM)
---
--- These redo instruction proofs from Instructions/ in the SailM world:
---   JoltState wraps SequentialState + virtual registers.
---   JoltMonad = EStateM over JoltState (same error type as SailM).
---   project : JoltState → SailState drops virtual registers.
---   liftSail : SailM α → JoltMonad α runs Sail on the projected state.
---   Theorem shape: projectResult(jolt_instr.run js) = sail_instr.run (project js)
---
--- Register lemmas (wX_rX_roundtrip, wX_wX_collapse) are fully proved.
--- Instruction proofs require rd ≠ x0 (since writes to x0 are no-ops in RISC-V).
+-- SailJoltState: LEGACY manual monadic proofs (field-duplication architecture)
+-- Cannot import alongside EmbeddedSailJoltState — name clashes.
+-- Build independently: lake build JoltBytecode.SailJoltState.InstructionEquivalence.Addw
 -- ============================================================================
 
-import JoltBytecode.SailJoltState.Common                       -- Shared infra (no sorry)
-import JoltBytecode.SailJoltState.RegisterLemmas               -- wX_rX_roundtrip (no sorry)
+-- import JoltBytecode.SailJoltState.Common                       -- Shared infra (no sorry)
+-- import JoltBytecode.SailJoltState.RegisterLemmas               -- wX_rX_roundtrip (no sorry)
+-- import JoltBytecode.SailJoltState.InstructionEquivalence.Addw  -- DONE: ADDW
+-- import JoltBytecode.SailJoltState.InstructionEquivalence.Subw  -- DONE: SUBW
+-- import JoltBytecode.SailJoltState.InstructionEquivalence.Addiw -- DONE: ADDIW
+-- import JoltBytecode.SailJoltState.InstructionEquivalence.Srai  -- DONE: SRAI
+-- import JoltBytecode.SailJoltState.InstructionEquivalence.Sraiw -- DONE: SRAIW
 
--- Format R (register-register) W-variants
-import JoltBytecode.SailJoltState.InstructionEquivalence.Addw                         -- DONE: ADDW (requires rd ≠ x0)
-import JoltBytecode.SailJoltState.InstructionEquivalence.Subw                         -- DONE: SUBW (requires rd ≠ x0)
-
--- Format I (register-immediate)
-import JoltBytecode.SailJoltState.InstructionEquivalence.Addiw                        -- DONE: ADDIW (requires rd ≠ x0)
-import JoltBytecode.SailJoltState.InstructionEquivalence.Srai                         -- DONE: SRAI (clean, no sorry)
-
--- Format I W-variants (shift-immediate word)
-import JoltBytecode.SailJoltState.InstructionEquivalence.Sraiw                        -- DONE: SRAIW (requires rd ≠ x0)
+-- ============================================================================
+-- EmbeddedSailJoltState: mvcgen Sail ↔ Jolt proofs (PRIMARY)
 --
--- TODO: SLLI, SRLI — were clean (trivial via liftSail_project), deleted, need recreation
--- TODO: SLLIW, SRLIW — need shift-truncation BitVec lemmas, deleted, need recreation
--- TODO: Port remaining Instructions/ proofs to SailJoltState/
---       (Mulw, Div, Lw, Sw, AMO, CSR, memory instructions)
+-- Embedded SailJoltState (sail : SailState + vregs).
+-- @[spec] Hoare triples + mvcgen automates monadic plumbing.
+-- Theorem shape: projectResult(jolt_X.run js) = sail_X.run js.sail
+-- Requires WellFormed (registers initialized).
+-- Load instructions also require JoltConfig (M-mode, flat memory).
+-- ============================================================================
+
+-- Infrastructure
+import JoltBytecode.EmbeddedSailJoltState.Defs                                        -- SailJoltState, liftSail, JoltConfig
+import JoltBytecode.EmbeddedSailJoltState.RegisterOps                                  -- register lemmas, stateAfterWrite
+import JoltBytecode.EmbeddedSailJoltState.RtypeW                                       -- @[spec], generic W-type framework
+
+-- Format R (register-register) W-variants — fully proved, zero sorries
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addw                  -- DONE: ADDW (ADD + VSEW)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Subw                  -- DONE: SUBW (SUB + VSEW)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sllw                  -- DONE: SLLW (VirtualPow2W + MUL + VSEW)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srlw                  -- DONE: SRLW (SLLI 32 + bitmask + VirtualSRL + VSEW)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraw                  -- DONE: SRAW (VSEW + ANDI + bitmask + VirtualSRA + VSEW)
+
+-- Format I (register-immediate) — fully proved, zero sorries
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addiw                 -- DONE: ADDIW (ADDI + VSEW)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srai                  -- DONE: SRAI (bitmask shift)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw                 -- DONE: SRAIW (3-step via virtual regs)
+
+-- Memory (load) — main theorem proved, sorry'd helpers
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lw                    -- DONE: LW main thm (5 sorry'd memory bridge helpers)
+
+-- TODO: SLL, SRL, SRA — read-compute-write, primitive specs
+-- TODO: SLLI, SRLI — like SRAI
+-- TODO: SLLIW, SRLIW — like SRAIW
+-- TODO: MUL, MULW, MULH, MULHSU — new Sail functions, same pattern
+-- TODO: LB, LBU, LH, LHU, LWU, LD — same bridge as LW, different widths
+-- TODO: SB, SH, SW — need vmem_write bridge
+-- TODO: Atomics, CSR, System — more complex Sail semantics
 -- ============================================================================
