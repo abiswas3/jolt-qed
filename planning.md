@@ -12,6 +12,11 @@ instructions as specified by the Sail formal model.
    top, pure BitVec identities at the bottom.
 3. **Leverage Mathlib.** Before writing any proof, search Mathlib for existing
    lemmas. The smaller the fact, the more likely it already exists.
+   **Warning:** Some existing proofs (e.g. SRLW's `shl_shr_setWidth`) are
+   overly complex because they were written without searching Mathlib first.
+   The entire Nat arithmetic chain (`mul_mod_div_cancel`, `hbound`, `mod collapse`)
+   could have been avoided by using `BitVec.toNat_shiftLeft` + `Nat.shiftLeft_eq`
+   from the start. When revisiting proofs, check if Mathlib simplifies them.
 4. **Always check BytecodeExpansions/Instructions/ for the actual Jolt
    decomposition.** Never invent decompositions — use what Jolt really does.
 5. **English descriptions on every theorem.** What does it say, why does it matter.
