@@ -153,7 +153,6 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw          
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw     -- TODO: like SRAIW
 
 -- Multiply / Divide
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mul       -- TODO: execute_MUL, read-compute-write
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulw      -- TODO: execute_MULW, truncate + multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulh      -- TODO: execute_MUL, upper-half multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
