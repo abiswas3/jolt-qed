@@ -34,6 +34,12 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -- (v <<< 32).toNat = v.toNat * 2^32 % 2^64.
 -- Sorry'd — proving it triggers deep recursion in the kernel.
 -- The fact is trivially true: shiftLeft by 32 = multiply by 2^32, mod 2^64 for BitVec 64.
+-- (v <<< 32).toNat = v.toNat * 2^32 % 2^64.
+-- Kernel deep recursion prevents proving this — the kernel tries to
+-- reduce BitVec.shiftLeft on a 64-bit value by literal 32, which
+-- creates 32 nested operations and blows the stack.
+-- Needs a kernel-level workaround (e.g. native_decide, or a proof
+-- that avoids touching the BitVec term).
 private lemma toNat_shl_32 (v : BitVec 64) :
     (v <<< 32).toNat = v.toNat * 2^32 % 2^64 := by
   sorry
@@ -42,7 +48,11 @@ private lemma toNat_shl_32 (v : BitVec 64) :
 -- Pure Nat identity about the shift-left-then-right cancellation.
 private lemma mul_mod_div_cancel (a s : Nat) (hs : s < 32) :
     a * 2^32 % 2^64 / 2^(s + 32) = a % 2^32 / 2^s := by
-  sorry
+  have h1 : a * 2^32 % 2^64 = a % 2^32 * 2^32 := by omega
+  have h2 : (2:Nat)^(s + 32) = 2^s * 2^32 := by
+    have : (2:Nat)^32 = 2^32 := rfl
+    rw [Nat.pow_add]
+  rw [h1, h2, Nat.mul_div_mul_right _ _ (by positivity : (0:Nat) < 2^32)]
 
 -- Helper 2: >>> 0 is identity on Nat.
 private lemma nat_shr_zero (n : Nat) : n >>> 0 = n := by simp
@@ -67,13 +77,18 @@ private lemma shl_shr_setWidth (v1 v2 : BitVec 64)
   rw [toNat_shl_32 v1, mul_mod_div_cancel v1.toNat _ hs]
   -- LHS now: v1.toNat % 2^32 / 2^s % 2^32
   -- Step 2: % 2^32 is identity
-  rw [Nat.mod_eq_of_lt (by sorry)]
-  -- LHS now: v1.toNat % 2^32 / 2^s
-  -- Step 3: reduce RHS
+  -- a % 2^32 / 2^s < 2^32 because a % 2^32 < 2^32 and division only makes smaller.
+  simp only [Nat.reducePow]
+  have hbound : v1.toNat % 4294967296 / 2 ^ (BitVec.setWidth 5 v2).toNat < 4294967296 :=
+    Nat.lt_of_le_of_lt (Nat.div_le_self _ _) (Nat.mod_lt _ (by positivity))
+  rw [Nat.mod_eq_of_lt hbound]
+  -- RHS still has BitVec >>> BitVec. Convert to >>> Nat, then to / 2^n.
+  change _ = (BitVec.ofNat 32 v1.toNat >>> (BitVec.ofNat 5 (v2.toNat % 4294967296)).toNat).toNat
   simp only [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow, Nat.reducePow]
-  -- RHS now: v1.toNat % 2^32 / 2^(v2.toNat % 2^32 % 2^5)
-  -- Step 4: v2.toNat % 2^32 % 2^5 = v2.toNat % 2^5 = s
-  congr 1; sorry -- v2.toNat % 2^32 % 2^5 = s
+  -- Now both sides are Nat: v1.toNat % 4294967296 / 2^s = v1.toNat % 4294967296 / 2^(v2.toNat % 4294967296 % 32)
+  have : v2.toNat % 4294967296 % 32 = (BitVec.setWidth 5 v2).toNat := by
+    simp [BitVec.toNat_setWidth]
+  rw [this]
 
 
 
