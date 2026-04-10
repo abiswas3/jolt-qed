@@ -30,6 +30,8 @@ structure SailJoltState where
   sail : SailState
   vregs : BitVec 7 → BitVec 64 := fun _ => 0
 
+-- Note that SailM whiach is the Monad the transpilation exposes 
+-- is just SailM (a: Type) := EStateM (Error exception) SailState α
 abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
 
 -- ============================================================================
@@ -39,11 +41,15 @@ abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
 -- project: just read the embedded SailState.
 @[simp] def project (js : SailJoltState) : SailState := js.sail
 
--- inject: update the embedded SailState, keep vregs.
+-- inject: replace the embedded SailState, keeping vregs unchanged.
 @[simp] def inject (js : SailJoltState) (ss : SailState) : SailJoltState :=
   { js with sail := ss }
 
 -- projectResult: strip vregs from an EStateM result.
+-- Once you a run the EStateM type i.e. call the step function it models
+-- the output is Result .ok α σ' or Result .error e σ' 
+-- σ' is the updated Jolt State
+-- we project this down to SailState while keeping the error and return value the same.
 def projectResult (r : EStateM.Result (Error exception) SailJoltState α) :
     EStateM.Result (Error exception) SailState α :=
   match r with
@@ -53,7 +59,7 @@ def projectResult (r : EStateM.Result (Error exception) SailJoltState α) :
 -- ============================================================================
 -- liftSail
 -- ============================================================================
-
+-- Run Sail computation given by m as a JoltComputation
 def liftSail (m : SailM α) : JoltMonad α := fun js =>
   match m js.sail with
   | .ok a ss' => .ok a { js with sail := ss' }
@@ -62,10 +68,12 @@ def liftSail (m : SailM α) : JoltMonad α := fun js =>
 -- ============================================================================
 -- Structural lemmas
 -- ============================================================================
-
+-- Running sail computaiton ss as Joltcomputation and immediately projecting the state 
+-- is the same thing as as running the sail computation on SailM monad.
 @[simp] theorem project_inject (js : SailJoltState) (ss : SailState) :
     project (inject js ss) = ss := rfl
 
+-- inject overwrites the sail field, so a second inject discards the first (set-then-set = set).
 @[simp] theorem inject_inject (js : SailJoltState) (ss1 ss2 : SailState) :
     inject (inject js ss1) ss2 = inject js ss2 := rfl
 
@@ -95,7 +103,6 @@ theorem liftSail_pure (a : α) :
 -- ============================================================================
 -- Virtual register operations
 -- ============================================================================
-
 def readVReg (vr : BitVec 7) : JoltMonad (BitVec 64) := do
   let js ← get; pure (js.vregs vr)
 
