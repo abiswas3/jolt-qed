@@ -78,7 +78,10 @@ def liftSail (m : SailM α) : JoltMonad α := fun js =>
     inject (inject js ss1) ss2 = inject js ss2 := rfl
 
 @[simp] theorem inject_project (js : SailJoltState) :
-    inject js (project js) = js := by simp
+    inject js (project js) = js := by 
+    unfold inject project 
+    rfl
+    
 
 theorem liftSail_project (m : SailM α) (js : SailJoltState) :
     projectResult ((liftSail m).run js) = m.run js.sail := by
