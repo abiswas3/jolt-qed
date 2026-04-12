@@ -19,11 +19,21 @@ Jolt decomposes SLLIW as:
 2. VirtualSignExtendWord rd — sign-extend lower 32 bits
 -/
 
+-- extractLsb of multiply by 2^n = shift_bits_left of extractLsb
+-- Both take lower 32 bits; multiplication mod 2^32 = shift mod 2^32
+private lemma extractLsb_mul_pow2 (v : BitVec 64) (shamt : BitVec 5) :
+    Sail.BitVec.extractLsb (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) 31 0 =
+    shift_bits_left (Sail.BitVec.extractLsb v 31 0) shamt := by
+  unfold shift_bits_left Sail.BitVec.extractLsb
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.extractLsb, BitVec.toNat_mul, BitVec.toNat_ofNat,
+        BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
+
 -- Bridge: Jolt's multiply + truncate = Sail's 32-bit shift
 private lemma slliw_mul_eq_shift (v : BitVec 64) (shamt : BitVec 5) :
     sign_extend (m := 64) (Sail.BitVec.extractLsb (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) 31 0) =
     sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v 31 0) shamt) := by
-  sorry
+  rw [extractLsb_mul_pow2]
 
 -- Factoring: execute_SHIFTIWOP SLLIW reads rs1, extracts lower 32, left-shifts, sign-extends.
 private theorem execute_SHIFTIWOP_SLLIW_eq_factored (shamt : BitVec 5) (rs1 rd : regidx) :

@@ -20,11 +20,30 @@ Jolt decomposes SRLI as:
 ctz(srli_bitmask(shamt)) = shamt[5:0], so this equals Sail's SRLI.
 -/
 
+-- extractLsb shamt 5 0 = shamt for BitVec 6
+private lemma extractLsb_shamt6_id (shamt : BitVec 6) :
+    Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0 = shamt := by
+  simp only [LeanRV64D.Functions.log2_xlen, Sail.BitVec.extractLsb]
+  ext i; simp [BitVec.getLsbD_extractLsb]; rfl
+
+-- setWidth 64 then setWidth 6 = identity on BitVec 6
+private lemma setWidth_roundtrip (shamt : BitVec 6) :
+    (shamt.setWidth 64).setWidth 6 = shamt := by
+  ext i; simp [BitVec.getLsbD_setWidth]
+
+-- v >>> (n : Nat) = v >>> (BitVec.ofNat w n) when the shift is by toNat
+private lemma ushiftRight_nat_eq_bv (v : BitVec 64) (s : BitVec 6) :
+    v >>> s.toNat = v >>> s := by
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_ushiftRight]
+
 -- Bridge: Jolt's logical shift via ctz(bitmask) = Sail's shift_bits_right
 private lemma srli_bitmask_eq_shift (v : BitVec 64) (shamt : BitVec 6) :
     v >>> ctz (srli_bitmask (shamt.setWidth 64)) =
     shift_bits_right v (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
-  sorry
+  unfold shift_bits_right
+  rw [extractLsb_shamt6_id, ctz_srli_bitmask, setWidth_roundtrip]
+  exact ushiftRight_nat_eq_bv v shamt
 
 -- Jolt's SRLI: read rs1, logical right shift by ctz(bitmask), write to rd.
 def jolt_srli (shamt : BitVec 6) (rs1 rd : regidx) : JoltMonad ExecutionResult := do

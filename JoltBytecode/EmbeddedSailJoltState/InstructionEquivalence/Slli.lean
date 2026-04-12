@@ -19,10 +19,24 @@ Jolt decomposes SLLI as:
 -/
 
 -- Bridge: multiply by 2^shamt = shift_bits_left, accounting for extractLsb
+-- extractLsb shamt 5 0 = shamt for BitVec 6
+private lemma extractLsb_shamt6_id (shamt : BitVec 6) :
+    Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0 = shamt := by
+  simp only [LeanRV64D.Functions.log2_xlen, Sail.BitVec.extractLsb]
+  ext i; simp [BitVec.getLsbD_extractLsb]; rfl
+
+-- multiply by 2^n = shift left by n
+private lemma mul_pow2_eq_shiftLeft (v : BitVec 64) (s : BitVec 6) :
+    v * BitVec.ofNat 64 (2 ^ s.toNat) = v <<< s := by
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_mul, BitVec.toNat_ofNat, BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
+
 private lemma slli_mul_eq_shift (v : BitVec 64) (shamt : BitVec 6) :
     v * BitVec.ofNat 64 (2 ^ shamt.toNat) =
     shift_bits_left v (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
-  sorry
+  unfold shift_bits_left
+  rw [extractLsb_shamt6_id]
+  exact mul_pow2_eq_shiftLeft v shamt
 
 -- Jolt's SLLI: read rs1, multiply by 2^shamt, write to rd.
 def jolt_slli (shamt : BitVec 6) (rs1 rd : regidx) : JoltMonad ExecutionResult := do

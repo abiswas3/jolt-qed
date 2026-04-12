@@ -40,13 +40,13 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -- creates 32 nested operations and blows the stack.
 -- Needs a kernel-level workaround (e.g. native_decide, or a proof
 -- that avoids touching the BitVec term).
-private lemma toNat_shl_32 (v : BitVec 64) :
+lemma toNat_shl_32 (v : BitVec 64) :
     (v <<< 32).toNat = v.toNat * 2^32 % 2^64 := by
   rw [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
 
 -- Helper 2: (a * 2^32 % 2^64) / 2^(s+32) = a % 2^32 / 2^s, for s < 32.
 -- Pure Nat identity about the shift-left-then-right cancellation.
-private lemma mul_mod_div_cancel (a s : Nat) (hs : s < 32) :
+lemma mul_mod_div_cancel (a s : Nat) (hs : s < 32) :
     a * 2^32 % 2^64 / 2^(s + 32) = a % 2^32 / 2^s := by
   have h1 : a * 2^32 % 2^64 = a % 2^32 * 2^32 := by omega
   have h2 : (2:Nat)^(s + 32) = 2^s * 2^32 := by
@@ -55,10 +55,10 @@ private lemma mul_mod_div_cancel (a s : Nat) (hs : s < 32) :
   rw [h1, h2, Nat.mul_div_mul_right _ _ (by positivity : (0:Nat) < 2^32)]
 
 -- Helper 2: >>> 0 is identity on Nat.
-private lemma nat_shr_zero (n : Nat) : n >>> 0 = n := by simp
+lemma nat_shr_zero (n : Nat) : n >>> 0 = n := by simp
 
 -- The core BitVec identity, proved using the helpers above.
-private lemma shl_shr_setWidth (v1 v2 : BitVec 64)
+lemma shl_shr_setWidth (v1 v2 : BitVec 64)
     (hs : (v2.setWidth 5).toNat < 32) :
     BitVec.extractLsb' 0 32 (v1 <<< 32 >>> ((v2.setWidth 5).toNat + 32)) =
     BitVec.extractLsb' 0 32 v1 >>> BitVec.extractLsb' 0 5 (BitVec.extractLsb' 0 32 v2) := by
@@ -93,7 +93,7 @@ private lemma shl_shr_setWidth (v1 v2 : BitVec 64)
 
 
 -- The Jolt SRLW computation produces the same value as Sail's SRLW.
-private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
+lemma srlw_shift_eq (v1 v2 : BitVec 64) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
         ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) 31 0) =

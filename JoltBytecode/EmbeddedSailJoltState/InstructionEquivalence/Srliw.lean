@@ -22,12 +22,28 @@ Jolt decomposes SRLIW as:
 The bitmask encodes shamt[4:0] + 32, so ctz recovers the adjusted shift.
 -/
 
+-- setWidth 64 then setWidth 5 = identity on BitVec 5
+private lemma setWidth_5_roundtrip (shamt : BitVec 5) :
+    (shamt.setWidth 64).setWidth 5 = shamt := by
+  ext i; simp [BitVec.getLsbD_setWidth]
+
+-- After ctz, we get shamt.toNat + 32
+private lemma ctz_srliw_imm_shamt5 (shamt : BitVec 5) :
+    ctz (srliw_imm (shamt.setWidth 64)) = shamt.toNat + 32 := by
+  rw [ctz_srliw_imm, setWidth_5_roundtrip]
+
 -- Bridge: Jolt's slli-32 + srli via bitmask = Sail's 32-bit logical right shift
 private lemma srliw_shift_eq (v : BitVec 64) (shamt : BitVec 5) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
         ((v <<< 32) >>> ctz (srliw_imm (shamt.setWidth 64))) 31 0) =
     sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v 31 0) shamt) := by
+  rw [ctz_srliw_imm_shamt5]
+  simp only [sign_extend, shift_bits_right, Sail.BitVec.signExtend,
+             Sail.BitVec.extractLsb, BitVec.extractLsb, Nat.sub_zero, Nat.reduceAdd]
+  congr 1
+  -- (v <<< 32) >>> (shamt + 32) extracts lower 32 bits of v then shifts right by shamt
+  -- This is the same identity proved in Srlw.lean (shl_shr_setWidth)
   sorry
 
 -- Factoring: execute_SHIFTIWOP SRLIW reads rs1, extracts lower 32, right-shifts, sign-extends.
