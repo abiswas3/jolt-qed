@@ -88,7 +88,25 @@ theorem jolt_srliw_concrete (shamt : BitVec 5) (rs1 rd : regidx)
       (jolt_srliw shamt rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
         (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v 31 0) shamt)) := by
-  sorry
+  unfold jolt_srliw jolt_virtual_sign_extend_word liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+             writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
+             EStateM.modifyGet, get]
+  obtain ⟨v, hok⟩ := hwf rs1
+  simp only [hok]
+  dsimp only [getThe, MonadStateOf.get, EStateM.get]
+  simp (config := { decide := true }) only [ite_true]
+  obtain ⟨s3, hw1⟩ := wX_shape rd ((v <<< 32) >>> ctz (srliw_imm (shamt.setWidth 64))) js.sail
+  simp only [hw1]
+  have hrx := wX_rX_roundtrip rd _ js.sail s3 hrd hw1
+  simp only [hrx]
+  obtain ⟨s4, hw2⟩ := wX_shape rd
+    (sign_extend (m := 64) (Sail.BitVec.extractLsb ((v <<< 32) >>> ctz (srliw_imm (shamt.setWidth 64))) 31 0)) s3
+  simp only [hw2]
+  have hc := wX_wX_collapse rd _ _ js.sail s3 s4 hw1 hw2
+  refine ⟨_, v, rfl, rfl, ?_⟩
+  rw [← srliw_shift_eq v shamt]
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s4 hc
 
 -- Running Jolt's SRLIW and projecting equals running Sail's SRLIW.
 theorem jolt_srliw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx)

@@ -60,7 +60,15 @@ theorem jolt_slli_concrete (shamt : BitVec 6) (rs1 rd : regidx)
       (jolt_slli shamt rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
         (shift_bits_left v (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
-  sorry
+  unfold jolt_slli liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+  obtain ⟨v, hok⟩ := hwf rs1
+  simp only [hok]
+  obtain ⟨s', hw⟩ := wX_shape rd (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) js.sail
+  simp only [hw]
+  refine ⟨_, v, rfl, rfl, ?_⟩
+  rw [← slli_mul_eq_shift v shamt]
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 -- Running Jolt's SLLI and projecting equals running Sail's SLLI.
 theorem jolt_slli_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
