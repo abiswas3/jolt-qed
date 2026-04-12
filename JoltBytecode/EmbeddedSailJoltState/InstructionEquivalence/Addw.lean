@@ -63,7 +63,7 @@ def jolt_addw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
 -- Concrete characterization (mvcgen)
 -- ============================================================================
 
--- After running Jolt's ADDW, rd holds sign_extend(extractLsb(v1 + v2, 31, 0)).
+-- After running Jolt's ADDW, rd holds sign_extend(extractLsb(v1) + extractLsb(v2)).
 theorem jolt_addw_concrete (rs2 rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
@@ -71,10 +71,12 @@ theorem jolt_addw_concrete (rs2 rs1 rd : regidx)
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
       (jolt_addw rs2 rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb (v1 + v2) 31 0)) := by
+        (sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0)) := by
   have h := jolt_rtype_w_concrete rop.ADD (· + ·) execute_RTYPE_ADD_factored rs2 rs1 rd hrd js hwf
   obtain ⟨js', v1, v2, h1, h2, h3, h4⟩ := h
-  exact ⟨js', v1, v2, h1, h2, h3, h4⟩
+  refine ⟨js', v1, v2, h1, h2, h3, ?_⟩
+  rw [← extractLsb_add v1 v2]
+  exact h4
 
 -- ============================================================================
 -- Main theorem: Jolt ADDW = Sail ADDW
@@ -96,8 +98,6 @@ theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
   rw [hj]
   simp only [projectResult, project]
   rw [hj_sail]
-  -- Bridge: extractLsb(v1 + v2) = extractLsb(v1) + extractLsb(v2)
-  rw [extractLsb_add v1 v2]
   -- Both sides now write the same value.
   obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
   rw [hw]

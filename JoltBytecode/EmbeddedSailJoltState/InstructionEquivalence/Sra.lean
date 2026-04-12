@@ -52,7 +52,7 @@ theorem jolt_sra_concrete (rs2 rs1 rd : regidx)
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
       (jolt_sra rs2 rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd (v1.sshiftRight (ctz (sra_bitmask v2))) := by
+      js'.sail = stateAfterWrite js.sail rd (shift_bits_right_arith v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
   unfold jolt_sra liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   obtain ⟨v1, hok1⟩ := hwf rs1
@@ -60,7 +60,9 @@ theorem jolt_sra_concrete (rs2 rs1 rd : regidx)
   simp only [hok1, hok2]
   obtain ⟨s', hw⟩ := wX_shape rd (v1.sshiftRight (ctz (sra_bitmask v2))) js.sail
   simp only [hw]
-  exact ⟨_, v1, v2, rfl, rfl, rfl, wX_bits_eq_stateAfterWrite rd _ js.sail s' hw⟩
+  refine ⟨_, v1, v2, rfl, rfl, rfl, ?_⟩
+  rw [← sra_bitmask_eq_shift v1 v2]
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 -- Running Jolt's SRA and projecting equals running Sail's SRA.
 theorem jolt_sra_eq_sail (rs2 rs1 rd : regidx)
@@ -74,7 +76,7 @@ theorem jolt_sra_eq_sail (rs2 rs1 rd : regidx)
   show projectResult ((jolt_sra rs2 rs1 rd).run js) = _
   rw [hj]
   simp only [projectResult, project]
-  rw [hj_sail, sra_bitmask_eq_shift v1 v2]
+  rw [hj_sail]
   obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
   rw [hw]
   congr 1

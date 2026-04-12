@@ -141,7 +141,7 @@ def jolt_srlw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
 -- Concrete characterization
 -- ============================================================================
 
--- After running Jolt's SRLW, rd holds sign_extend(extractLsb((v1 <<< 32) >>> ctz(srlw_bitmask v2), 31, 0)).
+-- After running Jolt's SRLW, rd holds the Sail SRLW value.
 theorem jolt_srlw_concrete (rs2 rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
@@ -149,7 +149,8 @@ theorem jolt_srlw_concrete (rs2 rs1 rd : regidx)
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
       (jolt_srlw rs2 rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) 31 0)) := by
+        (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
+          (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0))) := by
   unfold jolt_srlw jolt_virtual_sign_extend_word liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
              writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
@@ -167,7 +168,9 @@ theorem jolt_srlw_concrete (rs2 rs1 rd : regidx)
     (sign_extend (m := 64) (Sail.BitVec.extractLsb ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) 31 0)) s3
   simp only [hw2]
   have hc := wX_wX_collapse rd _ _ js.sail s3 s4 hw1 hw2
-  exact ⟨_, v1, v2, rfl, rfl, rfl, wX_bits_eq_stateAfterWrite rd _ js.sail s4 hc⟩
+  refine ⟨_, v1, v2, rfl, rfl, rfl, ?_⟩
+  rw [← srlw_shift_eq v1 v2]
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s4 hc
 
 -- ============================================================================
 -- Main theorem: Jolt SRLW = Sail SRLW
@@ -186,7 +189,7 @@ theorem jolt_srlw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
   show projectResult ((jolt_srlw rs2 rs1 rd).run js) = _
   rw [hj]
   simp only [projectResult, project]
-  rw [hj_sail, srlw_shift_eq v1 v2]
+  rw [hj_sail]
   obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
   rw [hw]
   congr 1

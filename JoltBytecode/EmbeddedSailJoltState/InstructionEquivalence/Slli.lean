@@ -44,7 +44,8 @@ theorem jolt_slli_concrete (shamt : BitVec 6) (rs1 rd : regidx)
     ∃ (js' : SailJoltState) (v : BitVec 64),
       rX_bits rs1 js.sail = .ok v js.sail ∧
       (jolt_slli shamt rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) := by
+      js'.sail = stateAfterWrite js.sail rd
+        (shift_bits_left v (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
   sorry
 
 -- Running Jolt's SLLI and projecting equals running Sail's SLLI.
@@ -59,7 +60,7 @@ theorem jolt_slli_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
   show projectResult ((jolt_slli shamt rs1 rd).run js) = _
   rw [hj]
   simp only [projectResult, project]
-  rw [hj_sail, slli_mul_eq_shift v shamt]
+  rw [hj_sail]
   obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
   rw [hw]
   congr 1

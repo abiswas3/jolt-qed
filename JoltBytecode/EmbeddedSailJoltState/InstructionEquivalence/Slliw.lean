@@ -47,7 +47,7 @@ theorem jolt_slliw_concrete (shamt : BitVec 5) (rs1 rd : regidx)
       rX_bits rs1 js.sail = .ok v js.sail ∧
       (jolt_slliw shamt rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) 31 0)) := by
+        (sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v 31 0) shamt)) := by
   sorry
 
 -- Running Jolt's SLLIW and projecting equals running Sail's SLLIW.
@@ -62,7 +62,7 @@ theorem jolt_slliw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx)
   show projectResult ((jolt_slliw shamt rs1 rd).run js) = _
   rw [hj]
   simp only [projectResult, project]
-  rw [hj_sail, slliw_mul_eq_shift v shamt]
+  rw [hj_sail]
   obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
   rw [hw]
   congr 1

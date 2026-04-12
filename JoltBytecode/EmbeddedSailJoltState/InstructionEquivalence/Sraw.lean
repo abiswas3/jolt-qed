@@ -111,7 +111,7 @@ def jolt_sraw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
 -- Concrete characterization
 -- ============================================================================
 
--- After running Jolt's SRAW, rd holds the 5-step decomposition value.
+-- After running Jolt's SRAW, rd holds the Sail SRAW value.
 theorem jolt_sraw_concrete (rs2 rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
@@ -119,7 +119,8 @@ theorem jolt_sraw_concrete (rs2 rs1 rd : regidx)
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
       (jolt_sraw rs2 rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb (sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0) >>> ctz (sraw_bitmask (v2 &&& 0x1f#64))) 31 0)) := by
+        (sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v1 31 0)
+          (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0))) := by
   unfold jolt_sraw jolt_virtual_sign_extend_word liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
              writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
@@ -138,7 +139,9 @@ theorem jolt_sraw_concrete (rs2 rs1 rd : regidx)
     (sign_extend (m := 64) (Sail.BitVec.extractLsb (sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0) >>> ctz (sraw_bitmask (v2 &&& 0x1f#64))) 31 0)) s3
   simp only [hw2]
   have hc := wX_wX_collapse rd _ _ js.sail s3 s4 hw1 hw2
-  exact ⟨_, v1, v2, rfl, rfl, rfl, wX_bits_eq_stateAfterWrite rd _ js.sail s4 hc⟩
+  refine ⟨_, v1, v2, rfl, rfl, rfl, ?_⟩
+  rw [← sraw_five_step_value v1 v2]
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s4 hc
 
 -- ============================================================================
 -- Main theorem: Jolt SRAW = Sail SRAW
@@ -159,7 +162,7 @@ theorem jolt_sraw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
   show projectResult ((jolt_sraw rs2 rs1 rd).run js) = _
   rw [hj]
   simp only [projectResult, project]
-  rw [hj_sail, sraw_five_step_value v1 v2]
+  rw [hj_sail]
   obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
   rw [hw]
   congr 1

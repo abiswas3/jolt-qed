@@ -66,7 +66,7 @@ theorem jolt_sll_concrete (rs2 rs1 rd : regidx)
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
       (jolt_sll rs2 rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd (v1 * BitVec.ofNat 64 (2 ^ (v2.setWidth 6).toNat)) := by
+      js'.sail = stateAfterWrite js.sail rd (shift_bits_left v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
   unfold jolt_sll liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   obtain ⟨v1, hok1⟩ := hwf rs1
@@ -74,7 +74,9 @@ theorem jolt_sll_concrete (rs2 rs1 rd : regidx)
   simp only [hok1, hok2]
   obtain ⟨s', hw⟩ := wX_shape rd (v1 * BitVec.ofNat 64 (2 ^ (v2.setWidth 6).toNat)) js.sail
   simp only [hw]
-  exact ⟨_, v1, v2, rfl, rfl, rfl, wX_bits_eq_stateAfterWrite rd _ js.sail s' hw⟩
+  refine ⟨_, v1, v2, rfl, rfl, rfl, ?_⟩
+  rw [← sll_mul_eq_shift v1 v2]
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 -- Running Jolt's SLL and projecting equals running Sail's SLL.
 theorem jolt_sll_eq_sail (rs2 rs1 rd : regidx)
@@ -88,7 +90,7 @@ theorem jolt_sll_eq_sail (rs2 rs1 rd : regidx)
   show projectResult ((jolt_sll rs2 rs1 rd).run js) = _
   rw [hj]
   simp only [projectResult, project]
-  rw [hj_sail, sll_mul_eq_shift v1 v2]
+  rw [hj_sail]
   obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
   rw [hw]
   congr 1
