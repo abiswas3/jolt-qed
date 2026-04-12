@@ -108,6 +108,39 @@ def jolt_sraw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
   pure RETIRE_SUCCESS
 
 -- ============================================================================
+-- Concrete characterization
+-- ============================================================================
+
+-- After running Jolt's SRAW, rd holds the 5-step decomposition value.
+theorem jolt_sraw_concrete (rs2 rs1 rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
+    ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
+      rX_bits rs1 js.sail = .ok v1 js.sail ∧
+      rX_bits rs2 js.sail = .ok v2 js.sail ∧
+      (jolt_sraw rs2 rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.sail = stateAfterWrite js.sail rd
+        (sign_extend (m := 64) (Sail.BitVec.extractLsb (sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0) >>> ctz (sraw_bitmask (v2 &&& 0x1f#64))) 31 0)) := by
+  unfold jolt_sraw jolt_virtual_sign_extend_word liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+             writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
+             EStateM.modifyGet, get, MonadStateOf.get, EStateM.get]
+  obtain ⟨v1, hok1⟩ := hwf rs1
+  obtain ⟨v2, hok2⟩ := hwf rs2
+  simp only [hok1, hok2]
+  dsimp only [getThe, MonadStateOf.get, EStateM.get]
+  simp (config := { decide := true }) only [ite_true, ite_false]
+  obtain ⟨s3, hw1⟩ := wX_shape rd
+    (sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0) >>> ctz (sraw_bitmask (v2 &&& 0x1f#64))) js.sail
+  simp only [hw1]
+  have hrx := wX_rX_roundtrip rd _ js.sail s3 hrd hw1
+  simp only [hrx]
+  obtain ⟨s4, hw2⟩ := wX_shape rd
+    (sign_extend (m := 64) (Sail.BitVec.extractLsb (sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0) >>> ctz (sraw_bitmask (v2 &&& 0x1f#64))) 31 0)) s3
+  simp only [hw2]
+  have hc := wX_wX_collapse rd _ _ js.sail s3 s4 hw1 hw2
+  exact ⟨_, v1, v2, rfl, rfl, rfl, wX_bits_eq_stateAfterWrite rd _ js.sail s4 hc⟩
+
+-- ============================================================================
 -- Main theorem: Jolt SRAW = Sail SRAW
 -- ============================================================================
 
@@ -119,46 +152,17 @@ theorem jolt_sraw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) :
     projectResult ((jolt_sraw rs2 rs1 rd).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SRAW).run js.sail := by
+  obtain ⟨js', v1, v2, hj_rx1, hj_rx2, hj, hj_sail⟩ :=
+    jolt_sraw_concrete rs2 rs1 rd hrd js hwf
   rw [execute_RTYPEW_SRAW_eq_factored]
-  -- Unfold Jolt side
-  unfold jolt_sraw jolt_virtual_sign_extend_word liftSail projectResult
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-             writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
-             EStateM.modifyGet, get, MonadStateOf.get, EStateM.get]
-  -- Case-split on register reads
-  cases hrx1 : rX_bits rs1 js.sail with
-  | error e s => simp [hrx1]
-  | ok v1 s1 =>
-    have hs1 := rX_bits_pure rs1 js.sail v1 s1 hrx1; subst hs1
-    simp only [hrx1]
-    cases hrx2 : rX_bits rs2 js.sail with
-    | error e s => simp [hrx2]
-    | ok v2 s2 =>
-      have hs2 := rX_bits_pure rs2 js.sail v2 s2 hrx2; subst hs2
-      simp only [hrx2]
-      -- Reduce vreg operations
-      dsimp only [getThe, MonadStateOf.get, EStateM.get]
-      simp (config := { decide := true }) only [ite_true, ite_false, project]
-      -- Both sides write to rd on js.sail then VSEW.
-      -- Use the write-then-VSEW collapse pattern (same as SRAIW).
-      -- First, establish the wX_bits write succeeds.
-      obtain ⟨s3, hw1⟩ := wX_shape rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0) >>> ctz (sraw_bitmask (v2 &&& 0x1f#64))) js.sail
-      simp only [hw1]
-      -- Read back from rd after the write.
-      have hrx := wX_rX_roundtrip rd _ js.sail s3 hrd hw1
-      simp only [hrx]
-      -- Apply the bridge: 5-step Jolt value = Sail SRAW value.
-      rw [sraw_five_step_value v1 v2]
-      -- Second write (from VSEW) collapses with first write.
-      obtain ⟨s4, hw2⟩ := wX_shape rd
-        (sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v1 31 0)
-          (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0))) s3
-      have hc := wX_wX_collapse rd
-        (sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0) >>> ctz (sraw_bitmask (v2 &&& 0x1f#64)))
-        (sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v1 31 0)
-          (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)))
-        js.sail s3 s4 hw1 hw2
-      simp [hw2, hc]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure, hj_rx1, hj_rx2]
+  show projectResult ((jolt_sraw rs2 rs1 rd).run js) = _
+  rw [hj]
+  simp only [projectResult, project]
+  rw [hj_sail, sraw_five_step_value v1 v2]
+  obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
+  rw [hw]
+  congr 1
+  exact (wX_bits_eq_stateAfterWrite rd _ js.sail s' hw).symm
 
 end
