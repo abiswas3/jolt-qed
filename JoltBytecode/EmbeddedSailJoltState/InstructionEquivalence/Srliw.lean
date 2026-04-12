@@ -43,8 +43,25 @@ private lemma srliw_shift_eq (v : BitVec 64) (shamt : BitVec 5) :
              Sail.BitVec.extractLsb, BitVec.extractLsb, Nat.sub_zero, Nat.reduceAdd]
   congr 1
   -- (v <<< 32) >>> (shamt + 32) extracts lower 32 bits of v then shifts right by shamt
-  -- This is the same identity proved in Srlw.lean (shl_shr_setWidth)
-  sorry
+  unfold BitVec.extractLsb'
+  have nat_shr_zero : ∀ n : Nat, n >>> 0 = n := by simp
+  simp only [nat_shr_zero]
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_ofNat, BitVec.toNat_ushiftRight, Nat.shiftRight_eq_div_pow, Nat.reducePow]
+  have h_shl : (v <<< 32).toNat = v.toNat * 2^32 % 2^64 := by
+    rw [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
+  have hs : shamt.toNat < 32 := by have := shamt.isLt; norm_num at this; exact this
+  have h_cancel : v.toNat * 2^32 % 2^64 / 2^(shamt.toNat + 32) = v.toNat % 2^32 / 2^shamt.toNat := by
+    have h1 : v.toNat * 2^32 % 2^64 = v.toNat % 2^32 * 2^32 := by omega
+    have h2 : (2:Nat)^(shamt.toNat + 32) = 2^shamt.toNat * 2^32 := by rw [Nat.pow_add]
+    rw [h1, h2, Nat.mul_div_mul_right _ _ (by positivity : (0:Nat) < 2^32)]
+  rw [h_shl, h_cancel]
+  simp only [Nat.reducePow]
+  have hbound : v.toNat % 4294967296 / 2 ^ shamt.toNat < 4294967296 :=
+    Nat.lt_of_le_of_lt (Nat.div_le_self _ _) (Nat.mod_lt _ (by positivity))
+  rw [Nat.mod_eq_of_lt hbound]
+  change _ = (BitVec.ofNat 32 v.toNat >>> (shamt).toNat).toNat
+  simp only [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow, Nat.reducePow]
 
 -- Factoring: execute_SHIFTIWOP SRLIW reads rs1, extracts lower 32, right-shifts, sign-extends.
 private theorem execute_SHIFTIWOP_SRLIW_eq_factored (shamt : BitVec 5) (rs1 rd : regidx) :
