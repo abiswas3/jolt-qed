@@ -179,43 +179,4 @@ theorem jolt_rtype_w_concrete (op : rop)
     have h_v : v = f v1 v2 := (EStateM.Result.ok.inj h_rxrd).1.symm
     rw [h_v]
 
--- ============================================================================
--- Generic main theorem (parameterized by the math lemma)
--- ============================================================================
-
--- The math lemma connects the 64-bit operation with the 32-bit W operation.
--- Each instruction provides this lemma (e.g., extractLsb_add for ADDW).
-theorem jolt_rtype_w_eq_sail (op : rop) (opw : ropw)
-    (f : BitVec 64 → BitVec 64 → BitVec 64)
-    (hf : ∀ rs2 rs1 rd, execute_RTYPE rs2 rs1 rd op = do
-      let v1 ← rX_bits rs1; let v2 ← rX_bits rs2
-      wX_bits rd (f v1 v2); pure RETIRE_SUCCESS)
-    (h_math : ∀ a b : BitVec 64,
-      Sail.BitVec.extractLsb (f a b) 31 0 =
-      (match opw with
-        | ropw.ADDW => Sail.BitVec.extractLsb a 31 0 + Sail.BitVec.extractLsb b 31 0
-        | ropw.SUBW => Sail.BitVec.extractLsb a 31 0 - Sail.BitVec.extractLsb b 31 0
-        | ropw.SLLW => shift_bits_left (Sail.BitVec.extractLsb a 31 0) (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb b 31 0) 4 0)
-        | ropw.SRLW => shift_bits_right (Sail.BitVec.extractLsb a 31 0) (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb b 31 0) 4 0)
-        | ropw.SRAW => shift_bits_right_arith (Sail.BitVec.extractLsb a 31 0) (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb b 31 0) 4 0)))
-    (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
-    projectResult ((jolt_rtype_w op rs2 rs1 rd).run js) =
-    (execute_RTYPEW rs2 rs1 rd opw).run js.sail := by
-  obtain ⟨js', v1, v2, hj_rx1, hj_rx2, hj, hj_sail⟩ :=
-    jolt_rtype_w_concrete op f hf rs2 rs1 rd hrd js hwf
-  unfold execute_RTYPEW
-  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure, hj_rx1, hj_rx2]
-  show projectResult ((jolt_rtype_w op rs2 rs1 rd).run js) = _
-  rw [hj]
-  simp only [projectResult, project]
-  rw [hj_sail]
-  -- Goal: stateAfterWrite(signext(extractLsb(f v1 v2))) = stateAfterWrite(signext(opw_result))
-  -- Apply the math lemma to connect them.
-  rw [h_math]
-  obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
-  rw [hw]
-  congr 1
-  exact (wX_bits_eq_stateAfterWrite rd _ js.sail s' hw).symm
-
 end

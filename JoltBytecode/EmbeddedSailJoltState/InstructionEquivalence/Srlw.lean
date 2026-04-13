@@ -40,13 +40,13 @@ the 32-bit value by rs2[4:0], sign-extends to 64, writes to rd.
 -- creates 32 nested operations and blows the stack.
 -- Needs a kernel-level workaround (e.g. native_decide, or a proof
 -- that avoids touching the BitVec term).
-private lemma toNat_shl_32 (v : BitVec 64) :
+lemma toNat_shl_32 (v : BitVec 64) :
     (v <<< 32).toNat = v.toNat * 2^32 % 2^64 := by
   rw [BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
 
 -- Helper 2: (a * 2^32 % 2^64) / 2^(s+32) = a % 2^32 / 2^s, for s < 32.
 -- Pure Nat identity about the shift-left-then-right cancellation.
-private lemma mul_mod_div_cancel (a s : Nat) (hs : s < 32) :
+lemma mul_mod_div_cancel (a s : Nat) (hs : s < 32) :
     a * 2^32 % 2^64 / 2^(s + 32) = a % 2^32 / 2^s := by
   have h1 : a * 2^32 % 2^64 = a % 2^32 * 2^32 := by omega
   have h2 : (2:Nat)^(s + 32) = 2^s * 2^32 := by
@@ -55,10 +55,10 @@ private lemma mul_mod_div_cancel (a s : Nat) (hs : s < 32) :
   rw [h1, h2, Nat.mul_div_mul_right _ _ (by positivity : (0:Nat) < 2^32)]
 
 -- Helper 2: >>> 0 is identity on Nat.
-private lemma nat_shr_zero (n : Nat) : n >>> 0 = n := by simp
+lemma nat_shr_zero (n : Nat) : n >>> 0 = n := by simp
 
 -- The core BitVec identity, proved using the helpers above.
-private lemma shl_shr_setWidth (v1 v2 : BitVec 64)
+lemma shl_shr_setWidth (v1 v2 : BitVec 64)
     (hs : (v2.setWidth 5).toNat < 32) :
     BitVec.extractLsb' 0 32 (v1 <<< 32 >>> ((v2.setWidth 5).toNat + 32)) =
     BitVec.extractLsb' 0 32 v1 >>> BitVec.extractLsb' 0 5 (BitVec.extractLsb' 0 32 v2) := by
@@ -93,7 +93,7 @@ private lemma shl_shr_setWidth (v1 v2 : BitVec 64)
 
 
 -- The Jolt SRLW computation produces the same value as Sail's SRLW.
-private lemma srlw_shift_eq (v1 v2 : BitVec 64) :
+lemma srlw_shift_eq (v1 v2 : BitVec 64) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
         ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) 31 0) =
@@ -138,6 +138,41 @@ def jolt_srlw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
   pure RETIRE_SUCCESS
 
 -- ============================================================================
+-- Concrete characterization
+-- ============================================================================
+
+-- After running Jolt's SRLW, rd holds the Sail SRLW value.
+theorem jolt_srlw_concrete (rs2 rs1 rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
+    ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
+      rX_bits rs1 js.sail = .ok v1 js.sail ∧
+      rX_bits rs2 js.sail = .ok v2 js.sail ∧
+      (jolt_srlw rs2 rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.sail = stateAfterWrite js.sail rd
+        (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
+          (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0))) := by
+  unfold jolt_srlw jolt_virtual_sign_extend_word liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+             writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
+             EStateM.modifyGet, get]
+  obtain ⟨v1, hok1⟩ := hwf rs1
+  obtain ⟨v2, hok2⟩ := hwf rs2
+  simp only [hok1, hok2]
+  dsimp only [getThe, MonadStateOf.get, EStateM.get]
+  simp (config := { decide := true }) only [ite_true]
+  obtain ⟨s3, hw1⟩ := wX_shape rd ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) js.sail
+  simp only [hw1]
+  have hrx := wX_rX_roundtrip rd _ js.sail s3 hrd hw1
+  simp only [hrx]
+  obtain ⟨s4, hw2⟩ := wX_shape rd
+    (sign_extend (m := 64) (Sail.BitVec.extractLsb ((v1 <<< 32) >>> ctz (srlw_bitmask v2)) 31 0)) s3
+  simp only [hw2]
+  have hc := wX_wX_collapse rd _ _ js.sail s3 s4 hw1 hw2
+  refine ⟨_, v1, v2, rfl, rfl, rfl, ?_⟩
+  rw [← srlw_shift_eq v1 v2]
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s4 hc
+
+-- ============================================================================
 -- Main theorem: Jolt SRLW = Sail SRLW
 -- ============================================================================
 
@@ -147,25 +182,17 @@ theorem jolt_srlw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) :
     projectResult ((jolt_srlw rs2 rs1 rd).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SRLW).run js.sail := by
+  obtain ⟨js', v1, v2, hj_rx1, hj_rx2, hj, hj_sail⟩ :=
+    jolt_srlw_concrete rs2 rs1 rd hrd js hwf
   rw [execute_RTYPEW_SRLW_eq_factored]
-  unfold jolt_srlw jolt_virtual_sign_extend_word liftSail projectResult
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-             writeVReg, readVReg, modify, modifyGet, MonadStateOf.modifyGet,
-             EStateM.modifyGet, get]
-  obtain ⟨v1, hok1⟩ := hwf rs1
-  obtain ⟨v2, hok2⟩ := hwf rs2
-  simp only [hok1, hok2]
-  dsimp only [getThe, MonadStateOf.get, EStateM.get]
-  simp (config := { decide := true }) only [ite_true, project]
-  obtain ⟨s3, hw1⟩ := wX_shape rd (v1 <<< 32 >>> ctz (srlw_bitmask v2)) js.sail
-  simp only [hw1]
-  have hrx := wX_rX_roundtrip rd _ js.sail s3 hrd hw1
-  simp only [hrx]
-  rw [srlw_shift_eq v1 v2]
-  obtain ⟨s4, hw2⟩ := wX_shape rd
-    (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
-      (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0))) s3
-  have hc := wX_wX_collapse rd _ _ js.sail s3 s4 hw1 hw2
-  simp [hw2, hc]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure, hj_rx1, hj_rx2]
+  show projectResult ((jolt_srlw rs2 rs1 rd).run js) = _
+  rw [hj]
+  simp only [projectResult, project]
+  rw [hj_sail]
+  obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
+  rw [hw]
+  congr 1
+  exact (wX_bits_eq_stateAfterWrite rd _ js.sail s' hw).symm
 
 end

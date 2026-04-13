@@ -30,14 +30,6 @@ private lemma sra_bitmask_eq_shift (v1 v2 : BitVec 64) :
   simp [Sail.BitVec.toNatInt, Sail.BitVec.extractLsb, ctz_sra_bitmask]
   congr 1
 
--- Factoring: execute_RTYPE SRA reads rs1, rs2, arith-right-shifts v1 by v2[5:0].
-private theorem execute_RTYPE_SRA_factored (rs2 rs1 rd : regidx) :
-    execute_RTYPE rs2 rs1 rd rop.SRA = (do
-      let v1 ← rX_bits rs1; let v2 ← rX_bits rs2
-      wX_bits rd (shift_bits_right_arith v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
-      pure RETIRE_SUCCESS) := by
-  sorry
-
 -- Jolt's SRA: read rs1, arithmetic right shift by ctz(bitmask of rs2), write to rd.
 def jolt_sra (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
   let v1 ← liftSail (rX_bits rs1)
@@ -45,20 +37,49 @@ def jolt_sra (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
   liftSail (wX_bits rd (v1.sshiftRight (ctz (sra_bitmask v2))))
   pure RETIRE_SUCCESS
 
+-- Factoring: execute_RTYPE SRA reads rs1, rs2, arith-right-shifts v1 by v2[5:0].
+private theorem execute_RTYPE_SRA_factored (rs2 rs1 rd : regidx) :
+    execute_RTYPE rs2 rs1 rd rop.SRA = (do
+      let v1 ← rX_bits rs1; let v2 ← rX_bits rs2
+      wX_bits rd (shift_bits_right_arith v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
+      pure RETIRE_SUCCESS) := by
+  simp [execute_RTYPE, bind_pure_comp]
+
+-- Concrete: characterise what jolt_sra writes to rd.
+theorem jolt_sra_concrete (rs2 rs1 rd : regidx)
+    (js : SailJoltState) (hwf : WellFormed js) :
+    ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
+      rX_bits rs1 js.sail = .ok v1 js.sail ∧
+      rX_bits rs2 js.sail = .ok v2 js.sail ∧
+      (jolt_sra rs2 rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.sail = stateAfterWrite js.sail rd (shift_bits_right_arith v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
+  unfold jolt_sra liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+  obtain ⟨v1, hok1⟩ := hwf rs1
+  obtain ⟨v2, hok2⟩ := hwf rs2
+  simp only [hok1, hok2]
+  obtain ⟨s', hw⟩ := wX_shape rd (v1.sshiftRight (ctz (sra_bitmask v2))) js.sail
+  simp only [hw]
+  refine ⟨_, v1, v2, rfl, rfl, rfl, ?_⟩
+  rw [← sra_bitmask_eq_shift v1 v2]
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
+
 -- Running Jolt's SRA and projecting equals running Sail's SRA.
 theorem jolt_sra_eq_sail (rs2 rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) :
     projectResult ((jolt_sra rs2 rs1 rd).run js) =
     (execute_RTYPE rs2 rs1 rd rop.SRA).run js.sail := by
+  obtain ⟨js', v1, v2, hj_rx1, hj_rx2, hj, hj_sail⟩ :=
+    jolt_sra_concrete rs2 rs1 rd js hwf
   rw [execute_RTYPE_SRA_factored]
-  unfold jolt_sra liftSail projectResult
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
-  obtain ⟨v1, hok1⟩ := hwf rs1
-  obtain ⟨v2, hok2⟩ := hwf rs2
-  simp only [hok1, hok2]
-  rw [sra_bitmask_eq_shift v1 v2]
-  cases wX_bits rd _ js.sail with
-  | error e s => simp [project]
-  | ok a s => simp [project]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure, hj_rx1, hj_rx2]
+  show projectResult ((jolt_sra rs2 rs1 rd).run js) = _
+  rw [hj]
+  simp only [projectResult, project]
+  rw [hj_sail]
+  obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
+  rw [hw]
+  congr 1
+  exact (wX_bits_eq_stateAfterWrite rd _ js.sail s' hw).symm
 
 end

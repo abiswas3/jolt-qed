@@ -112,7 +112,10 @@ theorem jolt_addiw_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
   obtain ⟨js', v1, hj_rx1, hj, hj_sail⟩ :=
     jolt_addiw_concrete imm rs1 rd hrd js hwf
   -- Sail side: unfold and rewrite with the same v1
-  simp only [execute_ADDIW, EStateM.run, bind, EStateM.bind, pure, EStateM.pure, hj_rx1]
+  simp only [execute_ADDIW]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+  rw [hj_rx1]
+  -- TODO: can't we use the faact that result is OK here to simplify gere?
   -- Jolt side: rewrite with concrete result
   show projectResult ((jolt_addiw imm rs1 rd).run js) = _
   rw [hj]
