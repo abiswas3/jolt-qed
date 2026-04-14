@@ -169,15 +169,82 @@ theorem jolt_lb_bridge (s : SailState) (addr : BitVec 64) :
   simp only [sll_srai_extracts_byte, ← loaded_byte_in_dword]
 
 -- ============================================================================
+-- Sail-pipeline layer lemmas. Each one reduces a single Sail function under
+-- the relevant precondition. Composed together they discharge
+-- `vmem_read_addr_dword_reduces`. All sorry'd for now — to be proved.
+-- ============================================================================
+
+-- Layer A — alignment check. For an 8-aligned address, the misalignment
+-- guard is false. Pure bit-vector identity, no monads.
+theorem access_misaligned_8_aligned_false (addr : BitVec 64)
+    (halign : addr &&& 7 = 0) :
+    access_causes_misaligned_exception (Virtaddr addr) 8 false = false := by
+  unfold access_causes_misaligned_exception is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 8 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h7 : (7 : BitVec 64).toNat = 7 := by decide
+    have h0 : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h7, h0,
+        show (7 : Nat) = 2^3 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  simp [Int.tmod, h_mod, LeanRV64D.Functions.not]
+
+-- Layer B — chunk decomposition. Functional form: as a SailM computation
+-- (not state-applied), `split_misaligned` for an 8-aligned address and
+-- width 8 is `pure (1, 8)`. This composes through `liftM` wrappers.
+theorem split_misaligned_aligned_8 (addr : BitVec 64)
+    (halign : addr &&& 7 = 0) :
+    split_misaligned (Virtaddr addr) 8 = (pure (1, 8) : SailM (Int × Int)) := by
+  funext s
+  unfold split_misaligned is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 8 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h7 : (7 : BitVec 64).toNat = 7 := by decide
+    have h0 : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h7, h0,
+        show (7 : Nat) = 2^3 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  simp [Int.tmod, h_mod, bind, EStateM.bind, pure, EStateM.pure]
+
+-- ============================================================================
+-- Per-monadic-call success lemmas for the vmem_read_addr pipeline.
+-- Each one collapses one branching call into its success branch.
+-- Pattern matches the `vreg_X_run` simp lemmas on the Jolt side.
+-- ============================================================================
+
+-- liftM of pure is pure (in the SailME monad).
+@[simp] theorem liftM_pure_in_SailME {α} (x : α) :
+    (liftM (pure x : SailM α) : SailME (Result (BitVec 64) ExecutionResult) α)
+      = pure x := by
+  rfl
+
+-- ============================================================================
 -- Memory pipeline collapse at width 8: under JoltConfig, vmem_read_addr
 -- produces the little-endian dword assembled directly from state.mem.
--- Discharges the 5-layer Sail pipeline.
+-- Composes the layer lemmas above.
 -- ============================================================================
 
 theorem vmem_read_addr_dword_reduces (addr : BitVec 64) (s : SailState)
-    (hcfg : JoltConfig s) :
+    (halign : addr &&& 7 = 0)
+    -- Each branching call gets its own success hypothesis. These collapse
+    -- the corresponding match in the do-block to its Ok branch.
+    (h_split   : split_misaligned (Virtaddr addr) 8 = (pure (1, 8) : SailM (Int × Int)))
+    (h_misalign : access_causes_misaligned_exception (Virtaddr addr) 8 false = false)
+    (h_translate :
+      translateAddr (Virtaddr addr) (Load Data) s =
+        .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s)
+    (h_mem :
+      mem_read (Load Data) (physaddr.Physaddr addr) 8 false false false s =
+        .ok (Ok (loaded_dword_at s addr)) s) :
     vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false s =
     .ok (Ok (loaded_dword_at s addr)) s := by
+  unfold vmem_read_addr
+  simp only [h_misalign, Bool.false_eq_true, if_false]
+  unfold SailME.run PreSail.PreSailME.run
   sorry
 
 -- ============================================================================
@@ -200,7 +267,9 @@ theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
              getThe, MonadStateOf.get, MonadStateOf.modifyGet,
              EStateM.get, EStateM.modifyGet, get, hrx,
              vreg_ANDI_run, if_true]
-  rw [vmem_read_addr_dword_reduces _ js.sail hcfg]
+  rw [vmem_read_addr_dword_reduces _ js.sail
+        (by unfold sign_extend Sail.BitVec.signExtend; bv_decide)
+        (by sorry) (by sorry) (by sorry) (by sorry)]
   simp only [RETIRE_SUCCESS, vreg_XORI_run, vreg_SLLI_run, vreg_SLL_run, if_true,
              bind, EStateM.bind, pure, EStateM.pure,
              EStateM.get, EStateM.modifyGet]
