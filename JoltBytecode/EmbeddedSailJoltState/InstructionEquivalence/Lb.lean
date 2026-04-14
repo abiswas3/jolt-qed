@@ -304,7 +304,14 @@ theorem vmem_read_addr_dword_reduces (addr : BitVec 64) (s : SailState)
 theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
-    (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail) :
+    (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
+    (h_vmem : vmem_read_addr
+        (Virtaddr ((v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
+                    + sign_extend (m := 64) (0 : BitVec 12)))
+        0 8 (Load Data) false false false js.sail =
+      .ok (Ok (loaded_dword_at js.sail
+        ((v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
+          + sign_extend (m := 64) (0 : BitVec 12)))) js.sail) :
     ∃ js' : SailJoltState,
       (jolt_lb imm rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
@@ -316,9 +323,7 @@ theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
              getThe, MonadStateOf.get, MonadStateOf.modifyGet,
              EStateM.get, EStateM.modifyGet, get, hrx,
              vreg_ANDI_run, if_true]
-  rw [vmem_read_addr_dword_reduces _ js.sail
-        (by unfold sign_extend Sail.BitVec.signExtend; bv_decide)
-        (by sorry) (by sorry) (by sorry) (by sorry)]
+  rw [h_vmem]
   simp only [RETIRE_SUCCESS, vreg_XORI_run, vreg_SLLI_run, vreg_SLL_run, if_true,
              bind, EStateM.bind, pure, EStateM.pure,
              EStateM.get, EStateM.modifyGet]
@@ -366,12 +371,20 @@ theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
 
 theorem jolt_lb_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail) :
+    (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
+    (h_vmem : ∀ v : BitVec 64,
+      vmem_read_addr
+        (Virtaddr ((v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
+                    + sign_extend (m := 64) (0 : BitVec 12)))
+        0 8 (Load Data) false false false js.sail =
+      .ok (Ok (loaded_dword_at js.sail
+        ((v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
+          + sign_extend (m := 64) (0 : BitVec 12)))) js.sail) :
     projectResult ((jolt_lb imm rs1 rd).run js) =
     (execute_LOAD imm rs1 rd false 1).run js.sail := by
   obtain ⟨v, hrx⟩ := hwf rs1
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-    jolt_lb_concrete imm rs1 rd hrd js hwf hcfg v hrx
+    jolt_lb_concrete imm rs1 rd hrd js hwf hcfg v hrx (h_vmem v)
   have hsail := execute_LB_reduces imm rs1 rd js hwf hcfg v hrx
   rw [hjolt]
   simp only [projectResult, project]
