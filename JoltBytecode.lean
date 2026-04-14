@@ -87,7 +87,7 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw          
 -- Instruction proofs — Memory (load)
 -- ============================================================================
 
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lw                    -- INPROGRESS: LW main thm passes, 5 sorry'd memory bridge helpers
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lw                    -- INPROGRESS: LW main thm passes, 5 sorry'd memory bridge helpers
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lb        -- TODO: width=1, signed
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lbu       -- TODO: width=1, unsigned
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lh        -- TODO: width=2, signed

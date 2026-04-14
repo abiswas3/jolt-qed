@@ -223,6 +223,55 @@ theorem split_misaligned_aligned_8 (addr : BitVec 64)
   rfl
 
 -- ============================================================================
+-- Bottom-up: hashmap → readBytes → loaded_dword_at
+-- ============================================================================
+
+-- readByte at a populated address returns the hashmap value, state unchanged.
+theorem readByte_eq (n : Nat) (s : SailState) (v : BitVec 8)
+    (h : s.mem.get? n = some v) :
+    (PreSail.readByte n : SailM (BitVec 8)) s = .ok v s := by
+  unfold PreSail.readByte
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             MonadStateOf.get, EStateM.get, getThe, get, h]
+
+-- readBytes 8 = loaded_dword_at. Pure hashmap reasoning, no ExceptT.
+-- Needs every byte addr..addr+7 populated so readByte never throws.
+theorem readBytes_8_eq_loaded_dword (addr : BitVec 64) (s : SailState)
+    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (h_no_ovf : addr.toNat + 7 < 2 ^ 64) :
+    (PreSail.readBytes 8 addr.toNat : SailM _) s =
+    .ok (loaded_dword_at s addr, none) s := by
+  -- Each byte is populated — extract with Nat addresses to match readBytes
+  have gb : ∀ k : Nat, ∃ v, s.mem.get? k = some v := by
+    intro k; exact Option.ne_none_iff_exists'.mp (h_pop k)
+  obtain ⟨b0, hb0⟩ := gb addr.toNat
+  obtain ⟨b1, hb1⟩ := gb (addr.toNat + 1)
+  obtain ⟨b2, hb2⟩ := gb (addr.toNat + 2)
+  obtain ⟨b3, hb3⟩ := gb (addr.toNat + 3)
+  obtain ⟨b4, hb4⟩ := gb (addr.toNat + 4)
+  obtain ⟨b5, hb5⟩ := gb (addr.toNat + 5)
+  obtain ⟨b6, hb6⟩ := gb (addr.toNat + 6)
+  obtain ⟨b7, hb7⟩ := gb (addr.toNat + 7)
+  -- Unfold readBytes — uses Nat addresses
+  simp only [PreSail.readBytes, PreSail.readByte,
+             bind, EStateM.bind, pure, EStateM.pure,
+             MonadStateOf.get, EStateM.get, getThe, get,
+             hb0, hb1, hb2, hb3, hb4, hb5, hb6, hb7]
+  -- Unfold loaded_dword_at — uses BitVec addresses
+  unfold loaded_dword_at loaded_byte_at
+  -- Connect (addr + k).toNat to addr.toNat + k for the getD/get? match
+  simp only [hb0, hb1, hb2, hb3, hb4, hb5, hb6, hb7,
+             show (addr + 1).toNat = addr.toNat + 1 from by apply BitVec.toNat_add_of_lt; simp; omega,
+             show (addr + 2).toNat = addr.toNat + 2 from by apply BitVec.toNat_add_of_lt; simp; omega,
+             show (addr + 3).toNat = addr.toNat + 3 from by apply BitVec.toNat_add_of_lt; simp; omega,
+             show (addr + 4).toNat = addr.toNat + 4 from by apply BitVec.toNat_add_of_lt; simp; omega,
+             show (addr + 5).toNat = addr.toNat + 5 from by apply BitVec.toNat_add_of_lt; simp; omega,
+             show (addr + 6).toNat = addr.toNat + 6 from by apply BitVec.toNat_add_of_lt; simp; omega,
+             show (addr + 7).toNat = addr.toNat + 7 from by apply BitVec.toNat_add_of_lt; simp; omega,
+             Option.getD]
+  rfl
+
+-- ============================================================================
 -- Memory pipeline collapse at width 8: under JoltConfig, vmem_read_addr
 -- produces the little-endian dword assembled directly from state.mem.
 -- Composes the layer lemmas above.
