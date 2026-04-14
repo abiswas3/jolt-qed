@@ -226,6 +226,14 @@ theorem split_misaligned_aligned_8 (addr : BitVec 64)
 -- Bottom-up: hashmap → readBytes → loaded_dword_at
 -- ============================================================================
 
+-- readReg when the register is populated in s.regs.
+theorem readReg_eq (r : Register) (s : SailState) (v : RegisterType r)
+    (h : s.regs.get? r = some v) :
+    (Sail.readReg r : SailM (RegisterType r)) s = .ok v s := by
+  unfold Sail.readReg PreSail.readReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             MonadStateOf.get, EStateM.get, getThe, get, h]
+
 -- readByte at a populated address returns the hashmap value, state unchanged.
 theorem readByte_eq (n : Nat) (s : SailState) (v : BitVec 8)
     (h : s.mem.get? n = some v) :
@@ -271,18 +279,73 @@ theorem readBytes_8_eq_loaded_dword (addr : BitVec 64) (s : SailState)
              Option.getD]
   rfl
 
+-- read_ram for a plain read at width 8 = loaded_dword_at.
+-- Chains: read_ram → sail_mem_read → readBytes → hashmap.
+-- Flat EStateM, no ExceptT.
+theorem read_ram_eq_loaded_dword (addr : BitVec 64) (s : SailState)
+    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (h_no_ovf : addr.toNat + 7 < 2 ^ 64) :
+    LeanRV64D.Functions.read_ram read_kind.Read_plain (physaddr.Physaddr addr) 8 false s =
+    .ok (loaded_dword_at s addr, default_meta) s := by
+  dsimp [LeanRV64D.Functions.read_ram,
+         Sail.ConcurrencyInterfaceV1.sail_mem_read,
+         PreSail.ConcurrencyInterfaceV1.sail_mem_read,
+         default_meta]
+  simp only [bind, EStateM.bind, pure, EStateM.pure]
+  rw [readBytes_8_eq_loaded_dword addr s h_pop h_no_ovf]
+  simp [EStateM.pure, default_meta]
+
+-- checked_mem_read: PMP/PMA pass + not MMIO → read_ram → hashmap.
+theorem checked_mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
+    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (h_no_ovf : addr.toNat + 7 < 2 ^ 64)
+    (h_pmp : phys_access_check (Load Data) Privilege.Machine (physaddr.Physaddr addr) 8 false s =
+             .ok none s)
+    (h_mmio : within_mmio_readable (physaddr.Physaddr addr) 8 s = .ok false s) :
+    checked_mem_read (Load Data) Privilege.Machine (physaddr.Physaddr addr) 8 false false false false s =
+    .ok (Ok (loaded_dword_at s addr, default_meta)) s := by
+  unfold checked_mem_read
+  simp only [bind, EStateM.bind, pure, EStateM.pure, h_pmp, h_mmio,
+             Bool.false_eq_true, if_false]
+  unfold read_kind_of_flags
+  simp only [pure, EStateM.pure]
+  rw [read_ram_eq_loaded_dword addr s h_pop h_no_ovf]
+
+-- mem_read: register reads for effectivePrivilege + mem_read_priv_meta + checked_mem_read.
+-- Assumptions: mstatus and cur_privilege register reads succeed, giving Machine mode.
+theorem mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
+    (hcfg : JoltConfig s)
+    (h_no_ovf : addr.toNat + 7 < 2 ^ 64)
+    (h_pmp : phys_access_check (Load Data) Privilege.Machine (physaddr.Physaddr addr) 8 false s =
+             .ok none s)
+    (h_mmio : within_mmio_readable (physaddr.Physaddr addr) 8 s = .ok false s) :
+    mem_read (Load Data) (physaddr.Physaddr addr) 8 false false false s =
+    .ok (Ok (loaded_dword_at s addr)) s := by
+  -- Extract JoltConfig fields
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  unfold mem_read mem_read_priv
+  simp only [bind, EStateM.bind, pure, EStateM.pure, h_ms_read, h_priv]
+  -- effectivePrivilege: MPRV=0 so returns cur_privilege = Machine
+  unfold effectivePrivilege
+  simp only [bind, EStateM.bind, pure, EStateM.pure, h_mprv,
+             bne, BEq.beq, Bool.and_false, Bool.false_eq_true, ite_false]
+  -- mem_read_priv_meta: aq||res = false, match (false,false,false) → checked_mem_read
+  unfold mem_read_priv_meta
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             Bool.false_or, Bool.false_and, Bool.false_eq_true, ite_false]
+  simp (config := { decide := true }) only [ite_false, EStateM.pure, MemoryOpResult_drop_meta]
+  rw [checked_mem_read_eq_loaded_dword addr s hcfg.mem_populated h_no_ovf h_pmp h_mmio]
+
 -- ============================================================================
--- Memory pipeline collapse at width 8: under JoltConfig, vmem_read_addr
--- produces the little-endian dword assembled directly from state.mem.
--- Composes the layer lemmas above.
+-- ExceptT bridge: if the pipeline layers all succeed, vmem_read_addr succeeds.
+-- Sorry'd because SailME = ExceptT over EStateM creates deeply nested terms.
 -- ============================================================================
 
-theorem vmem_read_addr_dword_reduces (addr : BitVec 64) (s : SailState)
-    (halign : addr &&& 7 = 0)
-    -- Each branching call gets its own success hypothesis. These collapse
-    -- the corresponding match in the do-block to its Ok branch.
-    (h_split   : split_misaligned (Virtaddr addr) 8 = (pure (1, 8) : SailM (Int × Int)))
+theorem vmem_read_addr_pipeline_bridge (addr : BitVec 64) (s : SailState)
     (h_misalign : access_causes_misaligned_exception (Virtaddr addr) 8 false = false)
+    (h_split : split_misaligned (Virtaddr addr) 8 = (pure (1, 8) : SailM (Int × Int)))
     (h_translate :
       translateAddr (Virtaddr addr) (Load Data) s =
         .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s)
@@ -291,10 +354,31 @@ theorem vmem_read_addr_dword_reduces (addr : BitVec 64) (s : SailState)
         .ok (Ok (loaded_dword_at s addr)) s) :
     vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false s =
     .ok (Ok (loaded_dword_at s addr)) s := by
-  unfold vmem_read_addr
-  simp only [h_misalign, Bool.false_eq_true, if_false]
-  unfold SailME.run PreSail.PreSailME.run
   sorry
+
+-- ============================================================================
+-- Memory pipeline collapse at width 8: under JoltConfig, vmem_read_addr
+-- produces the little-endian dword assembled directly from state.mem.
+-- Composes the layer lemmas above with the ExceptT bridge.
+-- ============================================================================
+
+theorem vmem_read_addr_dword_reduces (addr : BitVec 64) (s : SailState)
+    (halign : addr &&& 7 = 0)
+    (hcfg : JoltConfig s)
+    (h_no_ovf : addr.toNat + 7 < 2 ^ 64)
+    -- PMP/MMIO pass-through under JoltConfig
+    (h_misalign : access_causes_misaligned_exception (Virtaddr addr) 8 false = false)
+    (h_split : split_misaligned (Virtaddr addr) 8 = (pure (1, 8) : SailM (Int × Int)))
+    (h_translate :
+      translateAddr (Virtaddr addr) (Load Data) s =
+        .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s)
+    (h_pmp : phys_access_check (Load Data) Privilege.Machine (physaddr.Physaddr addr) 8 false s =
+             .ok none s)
+    (h_mmio : within_mmio_readable (physaddr.Physaddr addr) 8 s = .ok false s) :
+    vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false s =
+    .ok (Ok (loaded_dword_at s addr)) s :=
+  vmem_read_addr_pipeline_bridge addr s h_misalign h_split h_translate
+    (mem_read_eq_loaded_dword addr s hcfg h_no_ovf h_pmp h_mmio)
 
 -- ============================================================================
 -- LHS helper: the Jolt LB sequence writes `sign_extend (loaded_bytes_at … 1)`
