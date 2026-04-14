@@ -142,14 +142,21 @@ theorem loaded_byte_in_dword (s : SailState) (addr : BitVec 64) :
 -- Lemma 2: pure bit-vector identity. Jolt's XOR+SLLI+SLL+SRAI arithmetic
 -- on `d` produces the sign-extension of `byte_of_dword d (addr & 7).toNat`.
 theorem sll_srai_extracts_byte (d : BitVec 64) (addr : BitVec 64) :
-    shift_bits_right_arith
-      (shift_bits_left d
-        (Sail.BitVec.extractLsb
-          (shift_bits_left (addr ^^^ (7 : BitVec 64)) (3 : BitVec 6)) 5 0))
-      (56 : BitVec 6)
-    = sign_extend (m := 64)
-        (byte_of_dword d (addr &&& 7).toNat) := by
-  sorry
+    (let xor_addr  := addr ^^^ (7 : BitVec 64)
+     let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
+     let shift_6   := Sail.BitVec.extractLsb shift_amt 5 0
+     let shifted   := shift_bits_left d shift_6
+     shift_bits_right_arith shifted (56 : BitVec 6))
+    = sign_extend (m := 64) (byte_of_dword d (addr &&& 7).toNat) := by
+  unfold byte_of_dword shift_bits_left shift_bits_right_arith sign_extend
+    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
+  have hk_lt : (addr &&& 7).toNat < 8 := addr_and_seven_lt_eight addr
+  set k := (addr &&& 7).toNat with hk_def
+  have hk_eq : addr &&& 7 = BitVec.ofNat 64 k := by
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_ofNat, hk_def]
+    omega
+  interval_cases k <;> bv_decide
 
 theorem jolt_lb_bridge (s : SailState) (addr : BitVec 64) :
     (let dword     := loaded_dword_at s (addr &&& (-8 : BitVec 64))
