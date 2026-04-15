@@ -70,9 +70,7 @@ theorem jolt_lwu_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
     (halign : (v + sign_extend (m := 64) imm) &&& 3 = 0)
-    (hda : AlignedDwordAccess (aligned_dword_addr v imm))
-    (hdt : BareTranslation (aligned_dword_addr v imm) js.sail)
-    (hdf : FlatPhysMem (aligned_dword_addr v imm) 8 js.sail) :
+    (hdw : DwordLoadAssumptions (aligned_dword_addr v imm) js.sail) :
     ∃ js' : SailJoltState,
       (jolt_lwu imm rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
@@ -83,9 +81,7 @@ theorem jolt_lwu_concrete (imm : BitVec 12) (rs1 rd : regidx)
 theorem execute_LWU_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
-    (hwa : AlignedAccess (v + sign_extend (m := 64) imm) 4)
-    (hwt : BareTranslation (v + sign_extend (m := 64) imm) js.sail)
-    (hwp : FlatPhysMem (v + sign_extend (m := 64) imm) 4 js.sail)
+    (hload : LoadReadAssumptions (v + sign_extend (m := 64) imm) 4 js.sail)
     (h_no_ovf : (v + sign_extend (m := 64) imm).toNat + 3 < 2 ^ 64) :
     (execute_LOAD imm rs1 rd true 4).run js.sail =
     .ok RETIRE_SUCCESS
@@ -98,12 +94,8 @@ theorem jolt_lwu_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (h_word_aligned : ∀ v : BitVec 64, (v + sign_extend (m := 64) imm) &&& 3 = 0)
-    (h_dw_access : ∀ v : BitVec 64, AlignedDwordAccess (aligned_dword_addr v imm))
-    (h_dw_trans  : ∀ v : BitVec 64, BareTranslation (aligned_dword_addr v imm) js.sail)
-    (h_dw_phys   : ∀ v : BitVec 64, FlatPhysMem (aligned_dword_addr v imm) 8 js.sail)
-    (h_word_access : ∀ v : BitVec 64, AlignedAccess (v + sign_extend (m := 64) imm) 4)
-    (h_word_trans  : ∀ v : BitVec 64, BareTranslation (v + sign_extend (m := 64) imm) js.sail)
-    (h_word_phys   : ∀ v : BitVec 64, FlatPhysMem (v + sign_extend (m := 64) imm) 4 js.sail)
+    (h_dw : ∀ v : BitVec 64, DwordLoadAssumptions (aligned_dword_addr v imm) js.sail)
+    (h_word : ∀ v : BitVec 64, LoadReadAssumptions (v + sign_extend (m := 64) imm) 4 js.sail)
     (h_word_no_ovf : ∀ v : BitVec 64, (v + sign_extend (m := 64) imm).toNat + 3 < 2 ^ 64) :
     projectResult ((jolt_lwu imm rs1 rd).run js) =
     (execute_LOAD imm rs1 rd true 4).run js.sail := by

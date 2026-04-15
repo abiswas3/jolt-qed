@@ -1,3 +1,4 @@
+import JoltBytecode.EmbeddedSailJoltState.MemoryUtils
 import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
 
 set_option maxHeartbeats 1_000_000_000
@@ -35,6 +36,70 @@ enough that it is cleaner to leave its definition local for now.
 abbrev aligned_dword_addr (v : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
   (v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
     + sign_extend (m := 64) (0 : BitVec 12)
+
+/-- The standard bundle of assumptions used to collapse Jolt's aligned dword
+    load into a direct hashmap read. -/
+structure DwordLoadAssumptions (addr : BitVec 64) (s : SailState) : Prop where
+  aligned : AlignedDwordAccess addr
+  translate : BareTranslation addr s
+  phys : FlatPhysMem addr 8 s
+
+/-- Generic bundle for non-dword Sail load-pipeline assumptions. Width-specific
+    overflow side conditions, when needed, remain separate. -/
+structure LoadReadAssumptions (addr : BitVec 64) (width : Nat) (s : SailState) : Prop where
+  aligned : AlignedAccess addr width
+  translate : BareTranslation addr s
+  phys : FlatPhysMem addr width s
+
+/-- `aligned_dword_addr` is just "effective address aligned down to 8 bytes". -/
+theorem aligned_dword_addr_eq (v : BitVec 64) (imm : BitVec 12) :
+    aligned_dword_addr v imm =
+      (v + sign_extend (m := 64) imm) &&& (-8 : BitVec 64) := by
+  unfold aligned_dword_addr
+  have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
+  have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
+  rw [h0, h8]
+  bv_decide
+
+/-- Transport the bundled dword-load assumptions across an address equality. -/
+theorem DwordLoadAssumptions.of_eq {addr addr' : BitVec 64} {s : SailState}
+    (h : addr = addr') :
+    DwordLoadAssumptions addr s → DwordLoadAssumptions addr' s := by
+  intro hd
+  cases h
+  exact hd
+
+/-- Under the standard aligned-dword assumptions, Sail's virtual-memory read
+    pipeline reduces to a direct dword read from the hash-map model. -/
+theorem aligned_dword_vmem_read_reduces (addr : BitVec 64) (s : SailState)
+    (hcfg : JoltConfig s) (hd : DwordLoadAssumptions addr s) :
+    vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false s =
+      .ok (Ok (loaded_dword_at s addr)) s := by
+  exact
+    vmem_read_addr_dword_reduces addr s hcfg hd.aligned hd.translate hd.phys
+
+/-- Specialised `vreg_LD` helper: if virtual source register `vs1` contains an
+    aligned dword address satisfying the standard assumptions, then `vreg_LD`
+    writes the corresponding `loaded_dword_at` value into `vd`. -/
+theorem vreg_LD_run_of_dword_assumptions
+    (vd vs1 : BitVec 7) (js : SailJoltState) (addr : BitVec 64)
+    (hvs1 : js.vregs vs1 = addr) (hcfg : JoltConfig js.sail)
+    (hd : DwordLoadAssumptions addr js.sail) :
+    vreg_LD vd vs1 0 js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r =>
+          if r = vd then loaded_dword_at js.sail addr else js.vregs r } := by
+  have hread :
+      vmem_read_addr (Virtaddr (js.vregs vs1 + sign_extend (m := 64) (0 : BitVec 12))) 0 8
+        (Load Data) false false false js.sail =
+      .ok (Ok (loaded_dword_at js.sail addr)) js.sail := by
+    have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
+    rw [hvs1, h0]
+    have haddr : addr + (0 : BitVec 64) = addr := by bv_decide
+    rw [haddr]
+    exact aligned_dword_vmem_read_reduces addr js.sail hcfg hd
+  simpa using
+    (vreg_LD_run_of_read vd vs1 0 js (loaded_dword_at js.sail addr) hread)
 
 /-- Shared body for the byte-load family. The caller supplies the final
     post-processing on the shifted dword: arithmetic right shift for `LB`,
@@ -99,4 +164,3 @@ def jolt_word_unsigned_family
         liftSail (wX_bits rd (shift_bits_right v1 (32 : BitVec 6)))
         pure RETIRE_SUCCESS
     | other => pure other
-
