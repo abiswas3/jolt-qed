@@ -270,7 +270,7 @@ theorem jolt_lh_concrete (imm : BitVec 12) (rs1 rd : regidx)
     change vreg_ANDI 1 0 (-8 : BitVec 12) js0 = .ok RETIRE_SUCCESS
       { sail := js0.sail
         vregs := fun r => if r = 1 then js0.vregs 0 &&& sign_extend (m := 64) (-8 : BitVec 12) else js0.vregs r }
-    simpa [js0, js1, daddr, ea, h8] using (vreg_ANDI_run 1 0 (-8 : BitVec 12) js0)
+    simpa [js0, ea] using (vreg_ANDI_run 1 0 (-8 : BitVec 12) js0)
   have hld :
       vreg_LD 1 1 0 js1 = .ok RETIRE_SUCCESS js2 := by
     have hvs1 : js1.vregs 1 = daddr := by simp [js1, daddr]
@@ -305,7 +305,7 @@ theorem jolt_lh_concrete (imm : BitVec 12) (rs1 rd : regidx)
     exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
   refine ⟨js6, ?_, ?_⟩
   · simp only [jolt_lh, jolt_halfword_load_family, liftSail, bind, EStateM.bind,
-      pure, EStateM.pure, EStateM.run, hrx]
+      pure, EStateM.run, hrx]
     rw [if_neg (by simpa [ea] using halign)]
     simp only [EStateM.bind]
     rw [hw0]

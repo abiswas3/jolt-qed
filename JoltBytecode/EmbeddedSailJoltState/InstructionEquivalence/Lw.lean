@@ -3,6 +3,7 @@ import JoltBytecode.EmbeddedSailJoltState.MemoryUtils
 import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
+import Mathlib.Tactic.IntervalCases
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -71,6 +72,103 @@ def jolt_lw (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := d
 def word_of_dword (d : BitVec 64) (k : Nat) : BitVec 32 :=
   (d >>> (8 * k)).setWidth 32
 
+def byte_of_dword (d : BitVec 64) (k : Nat) : BitVec 8 :=
+  (d >>> (8 * k)).setWidth 8
+
+theorem loaded_dword_byte_k (s : SailState) (V : BitVec 64) (k : Nat)
+    (hk : k < 8) :
+    byte_of_dword (loaded_dword_at s V) k =
+    loaded_byte_at s (V + BitVec.ofNat 64 k) := by
+  unfold byte_of_dword loaded_dword_at
+  interval_cases k <;> bv_decide
+
+theorem word_of_dword_eq_bytes (d : BitVec 64) (k : Nat)
+    (hk : k < 5) :
+    word_of_dword d k =
+    byte_of_dword d (k + 3) ++ byte_of_dword d (k + 2) ++
+    byte_of_dword d (k + 1) ++ byte_of_dword d k := by
+  unfold word_of_dword byte_of_dword
+  interval_cases k <;> bv_decide
+
+theorem loaded_dword_word_k (s : SailState) (V : BitVec 64) (k : Nat)
+    (hk : k < 5) :
+    ((loaded_dword_at s V) >>> (8 * k)).setWidth 32 =
+    loaded_word_at s (V + BitVec.ofNat 64 k) := by
+  change word_of_dword (loaded_dword_at s V) k =
+    loaded_word_at s (V + BitVec.ofNat 64 k)
+  rw [word_of_dword_eq_bytes (loaded_dword_at s V) k hk]
+  unfold loaded_word_at
+  rw [loaded_dword_byte_k s V (k + 3) (by omega)]
+  rw [loaded_dword_byte_k s V (k + 2) (by omega)]
+  rw [loaded_dword_byte_k s V (k + 1) (by omega)]
+  rw [loaded_dword_byte_k s V k (by omega)]
+  have h3 : V + BitVec.ofNat 64 (k + 3) = (3 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
+    interval_cases k <;> bv_decide
+  have h2 : V + BitVec.ofNat 64 (k + 2) = (2 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
+    interval_cases k <;> bv_decide
+  have h1 : V + BitVec.ofNat 64 (k + 1) = (1 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
+    interval_cases k <;> bv_decide
+  rw [h3, h2, h1]
+  have h3' : (3 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 3 := by
+    interval_cases k <;> bv_decide
+  have h2' : (2 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 2 := by
+    interval_cases k <;> bv_decide
+  have h1' : (1 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 1 := by
+    interval_cases k <;> bv_decide
+  rw [h3', h2', h1']
+
+theorem addr_split_aligned_offset (addr : BitVec 64) :
+    (addr &&& (-8 : BitVec 64)) + BitVec.ofNat 64 (addr &&& 7).toNat = addr := by
+  simp only [BitVec.ofNat_toNat, BitVec.setWidth_eq]
+  bv_decide
+
+theorem addr_and_seven_lt_eight (addr : BitVec 64) : (addr &&& 7).toNat < 8 := by
+  rw [BitVec.toNat_and]
+  exact Nat.and_lt_two_pow addr.toNat (by decide : (7 : BitVec 64).toNat < 2^3)
+
+theorem addr_and_seven_word_lt_five (addr : BitVec 64)
+    (halign : addr &&& 3 = 0) :
+    (addr &&& 7).toNat < 5 := by
+  have hk_lt : (addr &&& 7).toNat < 8 := addr_and_seven_lt_eight addr
+  have hk_mod8 : (addr &&& 7).toNat = addr.toNat % 8 := by
+    rw [BitVec.toNat_and]
+    have h7 : BitVec.toNat (7 : BitVec 64) = 7 := by decide
+    rw [h7]
+    rw [show (7 : Nat) = 2^3 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod]
+  have h_word_addr : addr.toNat % 4 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h3 : BitVec.toNat (3 : BitVec 64) = 3 := by decide
+    have h0 : BitVec.toNat (0 : BitVec 64) = 0 := by decide
+    rw [h3, h0] at h
+    rw [show (3 : Nat) = 2^2 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  have hk_mod4 : (addr &&& 7).toNat % 4 = 0 := by
+    rw [hk_mod8]
+    omega
+  omega
+
+theorem word_offset_cases (addr : BitVec 64) (halign : addr &&& 3 = 0) :
+    (addr &&& 7).toNat = 0 ∨ (addr &&& 7).toNat = 4 := by
+  have hk_lt : (addr &&& 7).toNat < 5 := addr_and_seven_word_lt_five addr halign
+  have hk_mod4 : (addr &&& 7).toNat % 4 = 0 := by
+    have hk_mod8 : (addr &&& 7).toNat = addr.toNat % 8 := by
+      rw [BitVec.toNat_and]
+      have h7 : BitVec.toNat (7 : BitVec 64) = 7 := by decide
+      rw [h7]
+      rw [show (7 : Nat) = 2^3 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod]
+    have h_word_addr : addr.toNat % 4 = 0 := by
+      have h := congrArg BitVec.toNat halign
+      rw [BitVec.toNat_and] at h
+      have h3 : BitVec.toNat (3 : BitVec 64) = 3 := by decide
+      have h0 : BitVec.toNat (0 : BitVec 64) = 0 := by decide
+      rw [h3, h0] at h
+      rw [show (3 : Nat) = 2^2 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod] at h
+      exact h
+    rw [hk_mod8]
+    omega
+  omega
+
 /-- If `addr` is word-aligned, then the 32-bit word at `addr` is exactly the
     appropriate 32-bit slice of the enclosing aligned dword. -/
 theorem loaded_word_in_dword (s : SailState) (addr : BitVec 64)
@@ -79,7 +177,10 @@ theorem loaded_word_in_dword (s : SailState) (addr : BitVec 64)
     word_of_dword
       (loaded_dword_at s (addr &&& (-8 : BitVec 64)))
       (addr &&& 7).toNat := by
-  sorry
+  unfold word_of_dword
+  rw [loaded_dword_word_k s (addr &&& -8) (addr &&& 7).toNat
+        (addr_and_seven_word_lt_five addr halign)]
+  rw [addr_split_aligned_offset]
 
 /-- Jolt's `SLLI addr 3; SRL dword addr; VirtualSignExtendWord` sequence
     extracts the signed word from the enclosing dword. Since LW is word-
@@ -89,7 +190,23 @@ theorem srl_sign_extend_word_extracts_word (d : BitVec 64) (addr : BitVec 64)
     (let shifted := shift_bits_right d (Sail.BitVec.extractLsb (shift_bits_left addr (3 : BitVec 6)) 5 0)
      sign_extend (m := 64) ((Sail.BitVec.extractLsb shifted 31 0) : BitVec 32))
     = sign_extend (m := 64) (word_of_dword d (addr &&& 7).toNat) := by
-  sorry
+  rcases word_offset_cases addr halign with hk | hk
+  · rw [hk]
+    unfold shift_bits_left shift_bits_right sign_extend word_of_dword
+      Sail.BitVec.signExtend Sail.BitVec.extractLsb
+    have hk_eq : addr &&& 7 = BitVec.ofNat 64 0 := by
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ofNat]
+      omega
+    bv_decide
+  · rw [hk]
+    unfold shift_bits_left shift_bits_right sign_extend word_of_dword
+      Sail.BitVec.signExtend Sail.BitVec.extractLsb
+    have hk_eq : addr &&& 7 = BitVec.ofNat 64 4 := by
+      apply BitVec.eq_of_toNat_eq
+      rw [BitVec.toNat_ofNat]
+      omega
+    bv_decide
 
 /-- Pure bridge: Jolt's dword-load-and-shift path computes exactly the
     sign-extended `loaded_word_at`. This is the LW analogue of
@@ -101,7 +218,7 @@ theorem jolt_lw_bridge (s : SailState) (addr : BitVec 64)
      let shifted := shift_bits_right dword shift
      sign_extend (m := 64) ((Sail.BitVec.extractLsb shifted 31 0) : BitVec 32))
     = sign_extend (m := 64) (loaded_word_at s addr) := by
-  sorry
+  simp only [srl_sign_extend_word_extracts_word _ _ halign, ← loaded_word_in_dword _ _ halign]
 
 theorem execute_LW_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
