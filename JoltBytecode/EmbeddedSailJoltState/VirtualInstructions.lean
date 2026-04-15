@@ -141,5 +141,21 @@ theorem vreg_SRL_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
 -- hcfg and the pipeline-reduces lemma — clients must rewrite manually.
 -- Statement relies on `vmem_read_addr_dword_reduces` defined in Lb.lean
 -- (or wherever the pipeline collapse lives).
+theorem vreg_LD_run_of_read (vd vs1 : BitVec 7) (imm : BitVec 12)
+    (js : SailJoltState) (value : BitVec 64)
+    (h :
+      vmem_read_addr (Virtaddr (js.vregs vs1 + sign_extend (m := 64) imm)) 0 8 (Load Data) false false false js.sail =
+        .ok (Ok value) js.sail) :
+    vreg_LD vd vs1 imm js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then value else js.vregs r } := by
+  unfold vreg_LD liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+  rw [h]
+  simp only [EStateM.bind, EStateM.pure, writeVReg, modify, modifyGet,
+             MonadStateOf.modifyGet, EStateM.modifyGet]
 
 end

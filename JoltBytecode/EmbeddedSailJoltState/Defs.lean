@@ -112,6 +112,11 @@ def readVReg (vr : BitVec 7) : JoltMonad (BitVec 64) := do
 def writeVReg (vr : BitVec 7) (val : BitVec 64) : JoltMonad Unit :=
   modify fun js => { js with vregs := fun r => if r = vr then val else js.vregs r }
 
+@[simp] theorem readVReg_run (vr : BitVec 7) (js : SailJoltState) :
+    readVReg vr js = .ok (js.vregs vr) js := by
+  unfold readVReg get
+  rfl
+
 -- ============================================================================
 -- Memory read primitives (raw Sail memory access)
 -- ============================================================================
