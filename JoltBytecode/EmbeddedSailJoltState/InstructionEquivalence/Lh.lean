@@ -39,12 +39,38 @@ def jolt_lh (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult :=
 def halfword_of_dword (d : BitVec 64) (k : Nat) : BitVec 16 :=
   (d >>> (8 * k)).setWidth 16
 
+def byte_of_dword (d : BitVec 64) (k : Nat) : BitVec 8 :=
+  (d >>> (8 * k)).setWidth 8
+
+theorem loaded_dword_byte_k (s : SailState) (V : BitVec 64) (k : Nat)
+    (hk : k < 8) :
+    byte_of_dword (loaded_dword_at s V) k =
+    loaded_byte_at s (V + BitVec.ofNat 64 k) := by
+  unfold byte_of_dword loaded_dword_at
+  interval_cases k <;> bv_decide
+
+theorem halfword_of_dword_eq_bytes (d : BitVec 64) (k : Nat)
+    (hk : k < 7) :
+    halfword_of_dword d k =
+    byte_of_dword d (k + 1) ++ byte_of_dword d k := by
+  unfold halfword_of_dword byte_of_dword
+  interval_cases k <;> bv_decide
+
 theorem loaded_dword_halfword_k (s : SailState) (V : BitVec 64) (k : Nat)
     (hk : k < 7) :
     ((loaded_dword_at s V) >>> (8 * k)).setWidth 16 =
     loaded_halfword_at s (V + BitVec.ofNat 64 k) := by
-  unfold loaded_dword_at loaded_halfword_at
-  interval_cases k <;> bv_decide
+  change halfword_of_dword (loaded_dword_at s V) k =
+    loaded_halfword_at s (V + BitVec.ofNat 64 k)
+  rw [halfword_of_dword_eq_bytes (loaded_dword_at s V) k hk]
+  unfold loaded_halfword_at
+  rw [loaded_dword_byte_k s V (k + 1) (by omega), loaded_dword_byte_k s V k (by omega)]
+  have haddr : V + BitVec.ofNat 64 (k + 1) = (1 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
+    interval_cases k <;> bv_decide
+  rw [haddr]
+  have haddr' : (1 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 1 := by
+    interval_cases k <;> bv_decide
+  rw [haddr']
 
 theorem addr_split_aligned_offset (addr : BitVec 64) :
     (addr &&& (-8 : BitVec 64)) + BitVec.ofNat 64 (addr &&& 7).toNat = addr := by
