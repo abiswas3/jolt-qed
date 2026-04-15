@@ -1,5 +1,6 @@
 import JoltBytecode.EmbeddedSailJoltState.MemoryUtils
 import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
 import Mathlib.Tactic.IntervalCases
 
@@ -30,27 +31,10 @@ From `tracer/src/instruction/lh.rs::inline_sequence_64`:
     SRAI  rd, v1, 48
 -/
 
-def jolt_lh (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  let base ← liftSail (rX_bits rs1)
-  let ea := base + sign_extend (m := 64) imm
-  if ea &&& 1 ≠ 0 then
-    throw (Error.Assertion "LH: effective address not halfword-aligned")
-  else do
-    writeVReg 0 ea
-    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
-    match ← vreg_LD 1 1 0 with
-    | .Retire_Success () =>
-        let _ ← vreg_XORI 0 0 6
-        let _ ← vreg_SLLI 0 0 3
-        let _ ← vreg_SLL 1 1 0
-        let v1 ← readVReg 1
-        liftSail (wX_bits rd (shift_bits_right_arith v1 (48 : BitVec 6)))
-        pure RETIRE_SUCCESS
-    | other => pure other
-
-private abbrev lh_dword_addr (v : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
-  (v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-    + sign_extend (m := 64) (0 : BitVec 12)
+def jolt_lh (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult :=
+  jolt_halfword_load_family imm rs1 rd
+    "LH: effective address not halfword-aligned"
+    (fun v1 => shift_bits_right_arith v1 (48 : BitVec 6))
 
 def halfword_of_dword (d : BitVec 64) (k : Nat) : BitVec 16 :=
   (d >>> (8 * k)).setWidth 16
@@ -89,9 +73,9 @@ theorem jolt_lh_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
     (halign : (v + sign_extend (m := 64) imm) &&& 1 = 0)
-    (hda : AlignedDwordAccess (lh_dword_addr v imm))
-    (hdt : BareTranslation (lh_dword_addr v imm) js.sail)
-    (hdf : FlatPhysMem (lh_dword_addr v imm) 8 js.sail) :
+    (hda : AlignedDwordAccess (aligned_dword_addr v imm))
+    (hdt : BareTranslation (aligned_dword_addr v imm) js.sail)
+    (hdf : FlatPhysMem (aligned_dword_addr v imm) 8 js.sail) :
     ∃ js' : SailJoltState,
       (jolt_lh imm rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
@@ -134,8 +118,8 @@ theorem jolt_lh_concrete (imm : BitVec 12) (rs1 rd : regidx)
     have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
     rw [h0, h8]
     bv_decide
-  have h_lh_addr : lh_dword_addr v imm = daddr := by
-    unfold lh_dword_addr
+  have h_lh_addr : aligned_dword_addr v imm = daddr := by
+    unfold aligned_dword_addr
     exact h_addr_sum
   have hda' : AlignedDwordAccess daddr := by
     simpa [h_lh_addr] using hda
@@ -194,9 +178,8 @@ theorem jolt_lh_concrete (imm : BitVec 12) (rs1 rd : regidx)
   have hs6 : js6.sail = stateAfterWrite js.sail rd out := by
     exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
   refine ⟨js6, ?_, ?_⟩
-  · simp only [jolt_lh, liftSail, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
-    rw [hrx]
-    simp only [bind, pure, EStateM.pure, EStateM.run]
+  · simp only [jolt_lh, jolt_halfword_load_family, liftSail, bind, EStateM.bind,
+      pure, EStateM.pure, EStateM.run, hrx]
     rw [if_neg (by simpa [ea] using halign)]
     simp only [EStateM.bind]
     rw [hw0]
@@ -248,9 +231,9 @@ theorem jolt_lh_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (h_half_aligned : ∀ v : BitVec 64, (v + sign_extend (m := 64) imm) &&& 1 = 0)
-    (h_dw_access : ∀ v : BitVec 64, AlignedDwordAccess (lh_dword_addr v imm))
-    (h_dw_trans  : ∀ v : BitVec 64, BareTranslation (lh_dword_addr v imm) js.sail)
-    (h_dw_phys   : ∀ v : BitVec 64, FlatPhysMem (lh_dword_addr v imm) 8 js.sail)
+    (h_dw_access : ∀ v : BitVec 64, AlignedDwordAccess (aligned_dword_addr v imm))
+    (h_dw_trans  : ∀ v : BitVec 64, BareTranslation (aligned_dword_addr v imm) js.sail)
+    (h_dw_phys   : ∀ v : BitVec 64, FlatPhysMem (aligned_dword_addr v imm) 8 js.sail)
     (h_half_access : ∀ v : BitVec 64, AlignedAccess (v + sign_extend (m := 64) imm) 2)
     (h_half_trans  : ∀ v : BitVec 64, BareTranslation (v + sign_extend (m := 64) imm) js.sail)
     (h_half_phys   : ∀ v : BitVec 64, FlatPhysMem (v + sign_extend (m := 64) imm) 2 js.sail)

@@ -1,5 +1,6 @@
 import JoltBytecode.EmbeddedSailJoltState.MemoryUtils
 import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
 import Mathlib.Tactic.IntervalCases
 
@@ -29,26 +30,9 @@ From `tracer/src/instruction/lb.rs::inline_sequence_64`:
     SRAI  rd, v1, 56           -- virtual v1 → real rd (arith-shift + sign-extend)
 -/
 
-def jolt_lb (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  -- ADDI v0, rs1, imm  (real → virtual, inlined)
-  let rs1_val ← liftSail (rX_bits rs1)
-  writeVReg 0 (rs1_val + sign_extend (m := 64) imm)
-  -- ANDI v1, v0, -8
-  let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
-  -- LD v1, v1, 0 — the only op in this sequence that can trap; propagate.
-  match ← vreg_LD 1 1 0 with
-  | .Retire_Success () =>
-      -- XORI v0, v0, 7
-      let _ ← vreg_XORI 0 0 7
-      -- SLLI v0, v0, 3
-      let _ ← vreg_SLLI 0 0 3
-      -- SLL v1, v1, v0
-      let _ ← vreg_SLL 1 1 0
-      -- SRAI rd, v1, 56  (virtual → real, inlined)
-      let v1_val ← readVReg 1
-      liftSail (wX_bits rd (shift_bits_right_arith v1_val (56 : BitVec 6)))
-      pure RETIRE_SUCCESS
-  | other => pure other
+def jolt_lb (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult :=
+  jolt_byte_load_family imm rs1 rd
+    (fun v1 => shift_bits_right_arith v1 (56 : BitVec 6))
 
 -- ============================================================================
 -- Bridge lemma (the mathematical heart of LB).
@@ -173,24 +157,19 @@ theorem jolt_lb_bridge (s : SailState) (addr : BitVec 64) :
 -- to `rd` and leaves everything else unchanged.
 -- ============================================================================
 
--- Abbreviation for the aligned dword address used by Jolt's LB sequence.
-private abbrev lb_dword_addr (v : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
-  (v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-    + sign_extend (m := 64) (0 : BitVec 12)
-
 theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
-    (hda : AlignedDwordAccess (lb_dword_addr v imm))
-    (hdt : BareTranslation (lb_dword_addr v imm) js.sail)
-    (hdf : FlatPhysMem (lb_dword_addr v imm) 8 js.sail) :
+    (hda : AlignedDwordAccess (aligned_dword_addr v imm))
+    (hdt : BareTranslation (aligned_dword_addr v imm) js.sail)
+    (hdf : FlatPhysMem (aligned_dword_addr v imm) 8 js.sail) :
     ∃ js' : SailJoltState,
       (jolt_lb imm rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
         (sign_extend (m := 64)
           (loaded_byte_at js.sail (v + sign_extend (m := 64) imm))) := by
-  unfold jolt_lb vreg_LD
+  unfold jolt_lb jolt_byte_load_family vreg_LD
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
              liftSail, writeVReg, readVReg, modify, modifyGet,
              getThe, MonadStateOf.get, MonadStateOf.modifyGet,
@@ -213,7 +192,7 @@ theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
                (v + sign_extend (m := 64) imm) ^^^ (7 : BitVec 64) := by
     have h7 : sign_extend (m := 64) (7 : BitVec 12) = (7 : BitVec 64) := by decide
     rw [h7]
-  unfold lb_dword_addr at *
+  unfold aligned_dword_addr at *
   rw [h_addr_sum, h_xor]
   rw [jolt_lb_bridge]
   -- Now liftSail (wX_bits rd (sign_extend (loaded_byte_at ...)))
@@ -269,9 +248,9 @@ theorem jolt_lb_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     -- Dword load pipeline (LHS, width 8)
-    (h_dw_access : ∀ v : BitVec 64, AlignedDwordAccess (lb_dword_addr v imm))
-    (h_dw_trans  : ∀ v : BitVec 64, BareTranslation (lb_dword_addr v imm) js.sail)
-    (h_dw_phys   : ∀ v : BitVec 64, FlatPhysMem (lb_dword_addr v imm) 8 js.sail)
+    (h_dw_access : ∀ v : BitVec 64, AlignedDwordAccess (aligned_dword_addr v imm))
+    (h_dw_trans  : ∀ v : BitVec 64, BareTranslation (aligned_dword_addr v imm) js.sail)
+    (h_dw_phys   : ∀ v : BitVec 64, FlatPhysMem (aligned_dword_addr v imm) 8 js.sail)
     -- Byte load pipeline (RHS, width 1)
     (h_byte_access : ∀ v : BitVec 64, AlignedAccess (v + sign_extend (m := 64) imm) 1)
     (h_byte_trans  : ∀ v : BitVec 64, BareTranslation (v + sign_extend (m := 64) imm) js.sail)

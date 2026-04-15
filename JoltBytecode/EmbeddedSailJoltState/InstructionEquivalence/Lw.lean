@@ -1,6 +1,7 @@
 import JoltBytecode.EmbeddedSailJoltState.Defs
 import JoltBytecode.EmbeddedSailJoltState.MemoryUtils
 import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
 
 set_option maxHeartbeats 1_000_000_000
@@ -55,10 +56,6 @@ def jolt_lw (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := d
     | other => pure other
 
 -- Abbreviation for the aligned dword address used by Jolt's LW sequence.
-private abbrev lw_dword_addr (v : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
-  (v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-    + sign_extend (m := 64) (0 : BitVec 12)
-
 -- ============================================================================
 -- New LW-specific bridge layer
 --
@@ -140,9 +137,9 @@ theorem jolt_lw_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
     (halign : (v + sign_extend (m := 64) imm) &&& 3 = 0)
-    (hda : AlignedDwordAccess (lw_dword_addr v imm))
-    (hdt : BareTranslation (lw_dword_addr v imm) js.sail)
-    (hdf : FlatPhysMem (lw_dword_addr v imm) 8 js.sail) :
+    (hda : AlignedDwordAccess (aligned_dword_addr v imm))
+    (hdt : BareTranslation (aligned_dword_addr v imm) js.sail)
+    (hdf : FlatPhysMem (aligned_dword_addr v imm) 8 js.sail) :
     ∃ js' : SailJoltState,
       (jolt_lw imm rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
@@ -182,8 +179,8 @@ theorem jolt_lw_concrete (imm : BitVec 12) (rs1 rd : regidx)
     have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
     rw [h0, h8]
     bv_decide
-  have h_lw_addr : lw_dword_addr v imm = daddr := by
-    unfold lw_dword_addr
+  have h_lw_addr : aligned_dword_addr v imm = daddr := by
+    unfold aligned_dword_addr
     exact h_addr_sum
   have hda' : AlignedDwordAccess daddr := by
     simpa [h_lw_addr] using hda
@@ -279,9 +276,9 @@ theorem jolt_lw_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (h_word_aligned : ∀ v : BitVec 64, (v + sign_extend (m := 64) imm) &&& 3 = 0)
     -- Dword load pipeline (LHS, width 8)
-    (h_dw_access : ∀ v : BitVec 64, AlignedDwordAccess (lw_dword_addr v imm))
-    (h_dw_trans  : ∀ v : BitVec 64, BareTranslation (lw_dword_addr v imm) js.sail)
-    (h_dw_phys   : ∀ v : BitVec 64, FlatPhysMem (lw_dword_addr v imm) 8 js.sail)
+    (h_dw_access : ∀ v : BitVec 64, AlignedDwordAccess (aligned_dword_addr v imm))
+    (h_dw_trans  : ∀ v : BitVec 64, BareTranslation (aligned_dword_addr v imm) js.sail)
+    (h_dw_phys   : ∀ v : BitVec 64, FlatPhysMem (aligned_dword_addr v imm) 8 js.sail)
     -- Word load pipeline (RHS, width 4)
     (h_word_access : ∀ v : BitVec 64, AlignedAccess (v + sign_extend (m := 64) imm) 4)
     (h_word_trans  : ∀ v : BitVec 64, BareTranslation (v + sign_extend (m := 64) imm) js.sail)

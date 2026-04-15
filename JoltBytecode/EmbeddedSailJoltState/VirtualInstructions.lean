@@ -44,6 +44,11 @@ def vreg_SRL (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
   writeVReg vd (shift_bits_right x (Sail.BitVec.extractLsb y 5 0))
   pure RETIRE_SUCCESS
 
+def vreg_SRLI (vd vs1 : BitVec 7) (shamt : BitVec 6) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  writeVReg vd (shift_bits_right x shamt)
+  pure RETIRE_SUCCESS
+
 def vreg_SLL (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
   let x ← readVReg vs1
   let y ← readVReg vs2
@@ -117,6 +122,19 @@ theorem vreg_SLL_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
                               (Sail.BitVec.extractLsb (js.vregs vs2) 5 0)
                           else js.vregs r } := by
   unfold vreg_SLL
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+
+@[simp]
+theorem vreg_SRLI_run (vd vs1 : BitVec 7) (shamt : BitVec 6) (js : SailJoltState) :
+    vreg_SRLI vd vs1 shamt js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then
+                            shift_bits_right (js.vregs vs1) shamt
+                          else js.vregs r } := by
+  unfold vreg_SRLI
   simp only [bind, EStateM.bind, pure, EStateM.pure,
              readVReg, writeVReg, get, modify, modifyGet,
              getThe, MonadStateOf.get, MonadStateOf.modifyGet,
