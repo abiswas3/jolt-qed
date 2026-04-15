@@ -226,6 +226,12 @@ theorem split_misaligned_aligned_8 (addr : BitVec 64)
 -- Bottom-up: hashmap → readBytes → loaded_dword_at
 -- ============================================================================
 
+-- If the first computation succeeds, EStateM.bind feeds the result to the continuation.
+theorem EStateM_bind_ok {ε σ α β : Type} {f : EStateM ε σ α} {g : α → EStateM ε σ β}
+    {s : σ} {a : α} {s' : σ} (h : f s = .ok a s') :
+    EStateM.bind f g s = g a s' := by
+  simp [EStateM.bind, h]
+
 -- readReg when the register is populated in s.regs.
 theorem readReg_eq (r : Register) (s : SailState) (v : RegisterType r)
     (h : s.regs.get? r = some v) :
@@ -354,7 +360,31 @@ theorem vmem_read_addr_pipeline_bridge (addr : BitVec 64) (s : SailState)
         .ok (Ok (loaded_dword_at s addr)) s) :
     vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false s =
     .ok (Ok (loaded_dword_at s addr)) s := by
-  sorry
+  -- Step 1: unfold vmem_read_addr, kill misalignment guard
+  unfold vmem_read_addr
+  simp only [h_misalign, Bool.false_eq_true, if_false]
+  -- Step 2: unfold SailME.run to get ExceptT.run >>= handler applied to s
+  unfold SailME.run PreSail.PreSailME.run
+  -- Step 3: flatten ExceptT to EStateM
+  simp [ExceptT.bind, ExceptT.bindCont, ExceptT.mk, ExceptT.run,
+        ExceptT.pure, ExceptT.lift,
+        MonadLift.monadLift, ExceptT.instMonadLift,
+        SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
+        EStateM.bind, EStateM.pure, EStateM.map,
+        Except.ok, Except.error,
+        misaligned_order, sys_misaligned_order_decreasing,
+        bits_of_virtaddr, Sail.assert, PreSail.assert,
+        untilFuelM, untilFuelM.go, zeros, BitVec.zero, BitVec.addInt,
+        h_split, h_translate, h_mem]
+  -- Step 4: reduce remaining liftM/>>= to EStateM, then peel with bind_ok
+  simp only [liftM, monadLift, MonadLift.monadLift, ExceptT.instMonadLift,
+             ExceptT.lift, ExceptT.mk, ExceptT.run,
+             bind, EStateM.bind, EStateM.map, EStateM.pure,
+             Functor.map, h_translate, h_mem,
+             ExceptT.bind, ExceptT.bindCont, ExceptT.map,
+             Except.ok, Except.error,
+             Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange']
+  simp [pure, EStateM.pure, ExceptT.pure, ExceptT.mk]
 
 -- ============================================================================
 -- Memory pipeline collapse at width 8: under JoltConfig, vmem_read_addr
