@@ -208,7 +208,7 @@ theorem split_misaligned_aligned_8 (addr : BitVec 64)
         show (7 : Nat) = 2^3 - 1 from by norm_num,
         Nat.and_two_pow_sub_one_eq_mod] at h
     exact h
-  simp [Int.tmod, h_mod, bind, EStateM.bind, pure, EStateM.pure]
+  simp [Int.tmod, h_mod, pure, EStateM.pure]
 
 -- ============================================================================
 -- Per-monadic-call success lemmas for the vmem_read_addr pipeline.
@@ -299,7 +299,7 @@ theorem read_ram_eq_loaded_dword (addr : BitVec 64) (s : SailState)
          default_meta]
   simp only [bind, EStateM.bind, pure, EStateM.pure]
   rw [readBytes_8_eq_loaded_dword addr s h_pop h_no_ovf]
-  simp [EStateM.pure, default_meta]
+  simp [EStateM.pure]
 
 -- checked_mem_read: PMP/PMA pass + not MMIO → read_ram → hashmap.
 theorem checked_mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
@@ -335,8 +335,7 @@ theorem mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
   simp only [bind, EStateM.bind, pure, EStateM.pure, h_ms_read, h_priv]
   -- effectivePrivilege: MPRV=0 so returns cur_privilege = Machine
   unfold effectivePrivilege
-  simp only [bind, EStateM.bind, pure, EStateM.pure, h_mprv,
-             bne, BEq.beq, Bool.and_false, Bool.false_eq_true, ite_false]
+  simp only [h_mprv, bne, BEq.beq]
   -- mem_read_priv_meta: aq||res = false, match (false,false,false) → checked_mem_read
   unfold mem_read_priv_meta
   simp only [bind, EStateM.bind, pure, EStateM.pure,
@@ -366,23 +365,18 @@ theorem vmem_read_addr_pipeline_bridge (addr : BitVec 64) (s : SailState)
   -- Step 2: unfold SailME.run to get ExceptT.run >>= handler applied to s
   unfold SailME.run PreSail.PreSailME.run
   -- Step 3: flatten ExceptT to EStateM
-  simp [ExceptT.bind, ExceptT.bindCont, ExceptT.mk, ExceptT.run,
-        ExceptT.pure, ExceptT.lift,
-        MonadLift.monadLift, ExceptT.instMonadLift,
+  simp [ExceptT.mk, ExceptT.run,
         SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
-        EStateM.bind, EStateM.pure, EStateM.map,
-        Except.ok, Except.error,
         misaligned_order, sys_misaligned_order_decreasing,
         bits_of_virtaddr, Sail.assert, PreSail.assert,
         untilFuelM, untilFuelM.go, zeros, BitVec.zero, BitVec.addInt,
-        h_split, h_translate, h_mem]
+        h_split]
   -- Step 4: reduce remaining liftM/>>= to EStateM, then peel with bind_ok
-  simp only [liftM, monadLift, MonadLift.monadLift, ExceptT.instMonadLift,
-             ExceptT.lift, ExceptT.mk, ExceptT.run,
-             bind, EStateM.bind, EStateM.map, EStateM.pure,
+  simp only [liftM, monadLift, MonadLift.monadLift, 
+             ExceptT.lift, ExceptT.mk, 
+             bind, EStateM.bind, EStateM.map,
              Functor.map, h_translate, h_mem,
              ExceptT.bind, ExceptT.bindCont, ExceptT.map,
-             Except.ok, Except.error,
              Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange']
   simp [pure, EStateM.pure, ExceptT.pure, ExceptT.mk]
 
@@ -439,9 +433,9 @@ theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
              vreg_ANDI_run, if_true]
   rw [h_vmem]
   simp only [RETIRE_SUCCESS, vreg_XORI_run, vreg_SLLI_run, vreg_SLL_run, if_true,
-             bind, EStateM.bind, pure, EStateM.pure,
+             EStateM.bind, EStateM.pure,
              EStateM.get, EStateM.modifyGet]
-  simp (config := {decide := true}) only [if_true, if_false]
+  simp (config := {decide := true}) only [if_false]
   -- Normalise the address arithmetic to match the bridge lemma's shape.
   have h_addr_sum : (v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
                       + sign_extend (m := 64) (0 : BitVec 12) =
