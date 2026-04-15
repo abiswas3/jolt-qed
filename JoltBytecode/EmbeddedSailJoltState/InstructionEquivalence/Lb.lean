@@ -536,17 +536,25 @@ theorem vmem_read_addr_dword_reduces (addr : BitVec 64) (s : SailState)
 -- to `rd` and leaves everything else unchanged.
 -- ============================================================================
 
+-- Abbreviation for the aligned dword address used by Jolt's LB sequence.
+private abbrev lb_dword_addr (v : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  (v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
+    + sign_extend (m := 64) (0 : BitVec 12)
+
 theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
-    (h_vmem : vmem_read_addr
-        (Virtaddr ((v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-                    + sign_extend (m := 64) (0 : BitVec 12)))
-        0 8 (Load Data) false false false js.sail =
-      .ok (Ok (loaded_dword_at js.sail
-        ((v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-          + sign_extend (m := 64) (0 : BitVec 12)))) js.sail) :
+    -- Pipeline assumptions for the dword load (width 8)
+    (h_dw_align : (lb_dword_addr v imm) &&& 7 = 0)
+    (h_dw_ovf : (lb_dword_addr v imm).toNat + 7 < 2 ^ 64)
+    (h_dw_misalign : access_causes_misaligned_exception (Virtaddr (lb_dword_addr v imm)) 8 false = false)
+    (h_dw_split : split_misaligned (Virtaddr (lb_dword_addr v imm)) 8 = (pure (1, 8) : SailM (Int × Int)))
+    (h_dw_translate : translateAddr (Virtaddr (lb_dword_addr v imm)) (Load Data) js.sail =
+        .ok (Ok (physaddr.Physaddr (lb_dword_addr v imm), init_ext_ptw)) js.sail)
+    (h_dw_pmp : phys_access_check (Load Data) Privilege.Machine
+        (physaddr.Physaddr (lb_dword_addr v imm)) 8 false js.sail = .ok none js.sail)
+    (h_dw_mmio : within_mmio_readable (physaddr.Physaddr (lb_dword_addr v imm)) 8 js.sail = .ok false js.sail) :
     ∃ js' : SailJoltState,
       (jolt_lb imm rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
@@ -558,7 +566,8 @@ theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
              getThe, MonadStateOf.get, MonadStateOf.modifyGet,
              EStateM.get, EStateM.modifyGet, get, hrx,
              vreg_ANDI_run, if_true]
-  rw [h_vmem]
+  rw [vmem_read_addr_dword_reduces _ js.sail h_dw_align hcfg h_dw_ovf
+      h_dw_misalign h_dw_split h_dw_translate h_dw_pmp h_dw_mmio]
   simp only [RETIRE_SUCCESS, vreg_XORI_run, vreg_SLLI_run, vreg_SLL_run, if_true,
              EStateM.bind, EStateM.pure,
              EStateM.get, EStateM.modifyGet]
@@ -575,6 +584,7 @@ theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
                (v + sign_extend (m := 64) imm) ^^^ (7 : BitVec 64) := by
     have h7 : sign_extend (m := 64) (7 : BitVec 12) = (7 : BitVec 64) := by decide
     rw [h7]
+  unfold lb_dword_addr at *
   rw [h_addr_sum, h_xor]
   rw [jolt_lb_bridge]
   -- Now liftSail (wX_bits rd (sign_extend (loaded_byte_at ...)))
@@ -639,16 +649,19 @@ theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
 theorem jolt_lb_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
-    (h_vmem : ∀ v : BitVec 64,
-      vmem_read_addr
-        (Virtaddr ((v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-                    + sign_extend (m := 64) (0 : BitVec 12)))
-        0 8 (Load Data) false false false js.sail =
-      .ok (Ok (loaded_dword_at js.sail
-        ((v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-          + sign_extend (m := 64) (0 : BitVec 12)))) js.sail)
-    -- Pipeline assumptions for the byte-load (RHS)
-    (h_rhs : ∀ v : BitVec 64,
+    -- Pipeline assumptions for the dword load (LHS, width 8)
+    (h_dw : ∀ v : BitVec 64,
+      (lb_dword_addr v imm) &&& 7 = 0 ∧
+      (lb_dword_addr v imm).toNat + 7 < 2 ^ 64 ∧
+      access_causes_misaligned_exception (Virtaddr (lb_dword_addr v imm)) 8 false = false ∧
+      split_misaligned (Virtaddr (lb_dword_addr v imm)) 8 = (pure (1, 8) : SailM (Int × Int)) ∧
+      (translateAddr (Virtaddr (lb_dword_addr v imm)) (Load Data) js.sail =
+        .ok (Ok (physaddr.Physaddr (lb_dword_addr v imm), init_ext_ptw)) js.sail) ∧
+      (phys_access_check (Load Data) Privilege.Machine
+        (physaddr.Physaddr (lb_dword_addr v imm)) 8 false js.sail = .ok none js.sail) ∧
+      (within_mmio_readable (physaddr.Physaddr (lb_dword_addr v imm)) 8 js.sail = .ok false js.sail))
+    -- Pipeline assumptions for the byte load (RHS, width 1)
+    (h_byte : ∀ v : BitVec 64,
       access_causes_misaligned_exception (Virtaddr (v + sign_extend (m := 64) imm)) 1 false = false ∧
       split_misaligned (Virtaddr (v + sign_extend (m := 64) imm)) 1 = (pure (1, 1) : SailM (Int × Int)) ∧
       (translateAddr (Virtaddr (v + sign_extend (m := 64) imm)) (Load Data) js.sail =
@@ -659,10 +672,11 @@ theorem jolt_lb_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     projectResult ((jolt_lb imm rs1 rd).run js) =
     (execute_LOAD imm rs1 rd false 1).run js.sail := by
   obtain ⟨v, hrx⟩ := hwf rs1
-  obtain ⟨h1, h2, h3, h4, h5⟩ := h_rhs v
+  obtain ⟨hd1, hd2, hd3, hd4, hd5, hd6, hd7⟩ := h_dw v
+  obtain ⟨hb1, hb2, hb3, hb4, hb5⟩ := h_byte v
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-    jolt_lb_concrete imm rs1 rd hrd js hwf hcfg v hrx (h_vmem v)
-  have hsail := execute_LB_reduces imm rs1 rd js hwf hcfg v hrx h1 h2 h3 h4 h5
+    jolt_lb_concrete imm rs1 rd hrd js hwf hcfg v hrx hd1 hd2 hd3 hd4 hd5 hd6 hd7
+  have hsail := execute_LB_reduces imm rs1 rd js hwf hcfg v hrx hb1 hb2 hb3 hb4 hb5
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]
