@@ -17,9 +17,9 @@ set_option autoImplicit true
 noncomputable section
 
 /-!
-# LHU: Jolt load-halfword unsigned decomposition
+# LH: Jolt load-halfword (signed) decomposition
 
-From `tracer/src/instruction/lhu.rs::inline_sequence_64`:
+From `tracer/src/instruction/lh.rs::inline_sequence_64`:
 
     VirtualAssertHalfwordAlignment rs1, imm
     ADDI  v0, rs1, imm
@@ -28,13 +28,13 @@ From `tracer/src/instruction/lhu.rs::inline_sequence_64`:
     XORI  v0, v0, 6
     SLLI  v0, v0, 3
     SLL   v1, v1, v0
-    SRLI  rd, v1, 48
+    SRAI  rd, v1, 48
 -/
 
-def jolt_lhu (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult :=
+def jolt_lh (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult :=
   jolt_halfword_load_family imm rs1 rd
-    "LHU: effective address not halfword-aligned"
-    (fun v1 => shift_bits_right v1 (48 : BitVec 6))
+    "LH: effective address not halfword-aligned"
+    (fun v1 => shift_bits_right_arith v1 (48 : BitVec 6))
 
 def halfword_of_dword (d : BitVec 64) (k : Nat) : BitVec 16 :=
   (d >>> (8 * k)).setWidth 16
@@ -103,17 +103,6 @@ theorem addr_and_seven_halfword_lt_seven (addr : BitVec 64)
     omega
   omega
 
-theorem loaded_halfword_in_dword (s : SailState) (addr : BitVec 64)
-    (halign : addr &&& 1 = 0) :
-    loaded_halfword_at s addr =
-    halfword_of_dword
-      (loaded_dword_at s (addr &&& (-8 : BitVec 64)))
-      (addr &&& 7).toNat := by
-  unfold halfword_of_dword
-  rw [loaded_dword_halfword_k s (addr &&& -8) (addr &&& 7).toNat
-        (addr_and_seven_halfword_lt_seven addr halign)]
-  rw [addr_split_aligned_offset]
-
 theorem halfword_offset_cases (addr : BitVec 64) (halign : addr &&& 1 = 0) :
     (addr &&& 7).toNat = 0 ∨ (addr &&& 7).toNat = 2 ∨
     (addr &&& 7).toNat = 4 ∨ (addr &&& 7).toNat = 6 := by
@@ -136,101 +125,112 @@ theorem halfword_offset_cases (addr : BitVec 64) (halign : addr &&& 1 = 0) :
     omega
   omega
 
-private lemma sll_srli_extracts_halfword_k0 (d addr : BitVec 64)
+theorem loaded_halfword_in_dword (s : SailState) (addr : BitVec 64)
+    (halign : addr &&& 1 = 0) :
+    loaded_halfword_at s addr =
+    halfword_of_dword
+      (loaded_dword_at s (addr &&& (-8 : BitVec 64)))
+      (addr &&& 7).toNat := by
+  unfold halfword_of_dword
+  rw [loaded_dword_halfword_k s (addr &&& -8) (addr &&& 7).toNat
+        (addr_and_seven_halfword_lt_seven addr halign)]
+  rw [addr_split_aligned_offset]
+
+private lemma sll_srai_extracts_halfword_k0 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 0) :
     (let xor_addr := addr ^^^ (6 : BitVec 64)
      let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
      let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
      let shifted := shift_bits_left d shift_6
-     shift_bits_right shifted (48 : BitVec 6))
-    = zero_extend (m := 64) (halfword_of_dword d 0) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right zero_extend
-    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (halfword_of_dword d 0) := by
+  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
+    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
   have hk_eq : addr &&& 7 = BitVec.ofNat 64 0 := by
     apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
   bv_decide
 
-private lemma sll_srli_extracts_halfword_k2 (d addr : BitVec 64)
+private lemma sll_srai_extracts_halfword_k2 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 2) :
     (let xor_addr := addr ^^^ (6 : BitVec 64)
      let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
      let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
      let shifted := shift_bits_left d shift_6
-     shift_bits_right shifted (48 : BitVec 6))
-    = zero_extend (m := 64) (halfword_of_dword d 2) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right zero_extend
-    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (halfword_of_dword d 2) := by
+  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
+    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
   have hk_eq : addr &&& 7 = BitVec.ofNat 64 2 := by
     apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
   bv_decide
 
-private lemma sll_srli_extracts_halfword_k4 (d addr : BitVec 64)
+private lemma sll_srai_extracts_halfword_k4 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 4) :
     (let xor_addr := addr ^^^ (6 : BitVec 64)
      let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
      let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
      let shifted := shift_bits_left d shift_6
-     shift_bits_right shifted (48 : BitVec 6))
-    = zero_extend (m := 64) (halfword_of_dword d 4) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right zero_extend
-    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (halfword_of_dword d 4) := by
+  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
+    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
   have hk_eq : addr &&& 7 = BitVec.ofNat 64 4 := by
     apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
   bv_decide
 
-private lemma sll_srli_extracts_halfword_k6 (d addr : BitVec 64)
+private lemma sll_srai_extracts_halfword_k6 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 6) :
     (let xor_addr := addr ^^^ (6 : BitVec 64)
      let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
      let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
      let shifted := shift_bits_left d shift_6
-     shift_bits_right shifted (48 : BitVec 6))
-    = zero_extend (m := 64) (halfword_of_dword d 6) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right zero_extend
-    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (halfword_of_dword d 6) := by
+  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
+    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
   have hk_eq : addr &&& 7 = BitVec.ofNat 64 6 := by
     apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
   bv_decide
 
-theorem sll_srli_extracts_halfword (d : BitVec 64) (addr : BitVec 64)
+theorem sll_srai_extracts_halfword (d : BitVec 64) (addr : BitVec 64)
     (halign : addr &&& 1 = 0) :
     (let xor_addr := addr ^^^ (6 : BitVec 64)
      let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
      let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
      let shifted := shift_bits_left d shift_6
-     shift_bits_right shifted (48 : BitVec 6))
-    = zero_extend (m := 64) (halfword_of_dword d (addr &&& 7).toNat) := by
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (halfword_of_dword d (addr &&& 7).toNat) := by
   rcases halfword_offset_cases addr halign with hk | hk | hk | hk
   · rw [hk]
-    simpa using sll_srli_extracts_halfword_k0 d addr hk
+    simpa using sll_srai_extracts_halfword_k0 d addr hk
   · rw [hk]
-    simpa using sll_srli_extracts_halfword_k2 d addr hk
+    simpa using sll_srai_extracts_halfword_k2 d addr hk
   · rw [hk]
-    simpa using sll_srli_extracts_halfword_k4 d addr hk
+    simpa using sll_srai_extracts_halfword_k4 d addr hk
   · rw [hk]
-    simpa using sll_srli_extracts_halfword_k6 d addr hk
+    simpa using sll_srai_extracts_halfword_k6 d addr hk
 
-theorem jolt_lhu_bridge (s : SailState) (addr : BitVec 64)
+theorem jolt_lh_bridge (s : SailState) (addr : BitVec 64)
     (halign : addr &&& 1 = 0) :
     (let dword := loaded_dword_at s (addr &&& (-8 : BitVec 64))
      let xor_addr := addr ^^^ (6 : BitVec 64)
      let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
      let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
      let shifted := shift_bits_left dword shift_6
-     shift_bits_right shifted (48 : BitVec 6))
-    = zero_extend (m := 64) (loaded_halfword_at s addr) := by
-  simp only [sll_srli_extracts_halfword _ _ halign, ← loaded_halfword_in_dword _ _ halign]
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (loaded_halfword_at s addr) := by
+  simp only [sll_srai_extracts_halfword _ _ halign, ← loaded_halfword_in_dword _ _ halign]
 
-theorem jolt_lhu_concrete (imm : BitVec 12) (rs1 rd : regidx)
+theorem jolt_lh_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
     (halign : (v + sign_extend (m := 64) imm) &&& 1 = 0)
     (hdw : DwordLoadAssumptions (aligned_dword_addr v imm) js.sail) :
     ∃ js' : SailJoltState,
-      (jolt_lhu imm rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
+      (jolt_lh imm rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
-        (zero_extend (m := 64)
+        (sign_extend (m := 64)
           (loaded_halfword_at js.sail (v + sign_extend (m := 64) imm))) := by
   let ea := v + sign_extend (m := 64) imm
   let daddr := ea &&& (-8 : BitVec 64)
@@ -239,7 +239,7 @@ theorem jolt_lhu_concrete (imm : BitVec 12) (rs1 rd : regidx)
   let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
   let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
   let shifted := shift_bits_left dword shift_6
-  let out := shift_bits_right shifted (48 : BitVec 6)
+  let out := shift_bits_right_arith shifted (48 : BitVec 6)
   let js0 : SailJoltState :=
     { sail := js.sail
       vregs := fun r => if r = 0 then ea else js.vregs r }
@@ -261,10 +261,10 @@ theorem jolt_lhu_concrete (imm : BitVec 12) (rs1 rd : regidx)
   have hw0 : writeVReg 0 ea js = .ok () js0 := by
     unfold writeVReg js0 ea
     simp [modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
-  have h_lhu_addr : aligned_dword_addr v imm = daddr := by
+  have h_lh_addr : aligned_dword_addr v imm = daddr := by
     simp [daddr, ea, aligned_dword_addr_eq]
   have hdw' : DwordLoadAssumptions daddr js.sail :=
-    DwordLoadAssumptions.of_eq h_lhu_addr hdw
+    DwordLoadAssumptions.of_eq h_lh_addr hdw
   have hw1 : vreg_ANDI 1 0 (-8 : BitVec 12) js0 = .ok RETIRE_SUCCESS js1 := by
     have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
     change vreg_ANDI 1 0 (-8 : BitVec 12) js0 = .ok RETIRE_SUCCESS
@@ -304,7 +304,7 @@ theorem jolt_lhu_concrete (imm : BitVec 12) (rs1 rd : regidx)
   have hs6 : js6.sail = stateAfterWrite js.sail rd out := by
     exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
   refine ⟨js6, ?_, ?_⟩
-  · simp only [jolt_lhu, jolt_halfword_load_family, liftSail, bind, EStateM.bind,
+  · simp only [jolt_lh, jolt_halfword_load_family, liftSail, bind, EStateM.bind,
       pure, EStateM.run, hrx]
     rw [if_neg (by simpa [ea] using halign)]
     simp only [EStateM.bind]
@@ -322,17 +322,17 @@ theorem jolt_lhu_concrete (imm : BitVec 12) (rs1 rd : regidx)
   · rw [hs6]
     apply congrArg (stateAfterWrite js.sail rd)
     simpa [ea, daddr, dword, xor_addr, shift_amt, shift_6, shifted, out] using
-      (jolt_lhu_bridge js.sail ea halign)
+      (jolt_lh_bridge js.sail ea halign)
 
-theorem execute_LHU_reduces (imm : BitVec 12) (rs1 rd : regidx)
+theorem execute_LH_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
     (hload : LoadReadAssumptions (v + sign_extend (m := 64) imm) 2 js.sail)
     (h_no_ovf : (v + sign_extend (m := 64) imm).toNat + 1 < 2 ^ 64) :
-    (execute_LOAD imm rs1 rd true 2).run js.sail =
+    (execute_LOAD imm rs1 rd false 2).run js.sail =
     .ok RETIRE_SUCCESS
       (stateAfterWrite js.sail rd
-        (zero_extend (m := 64)
+        (sign_extend (m := 64)
           (loaded_halfword_at js.sail (v + sign_extend (m := 64) imm)))) := by
   unfold execute_LOAD
   simp only [bind, pure]
@@ -342,30 +342,30 @@ theorem execute_LHU_reduces (imm : BitVec 12) (rs1 rd : regidx)
        EStateM.run, if_true]
   rw [vmem_read_halfword_reduces imm rs1 js.sail v hrx hload.aligned hload.translate
       (mem_read_2_eq_loaded_halfword _ js.sail hcfg h_no_ovf hload.phys)]
-  simp only [extend_value, if_true, EStateM.bind, EStateM.pure]
+  simp only [extend_value, Bool.false_eq_true, if_false, EStateM.bind, EStateM.pure]
   obtain ⟨s', hw⟩ := wX_shape rd
-    (zero_extend (m := 64) (loaded_halfword_at js.sail (v + sign_extend (m := 64) imm)))
+    (sign_extend (m := 64) (loaded_halfword_at js.sail (v + sign_extend (m := 64) imm)))
     js.sail
   rw [hw]
   simp only [RETIRE_SUCCESS]
   congr 1
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
-theorem jolt_lhu_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
+theorem jolt_lh_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
     (h_half_aligned : ∀ v : BitVec 64, (v + sign_extend (m := 64) imm) &&& 1 = 0)
     (h_dw : ∀ v : BitVec 64, DwordLoadAssumptions (aligned_dword_addr v imm) js.sail)
     (h_half : ∀ v : BitVec 64, LoadReadAssumptions (v + sign_extend (m := 64) imm) 2 js.sail)
     (h_half_no_ovf : ∀ v : BitVec 64, (v + sign_extend (m := 64) imm).toNat + 1 < 2 ^ 64) :
-    projectResult ((jolt_lhu imm rs1 rd).run js) =
-    (execute_LOAD imm rs1 rd true 2).run js.sail := by
+    projectResult ((jolt_lh imm rs1 rd).run js) =
+    (execute_LOAD imm rs1 rd false 2).run js.sail := by
   obtain ⟨v, hrx⟩ := hwf rs1
   have hha0 := h_half_aligned v
   have hno := h_half_no_ovf v
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-    jolt_lhu_concrete imm rs1 rd hrd js hwf hcfg v hrx hha0 (h_dw v)
-  have hsail := execute_LHU_reduces imm rs1 rd js hwf hcfg v hrx (h_half v) hno
+    jolt_lh_concrete imm rs1 rd hrd js hwf hcfg v hrx hha0 (h_dw v)
+  have hsail := execute_LH_reduces imm rs1 rd js hwf hcfg v hrx (h_half v) hno
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]

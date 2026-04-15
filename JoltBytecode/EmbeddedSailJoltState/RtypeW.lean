@@ -132,6 +132,21 @@ theorem vsew_spec (rd : regidx) (js0 : SailJoltState) (hrd : rd ≠ regidx.Regid
   simp only [hw]
   exact ⟨v, rfl, wX_bits_eq_stateAfterWrite rd _ js.sail s' hw⟩
 
+theorem jolt_virtual_sign_extend_word_concrete (rd : regidx)
+    (js : SailJoltState) (v : BitVec 64)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (hread : rX_bits rd js.sail = .ok v js.sail) :
+    ∃ js' : SailJoltState,
+      (jolt_virtual_sign_extend_word rd).run js = .ok () js' ∧
+      js'.sail = stateAfterWrite js.sail rd
+        (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0)) := by
+  obtain ⟨s', hw⟩ := wX_shape rd
+    (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0)) js.sail
+  refine ⟨{ sail := s', vregs := js.vregs }, ?_, ?_⟩
+  · unfold jolt_virtual_sign_extend_word liftSail
+    simp only [bind, EStateM.bind, EStateM.run, hread, hw]
+  · exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
+
 -- ============================================================================
 -- Generic Jolt R-type W definition and mvcgen composition
 -- ============================================================================
