@@ -285,6 +285,133 @@ theorem readBytes_8_eq_loaded_dword (addr : BitVec 64) (s : SailState)
              Option.getD]
   rfl
 
+-- ============================================================================
+-- Width-1 chain: hashmap → readBytes 1 → read_ram → checked_mem_read → mem_read
+-- Same structure as width-8, but simpler (single byte, no overflow).
+-- ============================================================================
+
+theorem readBytes_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
+    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none) :
+    (PreSail.readBytes 1 addr.toNat : SailM _) s =
+    .ok (loaded_byte_at s addr, none) s := by
+  have gb : ∀ k : Nat, ∃ v, s.mem.get? k = some v := by
+    intro k; exact Option.ne_none_iff_exists'.mp (h_pop k)
+  obtain ⟨b0, hb0⟩ := gb addr.toNat
+  simp only [PreSail.readBytes, PreSail.readByte,
+             bind, EStateM.bind, pure, EStateM.pure,
+             MonadStateOf.get, EStateM.get, getThe, get,
+             hb0]
+  unfold loaded_byte_at
+  simp only [hb0, Option.getD]
+
+-- read_ram for a plain read at width 1 = loaded_byte_at.
+theorem read_ram_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
+    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none) :
+    LeanRV64D.Functions.read_ram read_kind.Read_plain (physaddr.Physaddr addr) 1 false s =
+    .ok (loaded_byte_at s addr, default_meta) s := by
+  dsimp [LeanRV64D.Functions.read_ram,
+         Sail.ConcurrencyInterfaceV1.sail_mem_read,
+         PreSail.ConcurrencyInterfaceV1.sail_mem_read,
+         default_meta]
+  simp only [bind, EStateM.bind, pure, EStateM.pure]
+  rw [readBytes_1_eq_loaded_byte addr s h_pop]
+  simp [EStateM.pure]
+
+-- checked_mem_read at width 1.
+theorem checked_mem_read_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
+    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (h_pmp : phys_access_check (Load Data) Privilege.Machine (physaddr.Physaddr addr) 1 false s =
+             .ok none s)
+    (h_mmio : within_mmio_readable (physaddr.Physaddr addr) 1 s = .ok false s) :
+    checked_mem_read (Load Data) Privilege.Machine (physaddr.Physaddr addr) 1 false false false false s =
+    .ok (Ok (loaded_byte_at s addr, default_meta)) s := by
+  unfold checked_mem_read
+  simp only [bind, EStateM.bind, pure, EStateM.pure, h_pmp, h_mmio,
+             Bool.false_eq_true, if_false]
+  unfold read_kind_of_flags
+  simp only [pure, EStateM.pure]
+  rw [read_ram_1_eq_loaded_byte addr s h_pop]
+
+-- mem_read at width 1 under JoltConfig.
+theorem mem_read_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
+    (hcfg : JoltConfig s)
+    (h_pmp : phys_access_check (Load Data) Privilege.Machine (physaddr.Physaddr addr) 1 false s =
+             .ok none s)
+    (h_mmio : within_mmio_readable (physaddr.Physaddr addr) 1 s = .ok false s) :
+    mem_read (Load Data) (physaddr.Physaddr addr) 1 false false false s =
+    .ok (Ok (loaded_byte_at s addr)) s := by
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  unfold mem_read mem_read_priv
+  simp only [bind, EStateM.bind, pure, EStateM.pure, h_ms_read, h_priv]
+  unfold effectivePrivilege
+  simp only [h_mprv, bne, BEq.beq]
+  unfold mem_read_priv_meta
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             Bool.false_or, Bool.false_and, Bool.false_eq_true, ite_false]
+  simp (config := { decide := true }) only [ite_false, EStateM.pure, MemoryOpResult_drop_meta]
+  rw [checked_mem_read_1_eq_loaded_byte addr s hcfg.mem_populated h_pmp h_mmio]
+
+-- vmem_read_addr at width 1: ExceptT bridge (same strategy as width-8).
+theorem vmem_read_addr_byte_bridge (addr : BitVec 64) (offset : BitVec 64) (s : SailState)
+    (h_misalign : access_causes_misaligned_exception (Virtaddr addr) 1 false = false)
+    (h_split : split_misaligned (Virtaddr addr) 1 = (pure (1, 1) : SailM (Int × Int)))
+    (h_translate :
+      translateAddr (Virtaddr addr) (Load Data) s =
+        .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s)
+    (h_mem :
+      mem_read (Load Data) (physaddr.Physaddr addr) 1 false false false s =
+        .ok (Ok (loaded_byte_at s addr)) s) :
+    vmem_read_addr (Virtaddr addr) offset 1 (Load Data) false false false s =
+    .ok (Ok (loaded_byte_at s addr)) s := by
+  -- Same strategy as width-8 bridge
+  unfold vmem_read_addr
+  simp only [h_misalign, Bool.false_eq_true, if_false]
+  unfold SailME.run PreSail.PreSailME.run
+  -- Flatten ExceptT + reduce pipeline in one pass
+  simp [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
+        ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
+        ExceptT.pure, ExceptT.lift, ExceptT.map, ExceptT.instMonadLift,
+        MonadLift.monadLift, SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
+        Except.ok, Except.error,
+        misaligned_order, sys_misaligned_order_decreasing,
+        bits_of_virtaddr, Sail.assert, PreSail.assert,
+        untilFuelM, untilFuelM.go, zeros, BitVec.zero, BitVec.addInt,
+        Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange',
+        liftM, monadLift, Functor.map,
+        h_split, h_translate, h_mem]
+  bv_decide
+
+-- vmem_read at width 1: wraps ext_data_get_addr + vmem_read_addr in SailME.run.
+-- Same ExceptT bridge pattern. ext_data_get_addr always succeeds (Ext_DataAddr_OK).
+theorem vmem_read_byte_reduces (imm : BitVec 12) (rs1 : regidx)
+    (s : SailState)
+    (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
+    (h_misalign : access_causes_misaligned_exception
+        (Virtaddr (v + sign_extend (m := 64) imm)) 1 false = false)
+    (h_split : split_misaligned (Virtaddr (v + sign_extend (m := 64) imm)) 1 =
+        (pure (1, 1) : SailM (Int × Int)))
+    (h_translate :
+      translateAddr (Virtaddr (v + sign_extend (m := 64) imm)) (Load Data) s =
+        .ok (Ok (physaddr.Physaddr (v + sign_extend (m := 64) imm), init_ext_ptw)) s)
+    (h_mem :
+      mem_read (Load Data) (physaddr.Physaddr (v + sign_extend (m := 64) imm)) 1 false false false s =
+        .ok (Ok (loaded_byte_at s (v + sign_extend (m := 64) imm))) s) :
+    vmem_read rs1 (sign_extend (m := 64) imm) 1 (Load Data) false false false s =
+    .ok (Ok (loaded_byte_at s (v + sign_extend (m := 64) imm))) s := by
+  unfold vmem_read
+  unfold SailME.run PreSail.PreSailME.run
+  -- Flatten ExceptT: ext_data_get_addr + vmem_read_addr
+  simp [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
+        ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
+        ExceptT.pure, ExceptT.lift, ExceptT.instMonadLift,
+        MonadLift.monadLift, liftM, monadLift, Functor.map,
+        SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
+        Except.ok, Except.error,
+        ext_data_get_addr, hrx,
+        vmem_read_addr_byte_bridge _ _ s h_misalign h_split h_translate h_mem]
+
 -- read_ram for a plain read at width 8 = loaded_dword_at.
 -- Chains: read_ram → sail_mem_read → readBytes → hashmap.
 -- Flat EStateM, no ExceptT.
@@ -465,13 +592,45 @@ theorem jolt_lb_concrete (imm : BitVec 12) (rs1 rd : regidx)
 
 theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
-    (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail) :
+    (v : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok v js.sail)
+    -- Pipeline assumptions for the byte-load address
+    (h_misalign_1 : access_causes_misaligned_exception
+        (Virtaddr (v + sign_extend (m := 64) imm)) 1 false = false)
+    (h_split_1 : split_misaligned (Virtaddr (v + sign_extend (m := 64) imm)) 1 =
+        (pure (1, 1) : SailM (Int × Int)))
+    (h_translate_1 :
+      translateAddr (Virtaddr (v + sign_extend (m := 64) imm)) (Load Data) js.sail =
+        .ok (Ok (physaddr.Physaddr (v + sign_extend (m := 64) imm), init_ext_ptw)) js.sail)
+    (h_pmp_1 : phys_access_check (Load Data) Privilege.Machine
+        (physaddr.Physaddr (v + sign_extend (m := 64) imm)) 1 false js.sail = .ok none js.sail)
+    (h_mmio_1 : within_mmio_readable
+        (physaddr.Physaddr (v + sign_extend (m := 64) imm)) 1 js.sail = .ok false js.sail) :
     (execute_LOAD imm rs1 rd false 1).run js.sail =
     .ok RETIRE_SUCCESS
       (stateAfterWrite js.sail rd
         (sign_extend (m := 64)
           (loaded_byte_at js.sail (v + sign_extend (m := 64) imm)))) := by
-  sorry
+  -- Unfold execute_LOAD to vmem_read + extend_value + wX_bits
+  unfold execute_LOAD
+  simp only [bind, EStateM.bind, pure, EStateM.pure, hrx]
+  -- assert (1 ≤ xlen_bytes) passes
+  unfold Sail.assert LeanRV64D.Functions.xlen_bytes
+  simp (config := { decide := true }) only [bind, EStateM.bind, pure, EStateM.pure]
+  -- Kill the assert
+  simp (config := { decide := true }) only [PreSail.assert, bind, EStateM.bind, pure, EStateM.pure,
+       EStateM.run, if_true, ite_true]
+  -- Now: match vmem_read rs1 ... js.sail with ...
+  rw [vmem_read_byte_reduces imm rs1 js.sail v hrx
+      h_misalign_1 h_split_1 h_translate_1
+      (mem_read_1_eq_loaded_byte _ js.sail hcfg h_pmp_1 h_mmio_1)]
+  simp only [extend_value, Bool.false_eq_true, if_false, EStateM.bind, EStateM.pure]
+  obtain ⟨s', hw⟩ := wX_shape rd
+    (sign_extend (m := 64) (loaded_byte_at js.sail (v + sign_extend (m := 64) imm)))
+    js.sail
+  rw [hw]
+  simp only [EStateM.pure, RETIRE_SUCCESS]
+  congr 1
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 -- ============================================================================
 -- Main theorem: Jolt LB = Sail LB
@@ -487,13 +646,23 @@ theorem jolt_lb_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
         0 8 (Load Data) false false false js.sail =
       .ok (Ok (loaded_dword_at js.sail
         ((v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-          + sign_extend (m := 64) (0 : BitVec 12)))) js.sail) :
+          + sign_extend (m := 64) (0 : BitVec 12)))) js.sail)
+    -- Pipeline assumptions for the byte-load (RHS)
+    (h_rhs : ∀ v : BitVec 64,
+      access_causes_misaligned_exception (Virtaddr (v + sign_extend (m := 64) imm)) 1 false = false ∧
+      split_misaligned (Virtaddr (v + sign_extend (m := 64) imm)) 1 = (pure (1, 1) : SailM (Int × Int)) ∧
+      (translateAddr (Virtaddr (v + sign_extend (m := 64) imm)) (Load Data) js.sail =
+        .ok (Ok (physaddr.Physaddr (v + sign_extend (m := 64) imm), init_ext_ptw)) js.sail) ∧
+      (phys_access_check (Load Data) Privilege.Machine
+        (physaddr.Physaddr (v + sign_extend (m := 64) imm)) 1 false js.sail = .ok none js.sail) ∧
+      (within_mmio_readable (physaddr.Physaddr (v + sign_extend (m := 64) imm)) 1 js.sail = .ok false js.sail)) :
     projectResult ((jolt_lb imm rs1 rd).run js) =
     (execute_LOAD imm rs1 rd false 1).run js.sail := by
   obtain ⟨v, hrx⟩ := hwf rs1
+  obtain ⟨h1, h2, h3, h4, h5⟩ := h_rhs v
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
     jolt_lb_concrete imm rs1 rd hrd js hwf hcfg v hrx (h_vmem v)
-  have hsail := execute_LB_reduces imm rs1 rd js hwf hcfg v hrx
+  have hsail := execute_LB_reduces imm rs1 rd js hwf hcfg v hrx h1 h2 h3 h4 h5
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]
