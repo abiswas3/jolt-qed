@@ -39,13 +39,132 @@ def jolt_lh (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult :=
 def halfword_of_dword (d : BitVec 64) (k : Nat) : BitVec 16 :=
   (d >>> (8 * k)).setWidth 16
 
+theorem loaded_dword_halfword_k (s : SailState) (V : BitVec 64) (k : Nat)
+    (hk : k < 7) :
+    ((loaded_dword_at s V) >>> (8 * k)).setWidth 16 =
+    loaded_halfword_at s (V + BitVec.ofNat 64 k) := by
+  unfold loaded_dword_at loaded_halfword_at
+  interval_cases k <;> bv_decide
+
+theorem addr_split_aligned_offset (addr : BitVec 64) :
+    (addr &&& (-8 : BitVec 64)) + BitVec.ofNat 64 (addr &&& 7).toNat = addr := by
+  simp only [BitVec.ofNat_toNat, BitVec.setWidth_eq]
+  bv_decide
+
+theorem addr_and_seven_lt_eight (addr : BitVec 64) : (addr &&& 7).toNat < 8 := by
+  rw [BitVec.toNat_and]
+  exact Nat.and_lt_two_pow addr.toNat (by decide : (7 : BitVec 64).toNat < 2^3)
+
+theorem addr_and_seven_halfword_lt_seven (addr : BitVec 64)
+    (halign : addr &&& 1 = 0) :
+    (addr &&& 7).toNat < 7 := by
+  have hk_lt : (addr &&& 7).toNat < 8 := addr_and_seven_lt_eight addr
+  have hk_mod8 : (addr &&& 7).toNat = addr.toNat % 8 := by
+    rw [BitVec.toNat_and]
+    have h7 : BitVec.toNat (7 : BitVec 64) = 7 := by decide
+    rw [h7]
+    rw [show (7 : Nat) = 2^3 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod]
+  have h_even_addr : addr.toNat % 2 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h1 : BitVec.toNat (1 : BitVec 64) = 1 := by decide
+    have h0 : BitVec.toNat (0 : BitVec 64) = 0 := by decide
+    rw [h1, h0] at h
+    rw [show (1 : Nat) = 2^1 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  have hk_even : (addr &&& 7).toNat % 2 = 0 := by
+    rw [hk_mod8]
+    omega
+  omega
+
+theorem halfword_offset_cases (addr : BitVec 64) (halign : addr &&& 1 = 0) :
+    (addr &&& 7).toNat = 0 ∨ (addr &&& 7).toNat = 2 ∨
+    (addr &&& 7).toNat = 4 ∨ (addr &&& 7).toNat = 6 := by
+  have hk_lt : (addr &&& 7).toNat < 7 := addr_and_seven_halfword_lt_seven addr halign
+  have hk_even : (addr &&& 7).toNat % 2 = 0 := by
+    have hk_mod8 : (addr &&& 7).toNat = addr.toNat % 8 := by
+      rw [BitVec.toNat_and]
+      have h7 : BitVec.toNat (7 : BitVec 64) = 7 := by decide
+      rw [h7]
+      rw [show (7 : Nat) = 2^3 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod]
+    have h_even_addr : addr.toNat % 2 = 0 := by
+      have h := congrArg BitVec.toNat halign
+      rw [BitVec.toNat_and] at h
+      have h1 : BitVec.toNat (1 : BitVec 64) = 1 := by decide
+      have h0 : BitVec.toNat (0 : BitVec 64) = 0 := by decide
+      rw [h1, h0] at h
+      rw [show (1 : Nat) = 2^1 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod] at h
+      exact h
+    rw [hk_mod8]
+    omega
+  omega
+
 theorem loaded_halfword_in_dword (s : SailState) (addr : BitVec 64)
     (halign : addr &&& 1 = 0) :
     loaded_halfword_at s addr =
     halfword_of_dword
       (loaded_dword_at s (addr &&& (-8 : BitVec 64)))
       (addr &&& 7).toNat := by
-  sorry
+  unfold halfword_of_dword
+  rw [loaded_dword_halfword_k s (addr &&& -8) (addr &&& 7).toNat
+        (addr_and_seven_halfword_lt_seven addr halign)]
+  rw [addr_split_aligned_offset]
+
+private lemma sll_srai_extracts_halfword_k0 (d addr : BitVec 64)
+    (hk : (addr &&& 7).toNat = 0) :
+    (let xor_addr := addr ^^^ (6 : BitVec 64)
+     let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
+     let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
+     let shifted := shift_bits_left d shift_6
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (halfword_of_dword d 0) := by
+  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
+    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
+  have hk_eq : addr &&& 7 = BitVec.ofNat 64 0 := by
+    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
+  bv_decide
+
+private lemma sll_srai_extracts_halfword_k2 (d addr : BitVec 64)
+    (hk : (addr &&& 7).toNat = 2) :
+    (let xor_addr := addr ^^^ (6 : BitVec 64)
+     let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
+     let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
+     let shifted := shift_bits_left d shift_6
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (halfword_of_dword d 2) := by
+  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
+    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
+  have hk_eq : addr &&& 7 = BitVec.ofNat 64 2 := by
+    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
+  bv_decide
+
+private lemma sll_srai_extracts_halfword_k4 (d addr : BitVec 64)
+    (hk : (addr &&& 7).toNat = 4) :
+    (let xor_addr := addr ^^^ (6 : BitVec 64)
+     let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
+     let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
+     let shifted := shift_bits_left d shift_6
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (halfword_of_dword d 4) := by
+  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
+    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
+  have hk_eq : addr &&& 7 = BitVec.ofNat 64 4 := by
+    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
+  bv_decide
+
+private lemma sll_srai_extracts_halfword_k6 (d addr : BitVec 64)
+    (hk : (addr &&& 7).toNat = 6) :
+    (let xor_addr := addr ^^^ (6 : BitVec 64)
+     let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
+     let shift_6 := Sail.BitVec.extractLsb shift_amt 5 0
+     let shifted := shift_bits_left d shift_6
+     shift_bits_right_arith shifted (48 : BitVec 6))
+    = sign_extend (m := 64) (halfword_of_dword d 6) := by
+  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
+    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
+  have hk_eq : addr &&& 7 = BitVec.ofNat 64 6 := by
+    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
+  bv_decide
 
 theorem sll_srai_extracts_halfword (d : BitVec 64) (addr : BitVec 64)
     (halign : addr &&& 1 = 0) :
@@ -55,7 +174,15 @@ theorem sll_srai_extracts_halfword (d : BitVec 64) (addr : BitVec 64)
      let shifted := shift_bits_left d shift_6
      shift_bits_right_arith shifted (48 : BitVec 6))
     = sign_extend (m := 64) (halfword_of_dword d (addr &&& 7).toNat) := by
-  sorry
+  rcases halfword_offset_cases addr halign with hk | hk | hk | hk
+  · rw [hk]
+    simpa using sll_srai_extracts_halfword_k0 d addr hk
+  · rw [hk]
+    simpa using sll_srai_extracts_halfword_k2 d addr hk
+  · rw [hk]
+    simpa using sll_srai_extracts_halfword_k4 d addr hk
+  · rw [hk]
+    simpa using sll_srai_extracts_halfword_k6 d addr hk
 
 theorem jolt_lh_bridge (s : SailState) (addr : BitVec 64)
     (halign : addr &&& 1 = 0) :
@@ -66,7 +193,7 @@ theorem jolt_lh_bridge (s : SailState) (addr : BitVec 64)
      let shifted := shift_bits_left dword shift_6
      shift_bits_right_arith shifted (48 : BitVec 6))
     = sign_extend (m := 64) (loaded_halfword_at s addr) := by
-  sorry
+  simp only [sll_srai_extracts_halfword _ _ halign, ← loaded_halfword_in_dword _ _ halign]
 
 theorem jolt_lh_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)

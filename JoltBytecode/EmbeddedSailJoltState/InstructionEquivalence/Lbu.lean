@@ -70,7 +70,15 @@ theorem sll_srli_extracts_byte (d : BitVec 64) (addr : BitVec 64) :
      let shifted   := shift_bits_left d shift_6
      shift_bits_right shifted (56 : BitVec 6))
     = zero_extend (m := 64) (byte_of_dword d (addr &&& 7).toNat) := by
-  sorry
+  unfold byte_of_dword shift_bits_left shift_bits_right zero_extend
+    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
+  have hk_lt : (addr &&& 7).toNat < 8 := addr_and_seven_lt_eight addr
+  set k := (addr &&& 7).toNat with hk_def
+  have hk_eq : addr &&& 7 = BitVec.ofNat 64 k := by
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_ofNat, hk_def]
+    omega
+  interval_cases k <;> bv_decide
 
 theorem jolt_lbu_bridge (s : SailState) (addr : BitVec 64) :
     (let dword     := loaded_dword_at s (addr &&& (-8 : BitVec 64))
@@ -92,7 +100,30 @@ theorem jolt_lbu_concrete (imm : BitVec 12) (rs1 rd : regidx)
       js'.sail = stateAfterWrite js.sail rd
         (zero_extend (m := 64)
           (loaded_byte_at js.sail (v + sign_extend (m := 64) imm))) := by
-  sorry
+  unfold jolt_lbu jolt_byte_load_family vreg_LD
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+             liftSail, writeVReg, readVReg, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet, get, hrx,
+             vreg_ANDI_run, if_true]
+  rw [aligned_dword_vmem_read_reduces _ js.sail hcfg hdw]
+  simp only [RETIRE_SUCCESS, vreg_XORI_run, vreg_SLLI_run, vreg_SLL_run, if_true,
+             EStateM.bind, EStateM.pure,
+             EStateM.get, EStateM.modifyGet]
+  simp (config := {decide := true}) only [if_false]
+  have h_xor : v + sign_extend (m := 64) imm ^^^ sign_extend (m := 64) (7 : BitVec 12) =
+               (v + sign_extend (m := 64) imm) ^^^ (7 : BitVec 64) := by
+    have h7 : sign_extend (m := 64) (7 : BitVec 12) = (7 : BitVec 64) := by decide
+    rw [h7]
+  rw [aligned_dword_addr_eq, h_xor]
+  rw [jolt_lbu_bridge]
+  unfold liftSail
+  obtain ⟨s', hw⟩ := wX_shape rd
+    (zero_extend (m := 64) (loaded_byte_at js.sail (v + sign_extend (m := 64) imm)))
+    js.sail
+  rw [hw]
+  refine ⟨_, rfl, ?_⟩
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 theorem execute_LBU_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail)
@@ -103,7 +134,22 @@ theorem execute_LBU_reduces (imm : BitVec 12) (rs1 rd : regidx)
       (stateAfterWrite js.sail rd
         (zero_extend (m := 64)
           (loaded_byte_at js.sail (v + sign_extend (m := 64) imm)))) := by
-  sorry
+  unfold execute_LOAD
+  simp only [bind, pure]
+  unfold Sail.assert LeanRV64D.Functions.xlen_bytes
+  simp (config := { decide := true }) only []
+  simp (config := { decide := true }) only [PreSail.assert, EStateM.bind, pure, EStateM.pure,
+       EStateM.run, if_true]
+  rw [vmem_read_byte_reduces imm rs1 js.sail v hrx hload.aligned hload.translate
+      (mem_read_1_eq_loaded_byte _ js.sail hcfg hload.phys)]
+  simp only [extend_value, if_true, EStateM.bind, EStateM.pure]
+  obtain ⟨s', hw⟩ := wX_shape rd
+    (zero_extend (m := 64) (loaded_byte_at js.sail (v + sign_extend (m := 64) imm)))
+    js.sail
+  rw [hw]
+  simp only [RETIRE_SUCCESS]
+  congr 1
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 theorem jolt_lbu_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
@@ -112,4 +158,10 @@ theorem jolt_lbu_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (h_byte : ∀ v : BitVec 64, LoadReadAssumptions (v + sign_extend (m := 64) imm) 1 js.sail) :
     projectResult ((jolt_lbu imm rs1 rd).run js) =
     (execute_LOAD imm rs1 rd true 1).run js.sail := by
-  sorry
+  obtain ⟨v, hrx⟩ := hwf rs1
+  obtain ⟨js', hjolt, hjolt_sail⟩ :=
+    jolt_lbu_concrete imm rs1 rd hrd js hwf hcfg v hrx (h_dw v)
+  have hsail := execute_LBU_reduces imm rs1 rd js hwf hcfg v hrx (h_byte v)
+  rw [hjolt]
+  simp only [projectResult, project]
+  rw [hjolt_sail, hsail]
