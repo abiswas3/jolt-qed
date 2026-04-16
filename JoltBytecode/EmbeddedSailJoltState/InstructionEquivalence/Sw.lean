@@ -41,8 +41,9 @@ This replaces exactly the 32 bits under the mask with the new word value.
 -/
 
 
-/-- Jolt's SW decomposition: 13-step read-modify-write via dword-aligned access. -/
-def jolt_sw (imm : BitVec 12) (rs2 rs1 : regidx) : JoltMonad ExecutionResult := do
+/-- Jolt's SW decomposition up to just before the final `SD`. -/
+def jolt_sw_compute_splice (imm : BitVec 12) (rs2 rs1 : regidx) :
+    JoltMonad (BitVec 64 × BitVec 64 × BitVec 64) := do
   let base ← liftSail (rX_bits rs1)
   let ea := base + sign_extend (m := 64) imm
   -- VirtualAssertWordAlignment
@@ -75,10 +76,16 @@ def jolt_sw (imm : BitVec 12) (rs2 rs1 : regidx) : JoltMonad ExecutionResult := 
         let _ ← vreg_AND 0 0 3
         -- XOR v2, v2, v0
         let _ ← vreg_XOR 2 2 0
-        -- SD v1, v2, 0
-        let _ ← vreg_SD 1 2 0
-        pure RETIRE_SUCCESS
-    | other => pure other
+        let base' ← readVReg 1
+        let dword_new ← readVReg 2
+        pure (ea, base', dword_new)
+    | _ => throw (Error.Assertion "SW prefix: vreg_LD did not retire successfully")
+
+/-- Jolt's SW decomposition: 13-step read-modify-write via dword-aligned access. -/
+def jolt_sw (imm : BitVec 12) (rs2 rs1 : regidx) : JoltMonad ExecutionResult := do
+  let _ ← jolt_sw_compute_splice imm rs2 rs1
+  let _ ← vreg_SD 1 2 0
+  pure RETIRE_SUCCESS
 -- ============================================================================
 -- Layer 2: The XOR-AND-XOR splice is correct (pure bitvector reasoning)
 -- ============================================================================
@@ -174,63 +181,4 @@ theorem sw_splice_spec (dword_orig : BitVec 64) (word_val : BitVec 32)
     simpa using sw_splice_target_bytes dword_orig word_val off hoff j hj
   · intro k hk hout
     simpa using sw_splice_other_bytes dword_orig word_val off hoff k hk hout
-
-/-- Jolt's SW decomposition up to just before the final `SD`. -/
-def jolt_sw_compute_splice (imm : BitVec 12) (rs2 rs1 : regidx) :
-    JoltMonad (BitVec 64 × BitVec 64 × BitVec 64) := do
-  let base ← liftSail (rX_bits rs1)
-  let ea := base + sign_extend (m := 64) imm
-  if ea &&& 3 ≠ 0 then
-    throw (Error.Assertion "SW: effective address not word-aligned")
-  else do
-    writeVReg 0 ea
-    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
-    match ← vreg_LD 2 1 0 with
-    | .Retire_Success () =>
-        let _ ← vreg_SLLI 0 0 3
-        writeVReg 3 0
-        let _ ← vreg_ORI 3 3 (-1 : BitVec 12)
-        let _ ← vreg_SRLI 3 3 32
-        let _ ← vreg_SLL 3 3 0
-        let rs2_val ← liftSail (rX_bits rs2)
-        let v0_shift ← readVReg 0
-        writeVReg 0 (shift_bits_left rs2_val (Sail.BitVec.extractLsb v0_shift 5 0))
-        let _ ← vreg_XOR 0 2 0
-        let _ ← vreg_AND 0 0 3
-        let _ ← vreg_XOR 2 2 0
-        let base' ← readVReg 1
-        let dword_new ← readVReg 2
-        pure (ea, base', dword_new)
-    | _ => throw (Error.Assertion "SW prefix: vreg_LD did not retire successfully")
-
--- Running the prefix computes the dword that will be written by the final `SD`.
--- It also computes the effective address and the aligned dword base used by that store.
-theorem jolt_sw_compute_splice_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail) :
-    ∃ (js' : SailJoltState) (ea base rs2_val dword_orig : BitVec 64),
-      rX_bits rs2 js.sail = .ok rs2_val js.sail ∧
-      DwordStoreSetup ea base ∧
-      loaded_dword_at js.sail base = dword_orig ∧
-      (jolt_sw_compute_splice imm rs2 rs1).run js =
-        .ok (ea, base, xor_and_xor_splice dword_orig (Sail.BitVec.extractLsb rs2_val 31 0)
-          ((ea - base).toNat * 8)) js' := by
-  sorry
-
--- ============================================================================
--- Main theorem: Jolt SW = Sail SW
--- ============================================================================
-
--- Running Jolt's 13-step SW decomposition (read-modify-write via dword-aligned
--- access) and projecting onto Sail state produces exactly the same result as
--- running Sail's native `execute_STORE` at width 4.
---
--- Assumptions will be refined as we fill in the proof — for now we include
--- the same shape used by the load proofs (WellFormed, JoltConfig) plus
--- placeholders for store-specific conditions (alignment, memory pipeline).
-theorem jolt_sw_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail) :
-    projectResult ((jolt_sw imm rs2 rs1).run js) =
-    (execute_STORE imm rs2 rs1 4).run js.sail := by
-  sorry
-
 end

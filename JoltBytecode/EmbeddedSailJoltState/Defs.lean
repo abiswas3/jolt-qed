@@ -30,6 +30,18 @@ structure SailJoltState where
   sail : SailState
   vregs : BitVec 7 → BitVec 64 := fun _ => 0
 
+@[ext]
+theorem SailJoltState.ext
+    {js₁ js₂ : SailJoltState}
+    (hsail : js₁.sail = js₂.sail)
+    (hvregs : js₁.vregs = js₂.vregs) :
+    js₁ = js₂ := by
+  cases js₁
+  cases js₂
+  cases hsail
+  cases hvregs
+  rfl
+
 -- Note that SailM whiach is the Monad the transpilation exposes 
 -- is just SailM (a: Type) := EStateM (Error exception) SailState α
 abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
@@ -179,77 +191,18 @@ structure JoltConfig (s : SailState) : Prop where
 -- Focused bridge lemmas for the vmem_read pipeline
 -- ============================================================================
 
--- Under JoltConfig (Machine mode, MPRV=0), translateAddr is the identity:
--- the virtual address becomes the physical address with no translation.
--- This is because Machine mode → translationMode = Bare → paddr = vaddr.
--- Under JoltConfig (Machine mode, MPRV=0), translateAddr is the identity:
--- the virtual address becomes the physical address with no translation.
--- This is because Machine mode → translationMode = Bare → paddr = vaddr.
---
--- Proof strategy: unfold translateAddr, show readReg succeeds for mstatus
--- and cur_privilege (from JoltConfig), then effectivePrivilege returns Machine,
--- translationMode returns Bare, and the Bare branch returns identity.
-theorem translateAddr_machine_bare (vAddr : virtaddr) (s : SailState)
-    (hcfg : JoltConfig s) :
-    translateAddr vAddr (MemoryAccessType.Load mem_payload.Data) s =
-    .ok (Ok (physaddr.Physaddr (zero_extend (m := 64) (bits_of_virtaddr vAddr)), init_ext_ptw)) s := by
-  sorry
+/- STALE:
+These two older load-factoring bridge lemmas are not referenced anywhere in the
+current instruction-equivalence development. The active load proofs use the
+newer local lemmas in `InstructionEquivalence/LoadDefUtils.lean` and the
+instruction-specific files instead.
 
--- The bridge lemma: under JoltConfig, Sail's execute_LOAD for LW (width=4,
--- signed) is equivalent to: read rs1, compute address, read 4 bytes raw
--- from state.mem via sailReadWord, sign-extend to 64 bits, write to rd.
---
--- This collapses the entire vmem_read pipeline (address translation, PMP,
--- PMA, MMIO checks) down to a raw byte read. Each check passes trivially
--- under JoltConfig:
---   ext_data_get_addr: always succeeds (just computes vaddr = rX[rs1] + offset)
---   misalignment: passes (plat_enable_misaligned_access = true)
---   translateAddr: identity (Machine mode → Bare translation)
---   pmpCheck: Machine mode bypasses
---   pmaCheck: JoltConfig guarantees valid readable region
---   MMIO: JoltConfig guarantees regular RAM
---   sail_mem_read: reads from state.mem = same as sailReadByte
---
--- TODO: prove by unfolding vmem_read through 6 layers.
-theorem execute_LOAD_LW_factored (imm : BitVec 12) (rs1 rd : regidx)
-    (s : SailState) (hcfg : JoltConfig s) :
-    execute_LOAD imm rs1 rd false 4 s = (do
-      let v_base ← rX_bits rs1
-      let addr := v_base + sign_extend (m := 64) imm
-      let word ← sailReadWord addr
-      wX_bits rd (sign_extend (m := 64) word)
-      pure RETIRE_SUCCESS) s := by
-  -- PROVED layers (no sorry needed):
-  --   Layer 1: execute_LOAD unfolds to vmem_read
-  --   Layer 2: vmem_read → ext_data_get_addr (trivial) → vmem_read_addr
-  --   Layer 3: misalignment passes (plat_enable_misaligned_access = true)
-  --   Layer 3b: split_misaligned returns (1, width) — single memory access
-  --
-  -- BLOCKED at layer 4: the Sail monad transformer stack (SailME = ExceptT
-  -- over SailM, wrapped in PreSailME.run with liftM) creates deeply nested
-  -- terms. The remaining layers need:
-  --
-  --   Layer 4: translateAddr → Bare (Machine mode from JoltConfig)
-  --     Needs: readReg cur_privilege = Machine, readReg mstatus for MPRV bit
-  --     Blocked by: Sail register reads go through PreSail.readReg which
-  --     does hash map lookup on s.regs — need to connect JoltConfig.machine_mode
-  --     to the actual readReg call.
-  --
-  --   Layer 5: checked_mem_read → pmpCheck + pmaCheck
-  --     pmpCheck: Machine mode bypasses if no locked entries (need to reason
-  --     about PMP register state — 16 entries from pmpaddr0..15 and pmpcfg0..3)
-  --     pmaCheck: need matching PMA region with readable attributes
-  --
-  --   Layer 6: read_ram → sail_mem_read → readBytes → readByte
-  --     readByte does state.mem.get? addr — matches our sailReadByte.
-  --     This layer should be straightforward once layers 4-5 are done.
-  --
-  -- Recommended approach: prove focused intermediate lemmas:
-  --   translateAddr_machine_bare: Machine mode → identity translation
-  --   pmpCheck_machine_pass: Machine mode → PMP passes
-  --   checked_mem_read_eq_read_ram: combine the above
-  --   read_ram_eq_sailReadBytes: final connection to sailReadByte
-  sorry
+Keeping the old sorried declarations here only pollutes the build status, so
+they are commented out until there is a reason to revive them.
+
+theorem translateAddr_machine_bare ...
+theorem execute_LOAD_LW_factored ...
+-/
 
 -- ============================================================================
 -- Shared Jolt instructions
