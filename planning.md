@@ -1,10 +1,12 @@
 
 # Jolt-QED: State of the World
 
+**DONE: 24 | INPROGRESS: 7 | TODO: 34**
+
 This is an effort to prove that Jolt bytecode expansions are equivalent to the RiscV instructions they replace.
 There are few classes of instructions 
 
-## ALU Instructions 
+## ALU Instructions (DONE: 14 | INPROGRESS: 2 | TODO: 2)
 
 These are often called FormatR and FormatI instructions, and their RISCV counterparts just read registers (which does not change state), and writes to a single destination register `rd`. 
 
@@ -13,6 +15,7 @@ These are often called FormatR and FormatI instructions, and their RISCV counter
 - DONE: ADDIW (Format I) — `Addiw.lean`
 - DONE: MULW (Format R) — `Mulw.lean`
 - TODO: MULH (Format R) — `Mulh.lean` (stub only, no proofs)
+- TODO: MULHSU (Format R)
 - INPROGRESS: SLLW (Format R) — `Sllw.lean` (1 sorry: `sll_32_eq_mul_trunc`)
 - INPROGRESS: SRLW (Format R) — `Srlw.lean` (1 sorry: `ctz_srlw_bitmask`)
 - DONE: SRAW (Format R) — `Sraw.lean`
@@ -28,7 +31,7 @@ These are often called FormatR and FormatI instructions, and their RISCV counter
 
 There is a general strategy for this group of instructions, ill put this in.
 
-## ALU Instructions With Advice 
+## ALU Instructions With Advice (DONE: 0 | INPROGRESS: 0 | TODO: 8)
 
 This is the DIV, REM, class of formatR and formatI instructions which do the same as above but they also use an advice string in jolt. 
 So here the proofs are different: We do not necessarily step through both monads and say sail state is the same. 
@@ -43,7 +46,7 @@ We have not started this type of instructions.
 
 Helper: `Advice.lean` — shared advice collapse theorem, SLLI/SRAI step lemmas, projectResult lifting
 
-## Load (non-reserved)
+## Load (DONE: 10 | INPROGRESS: 0 | TODO: 0)
 
 These are fully complete. They load values from memory into a destination `rd`.
 
@@ -60,15 +63,15 @@ These are fully complete. They load values from memory into a destination `rd`.
 
 Helper: `LoadDefUtils.lean` — shared load definitions
 
-## Store Instructions
+## Store Instructions (DONE: 0 | INPROGRESS: 3 | TODO: 0)
 
 These write register values to memory. SB/SH/SW have inline sequences; SD does not.
 
-- TODO: SB — store byte
-- TODO: SH — store halfword
-- TODO: SW — store word
+- INPROGRESS: SB — `Sb.lean` (Jolt def + main theorem stub, proof sorry'd, `vreg_SD` sorry'd)
+- INPROGRESS: SH — `Sh.lean` (Jolt def + main theorem stub, proof sorry'd, `vreg_SD` sorry'd)
+- INPROGRESS: SW — `Sw.lean` (Jolt def + main theorem stub, proof sorry'd, `vreg_SD` sorry'd)
 
-## Atomic Instructions
+## Atomic Instructions (DONE: 0 | INPROGRESS: 2 | TODO: 20)
 
 Load-reserved / store-conditional pairs and AMO (atomic memory operations).
 All have inline sequences in the Rust implementation.
@@ -88,7 +91,7 @@ All have inline sequences in the Rust implementation.
 - TODO: AMOSWAPD, AMOSWAPW
 - TODO: AMOXORD, AMOXORW
 
-## System Instructions
+## System Instructions (DONE: 0 | INPROGRESS: 0 | TODO: 4)
 
 - TODO: ECALL
 - TODO: CSRRS
