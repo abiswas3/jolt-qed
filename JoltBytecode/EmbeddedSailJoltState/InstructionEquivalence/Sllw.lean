@@ -1,5 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Sllw
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -11,6 +11,23 @@ open Std.Do
 set_option autoImplicit true
 
 noncomputable section
+
+-- From BytecodeExpansions/Instructions/Sllw.lean
+def sllwJolt (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  let v_pow := Jolt.virtualPow2W rs2_val
+  let product := Riscv.mul rs1_val v_pow
+  Jolt.virtualSignExtendWord product
+
+private lemma sll_32_eq_mul_trunc (x : BitVec 64) (s : Nat) (hs : s < 32) :
+    x.setWidth 32 <<< s = (x * BitVec.ofNat 64 (2 ^ s)).setWidth 32 := by
+  sorry
+
+theorem sllw_eq_sllwJolt (rs1_val rs2_val : BitVec 64) :
+    Riscv.sllw rs1_val rs2_val = sllwJolt rs1_val rs2_val := by
+  unfold Riscv.sllw sllwJolt Jolt.virtualPow2W Riscv.mul Jolt.virtualSignExtendWord
+  congr 1
+  exact sll_32_eq_mul_trunc rs1_val (rs2_val.setWidth 5).toNat (by
+    have := (rs2_val.setWidth 5).isLt; norm_num at this; exact this)
 
 /-! ## SLLW: Jolt's VirtualPow2W + MUL + VSEW = Sail SLLW
 

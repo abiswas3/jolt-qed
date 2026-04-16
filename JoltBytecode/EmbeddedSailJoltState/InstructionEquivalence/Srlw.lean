@@ -1,5 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Srlw
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -11,6 +11,17 @@ open Std.Do
 set_option autoImplicit true
 
 noncomputable section
+
+-- From BytecodeExpansions/Instructions/Srlw.lean
+def srlw_bitmask (rs2_val : BitVec 64) : Nat :=
+  let v_bitmask_in := Riscv.ori rs2_val 32#64
+  let shift := (v_bitmask_in.setWidth 6).toNat
+  let ones := (1 <<< (64 - shift)) - 1
+  ones <<< shift
+
+lemma ctz_srlw_bitmask (rs2_val : BitVec 64) :
+    ctz (srlw_bitmask rs2_val) = (rs2_val.setWidth 5).toNat + 32 := by
+  sorry
 
 /-! ## SRLW: Jolt's SLLI+bitmask+VirtualSRL+VSEW = Sail SRLW
 

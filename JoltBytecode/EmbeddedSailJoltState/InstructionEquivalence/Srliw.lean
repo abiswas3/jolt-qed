@@ -1,5 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Srliw
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -12,6 +12,27 @@ set_option autoImplicit true
 
 noncomputable section
 
+-- From BytecodeExpansions/Instructions/Srliw.lean
+def srliw_imm (shamt : BitVec 64) : Nat :=
+  let shift := (shamt.setWidth 5).toNat + 32
+  let len := 64
+  let ones := (1 <<< (len - shift)) - 1
+  ones <<< shift
+
+theorem ctz_srliw_imm (shamt : BitVec 64) :
+    ctz (srliw_imm shamt) = (shamt.setWidth 5).toNat + 32 := by
+  unfold srliw_imm
+  simp only [Nat.shiftLeft_eq, one_mul]
+  have h_lt : (shamt.setWidth 5).toNat < 32 := by
+    have := (shamt.setWidth 5).isLt; norm_num at this; exact this
+  have h_diff_pos : 0 < 64 - ((shamt.setWidth 5).toNat + 32) := by omega
+  have h_m_pos : 0 < 2 ^ (64 - ((shamt.setWidth 5).toNat + 32)) - 1 := by
+    have : 2 ≤ 2 ^ (64 - ((shamt.setWidth 5).toNat + 32)) :=
+      le_trans (show (2 : Nat) ≤ 2 ^ 1 from by norm_num) (Nat.pow_le_pow_right (by omega) (by omega))
+    omega
+  rw [mul_comm, ctz_mul_pow2 ((shamt.setWidth 5).toNat + 32) h_m_pos,
+      ctz_of_odd (pow2_sub_one_odd h_diff_pos)]
+
 /-! ## SRLIW: Jolt SLLI 32 + VirtualSRLI + VSEW = Sail SRLIW
 
 Jolt decomposes SRLIW as:
@@ -23,17 +44,17 @@ The bitmask encodes shamt[4:0] + 32, so ctz recovers the adjusted shift.
 -/
 
 -- setWidth 64 then setWidth 5 = identity on BitVec 5
-private lemma setWidth_5_roundtrip (shamt : BitVec 5) :
+private theorem setWidth_5_roundtrip (shamt : BitVec 5) :
     (shamt.setWidth 64).setWidth 5 = shamt := by
   ext i; simp [BitVec.getLsbD_setWidth]
 
 -- After ctz, we get shamt.toNat + 32
-private lemma ctz_srliw_imm_shamt5 (shamt : BitVec 5) :
+private theorem ctz_srliw_imm_shamt5 (shamt : BitVec 5) :
     ctz (srliw_imm (shamt.setWidth 64)) = shamt.toNat + 32 := by
   rw [ctz_srliw_imm, setWidth_5_roundtrip]
 
 -- Bridge: Jolt's slli-32 + srli via bitmask = Sail's 32-bit logical right shift
-private lemma srliw_shift_eq (v : BitVec 64) (shamt : BitVec 5) :
+private theorem srliw_shift_eq (v : BitVec 64) (shamt : BitVec 5) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
         ((v <<< 32) >>> ctz (srliw_imm (shamt.setWidth 64))) 31 0) =

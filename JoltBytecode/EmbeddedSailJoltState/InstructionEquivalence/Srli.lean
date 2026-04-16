@@ -1,5 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Srli
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -12,6 +12,25 @@ set_option autoImplicit true
 
 noncomputable section
 
+-- From BytecodeExpansions/Instructions/Srli.lean
+def srli_bitmask (shamt : BitVec 64) : Nat :=
+  let shift := (shamt.setWidth 6).toNat
+  let ones := (1 <<< (64 - shift)) - 1
+  ones <<< shift
+
+theorem ctz_srli_bitmask (shamt : BitVec 64) :
+    ctz (srli_bitmask shamt) = (shamt.setWidth 6).toNat := by
+  unfold srli_bitmask
+  simp only [Nat.shiftLeft_eq, one_mul]
+  set shift := (shamt.setWidth 6).toNat
+  have h_lt : shift < 64 := by have := (shamt.setWidth 6).isLt; norm_num at this; exact this
+  have h_diff_pos : 0 < 64 - shift := by omega
+  have h_m_pos : 0 < 2 ^ (64 - shift) - 1 := by
+    have : 2 ≤ 2 ^ (64 - shift) :=
+      le_trans (show (2 : Nat) ≤ 2 ^ 1 from by norm_num) (Nat.pow_le_pow_right (by omega) (by omega))
+    omega
+  rw [mul_comm, ctz_mul_pow2 shift h_m_pos, ctz_of_odd (pow2_sub_one_odd h_diff_pos)]; omega
+
 /-! ## SRLI: Jolt VirtualSRLI via bitmask = Sail SRLI
 
 Jolt decomposes SRLI as:
@@ -21,24 +40,24 @@ ctz(srli_bitmask(shamt)) = shamt[5:0], so this equals Sail's SRLI.
 -/
 
 -- extractLsb shamt 5 0 = shamt for BitVec 6
-private lemma extractLsb_shamt6_id (shamt : BitVec 6) :
+private theorem extractLsb_shamt6_id (shamt : BitVec 6) :
     Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0 = shamt := by
   simp only [LeanRV64D.Functions.log2_xlen, Sail.BitVec.extractLsb]
   ext i; simp [BitVec.getLsbD_extractLsb]; rfl
 
 -- setWidth 64 then setWidth 6 = identity on BitVec 6
-private lemma setWidth_roundtrip (shamt : BitVec 6) :
+private theorem setWidth_roundtrip (shamt : BitVec 6) :
     (shamt.setWidth 64).setWidth 6 = shamt := by
   ext i; simp [BitVec.getLsbD_setWidth]
 
 -- v >>> (n : Nat) = v >>> (BitVec.ofNat w n) when the shift is by toNat
-private lemma ushiftRight_nat_eq_bv (v : BitVec 64) (s : BitVec 6) :
+private theorem ushiftRight_nat_eq_bv (v : BitVec 64) (s : BitVec 6) :
     v >>> s.toNat = v >>> s := by
   apply BitVec.eq_of_toNat_eq
   simp [BitVec.toNat_ushiftRight]
 
 -- Bridge: Jolt's logical shift via ctz(bitmask) = Sail's shift_bits_right
-private lemma srli_bitmask_eq_shift (v : BitVec 64) (shamt : BitVec 6) :
+private theorem srli_bitmask_eq_shift (v : BitVec 64) (shamt : BitVec 6) :
     v >>> ctz (srli_bitmask (shamt.setWidth 64)) =
     shift_bits_right v (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
   unfold shift_bits_right

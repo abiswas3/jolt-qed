@@ -1,5 +1,4 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Slliw
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -21,7 +20,7 @@ Jolt decomposes SLLIW as:
 
 -- extractLsb of multiply by 2^n = shift_bits_left of extractLsb
 -- Both take lower 32 bits; multiplication mod 2^32 = shift mod 2^32
-private lemma extractLsb_mul_pow2 (v : BitVec 64) (shamt : BitVec 5) :
+private theorem extractLsb_mul_pow2 (v : BitVec 64) (shamt : BitVec 5) :
     Sail.BitVec.extractLsb (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) 31 0 =
     shift_bits_left (Sail.BitVec.extractLsb v 31 0) shamt := by
   unfold shift_bits_left Sail.BitVec.extractLsb
@@ -30,7 +29,7 @@ private lemma extractLsb_mul_pow2 (v : BitVec 64) (shamt : BitVec 5) :
         BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
 
 -- Bridge: Jolt's multiply + truncate = Sail's 32-bit shift
-private lemma slliw_mul_eq_shift (v : BitVec 64) (shamt : BitVec 5) :
+private theorem slliw_mul_eq_shift (v : BitVec 64) (shamt : BitVec 5) :
     sign_extend (m := 64) (Sail.BitVec.extractLsb (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) 31 0) =
     sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v 31 0) shamt) := by
   rw [extractLsb_mul_pow2]

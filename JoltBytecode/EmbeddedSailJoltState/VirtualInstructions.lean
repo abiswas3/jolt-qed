@@ -33,6 +33,36 @@ def vreg_XORI (vd vs1 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult 
   writeVReg vd (x ^^^ sign_extend (m := 64) imm)
   pure RETIRE_SUCCESS
 
+-- Sail's SLLI applies extractLsb shamt (log2_xlen-1) 0 before shifting.
+-- For BitVec 6 with bounds [5:0] this is identity.
+-- Sail's shift instructions apply `extractLsb shamt (log2_xlen-1) 0` to the
+-- shift amount before using it. For RV64, log2_xlen = 6, so this extracts
+-- bits [5:0] from a 6-bit value — which is identity. Our vreg shift helpers
+-- skip this step for simplicity; this lemma bridges the gap so we can rewrite
+-- `extractLsb shamt 5 0` to `shamt` when connecting vreg ops to Sail.
+@[simp]
+theorem extractLsb_6_5_0_id (shamt : BitVec 6) :
+    Sail.BitVec.extractLsb shamt 5 0 = shamt := by
+  apply BitVec.eq_of_toNat_eq
+  simp [Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.extractLsb',
+        BitVec.toNat_setWidth, shamt.isLt]
+
+-- Our vreg_SLLI uses `shift_bits_left x shamt` directly.
+-- Sail's SLLI uses `shift_bits_left x (extractLsb shamt 5 0)`.
+-- These are equal because extractLsb on a 6-bit value with bounds [5:0]
+-- is identity (see extractLsb_6_5_0_id above).
+@[simp]
+theorem shift_bits_left_extractLsb_id (x : BitVec 64) (shamt : BitVec 6) :
+    shift_bits_left x (Sail.BitVec.extractLsb shamt 5 0) = shift_bits_left x shamt := by
+  rw [extractLsb_6_5_0_id]
+
+-- Same for shift_bits_right: our vreg_SRLI skips the extractLsb that
+-- Sail's SRLI applies, but the result is identical.
+@[simp]
+theorem shift_bits_right_extractLsb_id (x : BitVec 64) (shamt : BitVec 6) :
+    shift_bits_right x (Sail.BitVec.extractLsb shamt 5 0) = shift_bits_right x shamt := by
+  rw [extractLsb_6_5_0_id]
+
 def vreg_SLLI (vd vs1 : BitVec 7) (shamt : BitVec 6) : JoltMonad ExecutionResult := do
   let x ← readVReg vs1
   writeVReg vd (shift_bits_left x shamt)
@@ -67,6 +97,35 @@ def vreg_LD (vd vs1 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult :=
       writeVReg vd dword
       pure RETIRE_SUCCESS
   | .Err e => pure e
+
+def vreg_ADDI (vd vs1 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  writeVReg vd (x + sign_extend (m := 64) imm)
+  pure RETIRE_SUCCESS
+
+def vreg_ORI (vd vs1 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  writeVReg vd (x ||| sign_extend (m := 64) imm)
+  pure RETIRE_SUCCESS
+
+def vreg_XOR (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  let y ← readVReg vs2
+  writeVReg vd (x ^^^ y)
+  pure RETIRE_SUCCESS
+
+def vreg_AND (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  let y ← readVReg vs2
+  writeVReg vd (x &&& y)
+  pure RETIRE_SUCCESS
+
+-- SD from a virtual register: reads effective address from vs1, adds the
+-- sign-extended offset, writes the dword from vs2 to memory via Sail's
+-- vmem pipeline. Traps propagate as the returned ExecutionResult.
+-- TODO: implement when Sail write pipeline is available
+def vreg_SD (vs1 vs2 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult := do
+  sorry
 
 -- ============================================================================
 -- Simp lemmas: each pure-arithmetic vreg op unfolds to an explicit

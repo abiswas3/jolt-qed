@@ -1,5 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Sraw
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -11,6 +11,50 @@ open Std.Do
 set_option autoImplicit true
 
 noncomputable section
+
+-- From BytecodeExpansions/Instructions/Sraw.lean
+def sraw_bitmask (shamt_val : BitVec 64) : Nat :=
+  let shift := (shamt_val.setWidth 6).toNat
+  let ones := (1 <<< (64 - shift)) - 1
+  ones <<< shift
+
+lemma ctz_sraw_bitmask (shamt_val : BitVec 64) :
+    ctz (sraw_bitmask shamt_val) = (shamt_val.setWidth 6).toNat := by
+  unfold sraw_bitmask
+  simp only [Nat.shiftLeft_eq, one_mul]
+  set shift := (shamt_val.setWidth 6).toNat
+  have h_lt : shift < 64 := by have := (shamt_val.setWidth 6).isLt; norm_num at this; exact this
+  have h_diff_pos : 0 < 64 - shift := by omega
+  have h_m_pos : 0 < 2 ^ (64 - shift) - 1 := by
+    have : 2 ≤ 2 ^ (64 - shift) :=
+      le_trans (show (2 : Nat) ≤ 2 ^ 1 from by norm_num) (Nat.pow_le_pow_right (by omega) (by omega))
+    omega
+  rw [mul_comm, ctz_mul_pow2 shift h_m_pos, ctz_of_odd (pow2_sub_one_odd h_diff_pos)]; omega
+
+private lemma ctz_sraw_chain (rs2_val : BitVec 64) :
+    ctz (sraw_bitmask (Riscv.andi rs2_val 0x1f#64)) = (rs2_val.setWidth 5).toNat := by
+  rw [ctz_sraw_bitmask]
+  unfold Riscv.andi
+  simp only [BitVec.toNat_setWidth, BitVec.toNat_and, BitVec.toNat_ofNat]
+  have h1 : (31 : Nat) % 2 ^ 64 = 31 := by norm_num
+  rw [h1, show (31 : Nat) = 2 ^ 5 - 1 from by norm_num, Nat.and_two_pow_sub_one_eq_mod]
+  exact Nat.mod_eq_of_lt (by have := Nat.mod_lt rs2_val.toNat (show 0 < 2 ^ 5 from by positivity); omega)
+
+def srawJolt (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  let v_rs1     := Jolt.virtualSignExtendWord rs1_val
+  let v_shamt   := Riscv.andi rs2_val 0x1f#64
+  let v_bitmask := sraw_bitmask v_shamt
+  let v_result  := v_rs1 >>> ctz v_bitmask
+  Jolt.virtualSignExtendWord v_result
+
+theorem sraw_eq_srawJolt (rs1_val rs2_val : BitVec 64) :
+    Riscv.sraw rs1_val rs2_val = srawJolt rs1_val rs2_val := by
+  unfold Riscv.sraw srawJolt Jolt.virtualSignExtendWord
+  simp only [ctz_sraw_chain]
+  have hs : (rs2_val.setWidth 5).toNat < 32 := by
+    have := (rs2_val.setWidth 5).isLt; norm_num at this; exact this
+  congr 1
+  rw [sshiftRight_eq_signExtend_ushr_trunc (rs1_val.setWidth 32) _ hs]
 
 /-! ## SRAW: Jolt 5-step decomposition = Sail SRAW
 
