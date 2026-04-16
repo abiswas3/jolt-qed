@@ -110,7 +110,7 @@ def IsWordSplice (original spliced : BitVec 64) (word : BitVec 32) (offset : Nat
 theorem sw_splice_offset_cases (ea base : BitVec 64) (hsetup : DwordStoreSetup ea base) :
     let off := (ea - base).toNat
     off = 0 ∨ off = 4 := by
-  sorry
+  simpa using store_offset_cases ea base hsetup
 
 -- The target bytes of the splice are the bytes of `word_val`.
 -- Thus the splice replaces either bytes `0..3` or bytes `4..7` of the dword.
@@ -119,7 +119,10 @@ theorem sw_splice_target_bytes (dword_orig : BitVec 64) (word_val : BitVec 32)
     ∀ j : Nat, j < 4 →
       dword_byte (xor_and_xor_splice dword_orig word_val (8 * off)) (off + j) =
       word_byte word_val j := by
-  sorry
+  intro j hj
+  rcases hoff with rfl | rfl
+  · interval_cases j <;> simp [xor_and_xor_splice, dword_byte, word_byte] <;> bv_decide
+  · interval_cases j <;> simp [xor_and_xor_splice, dword_byte, word_byte] <;> bv_decide
 
 -- The non-target bytes of the splice remain unchanged.
 -- Only one 4-byte window is replaced, so the other 4 bytes are preserved.
@@ -129,16 +132,48 @@ theorem sw_splice_other_bytes (dword_orig : BitVec 64) (word_val : BitVec 32)
       (k < off ∨ k ≥ off + 4) →
       dword_byte (xor_and_xor_splice dword_orig word_val (8 * off)) k =
       dword_byte dword_orig k := by
-  sorry
+  intro k hk hout
+  rcases hoff with rfl | rfl
+  · interval_cases k
+    · omega
+    · omega
+    · omega
+    · omega
+    · simp [xor_and_xor_splice, dword_byte]
+      bv_decide
+    · simp [xor_and_xor_splice, dword_byte]
+      bv_decide
+    · simp [xor_and_xor_splice, dword_byte]
+      bv_decide
+    · simp [xor_and_xor_splice, dword_byte]
+      bv_decide
+  · interval_cases k
+    · simp [xor_and_xor_splice, dword_byte]
+      bv_decide
+    · simp [xor_and_xor_splice, dword_byte]
+      bv_decide
+    · simp [xor_and_xor_splice, dword_byte]
+      bv_decide
+    · simp [xor_and_xor_splice, dword_byte]
+      bv_decide
+    · omega
+    · omega
+    · omega
+    · omega
 
--- The XOR-AND-XOR expression computes the expected word splice.
--- The previous two lemmas are packaged into the single splice property.
+-- The XOR-AND-XOR expression computes the expected splice.
+-- Here `spliced` denotes the dword produced by the bitvector sequence.
+-- The main LAYER 2 lemma.
 theorem sw_splice_spec (dword_orig : BitVec 64) (word_val : BitVec 32)
     (off : Nat) (hoff : off = 0 ∨ off = 4) :
-    IsWordSplice dword_orig
-      (xor_and_xor_splice dword_orig word_val (8 * off))
-      word_val off := by
-  sorry
+    let spliced := xor_and_xor_splice dword_orig word_val (8 * off)
+    IsWordSplice dword_orig spliced word_val off := by
+  dsimp [IsWordSplice]
+  refine ⟨?_, ?_⟩
+  · intro j hj
+    simpa using sw_splice_target_bytes dword_orig word_val off hoff j hj
+  · intro k hk hout
+    simpa using sw_splice_other_bytes dword_orig word_val off hoff k hk hout
 
 /-- Jolt's SW decomposition up to just before the final `SD`. -/
 def jolt_sw_compute_splice (imm : BitVec 12) (rs2 rs1 : regidx) :
