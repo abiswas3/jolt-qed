@@ -41,32 +41,6 @@ This replaces exactly the 32 bits under the mask with the new word value.
 -/
 
 
-/-
-TODO: (CLAUDE) : Don't write code but we will start discussion on chat
-THE HIGH LEVEL IDEA
-What is the crux of the this proof. 
-Jolt can only read 64 bits from memory from double word aligned address, 
-and write 64 bits to memory at a double word aligned address. 
-So how does one implement storing of 32 bits then?
-Lets make a toy example with addresses 
-0, 1, 2, 3, 4, 5, 6, 7 are addresses -- each store 8 bits of data
-0: is double word aligned
-0 and 4 are word aligned. 
-So we may either want to write 32 bits at eithe raddress 0 or 4 (These are only two legal operations, 
-and we will get this from our assumptions). 
-
-The trick is to load data at address0 into a virtual-reg as 64 bits.
-and then over-write address 0-3 or 4-7 based on the address value.
-And then store the 64 bit value back at address 0. 
-The part we did not change - is just load and store. So it's as if we did not change. 
-SO the first lemma to write down is to express this at the hashmap level. 
-Right now we do not want to fight the monads. 
-We want to get the logic down, we'll cut through the monads with assumptions and simp lemmas later.
-We need to reason about this first. 
-Note that in LW we invented load_word_at or something like that. 
-
--/ 
-
 /-- Jolt's SW decomposition: 13-step read-modify-write via dword-aligned access. -/
 def jolt_sw (imm : BitVec 12) (rs2 rs1 : regidx) : JoltMonad ExecutionResult := do
   let base ← liftSail (rX_bits rs1)
@@ -105,131 +79,107 @@ def jolt_sw (imm : BitVec 12) (rs2 rs1 : regidx) : JoltMonad ExecutionResult := 
         let _ ← vreg_SD 1 2 0
         pure RETIRE_SUCCESS
     | other => pure other
+-- ============================================================================
+-- Layer 2: The XOR-AND-XOR splice is correct (pure bitvector reasoning)
+-- ============================================================================
 
--- ===========================================================================
--- Call chain: execute_STORE → ... → hashmap insert
--- ===========================================================================
---
--- 1. execute_STORE (imm, rs2, rs1, width=4)           [InstsEnd.lean:66988]
---    │ let offset := sign_extend imm
---    │ assert (width ≤ xlen_bytes)                     -- width check
---    │ let data := extractLsb (← rX_bits rs2) 31 0    -- read rs2, take low 32 bits
---    │
---    ▼
--- 2. vmem_write (rs1, offset, 4, data, Store Data, false, false, false)
---    │                                                  [VmemUtils.lean:386]
---    │ Wrapped in SailME.run (ExceptT over SailM)
---    │
---    ▼
--- 3. ext_data_get_addr (rs1, offset, _, _)             [AddrChecks.lean:212]
---    │ let addr := Virtaddr (rX_bits(rs1) + offset)
---    │ pure (Ext_DataAddr_OK addr)
---    │ -- Always succeeds, just computes vaddr = base + offset
---    │
---    ├── On Ext_DataAddr_Error → SailME.throw (Err ...)  [never happens]
---    ▼
--- 4. vmem_write_addr (vaddr, 4, data, Store Data, false, false, false)
---    │                                                  [VmemUtils.lean:313]
---    │
---    ├── access_causes_misaligned_exception(vaddr, 4, false)  [VmemUtils.lean:259]
---    │   = ¬(is_aligned_vaddr vaddr 4) ∧ (¬plat_enable_misaligned_access ∨ false)
---    │   Since plat_enable_misaligned_access = true → always false → OK
---    │   (If true → Err (Memory_Exception (vaddr, E_SAMO_Addr_Align)))
---    │
---    ├── split_misaligned (vaddr, 4)                    [VmemUtils.lean:237]
---    │   Since is_aligned or allowed_misaligned → pure (1, 4)
---    │   i.e. n=1, bytes=4 → single memory access
---    │
---    ├── misaligned_order (1)                           [VmemUtils.lean:253]
---    │   = (0, 0, 1)  i.e. first=0, last=0, step=1
---    │
---    │ -- Loop body runs once (offset=0):
---    ▼
--- 5. translateAddr (Virtaddr vaddr, Store Data)         [Vmem.lean:489]
---    │ let effPriv := effectivePrivilege(Store Data, mstatus, cur_privilege)
---    │   Under JoltConfig: cur_privilege = Machine, MPRV=0
---    │   → effectivePrivilege returns Machine
---    │ let mode := translationMode(Machine)
---    │   Machine mode → Bare
---    │ if is_shadow_stack_access → no (Store Data is not shadow stack)
---    │ if mode == Bare →
---    │   pure (Ok (Physaddr (zero_extend vaddr_bits), init_ext_ptw))
---    │ -- Identity translation: paddr = vaddr
---    │
---    ├── On Err → SailME.throw (Err (Memory_Exception ...))
---    ▼
--- 6. assert (res == is_store_conditional(Store Data))   [VmemUtils.lean:336]
---    │ res=false, is_store_conditional(Store Data)=false → OK
---    │
---    │ if res ∧ ¬match_reservation → no (res=false)
---    ▼
--- 7. mem_write_ea (paddr, 4, aq=false, rl=false, con=false)  [Mem.lean:614]
---    │ if (rl ∨ con) ∧ ¬is_aligned → no (rl=false, con=false)
---    │ pure (Ok (write_ram_ea wk paddr 4))
---    │   write_ram_ea is a no-op (returns Unit)         [PhysMemInterface.lean:324]
---    │
---    ├── On Err → SailME.throw (Err (Memory_Exception ...))
---    ▼
--- 8. let write_value := extractLsb data 31 0           -- extract the 4-byte slice
---    │ (For offset=0, bytes=4: bits [31:0] of data)
---    ▼
--- 9. mem_write_value (paddr, 4, write_value, Store Data, false, false, false)
---    │                                                  [Mem.lean:662]
---    ▼
--- 10. mem_write_value_meta (paddr, 4, value, Store Data, default_meta, false, false, false)
---    │                                                  [Mem.lean:656]
---    │ let ep := effectivePrivilege(Store Data, mstatus, cur_privilege)
---    │   → Machine (same as step 5)
---    ▼
--- 11. mem_write_value_priv_meta (paddr, 4, value, Store Data, Machine, (), false, false, false)
---    │                                                  [Mem.lean:635]
---    │ if (rl ∨ con) ∧ ¬is_aligned → no (both false)
---    ▼
--- 12. checked_mem_write (paddr, 4, value, Store Data, Machine, (), false, false, false)
---    │                                                  [Mem.lean:621]
---    │ match phys_access_check(Store Data, Machine, paddr, 4, false)
---    │   Machine mode → PMP check passes → none
---    │
---    │ if within_mmio_writable(paddr, 4) → no (JoltConfig: regular RAM)
---    ▼
--- 13. write_ram (Write_plain, paddr, 4, value, ())     [PhysMemInterface.lean:287]
---    │ wk = Write_plain (from write_kind_of_flags false false false)
---    │ Build Mem_write_request with:
---    │   access_kind = AK_explicit { variety = AV_plain, strength = AS_normal }
---    │   pa = paddr bits, size = 4, value = some data
---    ▼
--- 14. sail_mem_write (request)                          [Specialization.lean:79]
---    │ → PreSail.ConcurrencyInterfaceV2.sail_mem_write
---    │ This is the Sail library primitive that writes bytes into state.mem
---    │ (an ExtHashMap Nat (BitVec 8)).
---    │
---    │ match result:
---    │   Ok _ → __WriteRAM_Meta (no-op), pure true
---    │   Err () → pure false
---    ▼
--- 15. Back in mem_write_value_priv_meta:
---    │ On Ok: mem_write_callback (logging, no state change)
---    │ pure result
---    ▼
--- 16. Back in vmem_write_addr loop:
---    │ offset == last (0==0) → finished=true
---    │ pure (Ok write_success)
---    ▼
--- 17. Back in execute_STORE:
---    │ match Ok _ → pure RETIRE_SUCCESS
---
--- Summary of checks before the hashmap write:
---   (a) width ≤ xlen_bytes assertion
---   (b) misaligned exception check → passes (plat_enable_misaligned_access=true)
---   (c) translateAddr → identity (Machine + Bare mode)
---   (d) store-conditional reservation check → skipped (not SC)
---   (e) mem_write_ea alignment check → passes (rl=false, con=false)
---   (f) phys_access_check (PMP) → passes (Machine mode)
---   (g) MMIO check → not MMIO (regular RAM from JoltConfig)
---
--- Under JoltConfig, all checks pass and the net effect is:
---   read rs1, rs2 → compute addr → write low 32 bits of rs2 into state.mem at addr
--- ===========================================================================
+-- This is the pure bitvector term computed by the inline SW sequence.
+-- It replaces a 32-bit window inside a dword by masking, shifting, and XORing.
+def xor_and_xor_splice (dword_orig : BitVec 64) (word_val : BitVec 32) (shift : Nat) : BitVec 64 :=
+  let w_ext : BitVec 64 := (word_val.zeroExtend 64) <<< shift
+  let mask : BitVec 64 := (0x00000000FFFFFFFF : BitVec 64) <<< shift
+  dword_orig ^^^ ((dword_orig ^^^ w_ext) &&& mask)
+
+-- `spliced` is obtained from `original` by replacing the 4 bytes
+-- starting at `offset` with the bytes of `word`.
+-- Given two 64-bit strings `original` and `spliced`, a target 32-bit string `word`,
+-- and a natural number `offset`, this predicate asserts that
+-- 1. `spliced[offset + j] = word[j]` for all `j ∈ {0,1,2,3}`;
+-- 2. `spliced[k] = original[k]` for all `k < offset` or `k ≥ offset + 4`.
+-- NOTE: if spliced, orignal and word satisfy these conditons, the SW at base + off with word 
+-- is the same as SD at base with spliced
+def IsWordSplice (original spliced : BitVec 64) (word : BitVec 32) (offset : Nat) : Prop :=
+  (∀ j : Nat, j < 4 →
+    dword_byte spliced (offset + j) = word_byte word j) ∧
+  (∀ k : Nat, k < 8 →
+    (k < offset ∨ k ≥ offset + 4) →
+    dword_byte spliced k = dword_byte original k)
+
+-- A word store inside a dword can start only at byte 0 or byte 4.
+-- In other words, the effective address is `base + off` with `off = 0` or `off = 4`.
+theorem sw_splice_offset_cases (ea base : BitVec 64) (hsetup : DwordStoreSetup ea base) :
+    let off := (ea - base).toNat
+    off = 0 ∨ off = 4 := by
+  sorry
+
+-- The target bytes of the splice are the bytes of `word_val`.
+-- Thus the splice replaces either bytes `0..3` or bytes `4..7` of the dword.
+theorem sw_splice_target_bytes (dword_orig : BitVec 64) (word_val : BitVec 32)
+    (off : Nat) (hoff : off = 0 ∨ off = 4) :
+    ∀ j : Nat, j < 4 →
+      dword_byte (xor_and_xor_splice dword_orig word_val (8 * off)) (off + j) =
+      word_byte word_val j := by
+  sorry
+
+-- The non-target bytes of the splice remain unchanged.
+-- Only one 4-byte window is replaced, so the other 4 bytes are preserved.
+theorem sw_splice_other_bytes (dword_orig : BitVec 64) (word_val : BitVec 32)
+    (off : Nat) (hoff : off = 0 ∨ off = 4) :
+    ∀ k : Nat, k < 8 →
+      (k < off ∨ k ≥ off + 4) →
+      dword_byte (xor_and_xor_splice dword_orig word_val (8 * off)) k =
+      dword_byte dword_orig k := by
+  sorry
+
+-- The XOR-AND-XOR expression computes the expected word splice.
+-- The previous two lemmas are packaged into the single splice property.
+theorem sw_splice_spec (dword_orig : BitVec 64) (word_val : BitVec 32)
+    (off : Nat) (hoff : off = 0 ∨ off = 4) :
+    IsWordSplice dword_orig
+      (xor_and_xor_splice dword_orig word_val (8 * off))
+      word_val off := by
+  sorry
+
+/-- Jolt's SW decomposition up to just before the final `SD`. -/
+def jolt_sw_compute_splice (imm : BitVec 12) (rs2 rs1 : regidx) :
+    JoltMonad (BitVec 64 × BitVec 64 × BitVec 64) := do
+  let base ← liftSail (rX_bits rs1)
+  let ea := base + sign_extend (m := 64) imm
+  if ea &&& 3 ≠ 0 then
+    throw (Error.Assertion "SW: effective address not word-aligned")
+  else do
+    writeVReg 0 ea
+    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
+    match ← vreg_LD 2 1 0 with
+    | .Retire_Success () =>
+        let _ ← vreg_SLLI 0 0 3
+        writeVReg 3 0
+        let _ ← vreg_ORI 3 3 (-1 : BitVec 12)
+        let _ ← vreg_SRLI 3 3 32
+        let _ ← vreg_SLL 3 3 0
+        let rs2_val ← liftSail (rX_bits rs2)
+        let v0_shift ← readVReg 0
+        writeVReg 0 (shift_bits_left rs2_val (Sail.BitVec.extractLsb v0_shift 5 0))
+        let _ ← vreg_XOR 0 2 0
+        let _ ← vreg_AND 0 0 3
+        let _ ← vreg_XOR 2 2 0
+        let base' ← readVReg 1
+        let dword_new ← readVReg 2
+        pure (ea, base', dword_new)
+    | _ => throw (Error.Assertion "SW prefix: vreg_LD did not retire successfully")
+
+-- Running the prefix computes the dword that will be written by the final `SD`.
+-- It also computes the effective address and the aligned dword base used by that store.
+theorem jolt_sw_compute_splice_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState) (hwf : WellFormed js) (hcfg : JoltConfig js.sail) :
+    ∃ (js' : SailJoltState) (ea base rs2_val dword_orig : BitVec 64),
+      rX_bits rs2 js.sail = .ok rs2_val js.sail ∧
+      DwordStoreSetup ea base ∧
+      loaded_dword_at js.sail base = dword_orig ∧
+      (jolt_sw_compute_splice imm rs2 rs1).run js =
+        .ok (ea, base, xor_and_xor_splice dword_orig (Sail.BitVec.extractLsb rs2_val 31 0)
+          ((ea - base).toNat * 8)) js' := by
+  sorry
 
 -- ============================================================================
 -- Main theorem: Jolt SW = Sail SW

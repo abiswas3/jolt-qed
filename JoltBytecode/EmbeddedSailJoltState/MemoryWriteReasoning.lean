@@ -176,24 +176,6 @@ theorem stored_dword_untouched (s : SailState) (ea base : BitVec 64) (dword_new 
   rw [extHashMap_get_insert_of_ne
       s.mem (base.toNat + 0) a (dword_byte dword_new 0)
       (outside_dword_window_ne base.toNat a 0 (by omega) hout)]
-
-
-
-  -- NEXT: So far so good but we have not yet proven a chain
-  /-
-
-   TODO: (Claude)
-   Given base computed from ea -- we know this pattern well now and 32 bit value d'
-   let d_word be the 64 bit value loaded from memory.
-   ldet d_word_new be such that either 
-   if ea = base + 4 then d_word_new[0:3] = d_word[0:3] ∧ d_word_new[4:7] = d'
-   if ea = base then d_word_new[4:7] = d_word[4:7] ∧ d_word_new[0:3] = d'
-
-   WE want to show that state_after_word_store s ea d' = state_after_dword_store s base d_word_new 
-
-   
-  -/
-
 -- Inputs: word_val (32-bit value), k (byte index)
 -- Assumptions: none
 -- Extracts the k-th byte from a 32-bit word in little-endian order.
@@ -259,7 +241,23 @@ theorem stored_word_get?_hit (s : SailState) (ea : BitVec 64) (word_val : BitVec
     ∀ j : Nat, j < 4 →
       (state_after_word_store s ea word_val).mem.get? (ea.toNat + j) =
       some (word_byte word_val j) := by
-  sorry
+  intro j hj
+  unfold state_after_word_store
+  rw [Std.ExtHashMap.get?_eq_getElem?]
+  interval_cases j
+  · rw [Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert_self]
 
 -- Inputs: s (Sail state), base (dword address), dword_new (dword written), k (byte index)
 -- Assumptions: k < 8
@@ -268,7 +266,37 @@ theorem stored_dword_get?_hit (s : SailState) (base : BitVec 64) (dword_new : Bi
     ∀ k : Nat, k < 8 →
       (state_after_dword_store s base dword_new).mem.get? (base.toNat + k) =
       some (dword_byte dword_new k) := by
-  sorry
+  intro k hk
+  unfold state_after_dword_store
+  rw [Std.ExtHashMap.get?_eq_getElem?]
+  interval_cases k
+  · rw [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert,
+        Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert_self]
 
 -- Inputs: addr (effective address)
 -- Assumptions: none
@@ -309,7 +337,54 @@ theorem word_offset_cases (addr : BitVec 64) (halign : addr &&& 3 = 0) :
 -- The word offset within the dword is either 0 or 4.
 theorem store_offset_cases (ea base : BitVec 64) (hsetup : DwordStoreSetup ea base) :
     (ea - base).toNat = 0 ∨ (ea - base).toNat = 4 := by
-  sorry
+  rw [hsetup.base_is_aligned]
+  rcases word_offset_cases ea hsetup.word_aligned with hk | hk
+  · left
+    have hsplit := addr_split_aligned_offset ea
+    rw [hk] at hsplit
+    norm_num at hsplit
+    have hsub : ea - (ea &&& (-8 : BitVec 64)) = 0 := by
+      rw [hsplit]
+      bv_decide
+    simpa using congrArg BitVec.toNat hsub
+  · right
+    have hsplit := addr_split_aligned_offset ea
+    rw [hk] at hsplit
+    have hsub : ea - (ea &&& (-8 : BitVec 64)) = 4 := by
+      rw [← hsplit]
+      bv_decide
+    simpa using congrArg BitVec.toNat hsub
+
+-- Inputs: ea, base (addresses)
+-- Assumptions: DwordStoreSetup ea base
+-- The effective address is the dword base plus the 0-or-4 word offset, at the Nat level.
+theorem ea_toNat_eq_base_plus_offset (ea base : BitVec 64)
+    (hsetup : DwordStoreSetup ea base) :
+    ea.toNat = base.toNat + (ea - base).toNat := by
+  rcases store_offset_cases ea base hsetup with hoff | hoff
+  · have hsub0 : ea - base = (0 : BitVec 64) := by
+      apply BitVec.eq_of_toNat_eq
+      simpa using hoff
+    have hEq : ea = base := by
+      have := hsub0
+      bv_decide
+    subst ea
+    simp
+  · have hsub4 : ea - base = (4 : BitVec 64) := by
+      apply BitVec.eq_of_toNat_eq
+      simpa using hoff
+    have hEq : ea = base + (4 : BitVec 64) := by
+      have := hsub4
+      bv_decide
+    rw [hEq]
+    have hsub : ((base + (4 : BitVec 64)) - base : BitVec 64) = 4 := by
+      bv_decide
+    rw [hsub]
+    have hsum : base.toNat + 4 < 2 ^ 64 := by
+      calc
+        base.toNat + 4 ≤ base.toNat + 7 := by omega
+        _ < 2 ^ 64 := hsetup.no_ovf
+    simpa using (BitVec.toNat_add_of_lt (x := base) (y := (4 : BitVec 64)) (by simpa using hsum))
 
 -- Inputs: ea, base (addresses), j (word-byte offset)
 -- Assumptions: DwordStoreSetup ea base, j < 4
@@ -317,7 +392,8 @@ theorem store_offset_cases (ea base : BitVec 64) (hsetup : DwordStoreSetup ea ba
 theorem target_addr_eq (ea base : BitVec 64) (j : Nat)
     (hsetup : DwordStoreSetup ea base) (hj : j < 4) :
     base.toNat + ((ea - base).toNat + j) = ea.toNat + j := by
-  sorry
+  rw [ea_toNat_eq_base_plus_offset ea base hsetup]
+  omega
 
 -- Inputs: ea, base (addresses), k (dword-byte offset)
 -- Assumptions: DwordStoreSetup ea base, k < 8
@@ -326,7 +402,14 @@ theorem k_in_target_or_outside (ea base : BitVec 64) (k : Nat)
     (hsetup : DwordStoreSetup ea base) (hk : k < 8) :
     (k < (ea - base).toNat ∨ k ≥ (ea - base).toNat + 4) ∨
     ∃ j : Nat, j < 4 ∧ k = (ea - base).toNat + j := by
-  sorry
+  by_cases hlt : k < (ea - base).toNat
+  · exact Or.inl (Or.inl hlt)
+  · by_cases hge : k ≥ (ea - base).toNat + 4
+    · exact Or.inl (Or.inr hge)
+    · right
+      refine ⟨k - (ea - base).toNat, ?_, ?_⟩
+      · omega
+      · omega
 
 -- Inputs: s (Sail state), addr (memory address), b (byte value)
 -- Assumptions:
@@ -360,7 +443,8 @@ theorem outside_target_addr_outside_word_window
     (hsetup : DwordStoreSetup ea base)
     (hout : k < (ea - base).toNat ∨ k ≥ (ea - base).toNat + 4) :
     base.toNat + k < ea.toNat ∨ base.toNat + k ≥ ea.toNat + 4 := by
-  sorry
+  rw [ea_toNat_eq_base_plus_offset ea base hsetup]
+  omega
 
 -- Inputs: ea, base (addresses), a (lookup address)
 -- Assumptions: DwordStoreSetup ea base, a is outside base..base+7
@@ -452,65 +536,6 @@ theorem mem_eq_of_eq_on_dword_window
       have hbase_hi : a < base + 8 := by omega
       obtain ⟨k, hk, rfl⟩ := eq_base_add_of_mem_dword_window base a hbase_le hbase_hi
       exact h_in k hk
-
--- ============================================================================
--- Core equivalence: dword write with splice = word write
--- ============================================================================
---
--- Inputs:
---   s          : Sail state before the store
---   ea         : effective address (word-aligned, where the 32-bit word goes)
---   base       : dword-aligned base address (ea rounded down to 8)
---   word_val   : the 32-bit value being stored
---   dword_orig : the 64-bit dword loaded from memory at base (before the store)
---   dword_new  : the spliced 64-bit dword (dword_orig with word_val inserted)
---
--- Assumptions:
---   hsetup     : DwordStoreSetup ea base (alignment, base = ea &&& -8, no overflow)
---   hload      : dword_orig was loaded from memory at base
---                (dword_byte dword_orig k = loaded_byte_at s (base + k) for k < 8)
---   hsplice    : dword_new has word_val at the ea offset and dword_orig elsewhere:
---                - bytes at offset (ea - base)..+3 are word_val bytes
---                - bytes outside that range are dword_orig bytes
---
--- Statement:
---   Writing dword_new (8 bytes) at base produces the same .mem as
---   writing word_val (4 bytes) at ea.
---
--- Why this holds:
---   The 4 bytes of dword_new at the target offset are word_val — same as what
---   state_after_word_store writes. The other 4 bytes of dword_new are dword_orig
---   bytes, which equal what was already in memory (from hload), so inserting
---   them is a no-op on the hashmap.
-theorem dword_store_splice_eq_word_store
-    (s : SailState) (ea base : BitVec 64)
-    (word_val : BitVec 32) (dword_orig dword_new : BitVec 64)
-    (hsetup : DwordStoreSetup ea base)
-    -- dword_orig is what was in memory at base
-    (hload : ∀ k : Nat, k < 8 →
-      dword_byte dword_orig k = loaded_byte_at s (base + BitVec.ofNat 64 k))
-    -- dword_new has word_val at the target 4 bytes (offset = ea - base, which is 0 or 4)
-    (hsplice_target : ∀ j : Nat, j < 4 →
-      dword_byte dword_new ((ea - base).toNat + j) = word_byte word_val j)
-    -- dword_new preserves dword_orig at the other 4 bytes
-    (hsplice_other : ∀ k : Nat, k < 8 →
-      (k < (ea - base).toNat ∨ k ≥ (ea - base).toNat + 4) →
-      dword_byte dword_new k = dword_byte dword_orig k) :
-    (state_after_dword_store s base dword_new).mem =
-    (state_after_word_store s ea word_val).mem := by
-  apply mem_eq_of_eq_on_dword_window base.toNat
-      (state_after_dword_store s base dword_new).mem
-      (state_after_word_store s ea word_val).mem
-      s.mem
-  · intro a ha
-    simpa using stored_dword_untouched s ea base dword_new hsetup a ha
-  · intro a ha
-    have ha_word : a < ea.toNat ∨ a ≥ ea.toNat + 4 :=
-      outside_dword_window_implies_outside_word_window ea base a hsetup ha
-    simpa using stored_word_untouched s ea word_val a ha_word
-  · intro k hk
-    -- TODO: here we can use our splice assumptions can't we
-    sorry
 
 -- Inputs:
 --   s          : Sail state before the store
