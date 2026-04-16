@@ -2,49 +2,11 @@
 -- Import modules here that should be built as part of the library.
 
 
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addw                  -- DONE: ADDW (ADD + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Subw                  -- DONE: SUBW (SUB + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sllw                  -- DONE: SLLW (VirtualPow2W + MUL + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srlw                  -- DONE: SRLW (SLLI 32 + bitmask + VirtualSRL + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraw                  -- DONE: SRAW (VSEW + ANDI + bitmask + VirtualSRA + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sll                   -- INPROGRESS: SLL main thm (VirtualPow2 + MUL, 2 sorry'd helpers)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srl                   -- INPROGRESS: SRL main thm (bitmask + VirtualSRL, 1 sorry'd helper)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra                   -- INPROGRESS: SRA main thm (bitmask + VirtualSRA, 1 sorry'd helper)
--- Multiply / Divide / Remainder
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulw      -- TODO: execute_MULW, truncate + multiply
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulh      -- TODO: execute_MUL, upper-half multiply
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Div       -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Divu      -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Divw      -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Divuw     -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Rem       -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remu      -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remw      -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remuw     -- TODO: needs advice
-
--- Format I W-variants (shift-immediate word)
--- TODO: SLLI, SRLI — were clean (trivial via liftSail_project), deleted, need recreation
--- TODO: SLLIW, SRLIW — need shift-truncation BitVec lemmas, deleted, need recreation
--- TODO: Port remaining Instructions/ proofs to SailJoltState/
---       (Mulw, Div, Lw, Sw, AMO, CSR, memory instructions)
--- ============================================================================
--- THe CURRENT!!
--- ============================================================================
--- EmbeddedSailJoltState: mvcgen Sail ↔ Jolt proofs (PRIMARY)
---
--- Embedded SailJoltState (sail : SailState + vregs).
--- @[spec] Hoare triples + mvcgen automates monadic plumbing.
--- Theorem shape: projectResult(jolt_X.run js) = sail_X.run js.sail
--- Requires WellFormed (registers initialized).
--- Load instructions also require JoltConfig (M-mode, flat memory).
--- ============================================================================
--- ============================================================================
-
 -- Infrastructure
 import JoltBytecode.EmbeddedSailJoltState.Defs                                        -- SailJoltState, liftSail, JoltConfig
 import JoltBytecode.EmbeddedSailJoltState.RegisterOps                                  -- register lemmas, stateAfterWrite
 import JoltBytecode.EmbeddedSailJoltState.RtypeW                                       -- @[spec], generic W-type framework
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs                                    -- ctz, Riscv.*, Jolt.*, shared lemmas
 
 -- ============================================================================
 -- Instruction proofs — Format R (register-register)
@@ -52,12 +14,12 @@ import JoltBytecode.EmbeddedSailJoltState.RtypeW                                
 
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addw                  -- DONE: ADDW (ADD + VSEW)
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Subw                  -- DONE: SUBW (SUB + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sllw                  -- DONE: SLLW (VirtualPow2W + MUL + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srlw                  -- DONE: SRLW (SLLI 32 + bitmask + VirtualSRL + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraw                  -- DONE: SRAW (VSEW + ANDI + bitmask + VirtualSRA + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sll                   -- DONE: SLL main thm (VirtualPow2 + MUL, 2 sorry'd helpers)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srl                   -- DONE: SRL main thm (bitmask + VirtualSRL, 1 sorry'd helper)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra                   -- DONE: SRA main thm (bitmask + VirtualSRA, 1 sorry'd helper)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sllw                  -- INPROGRESS: SLLW (1 sorry)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srlw                  -- DONE: SRLW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraw                  -- DONE: SRAW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sll                   -- DONE: SLL
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srl                   -- DONE: SRL
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra                   -- DONE: SRA
 -- Multiply / Divide / Remainder
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulw      -- TODO: execute_MULW, truncate + multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulh      -- TODO: execute_MUL, upper-half multiply
@@ -76,12 +38,12 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra            
 -- ============================================================================
 
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addiw                 -- DONE: ADDIW (ADDI + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srai                  -- DONE: SRAI (bitmask shift)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw                 -- DONE: SRAIW (3-step via virtual regs)
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slli      -- TODO: like SRAI
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srli      -- TODO: like SRAI
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slliw     -- TODO: like SRAIW
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw     -- TODO: like SRAIW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srai                  -- DONE: SRAI
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw                 -- DONE: SRAIW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slli                  -- DONE: SLLI
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srli                  -- DONE: SRLI
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slliw                 -- DONE: SLLIW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw                 -- DONE: SRLIW
 
 -- ============================================================================
 -- Instruction proofs — Memory (load)

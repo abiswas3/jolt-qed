@@ -1,5 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Srai
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -11,6 +11,25 @@ open Std.Do
 set_option autoImplicit true
 
 noncomputable section
+
+-- From BytecodeExpansions/Instructions/Srai.lean
+def srai_bitmask (shamt : BitVec 64) : Nat :=
+  let shift := (shamt.setWidth 6).toNat
+  let ones := (1 <<< (64 - shift)) - 1
+  ones <<< shift
+
+lemma ctz_srai_bitmask (shamt : BitVec 64) :
+    ctz (srai_bitmask shamt) = (shamt.setWidth 6).toNat := by
+  unfold srai_bitmask
+  simp only [Nat.shiftLeft_eq, one_mul]
+  set shift := (shamt.setWidth 6).toNat
+  have h_lt : shift < 64 := by have := (shamt.setWidth 6).isLt; norm_num at this; exact this
+  have h_diff_pos : 0 < 64 - shift := by omega
+  have h_m_pos : 0 < 2 ^ (64 - shift) - 1 := by
+    have : 2 ≤ 2 ^ (64 - shift) :=
+      le_trans (show (2 : Nat) ≤ 2 ^ 1 from by norm_num) (Nat.pow_le_pow_right (by omega) (by omega))
+    omega
+  rw [mul_comm, ctz_mul_pow2 shift h_m_pos, ctz_of_odd (pow2_sub_one_odd h_diff_pos)]; omega
 
 /-!
 # SRAI: Jolt VirtualSRAI via bitmask = Sail SRAI

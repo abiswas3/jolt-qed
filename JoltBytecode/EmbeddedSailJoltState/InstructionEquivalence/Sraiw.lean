@@ -1,5 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Sraiw
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -11,6 +11,40 @@ open Std.Do
 set_option autoImplicit true
 
 noncomputable section
+
+-- From BytecodeExpansions/Instructions/Sraiw.lean
+def sraiw_bitmask (shamt : BitVec 64) : Nat :=
+  let shift := (shamt.setWidth 5).toNat
+  let ones := (1 <<< (64 - shift)) - 1
+  ones <<< shift
+
+lemma ctz_sraiw_bitmask (shamt : BitVec 64) :
+    ctz (sraiw_bitmask shamt) = (shamt.setWidth 5).toNat := by
+  unfold sraiw_bitmask
+  simp only [Nat.shiftLeft_eq, one_mul]
+  set shift := (shamt.setWidth 5).toNat
+  have h_lt : shift < 32 := by have := (shamt.setWidth 5).isLt; norm_num at this; exact this
+  have h_diff_pos : 0 < 64 - shift := by omega
+  have h_m_pos : 0 < 2 ^ (64 - shift) - 1 := by
+    have : 2 ≤ 2 ^ (64 - shift) :=
+      le_trans (show (2 : Nat) ≤ 2 ^ 1 from by norm_num) (Nat.pow_le_pow_right (by omega) (by omega))
+    omega
+  rw [mul_comm, ctz_mul_pow2 shift h_m_pos, ctz_of_odd (pow2_sub_one_odd h_diff_pos)]; omega
+
+def sraiwJolt (rs1_val shamt : BitVec 64) : BitVec 64 :=
+  let v_rs1     := Jolt.virtualSignExtendWord rs1_val
+  let v_bitmask := sraiw_bitmask shamt
+  let v_result  := v_rs1 >>> ctz v_bitmask
+  Jolt.virtualSignExtendWord v_result
+
+theorem sraiw_eq_sraiwJolt (rs1_val shamt : BitVec 64) :
+    Riscv.sraiw rs1_val shamt = sraiwJolt rs1_val shamt := by
+  unfold Riscv.sraiw sraiwJolt Jolt.virtualSignExtendWord
+  simp only [ctz_sraiw_bitmask]
+  have hs : (shamt.setWidth 5).toNat < 32 := by
+    have := (shamt.setWidth 5).isLt; norm_num at this; exact this
+  congr 1
+  rw [sshiftRight_eq_signExtend_ushr_trunc (rs1_val.setWidth 32) _ hs]
 
 /-!
 # SRAIW: Jolt 3-step decomposition = Sail SRAIW

@@ -1,5 +1,4 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Sll
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -23,20 +22,20 @@ Sail's SLL does shift_bits_left v1 (extractLsb v2 5 0).
 -/
 
 -- Step 1: setWidth 6 = extractLsb 5 0 (both extract the lower 6 bits)
-private lemma setWidth_eq_extractLsb (v : BitVec 64) :
+private theorem setWidth_eq_extractLsb (v : BitVec 64) :
     v.setWidth 6 = Sail.BitVec.extractLsb v (LeanRV64D.Functions.log2_xlen -i 1) 0 := by
   unfold LeanRV64D.Functions.log2_xlen Sail.BitVec.extractLsb
   ext i
   simp [BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb]
 
 -- Step 2: multiplying by 2^n = left shift by n (for BitVec)
-private lemma mul_pow2_eq_shiftLeft (v : BitVec 64) (s : BitVec 6) :
+private theorem mul_pow2_eq_shiftLeft (v : BitVec 64) (s : BitVec 6) :
     v * BitVec.ofNat 64 (2 ^ s.toNat) = v <<< s := by
   apply BitVec.eq_of_toNat_eq
   simp [BitVec.toNat_mul, BitVec.toNat_ofNat, BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
 
 -- Bridge: Jolt's multiply by 2^(rs2[5:0]) = Sail's shift_bits_left.
-private lemma sll_mul_eq_shift (v1 v2 : BitVec 64) :
+private theorem sll_mul_eq_shift (v1 v2 : BitVec 64) :
     v1 * BitVec.ofNat 64 (2 ^ (v2.setWidth 6).toNat) =
     shift_bits_left v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
   unfold shift_bits_left

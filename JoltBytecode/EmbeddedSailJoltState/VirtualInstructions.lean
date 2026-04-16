@@ -33,6 +33,36 @@ def vreg_XORI (vd vs1 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult 
   writeVReg vd (x ^^^ sign_extend (m := 64) imm)
   pure RETIRE_SUCCESS
 
+-- Sail's SLLI applies extractLsb shamt (log2_xlen-1) 0 before shifting.
+-- For BitVec 6 with bounds [5:0] this is identity.
+-- Sail's shift instructions apply `extractLsb shamt (log2_xlen-1) 0` to the
+-- shift amount before using it. For RV64, log2_xlen = 6, so this extracts
+-- bits [5:0] from a 6-bit value — which is identity. Our vreg shift helpers
+-- skip this step for simplicity; this lemma bridges the gap so we can rewrite
+-- `extractLsb shamt 5 0` to `shamt` when connecting vreg ops to Sail.
+@[simp]
+theorem extractLsb_6_5_0_id (shamt : BitVec 6) :
+    Sail.BitVec.extractLsb shamt 5 0 = shamt := by
+  apply BitVec.eq_of_toNat_eq
+  simp [Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.extractLsb',
+        BitVec.toNat_setWidth, shamt.isLt]
+
+-- Our vreg_SLLI uses `shift_bits_left x shamt` directly.
+-- Sail's SLLI uses `shift_bits_left x (extractLsb shamt 5 0)`.
+-- These are equal because extractLsb on a 6-bit value with bounds [5:0]
+-- is identity (see extractLsb_6_5_0_id above).
+@[simp]
+theorem shift_bits_left_extractLsb_id (x : BitVec 64) (shamt : BitVec 6) :
+    shift_bits_left x (Sail.BitVec.extractLsb shamt 5 0) = shift_bits_left x shamt := by
+  rw [extractLsb_6_5_0_id]
+
+-- Same for shift_bits_right: our vreg_SRLI skips the extractLsb that
+-- Sail's SRLI applies, but the result is identical.
+@[simp]
+theorem shift_bits_right_extractLsb_id (x : BitVec 64) (shamt : BitVec 6) :
+    shift_bits_right x (Sail.BitVec.extractLsb shamt 5 0) = shift_bits_right x shamt := by
+  rw [extractLsb_6_5_0_id]
+
 def vreg_SLLI (vd vs1 : BitVec 7) (shamt : BitVec 6) : JoltMonad ExecutionResult := do
   let x ← readVReg vs1
   writeVReg vd (shift_bits_left x shamt)
@@ -66,6 +96,39 @@ def vreg_LD (vd vs1 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult :=
   | .Ok dword =>
       writeVReg vd dword
       pure RETIRE_SUCCESS
+  | .Err e => pure e
+
+def vreg_ADDI (vd vs1 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  writeVReg vd (x + sign_extend (m := 64) imm)
+  pure RETIRE_SUCCESS
+
+def vreg_ORI (vd vs1 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  writeVReg vd (x ||| sign_extend (m := 64) imm)
+  pure RETIRE_SUCCESS
+
+def vreg_XOR (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  let y ← readVReg vs2
+  writeVReg vd (x ^^^ y)
+  pure RETIRE_SUCCESS
+
+def vreg_AND (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  let y ← readVReg vs2
+  writeVReg vd (x &&& y)
+  pure RETIRE_SUCCESS
+
+-- SD from a virtual register: reads effective address from vs1, adds the
+-- sign-extended offset, writes the dword from vs2 to memory via Sail's
+-- vmem pipeline. Traps propagate as the returned ExecutionResult.
+def vreg_SD (vs1 vs2 : BitVec 7) (imm : BitVec 12) : JoltMonad ExecutionResult := do
+  let base ← readVReg vs1
+  let addr := base + sign_extend (m := 64) imm
+  let value ← readVReg vs2
+  match ← liftSail (vmem_write_addr (Virtaddr addr) 8 value (Store Data) false false false) with
+  | .Ok _ => pure RETIRE_SUCCESS
   | .Err e => pure e
 
 -- ============================================================================
@@ -154,6 +217,45 @@ theorem vreg_SRL_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
              getThe, MonadStateOf.get, MonadStateOf.modifyGet,
              EStateM.get, EStateM.modifyGet]
 
+@[simp]
+theorem vreg_ORI_run (vd vs1 : BitVec 7) (imm : BitVec 12) (js : SailJoltState) :
+    vreg_ORI vd vs1 imm js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then
+                            js.vregs vs1 ||| sign_extend (m := 64) imm
+                          else js.vregs r } := by
+  unfold vreg_ORI
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+
+@[simp]
+theorem vreg_XOR_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    vreg_XOR vd vs1 vs2 js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then
+                            js.vregs vs1 ^^^ js.vregs vs2
+                          else js.vregs r } := by
+  unfold vreg_XOR
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+
+@[simp]
+theorem vreg_AND_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    vreg_AND vd vs1 vs2 js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then
+                            js.vregs vs1 &&& js.vregs vs2
+                          else js.vregs r } := by
+  unfold vreg_AND
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+
 -- Conditional unfold for vreg_LD: under JoltConfig, the Sail pipeline
 -- collapses to a direct hashmap dword read. Not @[simp] because it needs
 -- hcfg and the pipeline-reduces lemma — clients must rewrite manually.
@@ -175,5 +277,31 @@ theorem vreg_LD_run_of_read (vd vs1 : BitVec 7) (imm : BitVec 12)
   rw [h]
   simp only [EStateM.bind, EStateM.pure, writeVReg, modify, modifyGet,
              MonadStateOf.modifyGet, EStateM.modifyGet]
+
+theorem vreg_SD_run_of_write (vs1 vs2 : BitVec 7) (imm : BitVec 12)
+    (js : SailJoltState)
+    (h :
+      vmem_write_addr (Virtaddr (js.vregs vs1 + sign_extend (m := 64) imm)) 8
+        (js.vregs vs2) (Store Data) false false false js.sail =
+        .ok (Ok true) js.sail) :
+    vreg_SD vs1 vs2 imm js = .ok RETIRE_SUCCESS js := by
+  unfold vreg_SD liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get]
+  rw [h]
+  simp only [EStateM.bind, EStateM.pure]
+
+theorem vreg_SD_run_of_write_to_state (vs1 vs2 : BitVec 7) (imm : BitVec 12)
+    (js : SailJoltState) (s' : SailState)
+    (h :
+      vmem_write_addr (Virtaddr (js.vregs vs1 + sign_extend (m := 64) imm)) 8
+        (js.vregs vs2) (Store Data) false false false js.sail =
+        .ok (Ok true) s') :
+    vreg_SD vs1 vs2 imm js = .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold vreg_SD liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get]
+  rw [h]
+  simp only [EStateM.bind, EStateM.pure]
 
 end

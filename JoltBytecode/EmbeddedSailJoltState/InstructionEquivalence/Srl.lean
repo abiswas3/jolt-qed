@@ -1,5 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
-import JoltBytecode.BytecodeExpansions.Instructions.Srl
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -11,6 +11,25 @@ open Std.Do
 set_option autoImplicit true
 
 noncomputable section
+
+-- From BytecodeExpansions/Instructions/Srl.lean
+def srl_bitmask (rs2_val : BitVec 64) : Nat :=
+  let shift := (rs2_val.setWidth 6).toNat
+  let ones := (1 <<< (64 - shift)) - 1
+  ones <<< shift
+
+lemma ctz_srl_bitmask (rs2_val : BitVec 64) :
+    ctz (srl_bitmask rs2_val) = (rs2_val.setWidth 6).toNat := by
+  unfold srl_bitmask
+  simp only [Nat.shiftLeft_eq, one_mul]
+  set shift := (rs2_val.setWidth 6).toNat
+  have h_lt : shift < 64 := by have := (rs2_val.setWidth 6).isLt; norm_num at this; exact this
+  have h_diff_pos : 0 < 64 - shift := by omega
+  have h_m_pos : 0 < 2 ^ (64 - shift) - 1 := by
+    have : 2 ≤ 2 ^ (64 - shift) :=
+      le_trans (show (2 : Nat) ≤ 2 ^ 1 from by norm_num) (Nat.pow_le_pow_right (by omega) (by omega))
+    omega
+  rw [mul_comm, ctz_mul_pow2 shift h_m_pos, ctz_of_odd (pow2_sub_one_odd h_diff_pos)]; omega
 
 /-! ## SRL: Jolt VirtualSRL via bitmask = Sail SRL
 

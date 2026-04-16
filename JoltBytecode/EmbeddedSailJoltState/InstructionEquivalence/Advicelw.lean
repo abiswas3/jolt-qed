@@ -1,4 +1,4 @@
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advice
+import JoltBytecode.EmbeddedSailJoltState.Advice
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
