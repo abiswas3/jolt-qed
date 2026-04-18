@@ -36,6 +36,16 @@ enough that it is cleaner to leave its definition local for now.
 abbrev aligned_dword_addr (v : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
   (v + sign_extend (m := 64) imm) &&& sign_extend (m := 64) (-8 : BitVec 12)
 
+/-- Generic effective address for memory instructions with a sign-extended
+    12-bit immediate. -/
+abbrev load_effective_address (val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  val + sign_extend (m := 64) imm
+
+/-- Generic aligned dword base address used by the Jolt inline memory
+    sequences after computing the effective address. -/
+abbrev compute_aligned_dword_base_address (val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  load_effective_address val imm &&& (-8 : BitVec 64)
+
 /-- The standard bundle of assumptions used to collapse Jolt's aligned dword
     load into a direct hashmap read. -/
 structure DwordLoadAssumptions (addr : BitVec 64) (s : SailState) : Prop where
