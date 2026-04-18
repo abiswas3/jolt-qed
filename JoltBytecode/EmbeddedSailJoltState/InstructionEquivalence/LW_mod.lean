@@ -364,6 +364,68 @@ theorem lw_dword_read_assumptions_of_addr
   · simpa [haddr] using hphys
 
 -- Used by: `jolt_lw_decomposed_writes_logic_value`.
+-- Rewrites the logic-phase shift expression from the post-load virtual
+-- registers to the concrete effective-address / loaded-dword expression.
+theorem jolt_lw_logic_phase_value (imm : BitVec 12) (js : SailJoltState) (js_load : SailJoltState) (val : BitVec 64)
+    (hload_v0 : js_load.vregs 0 = load_effective_address val imm)
+    (hload_v1 : js_load.vregs 1 = loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
+    :
+    shift_bits_right
+      (js_load.vregs 1)
+      (Sail.BitVec.extractLsb (shift_bits_left (js_load.vregs 0) (3 : BitVec 6)) 5 0) =
+    shift_bits_right
+      (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
+      (Sail.BitVec.extractLsb
+        (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0) := by
+  rw [hload_v0, hload_v1]
+
+-- Used by: `jolt_lw_logic_phase_concrete`.
+-- Running the logic phase succeeds, leaves the shifted value in vreg 1, and
+-- returns that same value from `readVReg 1`.
+theorem jolt_lw_logic_phase_run (js_load : SailJoltState) :
+    ∃ js_logic,
+      (jolt_lw_logic_phase).run js_load = .ok (js_logic.vregs 1) js_logic ∧
+      js_logic.sail = js_load.sail ∧
+      js_logic.vregs 1 =
+        shift_bits_right
+          (js_load.vregs 1)
+          (Sail.BitVec.extractLsb (shift_bits_left (js_load.vregs 0) (3 : BitVec 6)) 5 0) := by
+  let js_shift0 : SailJoltState :=
+    { sail := js_load.sail
+      vregs := fun r => if r = 0 then shift_bits_left (js_load.vregs 0) (3 : BitVec 6) else js_load.vregs r }
+  let js_logic : SailJoltState :=
+    { sail := js_load.sail
+      vregs := fun r =>
+        if r = 1 then
+          shift_bits_right
+            (js_load.vregs 1)
+            (Sail.BitVec.extractLsb (shift_bits_left (js_load.vregs 0) (3 : BitVec 6)) 5 0)
+        else js_shift0.vregs r }
+  have hslli : vreg_SLLI 0 0 3 js_load = .ok RETIRE_SUCCESS js_shift0 := by
+    change vreg_SLLI 0 0 3 js_load = .ok RETIRE_SUCCESS
+      { sail := js_load.sail
+        vregs := fun r => if r = 0 then shift_bits_left (js_load.vregs 0) (3 : BitVec 6) else js_load.vregs r }
+    simpa [js_shift0] using (vreg_SLLI_run 0 0 3 js_load)
+  have hsrl : vreg_SRL 1 1 0 js_shift0 = .ok RETIRE_SUCCESS js_logic := by
+    change vreg_SRL 1 1 0 js_shift0 = .ok RETIRE_SUCCESS
+      { sail := js_shift0.sail
+        vregs := fun r =>
+          if r = 1 then
+            shift_bits_right (js_shift0.vregs 1) (Sail.BitVec.extractLsb (js_shift0.vregs 0) 5 0)
+          else js_shift0.vregs r }
+    simpa [js_shift0, js_logic] using (vreg_SRL_run 1 1 0 js_shift0)
+  have hread_v1 : readVReg 1 js_logic = .ok (js_logic.vregs 1) js_logic := by
+    simpa using (readVReg_run 1 js_logic)
+  refine ⟨js_logic, ?_, rfl, ?_⟩
+  · simp only [jolt_lw_logic_phase, bind, EStateM.bind, EStateM.run]
+    rw [hslli]
+    simp only [EStateM.bind, EStateM.pure]
+    rw [hsrl]
+    simp only [EStateM.bind, EStateM.pure]
+    exact hread_v1
+  · simp [js_logic, js_shift0]
+
+-- Used by: `jolt_lw_decomposed_writes_logic_value`.
 -- Running the logic phase shifts the loaded dword into place, leaves that
 -- shifted value in vreg 1, returns the same value from `readVReg 1`, and does
 -- not change the Sail state.
@@ -381,7 +443,11 @@ theorem jolt_lw_logic_phase_concrete (imm : BitVec 12) (js : SailJoltState) (js_
           (Sail.BitVec.extractLsb
             (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0) ∧
       js_logic.sail = js.sail := by
-  sorry
+  rcases jolt_lw_logic_phase_run js_load with ⟨js_logic, hrun, hsail, hv1⟩
+  refine ⟨js_logic, js_logic.vregs 1, hrun, rfl, ?_, ?_⟩
+  · rw [hv1]
+    exact jolt_lw_logic_phase_value imm js js_load val hload_v0 hload_v1
+  · simpa [hload_sail] using hsail
 
 -- Used by: `jolt_lw_decomposed_writes_logic_value`.
 -- If the load, logic, and write phases of the decomposed Jolt LW program all
@@ -481,9 +547,8 @@ theorem jolt_lw_decomposed_writes_logic_value (imm : BitVec 12) (rs1 rd : regidx
     hrx hload_run hlogic_run hwrite_run
 
 
--- FIXME: This needs replacing
--- Used by: `jolt_lw_eq_sail_aligned`.
-theorem jolt_lw_concrete (imm : BitVec 12) (rs1 rd : regidx)
+-- Used by: currently unused in `LW_mod.lean`.
+theorem jolt_lw_concrete_2 (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
@@ -495,108 +560,19 @@ theorem jolt_lw_concrete (imm : BitVec 12) (rs1 rd : regidx)
       js'.sail = stateAfterWrite js.sail rd
         (sign_extend (m := 64)
           (loaded_word_at js.sail (load_effective_address val imm))) := by
-  let ea := load_effective_address val imm
-  let daddr := compute_aligned_dword_base_address val imm
-  let dword := loaded_dword_at js.sail daddr
-  let shift := Sail.BitVec.extractLsb (shift_bits_left ea (3 : BitVec 6)) 5 0
-  let shifted := shift_bits_right dword shift
-  let js0 : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = 0 then ea else js.vregs r }
-  let js1 : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = 1 then daddr else if r = 0 then ea else js.vregs r }
-  let js2 : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = 1 then dword else js1.vregs r }
-  let js3 : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = 0 then shift_bits_left ea (3 : BitVec 6) else js2.vregs r }
-  let js4 : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = 1 then shifted else js3.vregs r }
-  have hw0 : writeVReg 0 ea js = .ok () js0 := by
-    unfold writeVReg js0 ea
-    simp [modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
-  have hw1 : writeVReg 1 daddr js0 = .ok () js1 := by
-    unfold writeVReg js0 js1 ea daddr
-    simp [modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
-  have h_daddr_aligned : AlignedDwordAccess daddr := by
-    simpa [daddr, compute_aligned_dword_base_address, ea, load_effective_address, aligned_dword_addr_eq] using
-      (aligned_dword_addr_is_aligned_dword_access val imm)
-  have hdw' : DwordLoadAssumptions daddr js.sail := by
-    refine
-      { aligned := h_daddr_aligned
-        translate := ?_
-        phys := ?_ }
-    · simpa [daddr, compute_aligned_dword_base_address, ea, load_effective_address] using h_dword_translate
-    · simpa [daddr, compute_aligned_dword_base_address, ea, load_effective_address] using h_dword_phys
-  have hld : vreg_LD 1 1 0 js1 = .ok RETIRE_SUCCESS js2 := by
-    have hvs1 : js1.vregs 1 = daddr := by simp [js1, daddr]
-    simp [js2, dword] at *
-    exact vreg_LD_run_of_dword_assumptions 1 1 js1 daddr hvs1 hcfg hdw'
-  have hread_v0 : readVReg 0 js0 = .ok ea js0 := by
-    simpa [js0] using (readVReg_run 0 js0)
-  have hslli : vreg_SLLI 0 0 3 js2 = .ok RETIRE_SUCCESS js3 := by
-    change vreg_SLLI 0 0 3 js2 = .ok RETIRE_SUCCESS
-      { sail := js2.sail
-        vregs := fun r => if r = 0 then shift_bits_left (js2.vregs 0) (3 : BitVec 6) else js2.vregs r }
-    simpa [js2] using (vreg_SLLI_run 0 0 3 js2)
-  have hsrl : vreg_SRL 1 1 0 js3 = .ok RETIRE_SUCCESS js4 := by
-    change vreg_SRL 1 1 0 js3 = .ok RETIRE_SUCCESS
-      { sail := js3.sail
-        vregs := fun r =>
-          if r = 1 then shift_bits_right (js3.vregs 1) (Sail.BitVec.extractLsb (js3.vregs 0) 5 0)
-          else js3.vregs r }
-    simpa [js3, js4, shifted, dword, shift] using (vreg_SRL_run 1 1 0 js3)
-  have hread_v1 : readVReg 1 js4 = .ok shifted js4 := by
-    simpa [js4, js3, js2, js1, shifted] using (readVReg_run 1 js4)
-  obtain ⟨s5, hw5⟩ := wX_shape rd shifted js.sail
-  let js5 : SailJoltState := { sail := s5, vregs := js4.vregs }
-  have hwrite : liftSail (wX_bits rd shifted) js4 = .ok () js5 := by
-    unfold liftSail js5
-    rw [hw5]
-  have hs5 : js5.sail = stateAfterWrite js.sail rd shifted := by
-    exact wX_bits_eq_stateAfterWrite rd _ js.sail s5 hw5
-  have hread_rd : rX_bits rd js5.sail = .ok shifted js5.sail := by
-    rw [hs5]
-    exact rX_after_stateAfterWrite rd shifted js.sail hrd
-  obtain ⟨js6, hvsew, hvsew_sail⟩ :=
-    jolt_virtual_sign_extend_word_concrete rd js5 shifted hrd hread_rd
-  refine ⟨js6, ?_, ?_⟩
-  · simp only [jolt_lw, liftSail, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
-    rw [hrx]
-    simp only [bind, pure, EStateM.pure, EStateM.run]
-    rw [if_neg (by simpa [ea] using halign)]
-    simp only [EStateM.bind]
-    rw [hw0]
-    simp only [EStateM.bind, EStateM.pure]
-    rw [hread_v0]
-    simp only [EStateM.bind, EStateM.pure]
-    rw [hw1]
-    simp only [EStateM.bind, EStateM.pure]
-    rw [hld]
-    simp only [RETIRE_SUCCESS]
-    simp only [EStateM.bind, hslli, EStateM.pure]
-    simp only [EStateM.bind, hsrl, EStateM.pure]
-    simp only [EStateM.bind, hread_v1, EStateM.pure]
-    have hwrite' : liftSail (wX_bits rd shifted) js4 = .ok () js5 := by
-      simpa using hwrite
-    simp only [EStateM.bind, hwrite', EStateM.pure]
-    cases hlast : jolt_virtual_sign_extend_word rd js5 with
-    | ok a s =>
-        have hs : s = js6 := by
-          simp [EStateM.run, hlast] at hvsew
-          exact hvsew
-        subst hs
-        simp
-    | error e s =>
-        have : False := by
-          simp [EStateM.run, hlast] at hvsew
-        exact False.elim this
-  · rw [hvsew_sail, hs5, stateAfterWrite_stateAfterWrite]
-    congr 1
-    simpa [ea, daddr, dword, shift, shifted] using (jolt_lw_bridge js.sail ea halign)
+  have hrun_eq :
+      (jolt_lw imm rs1 rd).run js = (jolt_lw_decomposed imm rs1 rd).run js := by
+    simpa using jolt_lw_run_eq_decomposed imm rs1 rd js val hrx (by simpa [load_effective_address] using halign)
+  rcases jolt_lw_decomposed_writes_logic_value imm rs1 rd js val
+      hrd hcfg hrx (by simpa [load_effective_address] using halign)
+      h_dword_translate h_dword_phys with
+    ⟨js', logic_val, hdecomp_run, hlogic_val, hwrite_sail⟩
+  refine ⟨js', ?_, ?_⟩
+  · rw [hrun_eq]
+    exact hdecomp_run
+  · rw [hwrite_sail, hlogic_val]
+    exact congrArg (stateAfterWrite js.sail rd)
+      (jolt_lw_bridge js.sail (load_effective_address val imm) halign)
 
 
 -- ==============================================
@@ -676,7 +652,7 @@ theorem jolt_lw_eq_sail_aligned (imm : BitVec 12)
     · simpa [ea] using access_misaligned_4_aligned_false ea h_align
     · simpa [ea] using split_misaligned_aligned_4 ea h_align
   -- These are the heavy lifters
-  have hjolt_aligned := jolt_lw_concrete imm rs1 rd hrd js hcfg val hrx h_align h_dword_translate h_dword_phys
+  have hjolt_aligned := jolt_lw_concrete_2 imm rs1 rd hrd js hcfg val hrx h_align h_dword_translate h_dword_phys
   have hsail_aligned := execute_LW_reduces imm rs1 rd js hcfg val hrx hload h_word_no_ovf
   -- Mechanical re-writings 
   rcases hjolt_aligned with ⟨js', hjolt, hjolt_sail⟩
