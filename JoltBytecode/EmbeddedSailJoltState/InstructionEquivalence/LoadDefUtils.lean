@@ -34,8 +34,7 @@ enough that it is cleaner to leave its definition local for now.
     compute the effective address, align it down to an 8-byte boundary,
     then use zero offset for the actual `LD`. -/
 abbrev aligned_dword_addr (v : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
-  (v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-    + sign_extend (m := 64) (0 : BitVec 12)
+  (v + sign_extend (m := 64) imm) &&& sign_extend (m := 64) (-8 : BitVec 12)
 
 /-- The standard bundle of assumptions used to collapse Jolt's aligned dword
     load into a direct hashmap read. -/
@@ -56,10 +55,8 @@ theorem aligned_dword_addr_eq (v : BitVec 64) (imm : BitVec 12) :
     aligned_dword_addr v imm =
       (v + sign_extend (m := 64) imm) &&& (-8 : BitVec 64) := by
   unfold aligned_dword_addr
-  have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
   have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
-  rw [h0, h8]
-  bv_decide
+  rw [h8]
 
 /-- Transport the bundled dword-load assumptions across an address equality. -/
 theorem DwordLoadAssumptions.of_eq {addr addr' : BitVec 64} {s : SailState}
