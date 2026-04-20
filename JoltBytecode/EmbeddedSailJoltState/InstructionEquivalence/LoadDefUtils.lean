@@ -68,6 +68,55 @@ theorem aligned_dword_addr_eq (v : BitVec 64) (imm : BitVec 12) :
   have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
   rw [h8]
 
+-- ============================================================================
+-- Properties of `aligned_dword_addr`
+-- ============================================================================
+-- These say: the Jolt inline-sequence base address (effective address with its
+-- low 3 bits cleared) is 8-aligned, its `.toNat + 7` does not overflow 2^64,
+-- and from those two facts it satisfies the full `AlignedDwordAccess` bundle.
+-- Used by every load instruction's decomposed-program proof, so they live
+-- next to the `aligned_dword_addr` definition rather than inside each
+-- instruction file.
+
+/-- The Jolt inline-sequence base address is naturally 8-aligned. -/
+theorem aligned_dword_addr_aligns (val : BitVec 64) (imm : BitVec 12) :
+    aligned_dword_addr val imm &&& 7 = 0 := by
+  rw [aligned_dword_addr_eq]
+  bv_decide
+
+/-- An 8-aligned 64-bit address, viewed as a natural number, has no overflow
+    when we add 7. -/
+theorem aligned_addr_no_ovf_of_align (addr : BitVec 64)
+    (halign : addr &&& 7 = 0) :
+    addr.toNat + 7 < 2 ^ 64 := by
+  have h_mod : addr.toNat % 8 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h7 : BitVec.toNat (7 : BitVec 64) = 7 := by decide
+    have h0 : BitVec.toNat (0 : BitVec 64) = 0 := by decide
+    rw [h7, h0] at h
+    rw [show (7 : Nat) = 2^3 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  have hlt : addr.toNat < 2 ^ 64 := addr.isLt
+  omega
+
+/-- Specialisation of the previous lemma to the Jolt inline-sequence base
+    address. -/
+theorem aligned_dword_addr_no_ovf (val : BitVec 64) (imm : BitVec 12) :
+    (aligned_dword_addr val imm).toNat + 7 < 2 ^ 64 :=
+  aligned_addr_no_ovf_of_align _ (aligned_dword_addr_aligns val imm)
+
+/-- The Jolt inline-sequence base address is a proper `AlignedDwordAccess`:
+    misalignment check passes, split is trivial, address is 8-aligned, and
+    `+7` doesn't overflow. -/
+theorem aligned_dword_addr_is_aligned_dword_access (val : BitVec 64) (imm : BitVec 12) :
+    AlignedDwordAccess (aligned_dword_addr val imm) := by
+  refine
+    { misalign := access_misaligned_8_aligned_false _ (aligned_dword_addr_aligns val imm)
+      split := split_misaligned_aligned_8 _ (aligned_dword_addr_aligns val imm)
+      align := aligned_dword_addr_aligns val imm
+      no_ovf := aligned_dword_addr_no_ovf val imm }
+
 /-- Transport the bundled dword-load assumptions across an address equality. -/
 theorem DwordLoadAssumptions.of_eq {addr addr' : BitVec 64} {s : SailState}
     (h : addr = addr') :

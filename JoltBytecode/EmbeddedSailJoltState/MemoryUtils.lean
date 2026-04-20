@@ -88,7 +88,17 @@ structure FlatPhysMem (addr : BitVec 64) (width : Nat) (s : SailState) : Prop wh
 -- ============================================================================
 -- Reusable pure alignment facts
 -- ============================================================================
+-- For each access width `w ∈ {4, 8}` we have three facts:
+--   1. `access_misaligned_w_aligned_false` — if `addr` is `w`-aligned then the
+--      Sail misalignment guard returns `false` (no exception raised).
+--   2. `access_misaligned_w_unaligned_true` — if `addr` is NOT `w`-aligned then
+--      the guard returns `true` (Sail raises the misalignment exception).
+--   3. `split_misaligned_aligned_w` — if `addr` is `w`-aligned then Sail's
+--      `split_misaligned` returns `pure (1, w)` (one access, full width).
+-- These collapse the vmem pipeline into the clean "read all `w` bytes at once"
+-- branch. Byte (width 1) is trivially aligned so doesn't need lemmas.
 
+/-- An 8-aligned address doesn't trigger the misalignment exception. -/
 theorem access_misaligned_8_aligned_false (addr : BitVec 64)
     (halign : addr &&& 7 = 0) :
     access_causes_misaligned_exception (Virtaddr addr) 8 false = false := by
@@ -104,6 +114,8 @@ theorem access_misaligned_8_aligned_false (addr : BitVec 64)
     exact h
   simp [Int.tmod, h_mod, LeanRV64D.Functions.not]
 
+/-- An 8-aligned address doesn't fragment — `split_misaligned` yields the
+    single-access `(1, 8)` pair. -/
 theorem split_misaligned_aligned_8 (addr : BitVec 64)
     (halign : addr &&& 7 = 0) :
     split_misaligned (Virtaddr addr) 8 = (pure (1, 8) : SailM (Int × Int)) := by
@@ -116,6 +128,127 @@ theorem split_misaligned_aligned_8 (addr : BitVec 64)
     have h0 : (0 : BitVec 64).toNat = 0 := by decide
     rw [h7, h0,
         show (7 : Nat) = 2^3 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  simp [Int.tmod, h_mod, pure, EStateM.pure]
+
+/-- A 4-aligned address (low 2 bits zero) doesn't trigger the misalignment
+    exception for a 4-byte access. -/
+theorem access_misaligned_4_aligned_false (addr : BitVec 64)
+    (halign : addr &&& 3 = 0) :
+    access_causes_misaligned_exception (Virtaddr addr) 4 false = false := by
+  unfold access_causes_misaligned_exception is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 4 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h3 : (3 : BitVec 64).toNat = 3 := by decide
+    have h0 : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h3, h0,
+        show (3 : Nat) = 2^2 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  simp [Int.tmod, h_mod, LeanRV64D.Functions.not]
+
+/-- A NON-4-aligned address triggers the misalignment exception for a 4-byte
+    access (assuming the platform forbids misaligned access, which we have
+    configured in `plat_enable_misaligned_access = false`). -/
+theorem access_misaligned_4_unaligned_true (addr : BitVec 64)
+    (halign : addr &&& 3 ≠ 0) :
+    access_causes_misaligned_exception (Virtaddr addr) 4 false = true := by
+  unfold access_causes_misaligned_exception is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 4 ≠ 0 := by
+    intro h0
+    apply halign
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_and]
+    have h3 : (3 : BitVec 64).toNat = 3 := by decide
+    have hzero : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h3,
+        hzero,
+        show (3 : Nat) = 2^2 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod,
+        h0]
+  have h_mod_int : (↑addr.toNat : Int) % 4 ≠ 0 := by
+    intro h0
+    apply h_mod
+    norm_num at h0 ⊢
+    exact_mod_cast h0
+  simp [Int.tmod, h_mod_int, LeanRV64D.Functions.not, plat_enable_misaligned_access]
+
+/-- A 4-aligned address doesn't fragment — `split_misaligned` yields the
+    single-access `(1, 4)` pair. -/
+theorem split_misaligned_aligned_4 (addr : BitVec 64)
+    (halign : addr &&& 3 = 0) :
+    split_misaligned (Virtaddr addr) 4 = (pure (1, 4) : SailM (Int × Int)) := by
+  funext s
+  unfold split_misaligned is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 4 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h3 : (3 : BitVec 64).toNat = 3 := by decide
+    have h0 : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h3, h0,
+        show (3 : Nat) = 2^2 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  simp [Int.tmod, h_mod, pure, EStateM.pure]
+
+/-- A 2-aligned address (low 1 bit zero) doesn't trigger the misalignment
+    exception for a 2-byte access. -/
+theorem access_misaligned_2_aligned_false (addr : BitVec 64)
+    (halign : addr &&& 1 = 0) :
+    access_causes_misaligned_exception (Virtaddr addr) 2 false = false := by
+  unfold access_causes_misaligned_exception is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 2 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h1 : (1 : BitVec 64).toNat = 1 := by decide
+    have h0 : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h1, h0,
+        show (1 : Nat) = 2^1 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  simp [Int.tmod, h_mod, LeanRV64D.Functions.not]
+
+/-- A NON-2-aligned address triggers the misalignment exception for a 2-byte
+    access. -/
+theorem access_misaligned_2_unaligned_true (addr : BitVec 64)
+    (halign : addr &&& 1 ≠ 0) :
+    access_causes_misaligned_exception (Virtaddr addr) 2 false = true := by
+  unfold access_causes_misaligned_exception is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 2 ≠ 0 := by
+    intro h0
+    apply halign
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_and]
+    have h1 : (1 : BitVec 64).toNat = 1 := by decide
+    have hzero : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h1,
+        hzero,
+        show (1 : Nat) = 2^1 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod,
+        h0]
+  have h_mod_int : (↑addr.toNat : Int) % 2 ≠ 0 := by
+    intro h0
+    apply h_mod
+    norm_num at h0 ⊢
+    exact_mod_cast h0
+  simp [Int.tmod, h_mod_int, LeanRV64D.Functions.not, plat_enable_misaligned_access]
+
+/-- A 2-aligned address doesn't fragment — `split_misaligned` yields the
+    single-access `(1, 2)` pair. -/
+theorem split_misaligned_aligned_2 (addr : BitVec 64)
+    (halign : addr &&& 1 = 0) :
+    split_misaligned (Virtaddr addr) 2 = (pure (1, 2) : SailM (Int × Int)) := by
+  funext s
+  unfold split_misaligned is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 2 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h1 : (1 : BitVec 64).toNat = 1 := by decide
+    have h0 : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h1, h0,
+        show (1 : Nat) = 2^1 - 1 from by norm_num,
         Nat.and_two_pow_sub_one_eq_mod] at h
     exact h
   simp [Int.tmod, h_mod, pure, EStateM.pure]

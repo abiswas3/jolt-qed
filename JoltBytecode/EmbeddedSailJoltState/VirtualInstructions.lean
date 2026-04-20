@@ -304,4 +304,55 @@ theorem vreg_SD_run_of_write_to_state (vs1 vs2 : BitVec 7) (imm : BitVec 12)
   rw [h]
   simp only [EStateM.bind, EStateM.pure]
 
+-- ============================================================================
+-- Boundary-crossing combinators (real-register ↔ virtual-register mixes)
+-- ============================================================================
+-- The pure `vreg_*` ops above all live entirely in virtual-register space.
+-- The Jolt load/store bytecode sequences open with one instruction that
+-- reads a real source register and writes a virtual register, and close
+-- with one that reads virtual and writes a real destination. These two
+-- boundary-crossing ops are collected here so the `jolt_*` programs can
+-- read one line per bytecode line.
+
+/-- `ADDI vd, rs1, imm`: read the *real* register `rs1`, write the
+    virtual register `vd` with `rs1_val + sign_extend imm`. Used as the
+    first step of every Jolt load/store sequence. -/
+def vreg_ADDI_from_real (vd : BitVec 7) (rs1 : regidx) (imm : BitVec 12) :
+    JoltMonad ExecutionResult := do
+  let rs1_val ← liftSail (rX_bits rs1)
+  writeVReg vd (rs1_val + sign_extend (m := 64) imm)
+  pure RETIRE_SUCCESS
+
+/-- `SRAI rd, vs1, shamt`: read the virtual register `vs1`, arithmetic-
+    shift right by `shamt`, write the *real* register `rd`. Used as the
+    closing step of `jolt_lb` (signed byte load). -/
+def vreg_SRAI_to_real (rd : regidx) (vs1 : BitVec 7) (shamt : BitVec 6) :
+    JoltMonad ExecutionResult := do
+  let v ← readVReg vs1
+  liftSail (wX_bits rd (shift_bits_right_arith v shamt))
+  pure RETIRE_SUCCESS
+
+/-- `SRLI rd, vs1, shamt`: read the virtual register `vs1`, logical-
+    shift right by `shamt`, write the *real* register `rd`. Used as the
+    closing step of `jolt_lbu` (unsigned byte load) — differs from
+    `vreg_SRAI_to_real` only in the shift direction (zero-fill vs
+    sign-fill). -/
+def vreg_SRLI_to_real (rd : regidx) (vs1 : BitVec 7) (shamt : BitVec 6) :
+    JoltMonad ExecutionResult := do
+  let v ← readVReg vs1
+  liftSail (wX_bits rd (shift_bits_right v shamt))
+  pure RETIRE_SUCCESS
+
+/-- `SRL rd, vs1, vs2`: read virtual `vs1` (the value) and virtual `vs2`
+    (the shift register, whose low 6 bits are the shift amount), logical-
+    shift right, write the *real* register `rd`. Used in `jolt_lw`,
+    between the logic phase's SLLI and the final `VirtualSignExtendWord`. -/
+def vreg_SRL_to_real (rd : regidx) (vs1 vs2 : BitVec 7) :
+    JoltMonad ExecutionResult := do
+  let v ← readVReg vs1
+  let shamt ← readVReg vs2
+  liftSail (wX_bits rd
+    (shift_bits_right v (Sail.BitVec.extractLsb shamt 5 0)))
+  pure RETIRE_SUCCESS
+
 end

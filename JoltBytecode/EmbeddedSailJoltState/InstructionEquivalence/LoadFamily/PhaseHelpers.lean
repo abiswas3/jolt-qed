@@ -10,6 +10,38 @@ noncomputable section
 
 namespace InstructionEquivalence
 
+/-!
+# Phase-composition helpers for the Jolt load family
+
+This file provides the reusable monadic-run lemmas that reason about how a
+Jolt load sequence's pieces (setup, `vreg_LD`, …) compose. Every load
+instruction's `decomposed` file uses these to thread through the load phase.
+
+## What lives here (by role)
+
+* `vreg_LD_step_concrete` — given an intermediate state in which `v1` holds
+  a (naturally-aligned) dword address, running `vreg_LD 1 1 0` loads that
+  dword into `v1`. The "end of the load phase" lemma.
+
+* Setup lemmas (two forms, matching two bytecode styles):
+  * `load_phase_setup_concrete` — the `writeVReg 0 ea; readVReg 0;
+    writeVReg 1 (v0 &&& -8)` setup used by LW.
+  * `load_phase_setup_concrete_andi` — the `writeVReg 0 ea;
+    vreg_ANDI 1 0 (-8)` setup used by byte/halfword loads.
+  Both prove the setup succeeds with `v0 = ea`, `v1 = ea &&& -8`, and Sail
+  state unchanged.
+
+* Composition lemmas: glue a setup to `vreg_LD`.
+  * `vreg_LD_phase_from_setup` — for `Unit`-typed setups (LW).
+  * `vreg_LD_phase_from_setup_er` — for `ExecutionResult`-typed setups
+    (byte/halfword).
+-/
+
+/-- If `js1` is a state in which `v1` holds an `AlignedDwordAccess`ible
+    address satisfying the standard translate / phys assumptions, then
+    `vreg_LD 1 1 0` runs from `js1` to a state that leaves Sail untouched,
+    preserves `v0`, and loads the dword into `v1`. The "end of the load
+    phase" lemma. -/
 theorem vreg_LD_step_concrete (js : SailJoltState) (js1 : SailJoltState) (addr : BitVec 64)
     (hcfg : JoltConfig js.sail)
     (hsetup_sail : js1.sail = js.sail)
@@ -39,9 +71,9 @@ theorem vreg_LD_step_concrete (js : SailJoltState) (js1 : SailJoltState) (addr :
   · simp [js_load]
   · simp [js_load]
 
--- Running the shared load setup succeeds without changing the Sail state,
--- stores the effective address in vreg 0, and stores the aligned dword base
--- address in vreg 1.
+/-- LW-style setup: run `writeVReg 0 ea; let v0 ← readVReg 0;
+    writeVReg 1 (v0 &&& -8)` at `js`. Succeeds with Sail state unchanged,
+    `v0 = ea`, and `v1 = aligned-down base address`. -/
 theorem load_phase_setup_concrete (imm : BitVec 12) (js : SailJoltState) (val : BitVec 64) :
     ∃ js1,
       (do
@@ -78,14 +110,12 @@ theorem load_phase_setup_concrete (imm : BitVec 12) (js : SailJoltState) (val : 
   · simp [js1, daddr, ea]
   · simp [js1, daddr]
 
--- Running the shared load setup in its `vreg_ANDI`-based form (used by the
--- byte / halfword / vreg_ANDI-based LW load phase) succeeds without changing
--- the Sail state, stores the effective address in vreg 0, and stores the
--- aligned dword base address in vreg 1.
--- The setup is `ExecutionResult`-typed (ends with `vreg_ANDI` whose result is
--- `RETIRE_SUCCESS`), so it composes with `vreg_LD` via
--- `vreg_LD_phase_from_setup_er` below with no intervening `pure ()` to
--- collapse.
+/-- Byte/halfword-style setup: run `writeVReg 0 ea; vreg_ANDI 1 0 (-8)` at
+    `js`. Same postcondition as `load_phase_setup_concrete` (v0 = ea, v1 =
+    aligned-down base, Sail untouched). Returns `ExecutionResult` (because
+    `vreg_ANDI` does) so it composes cleanly with `vreg_LD` via
+    `vreg_LD_phase_from_setup_er`, with no intervening `pure ()` to
+    collapse. -/
 theorem load_phase_setup_concrete_andi (imm : BitVec 12) (js : SailJoltState) (val : BitVec 64) :
     ∃ js1,
       ((do
@@ -123,9 +153,9 @@ theorem load_phase_setup_concrete_andi (imm : BitVec 12) (js : SailJoltState) (v
   · simp [js1, daddr, ea]
   · simp [js1, daddr]
 
--- If the setup phase succeeds (writing ea and base into vregs) and then
--- vreg_LD succeeds on the resulting state, then the composed sequence
--- (setup followed by vreg_LD) also succeeds with the same result.
+/-- Composition: if a `Unit`-typed setup runs from `js` to `js1` and
+    `vreg_LD 1 1 0` runs from `js1` to `js_load`, then
+    `do let _ ← setup; vreg_LD 1 1 0` runs from `js` to `js_load`. -/
 theorem vreg_LD_phase_from_setup (setup : JoltMonad Unit) (js js1 js_load : SailJoltState)
     (hsetup_run : setup.run js = .ok () js1)
     (hld : vreg_LD 1 1 0 js1 = .ok RETIRE_SUCCESS js_load) :
@@ -138,10 +168,11 @@ theorem vreg_LD_phase_from_setup (setup : JoltMonad Unit) (js js1 js_load : Sail
   rw [hsetup_run']
   simpa using hld
 
--- `ExecutionResult`-typed variant of `vreg_LD_phase_from_setup`. Used when
--- the setup ends in a virtual instruction (e.g. `vreg_ANDI`) whose result
--- type is `ExecutionResult` and whose successful return is `RETIRE_SUCCESS`.
--- Avoids wrapping the setup with a trailing `pure ()` to force Unit type.
+/-- `ExecutionResult`-typed variant of `vreg_LD_phase_from_setup`. Used when
+    the setup ends in a virtual instruction (e.g. `vreg_ANDI`) whose result
+    type is `ExecutionResult` and whose successful return is
+    `RETIRE_SUCCESS`. Avoids wrapping the setup with a trailing `pure ()` to
+    force Unit type. -/
 theorem vreg_LD_phase_from_setup_er (setup : JoltMonad ExecutionResult)
     (js js1 js_load : SailJoltState)
     (hsetup_run : setup.run js = .ok RETIRE_SUCCESS js1)
