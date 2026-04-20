@@ -20,10 +20,12 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraw           
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sll                   -- DONE: SLL
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srl                   -- DONE: SRL
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra                   -- DONE: SRA
--- Multiply / Divide / Remainder
+
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulw      -- TODO: execute_MULW, truncate + multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulh      -- TODO: execute_MUL, upper-half multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
+
+-- Divide / Remainder [The Advice Family]
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Div       -- TODO: needs advice
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Divu      -- TODO: needs advice
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Divw      -- TODO: needs advice
@@ -86,6 +88,8 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LWU_
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoswapw  -- TODO: atomic swap word
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoxord   -- TODO: atomic xor dword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoxorw   -- TODO: atomic xor word
+
+
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lrd       -- TODO: load reserved dword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lrw       -- TODO: load reserved word
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Scd       -- TODO: store conditional dword

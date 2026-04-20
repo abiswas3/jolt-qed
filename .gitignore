@@ -7,3 +7,4 @@
 *.trace
 lake-packages/
 ari_notes
+notes/sail-cases-tactic.md
