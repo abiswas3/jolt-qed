@@ -43,10 +43,9 @@ def jolt_lw (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := d
       (Virtaddr ea, ExceptionType.E_Load_Addr_Align ()))
   else do
     -- Load phase begins
-    writeVReg 0 ea
-    let v0 ← readVReg 0 -- v0 containts effective_addr
-    writeVReg 1 (v0 &&& (-8 : BitVec 64)) -- v1: d_addr
-    match ← vreg_LD 1 1 0 with -- double_workd load 
+    writeVReg 0 ea                                        -- v0 = effective_addr
+    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)                -- v1 = ea &&& -8 (d_addr)
+    match ← vreg_LD 1 1 0 with                             -- double-word load
     -- Load phase ends
     | .Retire_Success () =>
         -- logic phase begins
@@ -494,8 +493,9 @@ theorem jolt_lw_run_eq_decomposed (imm : BitVec 12) (rs1 rd : regidx) (js : Sail
     (halign : (val + sign_extend (m := 64) imm) &&& 3 = 0)
     :
     (jolt_lw imm rs1 rd).run js = (jolt_lw_decomposed imm rs1 rd).run js := by
-  unfold jolt_lw jolt_lw_decomposed
-  simp only [liftSail, bind, EStateM.bind, pure, EStateM.run]
+  have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
+  unfold jolt_lw jolt_lw_decomposed jolt_lw_load_phase vreg_ANDI
+  simp only [liftSail, bind, EStateM.bind, pure, EStateM.pure, EStateM.run, h8]
   rw [hrx]
   simp only []
   rw [if_neg (by simpa using halign)]
