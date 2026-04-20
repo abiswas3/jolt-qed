@@ -10,6 +10,9 @@ noncomputable section
 
 namespace InstructionEquivalence
 
+-- The write phase takes the logic value computed by the previous phase and
+-- writes its lower 32 bits (sign-extended to 64 bits) into register rd.
+-- The resulting Sail state is exactly stateAfterWrite with that value.
 theorem load_write_phase_concrete (rd : regidx) (js : SailJoltState) (js_logic : SailJoltState) (logic_val : BitVec 64)
     (hrd : rd ≠ regidx.Regidx 0)
     (hlogic_sail : js_logic.sail = js.sail)

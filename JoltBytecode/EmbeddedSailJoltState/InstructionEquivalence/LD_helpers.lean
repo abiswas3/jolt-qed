@@ -78,6 +78,9 @@ theorem load_phase_setup_concrete (imm : BitVec 12) (js : SailJoltState) (val : 
   · simp [js1, daddr, ea]
   · simp [js1, daddr]
 
+-- If the setup phase succeeds (writing ea and base into vregs) and then
+-- vreg_LD succeeds on the resulting state, then the composed sequence
+-- (setup followed by vreg_LD) also succeeds with the same result.
 theorem vreg_LD_phase_from_setup (setup : JoltMonad Unit) (js js1 js_load : SailJoltState)
     (hsetup_run : setup.run js = .ok () js1)
     (hld : vreg_LD 1 1 0 js1 = .ok RETIRE_SUCCESS js_load) :

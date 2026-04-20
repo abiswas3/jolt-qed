@@ -286,6 +286,9 @@ theorem srl_sign_extend_word_extracts_word (d : BitVec 64) (addr : BitVec 64)
     bv_decide
 
 -- Used by: `jolt_lw_concrete`.
+-- In simple english: If I give you an effective address that is aligned. 
+-- Then the LHS sequence is the same as loading 32 bits at the address where 
+-- The LHS sequence is compute d_word ...
 theorem jolt_lw_bridge (s : SailState) (addr : BitVec 64)
     (halign : addr &&& 3 = 0) :
     (let dword := loaded_dword_at s (addr &&& (-8 : BitVec 64))
@@ -501,6 +504,10 @@ theorem jolt_lw_run_eq_decomposed (imm : BitVec 12) (rs1 rd : regidx) (js : Sail
 
 -- NEXT: LEMMA 2
 -- Used by: currently unused in `LW_mod.lean`.
+-- What is the promise 
+-- 1. Jolt_lw_decomposed succeeds 
+-- 2. logic_val = something complex. 
+-- 3. The final value is sign_extend   
 theorem jolt_lw_decomposed_writes_logic_value (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState) (val : BitVec 64)
     (hrd : rd ≠ regidx.Regidx 0)
     (hcfg : JoltConfig js.sail)
@@ -548,7 +555,9 @@ theorem jolt_lw_decomposed_writes_logic_value (imm : BitVec 12) (rs1 rd : regidx
 
 
 -- Used by: currently unused in `LW_mod.lean`.
-theorem jolt_lw_concrete_2 (imm : BitVec 12) (rs1 rd : regidx)
+-- jolt_lw succeeds and 
+-- the final state has rd changing with rd = sign_extended [lw at ea]
+theorem jolt_lw_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
@@ -560,17 +569,33 @@ theorem jolt_lw_concrete_2 (imm : BitVec 12) (rs1 rd : regidx)
       js'.sail = stateAfterWrite js.sail rd
         (sign_extend (m := 64)
           (loaded_word_at js.sail (load_effective_address val imm))) := by
+  -- Runing jolt_lw is the same thing as running jolt_lw_decomposed
   have hrun_eq :
       (jolt_lw imm rs1 rd).run js = (jolt_lw_decomposed imm rs1 rd).run js := by
     simpa using jolt_lw_run_eq_decomposed imm rs1 rd js val hrx (by simpa [load_effective_address] using halign)
+  -- We know that once jolt_lw_decompsed is run with the same assumptions 
+  -- as jolt_lw 
+  -- 1. it succeeds to give js': hdecomp_run
+  -- 2. logic_val = the complex logic : hlogic_val
+  -- 3. the final write uses sign_extend( lower 32 bits of logic_val)
   rcases jolt_lw_decomposed_writes_logic_value imm rs1 rd js val
       hrd hcfg hrx (by simpa [load_effective_address] using halign)
       h_dword_translate h_dword_phys with
     ⟨js', logic_val, hdecomp_run, hlogic_val, hwrite_sail⟩
+  -- Now to finish the proof 
+  -- Now we to knock off the goal we need to prove two things 
+  -- 1. The whole sequence of jolt_lw_decompsed_succeeds
+    -- 2. The thing about what is written to rd 
   refine ⟨js', ?_, ?_⟩
+  -- This should be easy: We know hrun_eq that jolt_lw is just jolt_lw_decomposed
+  -- and from hdecomp_run that jolt_lw_decomposed succeeds -- closed!
   · rw [hrun_eq]
     exact hdecomp_run
+  -- We know that jolt_lw_decompsoed writes logic_val into rd
   · rw [hwrite_sail, hlogic_val]
+    -- here we use congrArg to say both Lhs and RHS have StateAfterWrite js.sail rd val = StateAfterWriteWrite js.sail rd val'
+    -- so we need to give a proof that val = val' to close the proof. 
+    -- that is literally what the bridge proof does 
     exact congrArg (stateAfterWrite js.sail rd)
       (jolt_lw_bridge js.sail (load_effective_address val imm) halign)
 
@@ -641,6 +666,8 @@ theorem jolt_lw_eq_sail_aligned (imm : BitVec 12)
     projectResult ((jolt_lw imm rs1 rd).run js) =
     (execute_LOAD imm rs1 rd false 4).run js.sail := by
   let ea := load_effective_address val imm
+  -- We assume htranslate and hphys, but prove the remaining using h_align 
+  -- which comes from the case assumption in the main.
   have hload : LoadReadAssumptions (load_effective_address val imm) 4 js.sail := by
     refine
       { aligned := ?_
@@ -652,7 +679,7 @@ theorem jolt_lw_eq_sail_aligned (imm : BitVec 12)
     · simpa [ea] using access_misaligned_4_aligned_false ea h_align
     · simpa [ea] using split_misaligned_aligned_4 ea h_align
   -- These are the heavy lifters
-  have hjolt_aligned := jolt_lw_concrete_2 imm rs1 rd hrd js hcfg val hrx h_align h_dword_translate h_dword_phys
+  have hjolt_aligned := jolt_lw_concrete imm rs1 rd hrd js hcfg val hrx h_align h_dword_translate h_dword_phys
   have hsail_aligned := execute_LW_reduces imm rs1 rd js hcfg val hrx hload h_word_no_ovf
   -- Mechanical re-writings 
   rcases hjolt_aligned with ⟨js', hjolt, hjolt_sail⟩
