@@ -14,20 +14,22 @@ set_option autoImplicit true
 noncomputable section
 
 /-!
-# Shared Jolt load-definition helpers
+# Shared memory-access definitions
 
-These helpers factor only the concrete inline-sequence code shared across the
-Jolt load instructions. They deliberately do not try to abstract the proof
-scripts or the pure bridge lemmas.
+Shared type-level infrastructure used by both the load and store families:
 
-There are three recurring sequence families:
-
-* byte loads (`LB`, `LBU`)
-* halfword loads (`LH`, `LHU`)
-* unsigned word loads (`LWU`)
-
-`LW` is close, but its final `VirtualSignExtendWord` step changes the shape
-enough that it is cleaner to leave its definition local for now.
+* **Address abbrevs**: `load_effective_address`, `aligned_dword_addr`,
+  `compute_aligned_dword_base_address` — how to compute the effective
+  target address and its 8-aligned enclosing dword.
+* **Assumption bundles**: `DwordLoadAssumptions` (aligned + translate +
+  FlatPhysMem of the dword), `LoadReadAssumptions` (aligned + translate +
+  FlatPhysMem for arbitrary width).
+* **Properties of `aligned_dword_addr`**: that it's 8-aligned, doesn't
+  overflow on `+7`, and satisfies the full `AlignedDwordAccess` bundle.
+  Used by every load-family decomposed proof.
+* **Pipeline-collapse theorems**: `aligned_dword_vmem_read_reduces` and
+  `vreg_LD_run_of_dword_assumptions` — Sail's vmem-read / Jolt's vreg_LD
+  under the dword-load assumptions.
 -/
 
 /-- Common aligned dword address used by the Jolt inline load sequences:
@@ -157,66 +159,3 @@ theorem vreg_LD_run_of_dword_assumptions
   simpa using
     (vreg_LD_run_of_read vd vs1 0 js (loaded_dword_at js.sail addr) hread)
 
-/-- Shared body for the byte-load family. The caller supplies the final
-    post-processing on the shifted dword: arithmetic right shift for `LB`,
-    logical right shift for `LBU`. -/
-def jolt_byte_load_family
-    (imm : BitVec 12) (rs1 rd : regidx)
-    (finish : BitVec 64 → BitVec 64) : JoltMonad ExecutionResult := do
-  let rs1_val ← liftSail (rX_bits rs1)
-  writeVReg 0 (rs1_val + sign_extend (m := 64) imm)
-  let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
-  match ← vreg_LD 1 1 0 with
-  | .Retire_Success () =>
-      let _ ← vreg_XORI 0 0 7
-      let _ ← vreg_SLLI 0 0 3
-      let _ ← vreg_SLL 1 1 0
-      let v1 ← readVReg 1
-      liftSail (wX_bits rd (finish v1))
-      pure RETIRE_SUCCESS
-  | other => pure other
-
-/-- Shared body for the halfword-load family. The caller supplies the
-    instruction-specific assertion message and the final post-processing:
-    arithmetic right shift for `LH`, logical right shift for `LHU`. -/
-def jolt_halfword_load_family
-    (imm : BitVec 12) (rs1 rd : regidx) (msg : String)
-    (finish : BitVec 64 → BitVec 64) : JoltMonad ExecutionResult := do
-  let base ← liftSail (rX_bits rs1)
-  let ea := base + sign_extend (m := 64) imm
-  if ea &&& 1 ≠ 0 then
-    throw (Error.Assertion msg)
-  else do
-    writeVReg 0 ea
-    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
-    match ← vreg_LD 1 1 0 with
-    | .Retire_Success () =>
-        let _ ← vreg_XORI 0 0 6
-        let _ ← vreg_SLLI 0 0 3
-        let _ ← vreg_SLL 1 1 0
-        let v1 ← readVReg 1
-        liftSail (wX_bits rd (finish v1))
-        pure RETIRE_SUCCESS
-    | other => pure other
-
-/-- Shared body for the unsigned word-load family (`LWU`). This uses the same
-    dword-load + shift-left extraction pattern as byte/halfword loads, but
-    with a 32-bit zero-extending result. -/
-def jolt_word_unsigned_family
-    (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  let base ← liftSail (rX_bits rs1)
-  let ea := base + sign_extend (m := 64) imm
-  if ea &&& 3 ≠ 0 then
-    throw (Error.Assertion "LWU: effective address not word-aligned")
-  else do
-    writeVReg 0 ea
-    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
-    match ← vreg_LD 1 1 0 with
-    | .Retire_Success () =>
-        let _ ← vreg_XORI 0 0 4
-        let _ ← vreg_SLLI 0 0 3
-        let _ ← vreg_SLL 1 1 0
-        let v1 ← readVReg 1
-        liftSail (wX_bits rd (shift_bits_right v1 (32 : BitVec 6)))
-        pure RETIRE_SUCCESS
-    | other => pure other

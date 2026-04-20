@@ -49,13 +49,12 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw          
 -- Instruction proofs — Memory (load)
 -- ============================================================================
 
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lw                    -- INPROGRESS: LW main thm passes, 5 sorry'd memory bridge helpers
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lb        -- TODO: width=1, signed
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lbu       -- TODO: width=1, unsigned
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lh        -- TODO: width=2, signed
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lhu       -- TODO: width=2, unsigned
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lwu       -- TODO: width=4, unsigned
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Ld        -- TODO: width=8
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LW_main     -- DONE: LW   (width=4, signed)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LB_main     -- DONE: LB   (width=1, signed)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LBU_main    -- DONE: LBU  (width=1, unsigned)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LH_main     -- DONE: LH   (width=2, signed)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LHU_main    -- DONE: LHU  (width=2, unsigned)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LWU_main    -- DONE: LWU  (width=4, unsigned)
 
 -- ============================================================================
 -- Instruction proofs — Memory (store)
@@ -96,10 +95,10 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw          
 -- Instruction proofs — Advice / System / CSR
 -- ============================================================================
 
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelb  -- TODO: advice load byte
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Adviceld  -- TODO: advice load dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelh  -- TODO: advice load halfword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelw  -- TODO: advice load word
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelb  -- advice load byte   DONE:
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Adviceld  -- advice load dword   DONE:
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelh  -- advice load halfword   DONE:
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelw  -- advice load word   DONE:
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Csrrs     -- TODO: CSR read-set
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Csrrw     -- TODO: CSR read-write
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Ecall     -- TODO: environment call
