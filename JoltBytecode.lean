@@ -21,6 +21,7 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sll            
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srl                   -- DONE: SRL
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra                   -- DONE: SRA
 
+-- Multiplication
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulw      -- TODO: execute_MULW, truncate + multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulh      -- TODO: execute_MUL, upper-half multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
@@ -50,7 +51,6 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw          
 -- ============================================================================
 -- Instruction proofs — Memory (load)
 -- ============================================================================
-
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LW_main     -- DONE: LW   (width=4, signed)
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LB_main     -- DONE: LB   (width=1, signed)
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LBU_main    -- DONE: LBU  (width=1, unsigned)
@@ -61,7 +61,6 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LWU_
 -- ============================================================================
 -- Instruction proofs — Memory (store)
 -- ============================================================================
-
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sb        -- TODO: store byte
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sh        -- TODO: store halfword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sw        -- TODO: store word
@@ -69,7 +68,6 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LWU_
 -- ============================================================================
 -- Instruction proofs — Atomic (AMO)
 -- ============================================================================
-
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoaddd   -- TODO: atomic add dword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoaddw   -- TODO: atomic add word
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoandd   -- TODO: atomic and dword
@@ -89,7 +87,7 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LWU_
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoxord   -- TODO: atomic xor dword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoxorw   -- TODO: atomic xor word
 
-
+-- Load Reserved
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lrd       -- TODO: load reserved dword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lrw       -- TODO: load reserved word
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Scd       -- TODO: store conditional dword
@@ -103,6 +101,8 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LWU_
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Adviceld  -- advice load dword   DONE:
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelh  -- advice load halfword   DONE:
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelw  -- advice load word   DONE:
+
+-- System : Shuld be easy, I'll close when we get to it.
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Csrrs     -- TODO: CSR read-set
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Csrrw     -- TODO: CSR read-write
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Ecall     -- TODO: environment call
