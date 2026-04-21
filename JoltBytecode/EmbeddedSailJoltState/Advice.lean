@@ -1,5 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.Defs
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srai
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Shift.Srai
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -106,7 +106,7 @@ private theorem execute_SHIFTIOP_SRAI_run_after_write
     (val : BitVec 64) (shamt : BitVec 6) (s : SailState) :
     (execute_SHIFTIOP shamt rd rd sop.SRAI).run (stateAfterWrite s rd val) =
       .ok RETIRE_SUCCESS (stateAfterWrite s rd (shift_bits_right_arith val shamt)) := by
-  rw [execute_SHIFTIOP_SRAI_eq_factored]
+  rw [execute_SHIFTIOP_SRAI_factored]
   simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
   rw [rX_after_stateAfterWrite rd val s hrd]
   simp only
