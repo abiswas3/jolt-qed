@@ -1,6 +1,7 @@
 import JoltBytecode.EmbeddedSailJoltState.Defs
 import JoltBytecode.EmbeddedSailJoltState.RegisterOps
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
+import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -45,107 +46,97 @@ pinned down when the DIV proof is written.
 -- soundness unstatable, so each one raises `Error.Assertion` on the
 -- violated branch.
 
-/-- `VirtualAssertValidDiv0 divisor, quotient`: if `divisor = 0` then
-`quotient` must equal `u64::MAX` (signed `-1`). -/
-def jolt_assert_valid_div0 (divisor quotient : BitVec 64) : JoltMonad Unit :=
-  if divisor = 0#64 ∧ quotient ≠ (-1 : BitVec 64) then
-    throw (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
-  else
-    pure ()
-
-/-- `VirtualAssertEQ a, b`: asserts `a = b`. -/
-def jolt_assert_eq (a b : BitVec 64) : JoltMonad Unit :=
-  if a = b then pure () else throw (Error.Assertion "VirtualAssertEQ")
-
-/-- `VirtualAssertValidUnsignedRemainder r, d`: asserts `r < d` unsigned. -/
-def jolt_assert_valid_unsigned_remainder (r d : BitVec 64) : JoltMonad Unit :=
-  if r.toNat < d.toNat then pure ()
-  else throw (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d")
-
-/-- `VirtualChangeDivisor dividend, divisor`: returns `dividend` if the
-pair would overflow signed division (dividend = most-negative and
-divisor = -1); otherwise returns `divisor` unchanged. -/
-def jolt_change_divisor (dividend divisor : BitVec 64) : BitVec 64 :=
+/-- Pure adjusted-divisor function: returns `dividend` when the pair
+would overflow signed division (most-negative ÷ -1), else `divisor`. -/
+def change_divisor_value (dividend divisor : BitVec 64) : BitVec 64 :=
   let mostNeg : BitVec 64 := (1 : BitVec 64) <<< 63
   let negOne  : BitVec 64 := -1
   if dividend = mostNeg ∧ divisor = negOne then dividend else divisor
 
-/-- Upper 64 bits of a signed 64×64 multiply (MULH). -/
-def jolt_mulhs (a b : BitVec 64) : BitVec 64 :=
-  BitVec.ofInt 64 ((a.toInt * b.toInt) / (2 ^ 64))
+-- ----------------------------------------------------------------------------
+-- Jolt-ISA virtual instructions used by DIV
+-- ----------------------------------------------------------------------------
+-- These mirror Jolt's own `VirtualAdvice`, `VirtualAssert*`, and
+-- `VirtualChangeDivisor` bytecode instructions. Each is a one-line
+-- combinator so `jolt_div` below reads one Lean line per Rust `emit_X`.
+
+/-- `VirtualAdvice vd, advice`: write the oracle-provided value into a
+    virtual register. -/
+def vreg_advice (vd : BitVec 7) (advice : BitVec 64) : JoltMonad ExecutionResult := do
+  writeVReg vd advice
+  pure RETIRE_SUCCESS
+
+/-- `VirtualAssertValidDiv0 rs2, vq`: if the *real* divisor `rs2` is zero,
+    the virtual register `vq` must hold `-1` (signed `u64::MAX`). Aborts
+    the Jolt run otherwise. -/
+def vreg_assert_valid_div0 (rs2 : regidx) (vq : BitVec 7) : JoltMonad ExecutionResult := do
+  let divisor ← liftSail (rX_bits rs2)
+  let q ← readVReg vq
+  if divisor = 0#64 ∧ q ≠ (-1 : BitVec 64) then
+    throw (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
+  else
+    pure RETIRE_SUCCESS
+
+/-- `VirtualChangeDivisor vd, rs1, rs2`: read real `rs1` (dividend) and
+    real `rs2` (divisor); if the pair would overflow signed division,
+    write the dividend to `vd`, otherwise write the divisor. -/
+def vreg_change_divisor (vd : BitVec 7) (rs1 rs2 : regidx) : JoltMonad ExecutionResult := do
+  let dividend ← liftSail (rX_bits rs1)
+  let divisor ← liftSail (rX_bits rs2)
+  writeVReg vd (change_divisor_value dividend divisor)
+  pure RETIRE_SUCCESS
+
+/-- `VirtualAssertEQ va, vb`: asserts two virtual registers are equal. -/
+def vreg_assert_eq (va vb : BitVec 7) : JoltMonad ExecutionResult := do
+  let a ← readVReg va
+  let b ← readVReg vb
+  if a = b then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertEQ")
+
+/-- `VirtualAssertEQ va, rb`: asserts a virtual register equals a real
+    register (used at step 13 to check `t2 = a0`). -/
+def vreg_assert_eq_real (va : BitVec 7) (rb : regidx) : JoltMonad ExecutionResult := do
+  let a ← readVReg va
+  let b ← liftSail (rX_bits rb)
+  if a = b then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertEQ (vreg vs real)")
+
+/-- `VirtualAssertValidUnsignedRemainder vr, vd`: asserts
+    `vr < vd` unsigned (i.e. `|remainder| < |adjusted divisor|`). -/
+def vreg_assert_valid_unsigned_remainder (vr vd : BitVec 7) : JoltMonad ExecutionResult := do
+  let r ← readVReg vr
+  let d ← readVReg vd
+  if r.toNat < d.toNat then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d")
 
 -- ----------------------------------------------------------------------------
 -- Jolt DIV inline sequence
 -- ----------------------------------------------------------------------------
 
 /-- The Jolt inline expansion of RISC-V `DIV` at `XLEN = 64`. Takes the
-oracle's advice (`quotient`, `rem_abs`) as explicit parameters. -/
+oracle's advice (`quotient`, `rem_abs`) as explicit parameters. Each
+line below is one Jolt-ISA instruction, mirroring the `emit_X` calls in
+`tracer/src/instruction/div.rs::inline_sequence`. -/
 def jolt_div (rs2 rs1 rd : regidx)
     (quotient rem_abs : BitVec 64) : JoltMonad ExecutionResult := do
-  -- emit_j VirtualAdvice v0, 0         -- v0 = quotient
-  writeVReg 0 quotient
-  -- emit_j VirtualAdvice v1, 0         -- v1 = |remainder|
-  writeVReg 1 rem_abs
-  -- emit_b VirtualAssertValidDiv0 rs2, v0, 0
-  let divisor ← liftSail (rX_bits rs2)
-  let q0 ← readVReg 0
-  jolt_assert_valid_div0 divisor q0
-  -- emit_r VirtualChangeDivisor v2, rs1, rs2    -- v2 = adjusted divisor
-  let dividend ← liftSail (rX_bits rs1)
-  writeVReg 2 (jolt_change_divisor dividend divisor)
-  -- emit_r MULH v3, v0, v2             -- v3 = high bits of q × adj_div
-  let q1 ← readVReg 0
-  let t0a ← readVReg 2
-  writeVReg 3 (jolt_mulhs q1 t0a)
-  -- emit_r MUL v4, v0, v2              -- v4 = low bits of q × adj_div
-  let q2 ← readVReg 0
-  let t0b ← readVReg 2
-  writeVReg 4 (q2 * t0b)
-  -- emit_i SRAI v5, v4, 63             -- v5 = sign extension of v4
-  let t2a ← readVReg 4
-  writeVReg 5 (t2a.sshiftRight 63)
-  -- emit_b VirtualAssertEQ v3, v5, 0
-  let t1a ← readVReg 3
-  let t3a ← readVReg 5
-  jolt_assert_eq t1a t3a
-  -- emit_i SRAI v3, rs1, 63            -- v3 = sign bit of dividend
-  let dividend' ← liftSail (rX_bits rs1)
-  writeVReg 3 (dividend'.sshiftRight 63)
-  -- emit_r XOR v5, v1, v3
-  let r_abs ← readVReg 1
-  let t1b ← readVReg 3
-  writeVReg 5 (r_abs ^^^ t1b)
-  -- emit_r SUB v5, v5, v3
-  let t3b ← readVReg 5
-  let t1c ← readVReg 3
-  writeVReg 5 (t3b - t1c)
-  -- emit_r ADD v4, v4, v5
-  let t2b ← readVReg 4
-  let t3c ← readVReg 5
-  writeVReg 4 (t2b + t3c)
-  -- emit_b VirtualAssertEQ v4, rs1, 0
-  let t2c ← readVReg 4
-  let dividend'' ← liftSail (rX_bits rs1)
-  jolt_assert_eq t2c dividend''
-  -- emit_i SRAI v3, v2, 63             -- v3 = sign bit of adjusted divisor
-  let t0c ← readVReg 2
-  writeVReg 3 (t0c.sshiftRight 63)
-  -- emit_r XOR v5, v2, v3
-  let t0d ← readVReg 2
-  let t1d ← readVReg 3
-  writeVReg 5 (t0d ^^^ t1d)
-  -- emit_r SUB v5, v5, v3              -- v5 = |adjusted divisor|
-  let t3d ← readVReg 5
-  let t1e ← readVReg 3
-  writeVReg 5 (t3d - t1e)
-  -- emit_b VirtualAssertValidUnsignedRemainder v1, v5, 0
-  let r_abs' ← readVReg 1
-  let t3e ← readVReg 5
-  jolt_assert_valid_unsigned_remainder r_abs' t3e
-  -- emit_i ADDI rd, v0, 0              -- move quotient into rd
-  let q3 ← readVReg 0
-  liftSail (wX_bits rd q3)
-  pure RETIRE_SUCCESS
+  let _ ← vreg_advice 0 quotient                      -- VirtualAdvice v0, 0    (quotient)
+  let _ ← vreg_advice 1 rem_abs                       -- VirtualAdvice v1, 0    (|remainder|)
+  let _ ← vreg_assert_valid_div0 rs2 0                -- VirtualAssertValidDiv0 rs2, v0, 0
+  let _ ← vreg_change_divisor 2 rs1 rs2               -- VirtualChangeDivisor   v2, rs1, rs2
+  let _ ← vreg_MULH 3 0 2                             -- MULH                   v3, v0, v2
+  let _ ← vreg_MUL 4 0 2                              -- MUL                    v4, v0, v2
+  let _ ← vreg_SRAI 5 4 63                            -- SRAI                   v5, v4, 63
+  let _ ← vreg_assert_eq 3 5                          -- VirtualAssertEQ        v3, v5, 0
+  let _ ← vreg_SRAI_from_real 3 rs1 63                -- SRAI                   v3, rs1, 63
+  let _ ← vreg_XOR 5 1 3                              -- XOR                    v5, v1, v3
+  let _ ← vreg_SUB 5 5 3                              -- SUB                    v5, v5, v3
+  let _ ← vreg_ADD 4 4 5                              -- ADD                    v4, v4, v5
+  let _ ← vreg_assert_eq_real 4 rs1                   -- VirtualAssertEQ        v4, rs1, 0
+  let _ ← vreg_SRAI 3 2 63                            -- SRAI                   v3, v2, 63
+  let _ ← vreg_XOR 5 2 3                              -- XOR                    v5, v2, v3
+  let _ ← vreg_SUB 5 5 3                              -- SUB                    v5, v5, v3
+  let _ ← vreg_assert_valid_unsigned_remainder 1 5    -- VirtualAssertValidUnsignedRemainder v1, v5, 0
+  vreg_ADDI_to_real rd 0 0                            -- ADDI                   rd, v0, 0   (move quotient)
 
 -- ----------------------------------------------------------------------------
 -- Honest advice: the pure value functions that `execute_DIV` and
