@@ -12,18 +12,18 @@ import JoltBytecode.EmbeddedSailJoltState.ShiftDefs                             
 -- Instruction proofs — Format R (register-register)
 -- ============================================================================
 
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addw                  -- DONE: ADDW (ADD + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Subw                  -- DONE: SUBW (SUB + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sllw                  -- INPROGRESS: SLLW (1 sorry)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srlw                  -- DONE: SRLW
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraw                  -- DONE: SRAW
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sll                   -- DONE: SLL
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srl                   -- DONE: SRL
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra                   -- DONE: SRA
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Addw                        -- DONE: ADDW (ADD + VSEW)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Subw                        -- DONE: SUBW (SUB + VSEW)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Sllw                        -- INPROGRESS: SLLW (1 sorry in bridge)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Srlw                        -- INPROGRESS: SRLW (1 sorry in bridge)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Sraw                        -- DONE: SRAW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Shift.Sll                     -- DONE: SLL
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Shift.Srl                     -- DONE: SRL
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Shift.Sra                     -- DONE: SRA
 
 -- Multiplication
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulw      -- TODO: execute_MULW, truncate + multiply
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulh      -- TODO: execute_MUL, upper-half multiply
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Mulw                        -- DONE: MULW (MUL + VSEW)
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Mult.Mulh             -- TODO: execute_MUL, upper-half multiply
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
 
 -- Divide / Remainder [The Advice Family]
@@ -40,13 +40,13 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sra            
 -- Instruction proofs — Format I (register-immediate)
 -- ============================================================================
 
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Addiw                 -- DONE: ADDIW (ADDI + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srai                  -- DONE: SRAI
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sraiw                 -- DONE: SRAIW
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slli                  -- DONE: SLLI
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srli                  -- DONE: SRLI
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Slliw                 -- DONE: SLLIW
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Srliw                 -- DONE: SRLIW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.W.Addiw                       -- DONE: ADDIW (ADDI + VSEW)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Shift.Srai                    -- DONE: SRAI
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.W.Sraiw                       -- DONE: SRAIW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Shift.Slli                    -- DONE: SLLI
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Shift.Srli                    -- DONE: SRLI
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.W.Slliw                       -- DONE: SLLIW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.W.Srliw                       -- DONE: SRLIW
 
 -- ============================================================================
 -- Instruction proofs — Memory (load)

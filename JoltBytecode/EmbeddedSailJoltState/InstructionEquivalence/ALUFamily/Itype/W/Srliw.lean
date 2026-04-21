@@ -1,18 +1,25 @@
-import JoltBytecode.EmbeddedSailJoltState.RtypeW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.W.Family
 import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
-set_option mvcgen.warning false
 
 open Sail PreSail LeanRV64D.Functions
-open Std.Do
-
-set_option autoImplicit true
 
 noncomputable section
 
--- From BytecodeExpansions/Instructions/Srliw.lean
+/-!
+# SRLIW: Jolt SLLI 32 + VirtualSRLI + VSEW = Sail SRLIW
+
+Jolt decomposes SRLIW via the bitmask encoding:
+1. `SLLI v0, rs1, 32`
+2. `VirtualSRLI rd, v0, bitmask` where bitmask = `srliw_imm shamt`
+3. `VirtualSignExtendWord rd`
+
+The bitmask encodes `shamt + 32` via its count-trailing-zeros; see
+`ctz_srliw_imm`.
+-/
+
 def srliw_imm (shamt : BitVec 64) : Nat :=
   let shift := (shamt.setWidth 5).toNat + 32
   let len := 64
@@ -33,27 +40,14 @@ theorem ctz_srliw_imm (shamt : BitVec 64) :
   rw [mul_comm, ctz_mul_pow2 ((shamt.setWidth 5).toNat + 32) h_m_pos,
       ctz_of_odd (pow2_sub_one_odd h_diff_pos)]
 
-/-! ## SRLIW: Jolt SLLI 32 + VirtualSRLI + VSEW = Sail SRLIW
-
-Jolt decomposes SRLIW as:
-1. SLLI v_rs1, rs1, 32 — shift left by 32 (clears upper bits)
-2. VirtualSRLI rd, v_rs1, bitmask — logical right shift via ctz(bitmask)
-3. VirtualSignExtendWord rd — sign-extend lower 32 bits
-
-The bitmask encodes shamt[4:0] + 32, so ctz recovers the adjusted shift.
--/
-
--- setWidth 64 then setWidth 5 = identity on BitVec 5
 private theorem setWidth_5_roundtrip (shamt : BitVec 5) :
     (shamt.setWidth 64).setWidth 5 = shamt := by
   ext i; simp [BitVec.getLsbD_setWidth]
 
--- After ctz, we get shamt.toNat + 32
 private theorem ctz_srliw_imm_shamt5 (shamt : BitVec 5) :
     ctz (srliw_imm (shamt.setWidth 64)) = shamt.toNat + 32 := by
   rw [ctz_srliw_imm, setWidth_5_roundtrip]
 
--- Bridge: Jolt's slli-32 + srli via bitmask = Sail's 32-bit logical right shift
 private theorem srliw_shift_eq (v : BitVec 64) (shamt : BitVec 5) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
@@ -63,7 +57,6 @@ private theorem srliw_shift_eq (v : BitVec 64) (shamt : BitVec 5) :
   simp only [sign_extend, shift_bits_right, Sail.BitVec.signExtend,
              Sail.BitVec.extractLsb, BitVec.extractLsb, Nat.sub_zero, Nat.reduceAdd]
   congr 1
-  -- (v <<< 32) >>> (shamt + 32) extracts lower 32 bits of v then shifts right by shamt
   unfold BitVec.extractLsb'
   have nat_shr_zero : ∀ n : Nat, n >>> 0 = n := by simp
   simp only [nat_shr_zero]
@@ -84,15 +77,13 @@ private theorem srliw_shift_eq (v : BitVec 64) (shamt : BitVec 5) :
   change _ = (BitVec.ofNat 32 v.toNat >>> (shamt).toNat).toNat
   simp only [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, Nat.shiftRight_eq_div_pow, Nat.reducePow]
 
--- Factoring: execute_SHIFTIWOP SRLIW reads rs1, extracts lower 32, right-shifts, sign-extends.
-private theorem execute_SHIFTIWOP_SRLIW_eq_factored (shamt : BitVec 5) (rs1 rd : regidx) :
+theorem execute_SHIFTIWOP_SRLIW_factored (shamt : BitVec 5) (rs1 rd : regidx) :
     execute_SHIFTIWOP shamt rs1 rd sopw.SRLIW = (do
       let v ← rX_bits rs1
       wX_bits rd (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v 31 0) shamt))
       pure RETIRE_SUCCESS) := by
   simp [execute_SHIFTIWOP, bind_pure_comp, pure_bind]
 
--- Jolt's SRLIW: read rs1, shift left 32 (vreg), logical right shift via bitmask, VSEW.
 def jolt_srliw (shamt : BitVec 5) (rs1 rd : regidx) : JoltMonad ExecutionResult := do
   let v ← liftSail (rX_bits rs1)
   writeVReg 0 (v <<< 32)
@@ -101,7 +92,6 @@ def jolt_srliw (shamt : BitVec 5) (rs1 rd : regidx) : JoltMonad ExecutionResult 
   jolt_virtual_sign_extend_word rd
   pure RETIRE_SUCCESS
 
--- Concrete: characterise what jolt_srliw writes to rd.
 theorem jolt_srliw_concrete (shamt : BitVec 5) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v : BitVec 64),
@@ -129,22 +119,14 @@ theorem jolt_srliw_concrete (shamt : BitVec 5) (rs1 rd : regidx)
   rw [← srliw_shift_eq v shamt]
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s4 hc
 
--- Running Jolt's SRLIW and projecting equals running Sail's SRLIW.
 theorem jolt_srliw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
     projectResult ((jolt_srliw shamt rs1 rd).run js) =
-    (execute_SHIFTIWOP shamt rs1 rd sopw.SRLIW).run js.sail := by
-  obtain ⟨js', v, hj_rx, hj, hj_sail⟩ :=
-    jolt_srliw_concrete shamt rs1 rd hrd js hwf
-  rw [execute_SHIFTIWOP_SRLIW_eq_factored]
-  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure, hj_rx]
-  show projectResult ((jolt_srliw shamt rs1 rd).run js) = _
-  rw [hj]
-  simp only [projectResult, project]
-  rw [hj_sail]
-  obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
-  rw [hw]
-  congr 1
-  exact (wX_bits_eq_stateAfterWrite rd _ js.sail s' hw).symm
+    (execute_SHIFTIWOP shamt rs1 rd sopw.SRLIW).run js.sail :=
+  itype_eq_sail_uniform
+    (f := fun v => sign_extend (m := 64)
+      (shift_bits_right (Sail.BitVec.extractLsb v 31 0) shamt))
+    (execute_SHIFTIWOP_SRLIW_factored shamt rs1 rd)
+    (jolt_srliw_concrete shamt rs1 rd hrd js hwf)
 
 end
