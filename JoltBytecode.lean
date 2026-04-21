@@ -97,10 +97,10 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LWU_
 -- Instruction proofs — Advice / System / CSR
 -- ============================================================================
 
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelb  -- advice load byte   DONE:
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Adviceld  -- advice load dword   DONE:
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelh  -- advice load halfword   DONE:
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Advicelw  -- advice load word   DONE:
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.AdviceFamily.Advicelb  -- advice load byte   DONE:
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.AdviceFamily.Adviceld  -- advice load dword   DONE:
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.AdviceFamily.Advicelh  -- advice load halfword   DONE:
+-- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.AdviceFamily.Advicelw  -- advice load word   DONE:
 
 -- System : Shuld be easy, I'll close when we get to it.
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Csrrs     -- TODO: CSR read-set
