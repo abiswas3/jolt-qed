@@ -55,20 +55,25 @@ file.
 -- Phase definitions
 -- ============================================================================
 
-/-- Load phase: write `ea` to v0, set v1 to the aligned-down base via an
-    explicit `readVReg 0; writeVReg 1 (v0 &&& -8)` pair, then `vreg_LD`. -/
+/-- Load phase: write `ea` to v0, aligned-down base to v1 via `vreg_ANDI`,
+    then `vreg_LD`. Same shape as `jolt_lb_load_phase` and its siblings —
+    ExecutionResult-typed so it composes cleanly with `vreg_LD` without a
+    trailing `pure ()`. -/
 def jolt_lw_load_phase (ea : BitVec 64) : JoltMonad ExecutionResult := do
   writeVReg 0 ea
-  let v0 ← readVReg 0
-  writeVReg 1 (v0 &&& (-8 : BitVec 64))
+  let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
   vreg_LD 1 1 0
 
-/-- Logic phase: `SLLI v0 0 3` puts `ea * 8` into v0; `SRL v1 1 0` shifts v1
-    right by the low 6 bits of v0. Returns the shifted dword from v1. -/
+/-- Logic phase: `SLLI v0 0 3` puts `ea * 8` into v0; read v1 and v0 and
+    return `shift_bits_right v1 (v0[5:0])` without writing it back to any
+    virtual register. Mirrors the shape of `jolt_lw`, where the shifted
+    value is produced by the boundary-crossing `vreg_SRL_to_real rd 1 0`
+    (which writes real `rd` but leaves v1 unchanged). -/
 def jolt_lw_logic_phase : JoltMonad (BitVec 64) := do
   let _ ← vreg_SLLI 0 0 3
-  let _ ← vreg_SRL 1 1 0
-  readVReg 1
+  let v1 ← readVReg 1
+  let v0 ← readVReg 0
+  pure (shift_bits_right v1 (Sail.BitVec.extractLsb v0 5 0))
 
 /-- Write phase: write `v1` to rd in full, then apply the virtual
     sign-extend-word primitive, which sign-extends the lower 32 bits of rd
@@ -108,56 +113,37 @@ theorem jolt_lw_logic_phase_value (imm : BitVec 12) (js : SailJoltState) (js_loa
         (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0) := by
   rw [hload_v0, hload_v1]
 
-/-- Running the logic phase from any `js_load` succeeds: it leaves the
-    shifted dword in vreg 1, doesn't touch the Sail state, and returns the
-    same value via `readVReg 1`. -/
+/-- Running the logic phase from any `js_load` succeeds, doesn't touch the
+    Sail state, and returns `shift_bits_right v1 (v0[5:0])`. Because the
+    phase no longer writes back to v1, the post-state is just `js_shift0`
+    (the state after the SLLI on v0). -/
 theorem jolt_lw_logic_phase_run (js_load : SailJoltState) :
     ∃ js_logic,
-      (jolt_lw_logic_phase).run js_load = .ok (js_logic.vregs 1) js_logic ∧
-      js_logic.sail = js_load.sail ∧
-      js_logic.vregs 1 =
-        shift_bits_right
-          (js_load.vregs 1)
-          (Sail.BitVec.extractLsb (shift_bits_left (js_load.vregs 0) (3 : BitVec 6)) 5 0) := by
+      (jolt_lw_logic_phase).run js_load =
+        .ok (shift_bits_right
+              (js_load.vregs 1)
+              (Sail.BitVec.extractLsb (shift_bits_left (js_load.vregs 0) (3 : BitVec 6)) 5 0))
+            js_logic ∧
+      js_logic.sail = js_load.sail := by
   let js_shift0 : SailJoltState :=
     { sail := js_load.sail
       vregs := fun r => if r = 0 then shift_bits_left (js_load.vregs 0) (3 : BitVec 6) else js_load.vregs r }
-  let js_logic : SailJoltState :=
-    { sail := js_load.sail
-      vregs := fun r =>
-        if r = 1 then
-          shift_bits_right
-            (js_load.vregs 1)
-            (Sail.BitVec.extractLsb (shift_bits_left (js_load.vregs 0) (3 : BitVec 6)) 5 0)
-        else js_shift0.vregs r }
   have hslli : vreg_SLLI 0 0 3 js_load = .ok RETIRE_SUCCESS js_shift0 := by
     change vreg_SLLI 0 0 3 js_load = .ok RETIRE_SUCCESS
       { sail := js_load.sail
         vregs := fun r => if r = 0 then shift_bits_left (js_load.vregs 0) (3 : BitVec 6) else js_load.vregs r }
     simpa [js_shift0] using (vreg_SLLI_run 0 0 3 js_load)
-  have hsrl : vreg_SRL 1 1 0 js_shift0 = .ok RETIRE_SUCCESS js_logic := by
-    change vreg_SRL 1 1 0 js_shift0 = .ok RETIRE_SUCCESS
-      { sail := js_shift0.sail
-        vregs := fun r =>
-          if r = 1 then
-            shift_bits_right (js_shift0.vregs 1) (Sail.BitVec.extractLsb (js_shift0.vregs 0) 5 0)
-          else js_shift0.vregs r }
-    simpa [js_shift0, js_logic] using (vreg_SRL_run 1 1 0 js_shift0)
-  have hread_v1 : readVReg 1 js_logic = .ok (js_logic.vregs 1) js_logic := by
-    simpa using (readVReg_run 1 js_logic)
-  refine ⟨js_logic, ?_, rfl, ?_⟩
-  · simp only [jolt_lw_logic_phase, bind, EStateM.bind, EStateM.run]
-    rw [hslli]
-    simp only [EStateM.bind, EStateM.pure]
-    rw [hsrl]
-    simp only [EStateM.bind, EStateM.pure]
-    exact hread_v1
-  · simp [js_logic, js_shift0]
+  refine ⟨js_shift0, ?_, rfl⟩
+  simp only [jolt_lw_logic_phase, bind, EStateM.bind, EStateM.run]
+  rw [hslli]
+  simp only [EStateM.bind, EStateM.pure, readVReg_run]
+  rfl
 
 /-- Combines `jolt_lw_logic_phase_run` with `jolt_lw_logic_phase_value`:
     running the logic phase on a post-load state produces `logic_val` in
-    its long shift-and-extract form, leaves the Sail state untouched, and
-    stores `logic_val` in vreg 1. -/
+    its long shift-and-extract form and leaves the Sail state untouched.
+    No longer exposes `js_logic.vregs 1 = logic_val`: after the phase
+    rewrite, v1 is unchanged rather than holding the shifted value. -/
 theorem jolt_lw_logic_phase_concrete (imm : BitVec 12) (js : SailJoltState) (js_load : SailJoltState) (val : BitVec 64)
     (hload_sail : js_load.sail = js.sail)
     (hload_v0 : js_load.vregs 0 = load_effective_address val imm)
@@ -165,17 +151,15 @@ theorem jolt_lw_logic_phase_concrete (imm : BitVec 12) (js : SailJoltState) (js_
     :
     ∃ js_logic logic_val,
       (jolt_lw_logic_phase).run js_load = .ok logic_val js_logic ∧
-      js_logic.vregs 1 = logic_val ∧
       logic_val =
         shift_bits_right
           (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
           (Sail.BitVec.extractLsb
             (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0) ∧
       js_logic.sail = js.sail := by
-  rcases jolt_lw_logic_phase_run js_load with ⟨js_logic, hrun, hsail, hv1⟩
-  refine ⟨js_logic, js_logic.vregs 1, hrun, rfl, ?_, ?_⟩
-  · rw [hv1]
-    exact jolt_lw_logic_phase_value imm js js_load val hload_v0 hload_v1
+  rcases jolt_lw_logic_phase_run js_load with ⟨js_logic, hrun, hsail⟩
+  refine ⟨js_logic, _, hrun, ?_, ?_⟩
+  · exact jolt_lw_logic_phase_value imm js js_load val hload_v0 hload_v1
   · simpa [hload_sail] using hsail
 
 -- ============================================================================
@@ -310,7 +294,7 @@ theorem jolt_lw_decomposed_writes_logic_value (imm : BitVec 12) (rs1 rd : regidx
   have hload_v0 : js_load.vregs 0 = load_effective_address val imm := by
     rw [hload_v0_raw, hsetup_v0]
   rcases jolt_lw_logic_phase_concrete imm js js_load val hload_sail hload_v0 hload_v1 with
-    ⟨js_logic, logic_val, hlogic_run, hlogic_v1, hlogic_val, hlogic_sail⟩
+    ⟨js_logic, logic_val, hlogic_run, hlogic_val, hlogic_sail⟩
   rcases jolt_lw_write_phase_concrete rd js js_logic logic_val hrd hlogic_sail with
     ⟨js', hwrite_run, hwrite_sail⟩
   refine ⟨js', logic_val, ?_, hlogic_val, hwrite_sail⟩

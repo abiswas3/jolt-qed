@@ -79,17 +79,13 @@ def jolt_lw (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := d
     pure (ExecutionResult.Memory_Exception
       (Virtaddr ea, ExceptionType.E_Load_Addr_Align ()))
   else do
-    writeVReg 0 ea                                        -- (ADDI v0, rs1, imm writes ea)
-    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)                -- ANDI v1, v0, -8
-    match ← vreg_LD 1 1 0 with                             -- LD   v1, v1, 0
+    writeVReg 0 ea                                         -- ADDI v0, rs1, imm
+    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)                 -- ANDI v1, v0, -8
+    match ← vreg_LD 1 1 0 with                              -- LD   v1, v1, 0
     | .Retire_Success () =>
-        let _ ← vreg_SLLI 0 0 3                            -- SLLI v0, v0, 3
-        let _ ← vreg_SRL 1 1 0                             -- SRL  v1, v1, v0
-        -- Copy v1 to real rd (implicit in the bytecode's "SRL rd, rd, v0"
-        -- naming convention, where the destination "rd" is the real reg).
-        let v1 ← readVReg 1
-        liftSail (wX_bits rd v1)
-        jolt_virtual_sign_extend_word rd                   -- VirtualSignExtendWord rd, rd, 0
+        let _ ← vreg_SLLI 0 0 3                             -- SLLI v0, v0, 3
+        let _ ← vreg_SRL_to_real rd 1 0                     -- SRL  rd,  v1, v0
+        jolt_virtual_sign_extend_word rd                    -- VirtualSignExtendWord rd, rd, 0
         pure RETIRE_SUCCESS
     | other => pure other
 
@@ -163,8 +159,10 @@ theorem jolt_lw_run_eq_decomposed (imm : BitVec 12) (rs1 rd : regidx) (js : Sail
     :
     (jolt_lw imm rs1 rd).run js = (jolt_lw_decomposed imm rs1 rd).run js := by
   have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
-  unfold jolt_lw jolt_lw_decomposed jolt_lw_load_phase vreg_ANDI
-  simp only [liftSail, bind, EStateM.bind, pure, EStateM.run, h8]
+  unfold jolt_lw jolt_lw_decomposed jolt_lw_load_phase jolt_lw_logic_phase
+    jolt_lw_write_phase vreg_ANDI vreg_SRL_to_real
+  simp only [bind_assoc, pure_bind]
+  simp only [liftSail, bind, EStateM.bind, pure, EStateM.pure, EStateM.run, h8]
   rw [hrx]
   simp only []
   rw [if_neg (by simpa using halign)]
