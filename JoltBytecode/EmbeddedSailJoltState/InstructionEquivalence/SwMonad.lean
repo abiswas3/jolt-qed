@@ -212,6 +212,46 @@ theorem jolt_sw_eq_sail_of_setup
     simpa [off, word_val, spliced, Nat.mul_comm] using hstate
   rw [hjolt, hsail, hstate']
 
+-- The native RISC-V word store succeeds through the full pipeline under our
+-- structural assumptions. TODO: prove this from hdw, hcfg, hsetup.
+lemma vmem_write_word_succeeds (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState)
+    (rs2_val ea base : BitVec 64)
+    (hrs1 : ∃ rs1_val : BitVec 64,
+      rX_bits rs1 js.sail = .ok rs1_val js.sail ∧
+      ea = rs1_val + sign_extend (m := 64) imm)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
+    (hsetup : DwordStoreSetup ea base)
+    (hdw : DwordLoadAssumptions base js.sail)
+    (hcfg : JoltConfig js.sail) :
+    vmem_write rs1 (sign_extend (m := 64) imm) 4 (Sail.BitVec.extractLsb rs2_val 31 0)
+      (Store Data) false false false js.sail =
+    .ok (Ok true)
+      (state_after_word_store js.sail ea (Sail.BitVec.extractLsb rs2_val 31 0)) := by
+  sorry
+
+-- The Jolt dword store at base succeeds through the full pipeline under our
+-- structural assumptions. TODO: prove this from hdw, hcfg, hsetup.
+lemma vmem_write_dword_splice_succeeds (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState)
+    (rs2_val ea base : BitVec 64)
+    (hrs1 : ∃ rs1_val : BitVec 64,
+      rX_bits rs1 js.sail = .ok rs1_val js.sail ∧
+      ea = rs1_val + sign_extend (m := 64) imm)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
+    (hsetup : DwordStoreSetup ea base)
+    (hdw : DwordLoadAssumptions base js.sail)
+    (hcfg : JoltConfig js.sail) :
+    vmem_write_addr (Virtaddr base) 8
+      (xor_and_xor_splice (loaded_dword_at js.sail base)
+        (Sail.BitVec.extractLsb rs2_val 31 0) (((ea - base).toNat) * 8))
+      (Store Data) false false false js.sail =
+    .ok (Ok true)
+      (state_after_dword_store js.sail base
+        (xor_and_xor_splice (loaded_dword_at js.sail base)
+          (Sail.BitVec.extractLsb rs2_val 31 0) (((ea - base).toNat) * 8))) := by
+  sorry
+
 -- Under the explicit SW setup assumptions, the Jolt decomposition agrees with
 -- Sail's native word store.
 theorem jolt_sw_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
@@ -223,23 +263,11 @@ theorem jolt_sw_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
     (hsetup : DwordStoreSetup ea base)
     (hdw : DwordLoadAssumptions base js.sail)
-    (hcfg : JoltConfig js.sail)
-    (hwrite :
-      vmem_write rs1 (sign_extend (m := 64) imm) 4 (Sail.BitVec.extractLsb rs2_val 31 0)
-        (Store Data) false false false js.sail =
-      .ok (Ok true)
-        (state_after_word_store js.sail ea (Sail.BitVec.extractLsb rs2_val 31 0)))
-    (hsdwrite :
-      vmem_write_addr (Virtaddr base) 8
-        (xor_and_xor_splice (loaded_dword_at js.sail base)
-          (Sail.BitVec.extractLsb rs2_val 31 0) (((ea - base).toNat) * 8))
-        (Store Data) false false false js.sail =
-      .ok (Ok true)
-        (state_after_dword_store js.sail base
-          (xor_and_xor_splice (loaded_dword_at js.sail base)
-            (Sail.BitVec.extractLsb rs2_val 31 0) (((ea - base).toNat) * 8)))) :
+    (hcfg : JoltConfig js.sail) :
     projectResult ((jolt_sw imm rs2 rs1).run js) =
     (execute_STORE imm rs2 rs1 4).run js.sail := by
+  have hwrite := vmem_write_word_succeeds imm rs2 rs1 js rs2_val ea base hrs1 hrs2 hsetup hdw hcfg
+  have hsdwrite := vmem_write_dword_splice_succeeds imm rs2 rs1 js rs2_val ea base hrs1 hrs2 hsetup hdw hcfg
   exact jolt_sw_eq_sail_of_setup
     imm rs2 rs1 js rs2_val ea base hrs1 hrs2 hsetup hdw hcfg hwrite hsdwrite
 

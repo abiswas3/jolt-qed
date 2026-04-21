@@ -231,19 +231,10 @@ theorem wX_rX_roundtrip (r : regidx) (v : BitVec 64) (s s' : SailState)
   exact rX_after_wX r v s hr
 
 -- ============================================================================
--- BitVec lemma
--- ============================================================================
-
-theorem extractLsb_add (a b : BitVec 64) :
-    Sail.BitVec.extractLsb (a + b) 31 0 =
-    Sail.BitVec.extractLsb a 31 0 + Sail.BitVec.extractLsb b 31 0 := by
-  simp only [Sail.BitVec.extractLsb, BitVec.extractLsb]
-  apply BitVec.eq_of_toNat_eq
-  simp [BitVec.toNat_add, Nat.add_mod]
-
--- ============================================================================
 -- stateAfterWrite: pure model of a register write's effect on SailState
 -- ============================================================================
+-- Note: bridge lemmas (truncation distributes over arithmetic operations) now
+-- live under `ALUFamily/Bridges/`. `extractLsb_add` moved to `Bridges/Add.lean`.
 
 noncomputable def stateAfterWrite (s : SailState) (rd : regidx) (val : BitVec 64) : SailState :=
   { s with regs := wX_update_regs rd val s.regs }

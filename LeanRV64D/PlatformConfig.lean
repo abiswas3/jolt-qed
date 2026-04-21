@@ -202,7 +202,8 @@ def plat_reservation_set_size_exp : Nat := 3
 
 def plat_enable_dirty_update : Bool := false
 
-def plat_enable_misaligned_access : Bool := true
+-- WARNING: CHANGE IN TRANSPILED CODE
+def plat_enable_misaligned_access : Bool := false
 
 def plat_clint_base : physaddrbits := unwrapValue ((to_bits_checked (l := 64) (33554432 : Int)))
 
@@ -343,4 +344,3 @@ def xenvcfg_cbie_reserved_behavior : XenvcfgCbieReservedBehavior := Xenvcfg_Clea
 def xtvec_mode_reserved_behavior : XtvecModeReservedBehavior := Xtvec_Ignore
 
 def rv32zdinx_odd_register_reserved_behavior : RV32ZdinxOddRegisterReservedBehavior := Zdinx_Illegal
-

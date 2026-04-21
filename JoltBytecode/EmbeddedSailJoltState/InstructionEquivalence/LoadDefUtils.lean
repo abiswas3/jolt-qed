@@ -14,28 +14,39 @@ set_option autoImplicit true
 noncomputable section
 
 /-!
-# Shared Jolt load-definition helpers
+# Shared memory-access definitions
 
-These helpers factor only the concrete inline-sequence code shared across the
-Jolt load instructions. They deliberately do not try to abstract the proof
-scripts or the pure bridge lemmas.
+Shared type-level infrastructure used by both the load and store families:
 
-There are three recurring sequence families:
-
-* byte loads (`LB`, `LBU`)
-* halfword loads (`LH`, `LHU`)
-* unsigned word loads (`LWU`)
-
-`LW` is close, but its final `VirtualSignExtendWord` step changes the shape
-enough that it is cleaner to leave its definition local for now.
+* **Address abbrevs**: `load_effective_address`, `aligned_dword_addr`,
+  `compute_aligned_dword_base_address` — how to compute the effective
+  target address and its 8-aligned enclosing dword.
+* **Assumption bundles**: `DwordLoadAssumptions` (aligned + translate +
+  FlatPhysMem of the dword), `LoadReadAssumptions` (aligned + translate +
+  FlatPhysMem for arbitrary width).
+* **Properties of `aligned_dword_addr`**: that it's 8-aligned, doesn't
+  overflow on `+7`, and satisfies the full `AlignedDwordAccess` bundle.
+  Used by every load-family decomposed proof.
+* **Pipeline-collapse theorems**: `aligned_dword_vmem_read_reduces` and
+  `vreg_LD_run_of_dword_assumptions` — Sail's vmem-read / Jolt's vreg_LD
+  under the dword-load assumptions.
 -/
 
 /-- Common aligned dword address used by the Jolt inline load sequences:
     compute the effective address, align it down to an 8-byte boundary,
     then use zero offset for the actual `LD`. -/
 abbrev aligned_dword_addr (v : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
-  (v + sign_extend (m := 64) imm &&& sign_extend (m := 64) (-8 : BitVec 12))
-    + sign_extend (m := 64) (0 : BitVec 12)
+  (v + sign_extend (m := 64) imm) &&& sign_extend (m := 64) (-8 : BitVec 12)
+
+/-- Generic effective address for memory instructions with a sign-extended
+    12-bit immediate. -/
+abbrev load_effective_address (val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  val + sign_extend (m := 64) imm
+
+/-- Generic aligned dword base address used by the Jolt inline memory
+    sequences after computing the effective address. -/
+abbrev compute_aligned_dword_base_address (val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  load_effective_address val imm &&& (-8 : BitVec 64)
 
 /-- The standard bundle of assumptions used to collapse Jolt's aligned dword
     load into a direct hashmap read. -/
@@ -56,10 +67,57 @@ theorem aligned_dword_addr_eq (v : BitVec 64) (imm : BitVec 12) :
     aligned_dword_addr v imm =
       (v + sign_extend (m := 64) imm) &&& (-8 : BitVec 64) := by
   unfold aligned_dword_addr
-  have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
   have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
-  rw [h0, h8]
+  rw [h8]
+
+-- ============================================================================
+-- Properties of `aligned_dword_addr`
+-- ============================================================================
+-- These say: the Jolt inline-sequence base address (effective address with its
+-- low 3 bits cleared) is 8-aligned, its `.toNat + 7` does not overflow 2^64,
+-- and from those two facts it satisfies the full `AlignedDwordAccess` bundle.
+-- Used by every load instruction's decomposed-program proof, so they live
+-- next to the `aligned_dword_addr` definition rather than inside each
+-- instruction file.
+
+/-- The Jolt inline-sequence base address is naturally 8-aligned. -/
+theorem aligned_dword_addr_aligns (val : BitVec 64) (imm : BitVec 12) :
+    aligned_dword_addr val imm &&& 7 = 0 := by
+  rw [aligned_dword_addr_eq]
   bv_decide
+
+/-- An 8-aligned 64-bit address, viewed as a natural number, has no overflow
+    when we add 7. -/
+theorem aligned_addr_no_ovf_of_align (addr : BitVec 64)
+    (halign : addr &&& 7 = 0) :
+    addr.toNat + 7 < 2 ^ 64 := by
+  have h_mod : addr.toNat % 8 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h7 : BitVec.toNat (7 : BitVec 64) = 7 := by decide
+    have h0 : BitVec.toNat (0 : BitVec 64) = 0 := by decide
+    rw [h7, h0] at h
+    rw [show (7 : Nat) = 2^3 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  have hlt : addr.toNat < 2 ^ 64 := addr.isLt
+  omega
+
+/-- Specialisation of the previous lemma to the Jolt inline-sequence base
+    address. -/
+theorem aligned_dword_addr_no_ovf (val : BitVec 64) (imm : BitVec 12) :
+    (aligned_dword_addr val imm).toNat + 7 < 2 ^ 64 :=
+  aligned_addr_no_ovf_of_align _ (aligned_dword_addr_aligns val imm)
+
+/-- The Jolt inline-sequence base address is a proper `AlignedDwordAccess`:
+    misalignment check passes, split is trivial, address is 8-aligned, and
+    `+7` doesn't overflow. -/
+theorem aligned_dword_addr_is_aligned_dword_access (val : BitVec 64) (imm : BitVec 12) :
+    AlignedDwordAccess (aligned_dword_addr val imm) := by
+  refine
+    { misalign := access_misaligned_8_aligned_false _ (aligned_dword_addr_aligns val imm)
+      split := split_misaligned_aligned_8 _ (aligned_dword_addr_aligns val imm)
+      align := aligned_dword_addr_aligns val imm
+      no_ovf := aligned_dword_addr_no_ovf val imm }
 
 /-- Transport the bundled dword-load assumptions across an address equality. -/
 theorem DwordLoadAssumptions.of_eq {addr addr' : BitVec 64} {s : SailState}
@@ -101,66 +159,3 @@ theorem vreg_LD_run_of_dword_assumptions
   simpa using
     (vreg_LD_run_of_read vd vs1 0 js (loaded_dword_at js.sail addr) hread)
 
-/-- Shared body for the byte-load family. The caller supplies the final
-    post-processing on the shifted dword: arithmetic right shift for `LB`,
-    logical right shift for `LBU`. -/
-def jolt_byte_load_family
-    (imm : BitVec 12) (rs1 rd : regidx)
-    (finish : BitVec 64 → BitVec 64) : JoltMonad ExecutionResult := do
-  let rs1_val ← liftSail (rX_bits rs1)
-  writeVReg 0 (rs1_val + sign_extend (m := 64) imm)
-  let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
-  match ← vreg_LD 1 1 0 with
-  | .Retire_Success () =>
-      let _ ← vreg_XORI 0 0 7
-      let _ ← vreg_SLLI 0 0 3
-      let _ ← vreg_SLL 1 1 0
-      let v1 ← readVReg 1
-      liftSail (wX_bits rd (finish v1))
-      pure RETIRE_SUCCESS
-  | other => pure other
-
-/-- Shared body for the halfword-load family. The caller supplies the
-    instruction-specific assertion message and the final post-processing:
-    arithmetic right shift for `LH`, logical right shift for `LHU`. -/
-def jolt_halfword_load_family
-    (imm : BitVec 12) (rs1 rd : regidx) (msg : String)
-    (finish : BitVec 64 → BitVec 64) : JoltMonad ExecutionResult := do
-  let base ← liftSail (rX_bits rs1)
-  let ea := base + sign_extend (m := 64) imm
-  if ea &&& 1 ≠ 0 then
-    throw (Error.Assertion msg)
-  else do
-    writeVReg 0 ea
-    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
-    match ← vreg_LD 1 1 0 with
-    | .Retire_Success () =>
-        let _ ← vreg_XORI 0 0 6
-        let _ ← vreg_SLLI 0 0 3
-        let _ ← vreg_SLL 1 1 0
-        let v1 ← readVReg 1
-        liftSail (wX_bits rd (finish v1))
-        pure RETIRE_SUCCESS
-    | other => pure other
-
-/-- Shared body for the unsigned word-load family (`LWU`). This uses the same
-    dword-load + shift-left extraction pattern as byte/halfword loads, but
-    with a 32-bit zero-extending result. -/
-def jolt_word_unsigned_family
-    (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  let base ← liftSail (rX_bits rs1)
-  let ea := base + sign_extend (m := 64) imm
-  if ea &&& 3 ≠ 0 then
-    throw (Error.Assertion "LWU: effective address not word-aligned")
-  else do
-    writeVReg 0 ea
-    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)
-    match ← vreg_LD 1 1 0 with
-    | .Retire_Success () =>
-        let _ ← vreg_XORI 0 0 4
-        let _ ← vreg_SLLI 0 0 3
-        let _ ← vreg_SLL 1 1 0
-        let v1 ← readVReg 1
-        liftSail (wX_bits rd (shift_bits_right v1 (32 : BitVec 6)))
-        pure RETIRE_SUCCESS
-    | other => pure other
