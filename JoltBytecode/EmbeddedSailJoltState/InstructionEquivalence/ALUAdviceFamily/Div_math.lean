@@ -1,4 +1,5 @@
 import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamily.Primitives
 import Mathlib
 
 set_option maxHeartbeats 1_000_000_000
@@ -14,8 +15,63 @@ noncomputable section
 Mathematical content that underpins the assertion-guard arguments in
 `jolt_div`'s completeness proof. Kept separate from `Div.lean` so that
 monadic/plumbing content and pure arithmetic content don't sit in the
-same file — and so `Div.lean` doesn't need the full `import Mathlib`.
+same file.
+
+Contents:
+
+* **Honest-advice value functions** (`sail_div_value`, `sail_rem_value`):
+  verbatim transcriptions of `execute_DIV` / `execute_REM`'s pure bodies
+  from the Sail→Lean transpilation. These define what "honest quotient"
+  and "honest remainder" mean — what the trusted side would compute.
+
+* **`bv_abs`**: signed absolute value on `BitVec 64`.
+
+* **`v3_eq_v5_of_honest`**: the overflow-fit bridge (Step 8's guard).
+
+* **Four assertion-guard lemmas** — `hguard_div0_of_honest`,
+  `hguard_overflow_of_honest`, `hguard_quotient_product_of_honest`,
+  `hguard_rem_bound_of_honest` — showing that each assertion's guard
+  holds under honest advice. Consumed by `jolt_div_concrete` in
+  `Div.lean`.
 -/
+
+-- ----------------------------------------------------------------------------
+-- Honest-advice value functions + absolute value
+-- ----------------------------------------------------------------------------
+
+/-- The pure 64-bit value `execute_DIV rs2 rs1 rd is_unsigned` writes to
+`rd`, given the values read from `rs1` and `rs2`. Verbatim copy of the
+`execute_DIV` body (minus the monadic read/write/return wrapper),
+transcribed from `LeanRV64D/InstsEnd.lean:71105`. -/
+def sail_div_value (rs1_bits rs2_bits : BitVec 64) (is_unsigned : Bool) : BitVec 64 :=
+  let rs1_int :=
+    if (is_unsigned : Bool) then (BitVec.toNatInt rs1_bits) else (BitVec.toInt rs1_bits)
+  let rs2_int :=
+    if (is_unsigned : Bool) then (BitVec.toNatInt rs2_bits) else (BitVec.toInt rs2_bits)
+  let quotient :=
+    if ((rs2_int == 0) : Bool) then (Neg.neg 1) else (Int.tdiv rs1_int rs2_int)
+  let quotient :=
+    if (((LeanRV64D.Functions.not is_unsigned) && (quotient ≥b (2 ^i (LeanRV64D.Functions.xlen -i 1)))) : Bool)
+    then (Neg.neg (2 ^i (LeanRV64D.Functions.xlen -i 1))) else quotient
+  to_bits_truncate (l := 64) quotient
+
+/-- The pure 64-bit value `execute_REM rs2 rs1 rd is_unsigned` writes to
+`rd`. Verbatim copy of the `execute_REM` body, transcribed from
+`LeanRV64D/InstsEnd.lean:67637`. -/
+def sail_rem_value (rs1_bits rs2_bits : BitVec 64) (is_unsigned : Bool) : BitVec 64 :=
+  let rs1_int :=
+    if (is_unsigned : Bool) then (BitVec.toNatInt rs1_bits) else (BitVec.toInt rs1_bits)
+  let rs2_int :=
+    if (is_unsigned : Bool) then (BitVec.toNatInt rs2_bits) else (BitVec.toInt rs2_bits)
+  let remainder :=
+    if ((rs2_int == 0) : Bool) then rs1_int else (Int.tmod rs1_int rs2_int)
+  to_bits_truncate (l := 64) remainder
+
+/-- Absolute value of a signed 64-bit bit-vector: `-x` when the MSB is
+set, `x` otherwise. The oracle provides `|remainder|` rather than the
+signed remainder, so the `rem_abs` advice is `bv_abs ∘ sail_rem_value`. -/
+def bv_abs (x : BitVec 64) : BitVec 64 :=
+  if x.msb then -x else x
 
 /-- **Step 8 guard (`VirtualAssertEQ v3 v5`) — the overflow check lemma.**
 
@@ -170,5 +226,113 @@ theorem v3_eq_v5_of_honest
       apply Int.ediv_eq_neg_one_of_neg_of_le hxneg
       omega
     rw [h1, h2]
+
+-- ----------------------------------------------------------------------------
+-- Assertion-guard lemmas: each Jolt assertion's guard holds under honest advice
+-- ----------------------------------------------------------------------------
+-- Each of the four lemmas below closes one of the asserts in `jolt_div`,
+-- showing that the guard condition follows purely from the fact that
+-- the oracle produced the advice Sail would produce. No trust is placed
+-- in the oracle beyond "it returned `sail_div_value` / `sail_rem_value`".
+--
+-- The guards, in order of appearance in the Jolt sequence:
+--   1. `VirtualAssertValidDiv0`        — step 3
+--   2. `VirtualAssertEQ v3 v5`         — step 8  (overflow check)
+--   3. `VirtualAssertEQ v4 rs1`        — step 13 (quotient·divisor + r = dividend)
+--   4. `VirtualAssertValidUnsignedRemainder` — step 17 (|r| < |adj|)
+
+/-- **Guard 1 — `VirtualAssertValidDiv0`.**
+
+When the divisor is zero, the RISC-V spec fixes the quotient as `-1`
+(all ones). Sail implements this in the first branch of `sail_div_value`:
+if `rs2_int = 0` it returns `-1` directly, skipping the division. So
+under honest advice `q = sail_div_value dividend divisor false`, the
+conjunction `divisor = 0 ∧ q ≠ -1` is impossible — the assert guard
+holds vacuously in the `divisor = 0` case and trivially when
+`divisor ≠ 0`. -/
+theorem hguard_div0_of_honest (dividend divisor : BitVec 64) :
+    ¬ (divisor = 0#64 ∧
+       sail_div_value dividend divisor false ≠ (-1 : BitVec 64)) := by
+  sorry
+
+/-- **Guard 2 — `VirtualAssertEQ v3 v5` (overflow check).**
+
+Under honest advice, the signed product `q · adj_divisor` fits inside
+64 bits, so the upper 64 bits (`MULH`) equal the sign-broadcast of the
+lower 64 bits (`SRAI` by 63). The core content — "the product fits in
+64 bits signed" — is `v3_eq_v5_of_honest` above; this wrapper plugs in
+the honest-advice values so the guard appears in exactly the shape the
+Phase 2 run-helper expects. -/
+theorem hguard_overflow_of_honest (dividend divisor : BitVec 64) :
+    let q   := sail_div_value dividend divisor false
+    let adj := change_divisor_value dividend divisor
+    mulhs q adj = (q * adj).sshiftRight 63 := by
+  sorry
+
+/-- **Guard 3 — `VirtualAssertEQ v4 rs1` (division equation).**
+
+The heart of the DIV check: after reconstructing the signed remainder
+from `|rem|` and the sign of the dividend (via `XOR + SUB`), the sum
+`q · adj + signed_rem` equals the dividend. Under honest advice, where
+`q = sail_div_value dividend divisor` and `rem = bv_abs sail_rem_value`,
+this is the standard division equation `a = q·b + r`, adapted through
+`VirtualChangeDivisor`'s overflow fix-up.
+
+The equation as Jolt's arithmetic sees it:
+`q · adj + (rem XOR sign(dividend)) - sign(dividend) = dividend`. -/
+theorem hguard_quotient_product_of_honest (dividend divisor : BitVec 64) :
+    let q   := sail_div_value dividend divisor false
+    let rem := bv_abs (sail_rem_value dividend divisor false)
+    let adj := change_divisor_value dividend divisor
+    q * adj +
+      (rem ^^^ dividend.sshiftRight 63 - dividend.sshiftRight 63)
+      = dividend := by
+  sorry
+
+/-- **Guard 4 — `VirtualAssertValidUnsignedRemainder`.**
+
+Under honest advice, the unsigned magnitude of the remainder is
+strictly less than the unsigned magnitude of the adjusted divisor. The
+RISC-V division relation `|r| < |b|` lifts to `|r| < |adj|` because
+`VirtualChangeDivisor` only differs from the identity in the single
+overflow pair `(dividend = -2^63, divisor = -1)`, where `sail_rem_value
+= 0`, so `|r| = 0 < |adj|` trivially.
+
+The expression `adj XOR sign(adj) - sign(adj)` is Jolt's way of
+computing `|adj|` with the sign-fixup trick. -/
+theorem hguard_rem_bound_of_honest (dividend divisor : BitVec 64) :
+    let rem := bv_abs (sail_rem_value dividend divisor false)
+    let adj := change_divisor_value dividend divisor
+    rem.toNat < (adj ^^^ adj.sshiftRight 63 - adj.sshiftRight 63).toNat := by
+  sorry
+
+-- ----------------------------------------------------------------------------
+-- Uniqueness of advice — soundness core
+-- ----------------------------------------------------------------------------
+
+/-- **Uniqueness.** If some advice `(q, rem)` makes all four assertion
+guards in `jolt_div` pass, then `(q, rem)` is exactly the honest pair
+`(sail_div_value …, bv_abs (sail_rem_value …))`.
+
+This is the pure-math content behind soundness: the conjunction of the
+four guards pins the advice down uniquely. Contrapositive form of
+"bad advice ⇒ some guard fails". Proof plan — split on three cases:
+`divisor = 0`, the signed-overflow pair `(INT_MIN, -1)`, and the
+normal case (classical uniqueness of truncating quotient/remainder
+with `|r| < |b|`, transported from `BitVec 64` to `Int` using guard 2
+to rule out multiplicative overflow). -/
+theorem advice_unique_of_guards
+    (dividend divisor q rem adj : BitVec 64)
+    (hadj : adj = change_divisor_value dividend divisor)
+    (h1 : ¬ (divisor = 0#64 ∧ q ≠ (-1 : BitVec 64)))
+    (h2 : mulhs q adj = (q * adj).sshiftRight 63)
+    (h3 : q * adj +
+            (rem ^^^ dividend.sshiftRight 63 - dividend.sshiftRight 63)
+          = dividend)
+    (h4 : rem.toNat <
+            (adj ^^^ adj.sshiftRight 63 - adj.sshiftRight 63).toNat) :
+    q = sail_div_value dividend divisor false ∧
+    rem = bv_abs (sail_rem_value dividend divisor false) := by
+  sorry
 
 end

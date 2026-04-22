@@ -4,6 +4,7 @@ import JoltBytecode.EmbeddedSailJoltState.RtypeW
 import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamily.Primitives
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamily.Div_math
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamily.Div_phase_helpers
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -74,57 +75,9 @@ def jolt_div (rs2 rs1 rd : regidx)
   let _ ← vreg_assert_valid_unsigned_remainder 1 5    -- VirtualAssertValidUnsignedRemainder v1, v5, 0
   vreg_ADDI_to_real rd 0 0                            -- ADDI                   rd, v0, 0   (move quotient)
 
--- ----------------------------------------------------------------------------
--- Phase decomposition of `jolt_div`
--- ----------------------------------------------------------------------------
--- The 18 steps of `jolt_div` split cleanly into five phases, each one
--- ending at (or being dominated by) an assertion. The phase decomposition
--- lets the `jolt_div_concrete` proof close with 5 peels via `bind_run_of_ok`
--- instead of 17.
---
--- Phase postconditions (stored here as comments; proofs live below):
---   phase_setup:           v0=q, v1=|r|, div0-check passed
---   phase_overflow_check:  v2=adj_div, overflow-check assert passed
---   phase_quotient_product: q·v2 + r = a asserted
---   phase_remainder_bound: |r| < |v2| asserted
---   phase_writeback:       rd := v0 (=q)
-
-/-- Phase 1 — advice loads + div-by-zero assert. -/
-def phase_setup (rs2 : regidx) (quotient rem_abs : BitVec 64) :
-    JoltMonad ExecutionResult := do
-  let _ ← vreg_advice 0 quotient
-  let _ ← vreg_advice 1 rem_abs
-  vreg_assert_valid_div0 rs2 0
-
-/-- Phase 2 — adjusted divisor, MULH/MUL/SRAI, overflow-check assert. -/
-def phase_overflow_check (rs1 rs2 : regidx) : JoltMonad ExecutionResult := do
-  let _ ← vreg_change_divisor 2 rs1 rs2
-  let _ ← vreg_MULH 3 0 2
-  let _ ← vreg_MUL 4 0 2
-  let _ ← vreg_SRAI 5 4 63
-  vreg_assert_eq 3 5
-
-/-- Phase 3 — reconstruct signed remainder, sum, assert equals dividend. -/
-def phase_quotient_product (rs1 : regidx) : JoltMonad ExecutionResult := do
-  let _ ← vreg_SRAI_from_real 3 rs1 63
-  let _ ← vreg_XOR 5 1 3
-  let _ ← vreg_SUB 5 5 3
-  let _ ← vreg_ADD 4 4 5
-  vreg_assert_eq_real 4 rs1
-
-/-- Phase 4 — compute |adj_div|, assert |r| < |adj_div|. -/
-def phase_remainder_bound : JoltMonad ExecutionResult := do
-  let _ ← vreg_SRAI 3 2 63
-  let _ ← vreg_XOR 5 2 3
-  let _ ← vreg_SUB 5 5 3
-  vreg_assert_valid_unsigned_remainder 1 5
-
-/-- Phase 5 — move the quotient advice from v0 into real register rd. -/
-def phase_writeback (rd : regidx) : JoltMonad ExecutionResult :=
-  vreg_ADDI_to_real rd 0 0
-
-/-- `jolt_div` as a composition of the five phases. Used to reshape the
-bind chain before peeling. -/
+/-- `jolt_div` as a composition of the five phases (defined in
+`Div_phase_helpers.lean`). Used to reshape the bind chain before
+peeling. -/
 theorem jolt_div_phased (rs2 rs1 rd : regidx)
     (quotient rem_abs : BitVec 64) :
     jolt_div rs2 rs1 rd quotient rem_abs = (do
@@ -136,56 +89,8 @@ theorem jolt_div_phased (rs2 rs1 rd : regidx)
   simp [jolt_div, phase_setup, phase_overflow_check, phase_quotient_product,
         phase_remainder_bound, phase_writeback, bind_assoc]
 
-/-- Bind-peel helper: if `m` runs to `.ok a js₁`, the whole chain
-`(m >>= f).run js` reduces to `(f a).run js₁`. (Duplicated from
-`toy.lean`; should eventually live in a shared `BindChain.lean`.) -/
-theorem bind_run_of_ok {α β : Type} {m : JoltMonad α} {f : α → JoltMonad β}
-    {js js₁ : SailJoltState} {a : α}
-    (h : m.run js = .ok a js₁) :
-    (m >>= f).run js = (f a).run js₁ := by
-  show (m >>= f) js = (f a) js₁
-  simp only [bind, EStateM.bind]
-  rw [show m js = .ok a js₁ from h]
-
--- ----------------------------------------------------------------------------
--- Honest advice: the pure value functions that `execute_DIV` and
--- `execute_REM` write to `rd`, extracted directly from the transpiled
--- Sail bodies. These are the definitions of "honest quotient" and
--- "honest remainder" — not a re-implementation of RISC-V semantics, but
--- a re-statement of what the trusted side computes.
--- ----------------------------------------------------------------------------
-
-/-- The pure 64-bit value `execute_DIV rs2 rs1 rd is_unsigned` writes to
-`rd`, given the values read from `rs1` and `rs2`. Verbatim copy of the
-`execute_DIV` body (minus the monadic read/write/return wrapper),
-transcribed from `LeanRV64D/InstsEnd.lean:71105`. -/
-def sail_div_value (rs1_bits rs2_bits : BitVec 64) (is_unsigned : Bool) : BitVec 64 :=
-  let rs1_int :=
-    if (is_unsigned : Bool) then (BitVec.toNatInt rs1_bits) else (BitVec.toInt rs1_bits)
-  let rs2_int :=
-    if (is_unsigned : Bool) then (BitVec.toNatInt rs2_bits) else (BitVec.toInt rs2_bits)
-  let quotient :=
-    if ((rs2_int == 0) : Bool) then (Neg.neg 1) else (Int.tdiv rs1_int rs2_int)
-  let quotient :=
-    if (((LeanRV64D.Functions.not is_unsigned) && (quotient ≥b (2 ^i (LeanRV64D.Functions.xlen -i 1)))) : Bool)
-    then (Neg.neg (2 ^i (LeanRV64D.Functions.xlen -i 1))) else quotient
-  to_bits_truncate (l := 64) quotient
-
-/-- The pure 64-bit value `execute_REM rs2 rs1 rd is_unsigned` writes to
-`rd`. Verbatim copy of the `execute_REM` body, transcribed from
-`LeanRV64D/InstsEnd.lean:67637`. -/
-def sail_rem_value (rs1_bits rs2_bits : BitVec 64) (is_unsigned : Bool) : BitVec 64 :=
-  let rs1_int :=
-    if (is_unsigned : Bool) then (BitVec.toNatInt rs1_bits) else (BitVec.toInt rs1_bits)
-  let rs2_int :=
-    if (is_unsigned : Bool) then (BitVec.toNatInt rs2_bits) else (BitVec.toInt rs2_bits)
-  let remainder :=
-    if ((rs2_int == 0) : Bool) then rs1_int else (Int.tmod rs1_int rs2_int)
-  to_bits_truncate (l := 64) remainder
-
 /-- Factoring lemma: `execute_DIV` collapses to one `rX_bits` per source,
-one `wX_bits` of `sail_div_value`, and a `pure RETIRE_SUCCESS`. Proof is
-elided while we focus on statements. -/
+one `wX_bits` of `sail_div_value`, and a `pure RETIRE_SUCCESS`. -/
 theorem execute_DIV_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
     execute_DIV rs2 rs1 rd is_unsigned = (do
       let v1 ← rX_bits rs1
@@ -193,20 +98,6 @@ theorem execute_DIV_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
       wX_bits rd (sail_div_value v1 v2 is_unsigned)
       pure RETIRE_SUCCESS) := by
   simp [execute_DIV, sail_div_value, bind_pure_comp]
-
-theorem execute_REM_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
-    execute_REM rs2 rs1 rd is_unsigned = (do
-      let v1 ← rX_bits rs1
-      let v2 ← rX_bits rs2
-      wX_bits rd (sail_rem_value v1 v2 is_unsigned)
-      pure RETIRE_SUCCESS) := by
-  sorry
-
-/-- Absolute value of a signed 64-bit bit-vector: `-x` when the MSB is
-set, `x` otherwise. The oracle provides `|remainder|` rather than the
-signed remainder, so the `rem_abs` advice is `bv_abs ∘ sail_rem_value`. -/
-def bv_abs (x : BitVec 64) : BitVec 64 :=
-  if x.msb then -x else x
 
 -- ----------------------------------------------------------------------------
 -- Completeness
@@ -238,57 +129,46 @@ theorem jolt_div_concrete (rs2 rs1 rd : regidx)
   let q   := sail_div_value dividend divisor false
   let rem := bv_abs (sail_rem_value dividend divisor false)
   let adj := change_divisor_value dividend divisor
-  -- PHASE 1 — advice loads + div0 check. Needs: honest advice pins `q`/`rem`
-  -- so the div0 guard `divisor = 0 → q = -1` holds. Produces:
-  --   v0 = q, v1 = rem, sail unchanged.
-  obtain ⟨js₁, hrun1, h1_v0, h1_v1, h1_sail⟩ :
-      ∃ js₁,
-        (phase_setup rs2 q rem).run js = .ok RETIRE_SUCCESS js₁ ∧
-        js₁.vregs 0 = q ∧
-        js₁.vregs 1 = rem ∧
-        js₁.sail = js.sail := by
-    sorry
-  -- PHASE 2 — adjusted divisor + MUL/MULH + overflow-check assert.
-  -- Needs: h1_v0, h1_v1, h1_sail, hrs1, hrs2, and `v3_eq_v5_of_honest` to
-  -- discharge the `assert_eq 3 5` guard. Produces:
-  --   v0 = q (unchanged), v1 = rem (unchanged), v2 = adj, sail unchanged.
-  obtain ⟨js₂, hrun2, h2_v0, h2_v1, h2_v2, h2_sail⟩ :
-      ∃ js₂,
-        (phase_overflow_check rs1 rs2).run js₁ = .ok RETIRE_SUCCESS js₂ ∧
-        js₂.vregs 0 = q ∧
-        js₂.vregs 1 = rem ∧
-        js₂.vregs 2 = adj ∧
-        js₂.sail = js.sail := by
-    sorry
-  -- PHASE 3 — signed-remainder reconstruction + `assert_eq_real v4 rs1`.
-  -- Needs: h2_* invariants + hrs1 + the division relation
-  -- `dividend = q·adj + signed_r` to discharge the guard. Produces:
-  --   v0, v1, v2 unchanged, sail unchanged.
-  obtain ⟨js₃, hrun3, h3_v0, h3_v1, h3_v2, h3_sail⟩ :
-      ∃ js₃,
-        (phase_quotient_product rs1).run js₂ = .ok RETIRE_SUCCESS js₃ ∧
-        js₃.vregs 0 = q ∧
-        js₃.vregs 1 = rem ∧
-        js₃.vregs 2 = adj ∧
-        js₃.sail = js.sail := by
-    sorry
-  -- PHASE 4 — |adj| + `assert_valid_unsigned_remainder v1 v5`.
-  -- Needs: h3_v1 (v1 = rem), h3_v2 (v2 = adj), and `rem.toNat < (bv_abs adj).toNat`
-  -- to discharge the guard. Produces:
-  --   v0 = q (unchanged), sail unchanged.
-  obtain ⟨js₄, hrun4, h4_v0, h4_sail⟩ :
-      ∃ js₄,
-        (phase_remainder_bound).run js₃ = .ok RETIRE_SUCCESS js₄ ∧
-        js₄.vregs 0 = q ∧
-        js₄.sail = js.sail := by
-    sorry
-  -- PHASE 5 — writeback `rd := v0`. Needs: h4_v0 (v0 = q), h4_sail.
-  -- Produces final state with sail = stateAfterWrite js.sail rd q.
-  obtain ⟨js₅, hrun5, h5_sail⟩ :
-      ∃ js₅,
-        (phase_writeback rd).run js₄ = .ok RETIRE_SUCCESS js₅ ∧
-        js₅.sail = stateAfterWrite js.sail rd q := by
-    sorry
+  -- Guards derived from honest advice; each proved as a pure-math lemma
+  -- in `Div_math.lean`.
+  have hguard_div0 : ¬ (divisor = 0#64 ∧ q ≠ (-1 : BitVec 64)) :=
+    hguard_div0_of_honest dividend divisor
+  have hguard_overflow : mulhs q adj = (q * adj).sshiftRight 63 :=
+    hguard_overflow_of_honest dividend divisor
+  have hguard_quotient_product :
+      q * adj +
+        (rem ^^^ dividend.sshiftRight 63 - dividend.sshiftRight 63) = dividend :=
+    hguard_quotient_product_of_honest dividend divisor
+  have hguard_rem_bound :
+      rem.toNat < (adj ^^^ adj.sshiftRight 63 - adj.sshiftRight 63).toNat :=
+    hguard_rem_bound_of_honest dividend divisor
+  -- PHASE 1 — advice loads + div0 check.
+  obtain ⟨js₁, hrun1, h1_v0, h1_v1, h1_sail⟩ :=
+    phase_setup_run rs2 q rem js divisor hrs2 hguard_div0
+  -- PHASE 2 — transport the rs1/rs2 reads across js₁.sail = js.sail.
+  have hrs1_js1 : rX_bits rs1 js₁.sail = .ok dividend js₁.sail :=
+    h1_sail.symm ▸ hrs1
+  have hrs2_js1 : rX_bits rs2 js₁.sail = .ok divisor js₁.sail :=
+    h1_sail.symm ▸ hrs2
+  obtain ⟨js₂, hrun2, h2_v0, h2_v1, h2_v2, h2_v4, h2_sail⟩ :=
+    phase_overflow_check_run rs1 rs2 js₁ q rem adj dividend divisor
+      hrs1_js1 hrs2_js1 h1_v0 h1_v1 rfl hguard_overflow
+  -- Chain the sail equalities for use downstream.
+  have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
+  -- PHASE 3 — signed-remainder reconstruction + assert_eq_real v4 rs1.
+  have hrs1_js2 : rX_bits rs1 js₂.sail = .ok dividend js₂.sail :=
+    h2_sail_orig.symm ▸ hrs1
+  obtain ⟨js₃, hrun3, h3_v0, h3_v1, h3_v2, h3_sail⟩ :=
+    phase_quotient_product_run rs1 js₂ q rem adj dividend
+      hrs1_js2 h2_v0 h2_v1 h2_v2 h2_v4 hguard_quotient_product
+  have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
+  -- PHASE 4 — |adj| + assert_valid_unsigned_remainder.
+  obtain ⟨js₄, hrun4, h4_v0, h4_sail⟩ :=
+    phase_remainder_bound_run js₃ q rem adj h3_v0 h3_v1 h3_v2 hguard_rem_bound
+  have h4_sail_orig : js₄.sail = js.sail := h4_sail.trans h3_sail_orig
+  -- PHASE 5 — writeback.
+  obtain ⟨js₅, hrun5, h5_sail⟩ :=
+    phase_writeback_run rd js₄ js.sail q h4_v0 h4_sail_orig
   -- Stitch the five phase runs together via `bind_run_of_ok`.
   refine ⟨js₅, ?_, h5_sail⟩
   rw [jolt_div_phased]
@@ -348,7 +228,63 @@ theorem jolt_div_complete (rs2 rs1 rd : regidx)
   -- RHS — reduce execute_DIV to the matching `.ok RETIRE_SUCCESS (stateAfterWrite …)`.
   rw [execute_DIV_reduces rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2]
 
+-- ----------------------------------------------------------------------------
+-- Soundness
+-- ----------------------------------------------------------------------------
 
+/-- **Soundness.** If `jolt_div` runs to `.ok RETIRE_SUCCESS` on *arbitrary*
+oracle advice `(q, rem)`, then the advice must have been honest: `q` is
+exactly `sail_div_value …` and `rem` is exactly `bv_abs (sail_rem_value …)`.
 
+Contrapositive form of "bad advice ⇒ some assert fires". Proved by
+extracting the four assertion guards from the successful run and feeding
+them into a pure uniqueness lemma (to be stated in `Div_math.lean`):
+the conjunction of the four guards pins `(q, rem)` down uniquely as the
+honest pair. -/
+theorem jolt_div_sound (rs2 rs1 rd : regidx)
+    (q rem : BitVec 64)
+    (js : SailJoltState)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (js' : SailJoltState)
+    (hok : (jolt_div rs2 rs1 rd q rem).run js = .ok RETIRE_SUCCESS js') :
+    q = sail_div_value dividend divisor false ∧
+    rem = bv_abs (sail_rem_value dividend divisor false) := by
+  -- Reshape: express the whole thing as five phases bound together.
+  rw [jolt_div_phased] at hok
+  -- Local abbreviation for the adjusted divisor (needed to invoke the
+  -- guard-extracting phase lemmas, all of which speak in terms of `adj`).
+  let adj := change_divisor_value dividend divisor
+  -- PHASE 1 unpeel + guard extraction.
+  obtain ⟨_, js₁, hp1, hok⟩ := bind_unpeel_of_ok hok
+  obtain ⟨hguard1, h1_v0, h1_v1, h1_sail⟩ :=
+    phase_setup_run_sound rs2 q rem js js₁ _ divisor hrs2 hp1
+  -- PHASE 2 unpeel + guard extraction.
+  obtain ⟨_, js₂, hp2, hok⟩ := bind_unpeel_of_ok hok
+  have hrs1_1 : rX_bits rs1 js₁.sail = .ok dividend js₁.sail :=
+    h1_sail.symm ▸ hrs1
+  have hrs2_1 : rX_bits rs2 js₁.sail = .ok divisor js₁.sail :=
+    h1_sail.symm ▸ hrs2
+  obtain ⟨hguard2, h2_v0, h2_v1, h2_v2, h2_v4, h2_sail⟩ :=
+    phase_overflow_check_run_sound rs1 rs2 js₁ js₂ _ q rem adj dividend divisor
+      hrs1_1 hrs2_1 h1_v0 h1_v1 rfl hp2
+  have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
+  -- PHASE 3 unpeel + guard extraction.
+  obtain ⟨_, js₃, hp3, hok⟩ := bind_unpeel_of_ok hok
+  have hrs1_2 : rX_bits rs1 js₂.sail = .ok dividend js₂.sail :=
+    h2_sail_orig.symm ▸ hrs1
+  obtain ⟨hguard3, h3_v0, h3_v1, h3_v2, _⟩ :=
+    phase_quotient_product_run_sound rs1 js₂ js₃ _ q rem adj dividend
+      hrs1_2 h2_v0 h2_v1 h2_v2 h2_v4 hp3
+  -- PHASE 4 unpeel + guard extraction.
+  -- (Phase 5's writeback has no guard; we don't need to peel it.)
+  obtain ⟨_, js₄, hp4, _⟩ := bind_unpeel_of_ok hok
+  obtain ⟨hguard4, _, _⟩ :=
+    phase_remainder_bound_run_sound js₃ js₄ _ q rem adj
+      h3_v0 h3_v1 h3_v2 hp4
+  -- All four guards now in hand. Uniqueness lemma closes the goal.
+  exact advice_unique_of_guards dividend divisor q rem adj rfl
+    hguard1 hguard2 hguard3 hguard4
 
 end
