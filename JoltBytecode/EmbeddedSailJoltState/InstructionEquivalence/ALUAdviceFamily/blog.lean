@@ -106,7 +106,14 @@ theorem prog1_on_5_320 (init_state final_state : State)
   unfold prog1
   -- Notice we do not actually simplify to that match business -
   -- we keep the imperative style. 
-  rw [bind_run_of_ok h1, bind_run_of_ok h2, bind_run_of_ok h3]
+  show (doubleX >>= fun _ =>
+           doubleX >>= fun _ =>
+           doubleX >>= fun _ =>
+           divYbyX).run init_state = .ok 8 final_state 
+  -- Teaching material
+  rw [bind_run_of_ok h1]
+  rw [bind_run_of_ok h2]
+  rw [bind_run_of_ok h3]
   exact h4
 
 end Blog
