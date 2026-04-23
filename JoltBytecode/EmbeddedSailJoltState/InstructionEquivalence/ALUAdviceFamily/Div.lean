@@ -89,16 +89,6 @@ theorem jolt_div_phased (rs2 rs1 rd : regidx)
   simp [jolt_div, phase_setup, phase_overflow_check, phase_quotient_product,
         phase_remainder_bound, phase_writeback, bind_assoc]
 
-/-- Factoring lemma: `execute_DIV` collapses to one `rX_bits` per source,
-one `wX_bits` of `sail_div_value`, and a `pure RETIRE_SUCCESS`. -/
-theorem execute_DIV_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
-    execute_DIV rs2 rs1 rd is_unsigned = (do
-      let v1 ← rX_bits rs1
-      let v2 ← rX_bits rs2
-      wX_bits rd (sail_div_value v1 v2 is_unsigned)
-      pure RETIRE_SUCCESS) := by
-  simp [execute_DIV, sail_div_value, bind_pure_comp]
-
 -- ----------------------------------------------------------------------------
 -- Completeness
 -- ----------------------------------------------------------------------------
@@ -177,6 +167,16 @@ theorem jolt_div_concrete (rs2 rs1 rd : regidx)
   rw [bind_run_of_ok hrun3]
   rw [bind_run_of_ok hrun4]
   exact hrun5
+
+/-- Factoring lemma: `execute_DIV` collapses to one `rX_bits` per source,
+one `wX_bits` of `sail_div_value`, and a `pure RETIRE_SUCCESS`. -/
+theorem execute_DIV_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
+    execute_DIV rs2 rs1 rd is_unsigned = (do
+      let v1 ← rX_bits rs1
+      let v2 ← rX_bits rs2
+      wX_bits rd (sail_div_value v1 v2 is_unsigned)
+      pure RETIRE_SUCCESS) := by
+  simp [execute_DIV, sail_div_value, bind_pure_comp]
 
 /-- **RHS reduction.** Running Sail's `execute_DIV` on `js.sail` produces
 `.ok RETIRE_SUCCESS` with the final state equal to `js.sail` with
