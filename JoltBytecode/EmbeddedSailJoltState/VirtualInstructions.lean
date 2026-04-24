@@ -400,12 +400,19 @@ def vreg_MUL (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
   writeVReg vd (x * y)
   pure RETIRE_SUCCESS
 
+/-- Upper 64 bits of a signed 64×64 multiply (the pure value written by
+    the `MULH` instruction). Factored out so the monadic primitive and
+    the pure-math lemmas (e.g. overflow-check proofs in `Div.lean`)
+    share one definition. -/
+def mulhs (a b : BitVec 64) : BitVec 64 :=
+  BitVec.ofInt 64 ((a.toInt * b.toInt) / (2 ^ 64))
+
 /-- `MULH vd, vs1, vs2`: virtual-register signed high multiply — upper
     64 bits of the 128-bit signed product. -/
 def vreg_MULH (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
   let x ← readVReg vs1
   let y ← readVReg vs2
-  writeVReg vd (BitVec.ofInt 64 ((x.toInt * y.toInt) / (2 ^ 64)))
+  writeVReg vd (mulhs x y)
   pure RETIRE_SUCCESS
 
 /-- `SRAI vd, vs1, shamt`: virtual-register arithmetic right shift by
@@ -415,5 +422,37 @@ def vreg_SRAI (vd vs1 : BitVec 7) (shamt : BitVec 6) :
   let x ← readVReg vs1
   writeVReg vd (shift_bits_right_arith x shamt)
   pure RETIRE_SUCCESS
+
+-- ============================================================================
+-- Generic constraint / advice-load primitives
+-- ============================================================================
+-- These aren't RISC-V arithmetic ops; they're Jolt-ISA control-plane
+-- primitives used by constraint-verified expansions (advice-verified
+-- DIV, equality checks between intermediate values, etc.). They are
+-- generic — usable by any expansion, not just the DIV family — so they
+-- live alongside the hardware ops rather than under a family-specific
+-- directory.
+
+/-- `VirtualAdvice vd, advice`: write an oracle-provided value into a
+    virtual register. No failure path. -/
+def vreg_advice (vd : BitVec 7) (advice : BitVec 64) : JoltMonad ExecutionResult := do
+  writeVReg vd advice
+  pure RETIRE_SUCCESS
+
+/-- `VirtualAssertEQ va, vb`: asserts two virtual registers are equal.
+    Throws `Error.Assertion` otherwise. -/
+def vreg_assert_eq (va vb : BitVec 7) : JoltMonad ExecutionResult := do
+  let a ← readVReg va
+  let b ← readVReg vb
+  if a = b then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertEQ")
+
+/-- `VirtualAssertEQ va, rb`: asserts a virtual register equals a real
+    register. -/
+def vreg_assert_eq_real (va : BitVec 7) (rb : regidx) : JoltMonad ExecutionResult := do
+  let a ← readVReg va
+  let b ← liftSail (rX_bits rb)
+  if a = b then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertEQ (vreg vs real)")
 
 end
