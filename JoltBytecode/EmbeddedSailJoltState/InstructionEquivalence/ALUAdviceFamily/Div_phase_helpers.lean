@@ -106,6 +106,393 @@ theorem bind_unpeel_of_ok {α β : Type} {m : JoltMonad α} {f : α → JoltMona
     rw [herr] at h
     cases h
 
+-- ============================================================================
+-- Vregs-after-write helpers
+-- ============================================================================
+/-!
+Looking up a vreg index `k` on a state of the form
+`{ sail := …, vregs := fun r => if r = vd then v else js.vregs r }`
+(the shape every per-instruction `_run` lemma produces) is either `v`
+(when `k = vd`) or `js.vregs k` (when `k ≠ vd`). These two helpers let
+phase proofs discharge each cross-state lookup in one line via
+`vregs_write_self` / `vregs_write_pres`, instead of the 3+ line
+`show … rw [if_pos|if_neg] …` chain inline.
+-/
+
+/-- After writing `v` to vreg `vd`, the lookup at `vd` returns `v`. -/
+theorem vregs_write_self (js : SailJoltState) (vd : BitVec 7) (v : BitVec 64) :
+    ({ sail := js.sail
+       vregs := fun r => if r = vd then v else js.vregs r } : SailJoltState).vregs vd
+      = v := by
+  sorry
+
+/-- After writing `v` to vreg `vd`, the lookup at any other index `k`
+returns the original value `js.vregs k`. -/
+theorem vregs_write_pres (js : SailJoltState) (vd : BitVec 7) (v : BitVec 64)
+    (k : BitVec 7) (h : k ≠ vd) :
+    ({ sail := js.sail
+       vregs := fun r => if r = vd then v else js.vregs r } : SailJoltState).vregs k
+      = js.vregs k := by
+  sorry
+
+-- ============================================================================
+-- Per-instruction `_run` lemmas (scaffolding for the phase helpers)
+-- ============================================================================
+/-!
+Below are the per-instruction characterisation lemmas needed to close
+the phase-run helpers (`phase_setup_run`, `phase_overflow_check_run`,
+`phase_quotient_product_run`, `phase_remainder_bound_run`,
+`phase_writeback_run`) and their soundness duals.
+
+Each pure arithmetic op gets a single `_run` lemma. Each Sail-touching
+op (`vreg_change_divisor`, `vreg_SRAI_from_real`, `vreg_ADDI_to_real`)
+takes the relevant `rX_bits`/`wX_bits` outcome as a hypothesis. Each
+assert gets a paired `_run_ok` / `_run_err` — mirroring
+`divYbyX_run_ok` / `divYbyX_run_err` from the toy — so callers feed
+`bind_run_of_ok` a clean equation rather than an `if`.
+
+`vreg_XOR_run` is already proved in `VirtualInstructions.lean` and is
+not restated here.
+
+Once these are filled in, each phase helper closes mechanically:
+
+  1. `let s_i : SailJoltState := …` for each intermediate state.
+  2. `have h_i : <instr>.run s_{i-1} = .ok _ s_i := <instr>_run …` per step.
+  3. `unfold phase_*; rw [bind_run_of_ok h_1]; …; exact h_n`.
+
+Soundness analogues run `bind_unpeel_of_ok` in the opposite direction
+and use `_run_err` to rule out the throw arm of each assert.
+-/
+
+-- ----------------------------------------------------------------------------
+-- Pure-arithmetic ops (Phase 2/3/4 bodies)
+-- ----------------------------------------------------------------------------
+
+/-- `vreg_advice vd advice`: writes `advice` into virtual register `vd`,
+leaving `sail` and all other vregs untouched. Never fails. -/
+theorem vreg_advice_run (vd : BitVec 7) (advice : BitVec 64) (js : SailJoltState) :
+    (vreg_advice vd advice).run js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then advice else js.vregs r } := by
+  unfold vreg_advice
+  simp only [bind, pure, writeVReg, modify, modifyGet, MonadStateOf.modifyGet]
+  rfl
+
+/-- `vreg_MULH vd vs1 vs2`: writes `mulhs (js.vregs vs1) (js.vregs vs2)`
+to `vd`. Pure. -/
+theorem vreg_MULH_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    vreg_MULH vd vs1 vs2 js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then mulhs (js.vregs vs1) (js.vregs vs2)
+                          else js.vregs r } := by
+  unfold vreg_MULH
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+
+/-- `vreg_MUL vd vs1 vs2`: writes the low 64 bits of the product to `vd`.
+Pure. -/
+theorem vreg_MUL_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    vreg_MUL vd vs1 vs2 js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then js.vregs vs1 * js.vregs vs2
+                          else js.vregs r } := by
+  unfold vreg_MUL
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+
+/-- `vreg_SRAI vd vs1 shamt`: arithmetic right shift of `vs1` by `shamt`,
+written to `vd`. Pure. -/
+theorem vreg_SRAI_run (vd vs1 : BitVec 7) (shamt : BitVec 6) (js : SailJoltState) :
+    vreg_SRAI vd vs1 shamt js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then shift_bits_right_arith (js.vregs vs1) shamt
+                          else js.vregs r } := by
+  unfold vreg_SRAI
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+
+/-- `vreg_ADD vd vs1 vs2`: 64-bit add. Pure. -/
+theorem vreg_ADD_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    vreg_ADD vd vs1 vs2 js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then js.vregs vs1 + js.vregs vs2
+                          else js.vregs r } := by
+  unfold vreg_ADD
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+
+/-- `vreg_SUB vd vs1 vs2`: 64-bit subtract. Pure. -/
+theorem vreg_SUB_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    vreg_SUB vd vs1 vs2 js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then js.vregs vs1 - js.vregs vs2
+                          else js.vregs r } := by
+  unfold vreg_SUB
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+
+-- ----------------------------------------------------------------------------
+-- Sail-touching ops (real-register reads/writes inside the phase bodies)
+-- ----------------------------------------------------------------------------
+-- Each of these takes an `rX_bits` or `wX_bits` hypothesis pinning down
+-- the value read from / final state after writing to a real register.
+-- The phase callers discharge that hypothesis from the standing
+-- `hrs1`/`hrs2` arguments transported across the running `.sail` chain.
+
+/-- `vreg_change_divisor vd rs1 rs2`: reads real `rs1` and `rs2`, writes
+`change_divisor_value dividend divisor` to virtual register `vd`. -/
+theorem vreg_change_divisor_run (vd : BitVec 7) (rs1 rs2 : regidx)
+    (js : SailJoltState) (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    vreg_change_divisor vd rs1 rs2 js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r =>
+          if r = vd then change_divisor_value dividend divisor
+          else js.vregs r } := by
+  unfold vreg_change_divisor liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             writeVReg, modify, modifyGet,
+             MonadStateOf.modifyGet, EStateM.modifyGet]
+  rw [hrs1]
+  simp only []
+  rw [hrs2]
+
+/-- `vreg_SRAI_from_real vd rs1 shamt`: reads real `rs1`, arithmetic
+right shift by `shamt`, writes virtual `vd`. -/
+theorem vreg_SRAI_from_real_run (vd : BitVec 7) (rs1 : regidx) (shamt : BitVec 6)
+    (js : SailJoltState) (rs1_val : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail) :
+    vreg_SRAI_from_real vd rs1 shamt js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r =>
+          if r = vd then shift_bits_right_arith rs1_val shamt
+          else js.vregs r } := by
+  unfold vreg_SRAI_from_real liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             writeVReg, modify, modifyGet,
+             MonadStateOf.modifyGet, EStateM.modifyGet]
+  rw [hrs1]
+
+/-- `vreg_ADDI_to_real rd vs1 imm`: reads virtual `vs1`, adds the
+sign-extended immediate, writes real `rd`. The post-write Sail state
+`s'` is determined by `wX_bits rd (v + sext imm)` and threaded in from
+the caller (`wX_shape` from `RegisterOps` produces the witness). -/
+theorem vreg_ADDI_to_real_run (rd : regidx) (vs1 : BitVec 7) (imm : BitVec 12)
+    (js : SailJoltState) (s' : SailState)
+    (hwrite :
+      wX_bits rd (js.vregs vs1 + sign_extend (m := 64) imm) js.sail
+        = .ok () s') :
+    vreg_ADDI_to_real rd vs1 imm js = .ok RETIRE_SUCCESS
+      { sail := s', vregs := js.vregs } := by
+  unfold vreg_ADDI_to_real liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get]
+  rw [hwrite]
+
+-- ----------------------------------------------------------------------------
+-- Asserts — paired `_run_ok` / `_run_err`
+-- ----------------------------------------------------------------------------
+-- Mirrors the `divYbyX_run_ok` / `divYbyX_run_err` split from the toy:
+-- the success branch is what completeness chains through `bind_run_of_ok`;
+-- the error branch is what soundness uses to contradict the throw arm
+-- after an `_run_sound` unpeel produces a successful run.
+
+/-- `vreg_assert_valid_div0 rs2 vq` — success branch. When the guard
+`¬ (divisor = 0 ∧ vq ≠ -1)` holds, the assert passes through with no
+state change. -/
+theorem vreg_assert_valid_div0_run_ok (rs2 : regidx) (vq : BitVec 7)
+    (js : SailJoltState) (divisor : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hguard : ¬ (divisor = 0#64 ∧ js.vregs vq ≠ (-1 : BitVec 64))) :
+    vreg_assert_valid_div0 rs2 vq js = .ok RETIRE_SUCCESS js := by
+  unfold vreg_assert_valid_div0 liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get]
+  rw [hrs2]
+  simp only []
+  rw [if_neg hguard]
+  rfl
+
+/-- `vreg_assert_valid_div0 rs2 vq` — failure branch. When the guard
+fires (`divisor = 0 ∧ vq ≠ -1`), the assert throws. -/
+theorem vreg_assert_valid_div0_run_err (rs2 : regidx) (vq : BitVec 7)
+    (js : SailJoltState) (divisor : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hguard : divisor = 0#64 ∧ js.vregs vq ≠ (-1 : BitVec 64)) :
+    vreg_assert_valid_div0 rs2 vq js =
+      .error
+        (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
+        js := by
+  unfold vreg_assert_valid_div0 liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get,
+             throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+  rw [hrs2]
+  simp only []
+  rw [if_pos hguard]
+  rfl
+
+/-- `vreg_assert_eq va vb` — success branch. -/
+theorem vreg_assert_eq_run_ok (va vb : BitVec 7) (js : SailJoltState)
+    (hguard : js.vregs va = js.vregs vb) :
+    vreg_assert_eq va vb js = .ok RETIRE_SUCCESS js := by
+  unfold vreg_assert_eq
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get]
+  rw [if_pos hguard]
+  rfl
+
+/-- `vreg_assert_eq va vb` — failure branch. -/
+theorem vreg_assert_eq_run_err (va vb : BitVec 7) (js : SailJoltState)
+    (hguard : js.vregs va ≠ js.vregs vb) :
+    vreg_assert_eq va vb js =
+      .error (Error.Assertion "VirtualAssertEQ") js := by
+  unfold vreg_assert_eq
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get,
+             throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+  rw [if_neg hguard]
+  rfl
+
+/-- `vreg_assert_eq_real va rb` — success branch. The real-register
+read is pinned by `hrb`; `hguard` says the virtual value matches. -/
+theorem vreg_assert_eq_real_run_ok (va : BitVec 7) (rb : regidx)
+    (js : SailJoltState) (rb_val : BitVec 64)
+    (hrb : rX_bits rb js.sail = .ok rb_val js.sail)
+    (hguard : js.vregs va = rb_val) :
+    vreg_assert_eq_real va rb js = .ok RETIRE_SUCCESS js := by
+  unfold vreg_assert_eq_real liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get]
+  rw [hrb]
+  simp only []
+  rw [if_pos hguard]
+  rfl
+
+/-- `vreg_assert_eq_real va rb` — failure branch. -/
+theorem vreg_assert_eq_real_run_err (va : BitVec 7) (rb : regidx)
+    (js : SailJoltState) (rb_val : BitVec 64)
+    (hrb : rX_bits rb js.sail = .ok rb_val js.sail)
+    (hguard : js.vregs va ≠ rb_val) :
+    vreg_assert_eq_real va rb js =
+      .error (Error.Assertion "VirtualAssertEQ (vreg vs real)") js := by
+  unfold vreg_assert_eq_real liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get,
+             throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+  rw [hrb]
+  simp only []
+  rw [if_neg hguard]
+  rfl
+
+/-- `vreg_assert_valid_unsigned_remainder vr vd` — success branch. -/
+theorem vreg_assert_valid_unsigned_remainder_run_ok
+    (vr vd : BitVec 7) (js : SailJoltState)
+    (hguard : (js.vregs vr).toNat < (js.vregs vd).toNat) :
+    vreg_assert_valid_unsigned_remainder vr vd js
+      = .ok RETIRE_SUCCESS js := by
+  unfold vreg_assert_valid_unsigned_remainder
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get]
+  rw [if_pos hguard]
+  rfl
+
+/-- `vreg_assert_valid_unsigned_remainder vr vd` — failure branch. -/
+theorem vreg_assert_valid_unsigned_remainder_run_err
+    (vr vd : BitVec 7) (js : SailJoltState)
+    (hguard : ¬ (js.vregs vr).toNat < (js.vregs vd).toNat) :
+    vreg_assert_valid_unsigned_remainder vr vd js =
+      .error
+        (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d")
+        js := by
+  unfold vreg_assert_valid_unsigned_remainder
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, get, getThe, MonadStateOf.get, EStateM.get,
+             throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+  rw [if_neg hguard]
+  rfl
+
+-- ============================================================================
+-- Existential `_run_ex` variants (opaque post-state)
+-- ============================================================================
+/-!
+The concrete `_run` lemmas above expose the post-state's vregs as a
+literal lambda `fun r => if r = vd then v else js.vregs r`. When several
+vreg-writing instructions are chained, the inner `js.vregs r` references
+the *previous* state's vregs, and the kernel has to walk the chain at
+every cross-state lookup. With four or more chained writes, this hits
+deep recursion.
+
+The `_run_ex` variants below restate each writing instruction's effect
+**propositionally** — `vregs vd = v`, vregs preserved at other indices,
+sail preserved — and existentialise the post-state. After
+`obtain ⟨s, h, h_at, h_pres, h_sail⟩ := vreg_X_run_ex …`, `s` is an
+opaque fresh fvar; the kernel cannot unfold it, so no chain forms and
+cross-state lookups become one-line consequences of `h_pres`.
+
+Phase proofs that chain four or more vreg-writes (Phases 2–4) use these
+variants. Phase 1 (only two writes) and Phase 5 (single sail write) keep
+the concrete `_run` form. -/
+
+/-- Existential variant of `vreg_advice_run`. -/
+theorem vreg_advice_run_ex (vd : BitVec 7) (advice : BitVec 64) (js : SailJoltState) :
+    ∃ js',
+      (vreg_advice vd advice).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = advice ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  sorry
+
+/-- Existential variant of `vreg_MULH_run`. -/
+theorem vreg_MULH_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    ∃ js',
+      (vreg_MULH vd vs1 vs2).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = mulhs (js.vregs vs1) (js.vregs vs2) ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  sorry
+
+/-- Existential variant of `vreg_MUL_run`. -/
+theorem vreg_MUL_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    ∃ js',
+      (vreg_MUL vd vs1 vs2).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = js.vregs vs1 * js.vregs vs2 ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  sorry
+
+/-- Existential variant of `vreg_SRAI_run`. -/
+theorem vreg_SRAI_run_ex (vd vs1 : BitVec 7) (shamt : BitVec 6) (js : SailJoltState) :
+    ∃ js',
+      (vreg_SRAI vd vs1 shamt).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = shift_bits_right_arith (js.vregs vs1) shamt ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  sorry
+
+/-- Existential variant of `vreg_change_divisor_run`. -/
+theorem vreg_change_divisor_run_ex (vd : BitVec 7) (rs1 rs2 : regidx)
+    (js : SailJoltState) (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    ∃ js',
+      (vreg_change_divisor vd rs1 rs2).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = change_divisor_value dividend divisor ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  sorry
+
 -- ----------------------------------------------------------------------------
 -- Phase-run lemmas
 -- ----------------------------------------------------------------------------
@@ -121,7 +508,33 @@ theorem phase_setup_run
       js'.vregs 0 = q ∧
       js'.vregs 1 = rem ∧
       js'.sail = js.sail := by
-  sorry
+  unfold phase_setup
+  let s1 : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = (0 : BitVec 7) then q else js.vregs r }
+  let s2 : SailJoltState :=
+    { sail := s1.sail
+      vregs := fun r => if r = (1 : BitVec 7) then rem else s1.vregs r }
+  have h1 : (vreg_advice 0 q).run js = .ok RETIRE_SUCCESS s1 := vreg_advice_run 0 q js
+  have h2 : (vreg_advice 1 rem).run s1 = .ok RETIRE_SUCCESS s2 := vreg_advice_run 1 rem s1
+  have hs2_v0 : s2.vregs 0 = q := by
+    show (if (0 : BitVec 7) = 1 then rem else s1.vregs 0) = q
+    rw [if_neg (by decide : (0 : BitVec 7) ≠ 1)]
+    show (if (0 : BitVec 7) = 0 then q else js.vregs 0) = q
+    rw [if_pos rfl]
+  have hs2_v1 : s2.vregs 1 = rem := by
+    show (if (1 : BitVec 7) = 1 then rem else s1.vregs 1) = rem
+    rw [if_pos rfl]
+  have hs2_sail : s2.sail = js.sail := rfl
+  have hrs2_s2 : rX_bits rs2 s2.sail = .ok divisor s2.sail := by
+    rw [hs2_sail]; exact hrs2
+  have hguard_s2 : ¬ (divisor = 0#64 ∧ s2.vregs 0 ≠ (-1 : BitVec 64)) := by
+    rw [hs2_v0]; exact hguard_div0
+  have h3 : vreg_assert_valid_div0 rs2 0 s2 = .ok RETIRE_SUCCESS s2 :=
+    vreg_assert_valid_div0_run_ok rs2 0 s2 divisor hrs2_s2 hguard_s2
+  refine ⟨s2, ?_, hs2_v0, hs2_v1, hs2_sail⟩
+  rw [bind_run_of_ok h1, bind_run_of_ok h2]
+  exact h3
 
 /-- Phase 2 — adjusted divisor + MUL/MULH + overflow-check assert.
 
@@ -145,8 +558,51 @@ theorem phase_overflow_check_run
       js'.vregs 2 = adj ∧
       js'.vregs 4 = q * adj ∧
       js'.sail = js.sail := by
-  sorry
-
+  unfold phase_overflow_check
+  -- Step 1: vreg_change_divisor 2 rs1 rs2 → writes adj_value to v2; s1 opaque.
+  obtain ⟨s1, h1, h1_v2, h1_pres, h1_sail⟩ :=
+    vreg_change_divisor_run_ex 2 rs1 rs2 js dividend divisor hrs1 hrs2
+  -- Step 2: vreg_MULH 3 0 2 → writes mulhs(s1.v0, s1.v2) to v3; s2 opaque.
+  obtain ⟨s2, h2, h2_v3, h2_pres, h2_sail⟩ := vreg_MULH_run_ex 3 0 2 s1
+  -- Step 3: vreg_MUL 4 0 2 → writes (s2.v0 * s2.v2) to v4; s3 opaque.
+  obtain ⟨s3, h3, h3_v4, h3_pres, h3_sail⟩ := vreg_MUL_run_ex 4 0 2 s2
+  -- Step 4: vreg_SRAI 5 4 63 → writes (s3.v4).sshiftRight 63 to v5; s4 opaque.
+  obtain ⟨s4, h4, h4_v5, h4_pres, h4_sail⟩ := vreg_SRAI_run_ex 5 4 63 s3
+  -- Lookups on s1 (chained from js).
+  have hs1_v0 : s1.vregs 0 = q := (h1_pres 0 (by decide)).trans h_v0
+  have hs1_v2 : s1.vregs 2 = adj := h1_v2.trans hadj.symm
+  -- Lookups on s2 (chained through h2_pres, plus h2_v3 specialised).
+  have hs2_v0 : s2.vregs 0 = q := (h2_pres 0 (by decide)).trans hs1_v0
+  have hs2_v2 : s2.vregs 2 = adj := (h2_pres 2 (by decide)).trans hs1_v2
+  have hs2_v3 : s2.vregs 3 = mulhs q adj := by rw [h2_v3, hs1_v0, hs1_v2]
+  -- Lookups on s3 (h3_pres preserves v3, h3_v4 specialises v4).
+  have hs3_v3 : s3.vregs 3 = mulhs q adj := (h3_pres 3 (by decide)).trans hs2_v3
+  have hs3_v4 : s3.vregs 4 = q * adj := by rw [h3_v4, hs2_v0, hs2_v2]
+  -- Lookups on s4 needed for the assert and post-condition.
+  have hs4_v3 : s4.vregs 3 = mulhs q adj := (h4_pres 3 (by decide)).trans hs3_v3
+  have hs4_v5 : s4.vregs 5 = (q * adj).sshiftRight 63 := by
+    rw [h4_v5, hs3_v4]; rfl
+  -- Step 5: assert v3 = v5 — discharged via the overflow guard.
+  have hguard_eq : s4.vregs 3 = s4.vregs 5 := by
+    rw [hs4_v3, hs4_v5]; exact hguard_overflow
+  have h5 : (vreg_assert_eq 3 5).run s4 = .ok RETIRE_SUCCESS s4 :=
+    vreg_assert_eq_run_ok 3 5 s4 hguard_eq
+  -- Post-condition vregs lookups on s4 (chained through preservation).
+  have hs2_v1 : s2.vregs 1 = rem :=
+    (h2_pres 1 (by decide)).trans ((h1_pres 1 (by decide)).trans h_v1)
+  have hs3_v0 : s3.vregs 0 = q := (h3_pres 0 (by decide)).trans hs2_v0
+  have hs3_v1 : s3.vregs 1 = rem := (h3_pres 1 (by decide)).trans hs2_v1
+  have hs3_v2 : s3.vregs 2 = adj := (h3_pres 2 (by decide)).trans hs2_v2
+  have hs4_v0 : s4.vregs 0 = q := (h4_pres 0 (by decide)).trans hs3_v0
+  have hs4_v1 : s4.vregs 1 = rem := (h4_pres 1 (by decide)).trans hs3_v1
+  have hs4_v2 : s4.vregs 2 = adj := (h4_pres 2 (by decide)).trans hs3_v2
+  have hs4_v4 : s4.vregs 4 = q * adj := (h4_pres 4 (by decide)).trans hs3_v4
+  have hs4_sail : s4.sail = js.sail :=
+    h4_sail.trans (h3_sail.trans (h2_sail.trans h1_sail))
+  -- Stitch the bind chain.
+  refine ⟨s4, ?_, hs4_v0, hs4_v1, hs4_v2, hs4_v4, hs4_sail⟩
+  rw [bind_run_of_ok h1, bind_run_of_ok h2, bind_run_of_ok h3, bind_run_of_ok h4]
+  exact h5
 /-- Phase 3 — signed-remainder reconstruction + `assert_eq_real v4 rs1`.
 
 `signed_rem` is `(rem XOR sign(dividend)) - sign(dividend)` — the
@@ -204,7 +660,18 @@ theorem phase_writeback_run
     ∃ js',
       (phase_writeback rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js_ref rd q := by
-  sorry
+  unfold phase_writeback
+  have hq : js.vregs (0 : BitVec 7) + sign_extend (m := 64) (0 : BitVec 12) = q := by
+    rw [h_v0]
+    have hz : sign_extend (m := 64) (0 : BitVec 12) = 0#64 := by decide
+    rw [hz, BitVec.add_zero]
+  obtain ⟨s', hw⟩ := wX_shape rd q js.sail
+  refine ⟨{ sail := s', vregs := js.vregs }, ?_, ?_⟩
+  · show vreg_ADDI_to_real rd 0 0 js = _
+    exact vreg_ADDI_to_real_run rd 0 0 js s' (by rw [hq]; exact hw)
+  · show s' = stateAfterWrite js_ref rd q
+    rw [← h_sail]
+    exact wX_bits_eq_stateAfterWrite rd q js.sail s' hw
 
 -- ----------------------------------------------------------------------------
 -- Phase-run soundness lemmas (reverse direction)
