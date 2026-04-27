@@ -775,6 +775,205 @@ private theorem bv_eq_zero_of_toNat_lt_one (x : BitVec 64) (h : x.toNat < 1) :
   apply BitVec.eq_of_toNat_eq
   simp; omega
 
+/-- **Sub-helper #1.** The overflow-check guard `h2` forces the integer
+product `q.toInt * b.toInt` to lie in the canonical signed-64-bit range
+`[-2^63, 2^63)`. This is the converse content of `v3_eq_v5_of_honest` —
+that lemma derives `mulhs q b = (q*b).sshiftRight 63` *from* the
+no-overflow bound; here we go the other direction.
+
+Proof strategy: take `.toInt` of both sides of `h`. Compute
+`(mulhs q b).toInt = ((q.toInt * b.toInt) / 2^64).bmod (2^64)` and
+`((q*b).sshiftRight 63).toInt ∈ {0, -1}` based on `(q*b).msb`. Since
+`p / 2^64` is bounded by `±2^62`, the `bmod (2^64) = -1` (resp `= 0`)
+forces `p / 2^64 = -1` (resp `= 0`). Combined with `(q*b).msb`'s
+constraint on `p.bmod (2^64)`, we get `p ∈ [-2^63, 2^63)`. -/
+private theorem product_in_range_of_mulhs_eq {q b : BitVec 64}
+    (h : mulhs q b = (q * b).sshiftRight 63) :
+    -(2^63 : Int) ≤ q.toInt * b.toInt ∧ q.toInt * b.toInt < 2^63 := by
+  -- BitVec toInt bounds.
+  have hq_lo : -(2^63 : Int) ≤ q.toInt := by
+    have := @BitVec.le_toInt 64 q; simpa using this
+  have hq_hi : q.toInt < 2^63 := by
+    have := @BitVec.toInt_lt 64 q; simpa using this
+  have hb_lo : -(2^63 : Int) ≤ b.toInt := by
+    have := @BitVec.le_toInt 64 b; simpa using this
+  have hb_hi : b.toInt < 2^63 := by
+    have := @BitVec.toInt_lt 64 b; simpa using this
+  -- Bounds on p.
+  have hp_lo : -(2^126 : Int) ≤ q.toInt * b.toInt := by nlinarith
+  have hp_hi : q.toInt * b.toInt ≤ 2^126 := by nlinarith
+  -- Bounds on p / 2^64.
+  have hediv_lo : -(2^62 : Int) ≤ q.toInt * b.toInt / 2^64 := by
+    rw [Int.le_ediv_iff_mul_le (by norm_num : (0 : Int) < 2^64)]; linarith
+  have hediv_hi : q.toInt * b.toInt / 2^64 ≤ 2^62 := by
+    rw [Int.ediv_le_iff_le_mul (by norm_num : (0 : Int) < 2^64)]; linarith
+  -- Take toInt of h.
+  have h_int : (mulhs q b).toInt = ((q * b).sshiftRight 63).toInt := by rw [h]
+  have hL : (mulhs q b).toInt = ((q.toInt * b.toInt) / 2^64).bmod (2^64) := by
+    show (BitVec.ofInt 64 ((q.toInt * b.toInt) / 2^64)).toInt = _
+    rw [BitVec.toInt_ofInt]
+  rw [hL] at h_int
+  -- (q*b).toInt = p.bmod (2^64).
+  have hM : (q * b).toInt = (q.toInt * b.toInt).bmod (2^64) := BitVec.toInt_mul q b
+  -- Helpers: 2^64/2 = 2^63 and (2^64+1)/2 = 2^63.
+  have h64a : (((2^64 : Nat) : Int) / 2) = (2^63 : Int) := by decide
+  have h64b : (((2^64 : Nat) : Int) + 1) / 2 = (2^63 : Int) := by decide
+  -- Case on (q*b).msb.
+  by_cases hmsb : (q * b).msb = true
+  · -- msb = true → sshiftRight = -1#64, RHS toInt = -1.
+    rw [sshiftRight_63_of_msb_true hmsb] at h_int
+    rw [show ((-1#64 : BitVec 64)).toInt = -1 from by decide] at h_int
+    -- p / 2^64 = -1.
+    have hediv_eq : q.toInt * b.toInt / 2^64 = -1 := by
+      have h1 : -(((2^64 : Nat) : Int) / 2) ≤ q.toInt * b.toInt / 2^64 := by
+        rw [h64a]; linarith
+      have h2 : q.toInt * b.toInt / 2^64 < (((2^64 : Nat) : Int) + 1) / 2 := by
+        rw [h64b]; linarith
+      rw [Int.bmod_eq_of_le h1 h2] at h_int
+      exact h_int
+    -- p ∈ [-2^64, 0).
+    have hp_ge : -(2^64 : Int) ≤ q.toInt * b.toInt := by
+      have : (-1 : Int) * 2^64 ≤ q.toInt * b.toInt := by
+        rw [← Int.le_ediv_iff_mul_le (by norm_num : (0 : Int) < 2^64)]; linarith
+      linarith
+    have hp_lt : q.toInt * b.toInt < 0 := by
+      have : q.toInt * b.toInt < 0 * 2^64 := by
+        rw [← Int.ediv_lt_iff_lt_mul (by norm_num : (0 : Int) < 2^64)]; linarith
+      linarith
+    -- (q*b).msb = true → p.bmod (2^64) < 0.
+    have hbm_neg : (q.toInt * b.toInt).bmod (2^64) < 0 := by
+      have h_qb_neg : (q * b).toInt < 0 := BitVec.toInt_neg_of_msb_true hmsb
+      rw [hM] at h_qb_neg; exact h_qb_neg
+    -- For p ∈ [-2^64, 0), p.bmod (2^64) < 0 forces p ≥ -2^63.
+    refine ⟨?_, by linarith⟩
+    -- Use the bmod = x - m*bdiv decomposition; bdiv must be 0 (since p ∈ [-2^64, 0) and bmod < 0).
+    have h_bmod_decomp :
+        (q.toInt * b.toInt).bmod (2^64)
+          = q.toInt * b.toInt - (2^64 : Nat) * (q.toInt * b.toInt).bdiv (2^64) :=
+      Int.bmod_eq_self_sub_mul_bdiv _ _
+    have h_bmod_lo : -(((2^64 : Nat) : Int) / 2) ≤ (q.toInt * b.toInt).bmod (2^64) :=
+      Int.le_bmod (by norm_num)
+    have h_bmod_hi :
+        (q.toInt * b.toInt).bmod (2^64) < (((2^64 : Nat) : Int) + 1) / 2 :=
+      Int.bmod_lt (by norm_num)
+    rw [h64a] at h_bmod_lo
+    rw [h64b] at h_bmod_hi
+    push_cast at h_bmod_decomp
+    -- Normalize `2^64` literal across all hypotheses.
+    norm_num at *
+    omega
+  · -- msb = false → sshiftRight = 0#64, RHS toInt = 0.
+    have hmsb_f : (q * b).msb = false := by
+      cases h' : (q * b).msb; rfl; exact (hmsb h').elim
+    rw [sshiftRight_63_of_msb_false hmsb_f] at h_int
+    rw [show ((0#64 : BitVec 64)).toInt = 0 from by decide] at h_int
+    -- p / 2^64 = 0.
+    have hediv_eq : q.toInt * b.toInt / 2^64 = 0 := by
+      have h1 : -(((2^64 : Nat) : Int) / 2) ≤ q.toInt * b.toInt / 2^64 := by
+        rw [h64a]; linarith
+      have h2 : q.toInt * b.toInt / 2^64 < (((2^64 : Nat) : Int) + 1) / 2 := by
+        rw [h64b]; linarith
+      rw [Int.bmod_eq_of_le h1 h2] at h_int
+      exact h_int
+    -- p ∈ [0, 2^64).
+    have hp_ge : 0 ≤ q.toInt * b.toInt := by
+      have : (0 : Int) * 2^64 ≤ q.toInt * b.toInt := by
+        rw [← Int.le_ediv_iff_mul_le (by norm_num : (0 : Int) < 2^64)]; linarith
+      linarith
+    have hp_lt : q.toInt * b.toInt < 2^64 := by
+      have : q.toInt * b.toInt < 1 * 2^64 := by
+        rw [← Int.ediv_lt_iff_lt_mul (by norm_num : (0 : Int) < 2^64)]; linarith
+      linarith
+    -- (q*b).msb = false → 0 ≤ p.bmod (2^64).
+    have hbm_nn : 0 ≤ (q.toInt * b.toInt).bmod (2^64) := by
+      have h_qb_nn : 0 ≤ (q * b).toInt :=
+        BitVec.toInt_nonneg_of_msb_false hmsb_f
+      rw [hM] at h_qb_nn; exact h_qb_nn
+    -- For p ∈ [0, 2^64) with bmod ≥ 0, conclude p < 2^63.
+    refine ⟨by linarith, ?_⟩
+    -- Same bdiv-decomposition approach.
+    have h_bmod_decomp :
+        (q.toInt * b.toInt).bmod (2^64)
+          = q.toInt * b.toInt - (2^64 : Nat) * (q.toInt * b.toInt).bdiv (2^64) :=
+      Int.bmod_eq_self_sub_mul_bdiv _ _
+    have h_bmod_lo : -(((2^64 : Nat) : Int) / 2) ≤ (q.toInt * b.toInt).bmod (2^64) :=
+      Int.le_bmod (by norm_num)
+    have h_bmod_hi :
+        (q.toInt * b.toInt).bmod (2^64) < (((2^64 : Nat) : Int) + 1) / 2 :=
+      Int.bmod_lt (by norm_num)
+    rw [h64a] at h_bmod_lo
+    rw [h64b] at h_bmod_hi
+    push_cast at h_bmod_decomp
+    -- Normalize `2^64` literal across all hypotheses.
+    norm_num at *
+    omega
+
+/-- **Sub-helper #2.** Convert the BitVec sign-fixup to an `Int` formula
+that's easy to feed to `Int.tdiv_tmod_unique`: `signed_rem.toInt` equals
+`rem.toNat` (when `dividend.msb = false`) or `-rem.toNat` (when set).
+Hypothesis `hrem_msb : rem.msb = false` ensures `rem.toInt = rem.toNat`. -/
+private theorem signed_rem_toInt {rem dividend : BitVec 64}
+    (hrem_msb : rem.msb = false) :
+    ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63).toInt
+      = if dividend.msb then -(rem.toNat : Int) else (rem.toNat : Int) := by
+  by_cases hd : dividend.msb = true
+  · rw [if_pos hd, sshiftRight_63_of_msb_true hd]
+    rw [show (-1#64 : BitVec 64) = BitVec.allOnes 64 from by decide,
+        BitVec.xor_allOnes]
+    rw [show BitVec.allOnes 64 = -1#64 from by decide, BitVec.sub_neg]
+    rw [← BitVec.neg_eq_not_add]
+    -- Goal: (-rem).toInt = -(rem.toNat : Int)
+    rw [BitVec.toInt_neg, BitVec.toInt_eq_toNat_of_msb hrem_msb]
+    -- Goal: (-(rem.toNat : Int)).bmod (2^64) = -(rem.toNat : Int)
+    have h_bound : (rem.toNat : Int) < 2^63 := by
+      have : 2 * rem.toNat < 2^64 := BitVec.msb_eq_false_iff_two_mul_lt.mp hrem_msb
+      exact_mod_cast (by omega : rem.toNat < 2^63)
+    apply Int.bmod_eq_of_le
+    · show -(((2^64 : Nat) : Int) / 2) ≤ -(rem.toNat : Int)
+      have h64 : (((2^64 : Nat) : Int) / 2) = (2^63 : Int) := by decide
+      rw [h64]; omega
+    · show -(rem.toNat : Int) < (((2^64 : Nat) : Int) + 1) / 2
+      have h64 : (((2^64 : Nat) : Int) + 1) / 2 = (2^63 : Int) := by decide
+      rw [h64]
+      have : 0 ≤ (rem.toNat : Int) := Int.natCast_nonneg _
+      omega
+  · have hd_f : dividend.msb = false := by
+      cases h : dividend.msb
+      · rfl
+      · exact (hd h).elim
+    rw [if_neg hd, sshiftRight_63_of_msb_false hd_f, BitVec.xor_zero, BitVec.sub_zero]
+    exact BitVec.toInt_eq_toNat_of_msb hrem_msb
+
+/-- **Sub-helper #3.** The final Int-uniqueness step: given the lifted
+identity, the bound, and the sign-condition on `signed_rem.toInt`, we get
+`q.toInt = dividend.toInt.tdiv divisor.toInt` and
+`signed_rem.toInt = dividend.toInt.tmod divisor.toInt`. Direct application
+of `Int.tdiv_tmod_unique` (or its `'` variant). -/
+private theorem int_uniqueness_step {a b q r : Int} (hb : b ≠ 0)
+    (heq : q * b + r = a)
+    (hr_pos : 0 ≤ a → 0 ≤ r)
+    (hr_neg : a < 0 → r ≤ 0)
+    (hr_lt : r.natAbs < b.natAbs) :
+    a.tdiv b = q ∧ a.tmod b = r := by
+  by_cases ha : 0 ≤ a
+  · refine (Int.tdiv_tmod_unique ha hb).mpr ⟨?_, hr_pos ha, ?_⟩
+    · linarith [Int.mul_comm q b]
+    · have h1 : (r.natAbs : Int) = r :=
+        Int.natAbs_of_nonneg (hr_pos ha)
+      have h2 : (r.natAbs : Int) < (b.natAbs : Int) := by exact_mod_cast hr_lt
+      omega
+  · push_neg at ha
+    refine (Int.tdiv_tmod_unique' (le_of_lt ha) hb).mpr ⟨?_, ?_, hr_neg ha⟩
+    · linarith [Int.mul_comm q b]
+    · have hr_np : r ≤ 0 := hr_neg ha
+      have h1 : (r.natAbs : Int) = -r := by
+        have h_nn : 0 ≤ -r := by linarith
+        have := Int.natAbs_of_nonneg h_nn
+        rw [Int.natAbs_neg] at this
+        exact this
+      have h2 : (r.natAbs : Int) < (b.natAbs : Int) := by exact_mod_cast hr_lt
+      omega
+
 /-- Soundness uniqueness in the **normal** case (divisor ≠ 0 and not the
 overflow pair). Given the BitVec division equation and the no-overflow
 guard h2, plus the bound `rem.toNat < |divisor|.toNat`, the advice
@@ -794,7 +993,144 @@ private theorem advice_unique_normal
     (hbnd : rem.toNat < divisor.toInt.natAbs) :
     q = BitVec.sdiv dividend divisor ∧
     rem = bv_abs (BitVec.srem dividend divisor) := by
-  sorry
+  -- Setup.
+  have hdivInt_ne : divisor.toInt ≠ 0 := by
+    intro h; apply h_ne; apply BitVec.eq_of_toInt_eq
+    rw [BitVec.toInt_zero]; exact h
+  have hshift_eq_intMin : ((1 : BitVec 64) <<< 63) = BitVec.intMin 64 := by decide
+  have hneg_eq : ((-1 : BitVec 64)) = (-1#64) := by decide
+  have hne_pair : dividend ≠ BitVec.intMin 64 ∨ divisor ≠ -1#64 := by
+    by_cases ha : dividend = BitVec.intMin 64
+    · right; intro hb; apply h_no_ovf
+      exact ⟨hshift_eq_intMin ▸ ha, hneg_eq ▸ hb⟩
+    · left; exact ha
+  -- divisor.toInt bounds.
+  have hdiv_lo : -(2^63 : Int) ≤ divisor.toInt := by
+    have := @BitVec.le_toInt 64 divisor; simpa using this
+  have hdiv_hi : divisor.toInt < 2^63 := by
+    have := @BitVec.toInt_lt 64 divisor; simpa using this
+  have hdiv_natAbs_le : divisor.toInt.natAbs ≤ 2^63 := by
+    rcases Int.natAbs_eq divisor.toInt with hpos | hneg
+    · have h1 : (divisor.toInt.natAbs : Int) ≤ (2^63 : Int) := by rw [← hpos]; omega
+      exact_mod_cast h1
+    · have h1 : (divisor.toInt.natAbs : Int) = -divisor.toInt := by
+        have := Int.natAbs_of_nonneg (show (0 : Int) ≤ -divisor.toInt by omega)
+        rw [Int.natAbs_neg] at this; exact this
+      have h2 : (divisor.toInt.natAbs : Int) ≤ (2^63 : Int) := by rw [h1]; omega
+      exact_mod_cast h2
+  -- rem.msb = false.
+  have hrem_msb : rem.msb = false := by
+    apply BitVec.msb_eq_false_iff_two_mul_lt.mpr
+    have : rem.toNat < 2^63 := lt_of_lt_of_le hbnd hdiv_natAbs_le
+    omega
+  -- signed_rem.toInt formula.
+  have h_signed_int :
+      ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63).toInt
+        = if dividend.msb then -(rem.toNat : Int) else (rem.toNat : Int) :=
+    signed_rem_toInt hrem_msb
+  -- Product range from h2.
+  obtain ⟨h_p_lo, h_p_hi⟩ := product_in_range_of_mulhs_eq h2
+  -- (q * divisor).toInt = q.toInt * divisor.toInt (no smulOverflow).
+  have h_no_smulOvf : q.smulOverflow divisor = false := by
+    unfold BitVec.smulOverflow
+    have hp : (2 : Int)^(64 - 1) = 2^63 := by norm_num
+    simp only [Bool.or_eq_false_iff, decide_eq_false_iff_not, not_le, not_lt, hp]
+    exact ⟨h_p_hi, h_p_lo⟩
+  have h_no_smulOvf' : ¬ q.smulOverflow divisor = true := by
+    rw [h_no_smulOvf]; decide
+  have h_qdiv_toInt : (q * divisor).toInt = q.toInt * divisor.toInt :=
+    BitVec.toInt_mul_of_not_smulOverflow h_no_smulOvf'
+  -- Set s := signed_rem.
+  set s := (rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63 with hs_def
+  -- |s.toInt| = rem.toNat.
+  have h_s_natAbs : s.toInt.natAbs = rem.toNat := by
+    rw [h_signed_int]
+    by_cases hd : dividend.msb
+    · simp [hd, Int.natAbs_neg]
+    · simp [hd]
+  -- |s.toInt| < |divisor.toInt|.
+  have h_s_natAbs_lt : s.toInt.natAbs < divisor.toInt.natAbs := h_s_natAbs ▸ hbnd
+  -- s.toInt sign condition: ≥ 0 when dividend.toInt ≥ 0; ≤ 0 when dividend.toInt < 0.
+  have h_s_sign_pos : 0 ≤ dividend.toInt → 0 ≤ s.toInt := by
+    intro _
+    rw [h_signed_int]
+    by_cases hdmsb : dividend.msb
+    · simp [hdmsb]
+      have := BitVec.toInt_neg_of_msb_true hdmsb; omega
+    · simp [hdmsb]
+  have h_s_sign_neg : dividend.toInt < 0 → s.toInt ≤ 0 := by
+    intro hd_neg
+    rw [h_signed_int]
+    have hdmsb : dividend.msb = true := by
+      by_contra h_f
+      push_neg at h_f
+      have h_msb_f : dividend.msb = false := by
+        cases h' : dividend.msb; rfl; exact (h_f h').elim
+      have := BitVec.toInt_nonneg_of_msb_false h_msb_f; omega
+    simp [hdmsb]
+  -- Sum equation: q.toInt * divisor.toInt + s.toInt = dividend.toInt.
+  -- Lift h3 via toInt.
+  have h_lift : ((q * divisor).toInt + s.toInt).bmod (2^64) = dividend.toInt := by
+    have h_eq : (q * divisor + s).toInt = dividend.toInt := by rw [h3]
+    rwa [BitVec.toInt_add] at h_eq
+  rw [h_qdiv_toInt] at h_lift
+  -- Bounds on s.toInt's magnitude.
+  have h_s_abs : -(rem.toNat : Int) ≤ s.toInt ∧ s.toInt ≤ (rem.toNat : Int) := by
+    rw [h_signed_int]
+    by_cases hd : dividend.msb
+    · simp [hd]
+    · simp [hd]
+  have h_rem_lt : (rem.toNat : Int) < (divisor.toInt.natAbs : Int) := by exact_mod_cast hbnd
+  have h_div_natAbs : (divisor.toInt.natAbs : Int) ≤ 2^63 := by exact_mod_cast hdiv_natAbs_le
+  -- dividend.toInt bounds.
+  have hd_lo : -(2^63 : Int) ≤ dividend.toInt := by
+    have := @BitVec.le_toInt 64 dividend; simpa using this
+  have hd_hi : dividend.toInt < 2^63 := by
+    have := @BitVec.toInt_lt 64 dividend; simpa using this
+  -- Rule out wrap by bdiv decomposition + sign info.
+  -- Key facts about bmod / bdiv applied to the sum.
+  have h_bmod_range_lo : -(((2^64 : Nat) : Int) / 2) ≤
+      (q.toInt * divisor.toInt + s.toInt).bmod (2^64) := Int.le_bmod (by norm_num)
+  have h_bmod_range_hi :
+      (q.toInt * divisor.toInt + s.toInt).bmod (2^64)
+        < (((2^64 : Nat) : Int) + 1) / 2 := Int.bmod_lt (by norm_num)
+  have h_bdiv_decomp :
+      (q.toInt * divisor.toInt + s.toInt).bmod (2^64)
+        = (q.toInt * divisor.toInt + s.toInt)
+          - (2^64 : Nat) * (q.toInt * divisor.toInt + s.toInt).bdiv (2^64) :=
+    Int.bmod_eq_self_sub_mul_bdiv _ _
+  -- Normalize the 2^64 / 2 etc.
+  have h64a : (((2^64 : Nat) : Int) / 2) = (2^63 : Int) := by decide
+  have h64b : (((2^64 : Nat) : Int) + 1) / 2 = (2^63 : Int) := by decide
+  rw [h64a] at h_bmod_range_lo
+  rw [h64b] at h_bmod_range_hi
+  rw [h_lift] at h_bdiv_decomp h_bmod_range_lo h_bmod_range_hi
+  push_cast at h_bdiv_decomp
+  -- Now show sum = dividend.toInt by case-split on dividend's sign and using h_s_sign_pos/neg.
+  have h_sum_eq : q.toInt * divisor.toInt + s.toInt = dividend.toInt := by
+    by_cases hd_nn : 0 ≤ dividend.toInt
+    · have h_s_nn := h_s_sign_pos hd_nn
+      -- s ≥ 0, q*d ≥ -2^63 → sum ≥ -2^63.
+      -- bdiv ∈ {0, 1} from this.  We'll show bdiv = 0.
+      omega
+    · push_neg at hd_nn
+      have h_s_np := h_s_sign_neg hd_nn
+      -- s ≤ 0, q*d < 2^63 → sum < 2^63. bdiv ∈ {0, -1}.
+      omega
+  -- Apply int_uniqueness_step directly with h_sum_eq.
+  obtain ⟨h_tdiv, h_tmod⟩ :=
+    int_uniqueness_step (a := dividend.toInt) (b := divisor.toInt)
+      (q := q.toInt) (r := s.toInt) hdivInt_ne
+      h_sum_eq h_s_sign_pos h_s_sign_neg h_s_natAbs_lt
+  -- Conclude q = sdiv.
+  refine ⟨?_, ?_⟩
+  · apply BitVec.eq_of_toInt_eq
+    rw [BitVec.toInt_sdiv_of_ne_or_ne dividend divisor hne_pair]
+    exact h_tdiv.symm
+  · -- rem = bv_abs (BitVec.srem dividend divisor).
+    apply BitVec.eq_of_toNat_eq
+    rw [bv_abs_toNat_eq_natAbs, BitVec.toInt_srem, h_tmod]
+    exact h_s_natAbs.symm
 
 /-- **Uniqueness.** If some advice `(q, rem)` makes all four assertion
 guards in `jolt_div` pass, then `(q, rem)` is exactly the honest pair
