@@ -925,7 +925,37 @@ theorem phase_setup_run_sound
     js₁.vregs 0 = q ∧
     js₁.vregs 1 = rem ∧
     js₁.sail = js.sail := by
-  sorry
+  unfold phase_setup at hp
+  -- Step 1: unpeel vreg_advice 0 q.
+  obtain ⟨_, s₁, hrun1, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₁, hrun1_ex, hs1_v0, hs1_pres, hs1_sail⟩ := vreg_advice_run_ex 0 q js
+  rw [hrun1_ex] at hrun1
+  cases hrun1
+  -- Step 2: unpeel vreg_advice 1 rem.
+  obtain ⟨_, s₂, hrun2, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₂, hrun2_ex, hs2_v1, hs2_pres, hs2_sail⟩ := vreg_advice_run_ex 1 rem s₁
+  rw [hrun2_ex] at hrun2
+  cases hrun2
+  -- Step 3: assert. Cross-state lookups for the guard.
+  have hs2_v0 : s₂.vregs 0 = q := (hs2_pres 0 (by decide)).trans hs1_v0
+  have hs2_sail_orig : s₂.sail = js.sail := hs2_sail.trans hs1_sail
+  have hrs2_s2 : rX_bits rs2 s₂.sail = .ok divisor s₂.sail := hs2_sail_orig.symm ▸ hrs2
+  -- Case-split on the div0 guard via the assert's _run_ok / _run_err.
+  by_cases hguard : (divisor = 0#64 ∧ s₂.vregs 0 ≠ (-1 : BitVec 64))
+  · -- guard fires → throw, contradicts .ok
+    exfalso
+    have herr := vreg_assert_valid_div0_run_err rs2 0 s₂ divisor hrs2_s2 hguard
+    change vreg_assert_valid_div0 rs2 0 s₂ = .ok r js₁ at hp
+    rw [herr] at hp
+    cases hp
+  · -- guard holds → state preserved, js₁ = s₂
+    have hok := vreg_assert_valid_div0_run_ok rs2 0 s₂ divisor hrs2_s2 hguard
+    change vreg_assert_valid_div0 rs2 0 s₂ = .ok r js₁ at hp
+    rw [hok] at hp
+    cases hp
+    refine ⟨?_, hs2_v0, hs2_v1, hs2_sail_orig⟩
+    rw [hs2_v0] at hguard
+    exact hguard
 
 /-- Phase 2 soundness — if `phase_overflow_check` ok-terminates given
 the standing invariants on `js`, the overflow-check assert's guard
@@ -947,7 +977,66 @@ theorem phase_overflow_check_run_sound
     js₁.vregs 2 = adj ∧
     js₁.vregs 4 = q * adj ∧
     js₁.sail = js.sail := by
-  sorry
+  unfold phase_overflow_check at hp
+  -- Step 1: vreg_change_divisor 2 rs1 rs2.
+  obtain ⟨_, s₁, hrun1, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₁, hrun1_ex, hs1_v2, hs1_pres, hs1_sail⟩ :=
+    vreg_change_divisor_run_ex 2 rs1 rs2 js dividend divisor hrs1 hrs2
+  rw [hrun1_ex] at hrun1
+  cases hrun1
+  -- Step 2: vreg_MULH 3 0 2.
+  obtain ⟨_, s₂, hrun2, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₂, hrun2_ex, hs2_v3, hs2_pres, hs2_sail⟩ := vreg_MULH_run_ex 3 0 2 s₁
+  rw [hrun2_ex] at hrun2
+  cases hrun2
+  -- Step 3: vreg_MUL 4 0 2.
+  obtain ⟨_, s₃, hrun3, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₃, hrun3_ex, hs3_v4, hs3_pres, hs3_sail⟩ := vreg_MUL_run_ex 4 0 2 s₂
+  rw [hrun3_ex] at hrun3
+  cases hrun3
+  -- Step 4: vreg_SRAI 5 4 63.
+  obtain ⟨_, s₄, hrun4, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₄, hrun4_ex, hs4_v5, hs4_pres, hs4_sail⟩ := vreg_SRAI_run_ex 5 4 63 s₃
+  rw [hrun4_ex] at hrun4
+  cases hrun4
+  -- Cross-state lookups (chained through preservation).
+  have hs1_v0 : s₁.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
+  have hs1_v2_adj : s₁.vregs 2 = adj := hs1_v2.trans hadj.symm
+  have hs2_v0 : s₂.vregs 0 = q := (hs2_pres 0 (by decide)).trans hs1_v0
+  have hs2_v2 : s₂.vregs 2 = adj := (hs2_pres 2 (by decide)).trans hs1_v2_adj
+  have hs2_v3' : s₂.vregs 3 = mulhs q adj := by rw [hs2_v3, hs1_v0, hs1_v2_adj]
+  have hs3_v3 : s₃.vregs 3 = mulhs q adj := (hs3_pres 3 (by decide)).trans hs2_v3'
+  have hs3_v4' : s₃.vregs 4 = q * adj := by rw [hs3_v4, hs2_v0, hs2_v2]
+  have hs4_v3 : s₄.vregs 3 = mulhs q adj := (hs4_pres 3 (by decide)).trans hs3_v3
+  have hs4_v5' : s₄.vregs 5 = (q * adj).sshiftRight 63 := by
+    rw [hs4_v5, hs3_v4']; rfl
+  -- Step 5: assert v3 = v5. Case-split on the equality guard.
+  by_cases hguard_eq : s₄.vregs 3 = s₄.vregs 5
+  · -- Derive all post-state facts BEFORE the assert's `cases hp`, since that
+    -- substitutes `s₄ → js₁` and dismisses references to `s₄`.
+    have hguard : mulhs q adj = (q * adj).sshiftRight 63 := by
+      rw [← hs4_v3, hguard_eq, hs4_v5']
+    have hs4_v0 : s₄.vregs 0 = q :=
+      (chain_pres_4 hs1_pres hs2_pres hs3_pres hs4_pres 0 (by decide)).trans h_v0
+    have hs4_v1 : s₄.vregs 1 = rem :=
+      (chain_pres_4 hs1_pres hs2_pres hs3_pres hs4_pres 1 (by decide)).trans h_v1
+    have hs4_v2 : s₄.vregs 2 = adj :=
+      (((hs4_pres 2 (by decide)).trans (hs3_pres 2 (by decide))).trans
+        (hs2_pres 2 (by decide))).trans hs1_v2_adj
+    have hs4_v4 : s₄.vregs 4 = q * adj := (hs4_pres 4 (by decide)).trans hs3_v4'
+    have hs4_sail_orig : s₄.sail = js.sail :=
+      hs4_sail.trans (hs3_sail.trans (hs2_sail.trans hs1_sail))
+    have hok := vreg_assert_eq_run_ok 3 5 s₄ hguard_eq
+    change vreg_assert_eq 3 5 s₄ = .ok r js₁ at hp
+    rw [hok] at hp
+    cases hp
+    exact ⟨hguard, hs4_v0, hs4_v1, hs4_v2, hs4_v4, hs4_sail_orig⟩
+  · -- guard fails → throw, contradicts .ok
+    exfalso
+    have herr := vreg_assert_eq_run_err 3 5 s₄ hguard_eq
+    change vreg_assert_eq 3 5 s₄ = .ok r js₁ at hp
+    rw [herr] at hp
+    cases hp
 
 /-- Phase 3 soundness — if `phase_quotient_product` ok-terminates, the
 division equation `q·adj + signed_rem = dividend` held. -/
@@ -968,7 +1057,66 @@ theorem phase_quotient_product_run_sound
     js₁.vregs 1 = rem ∧
     js₁.vregs 2 = adj ∧
     js₁.sail = js.sail := by
-  sorry
+  unfold phase_quotient_product at hp
+  -- Step 1: vreg_SRAI_from_real 3 rs1 63.
+  obtain ⟨_, s₁, hrun1, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₁, hrun1_ex, hs1_v3, hs1_pres, hs1_sail⟩ :=
+    vreg_SRAI_from_real_run_ex 3 rs1 63 js dividend hrs1
+  rw [hrun1_ex] at hrun1
+  cases hrun1
+  -- Step 2: vreg_XOR 5 1 3.
+  obtain ⟨_, s₂, hrun2, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₂, hrun2_ex, hs2_v5, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 5 1 3 s₁
+  rw [hrun2_ex] at hrun2
+  cases hrun2
+  -- Step 3: vreg_SUB 5 5 3.
+  obtain ⟨_, s₃, hrun3, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₃, hrun3_ex, hs3_v5, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex 5 5 3 s₂
+  rw [hrun3_ex] at hrun3
+  cases hrun3
+  -- Step 4: vreg_ADD 4 4 5.
+  obtain ⟨_, s₄, hrun4, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₄, hrun4_ex, hs4_v4, hs4_pres, hs4_sail⟩ := vreg_ADD_run_ex 4 4 5 s₃
+  rw [hrun4_ex] at hrun4
+  cases hrun4
+  -- Cross-state lookups for the v4 derivation.
+  have hs1_v1 : s₁.vregs 1 = rem := (hs1_pres 1 (by decide)).trans h_v1
+  have hs1_v3' : s₁.vregs 3 = dividend.sshiftRight 63 := by rw [hs1_v3]; rfl
+  have hs1_v4 : s₁.vregs 4 = q * adj := (hs1_pres 4 (by decide)).trans h_v4
+  have hs2_v3 : s₂.vregs 3 = dividend.sshiftRight 63 :=
+    (hs2_pres 3 (by decide)).trans hs1_v3'
+  have hs2_v4 : s₂.vregs 4 = q * adj := (hs2_pres 4 (by decide)).trans hs1_v4
+  have hs2_v5' : s₂.vregs 5 = rem ^^^ dividend.sshiftRight 63 := by
+    rw [hs2_v5, hs1_v1, hs1_v3']
+  have hs3_v4 : s₃.vregs 4 = q * adj := (hs3_pres 4 (by decide)).trans hs2_v4
+  have hs3_v5' :
+      s₃.vregs 5 = (rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63 := by
+    rw [hs3_v5, hs2_v5', hs2_v3]
+  have hs4_v4' :
+      s₄.vregs 4 =
+        q * adj + ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63) := by
+    rw [hs4_v4, hs3_v4, hs3_v5']
+  -- Sail propagation, transport hrs1 to s₄.
+  have hs4_sail_orig : s₄.sail = js.sail :=
+    hs4_sail.trans (hs3_sail.trans (hs2_sail.trans hs1_sail))
+  have hrs1_s4 : rX_bits rs1 s₄.sail = .ok dividend s₄.sail :=
+    hs4_sail_orig.symm ▸ hrs1
+  -- Step 5: assert v4 = rs1. Case-split on guard.
+  by_cases hguard : s₄.vregs 4 = dividend
+  · have hok := vreg_assert_eq_real_run_ok 4 rs1 s₄ dividend hrs1_s4 hguard
+    change vreg_assert_eq_real 4 rs1 s₄ = .ok r js₁ at hp
+    rw [hok] at hp
+    cases hp
+    refine ⟨?_, ?_, ?_, ?_, hs4_sail_orig⟩
+    · rw [← hs4_v4']; exact hguard
+    · exact (chain_pres_4 hs1_pres hs2_pres hs3_pres hs4_pres 0 (by decide)).trans h_v0
+    · exact (chain_pres_4 hs1_pres hs2_pres hs3_pres hs4_pres 1 (by decide)).trans h_v1
+    · exact (chain_pres_4 hs1_pres hs2_pres hs3_pres hs4_pres 2 (by decide)).trans h_v2
+  · exfalso
+    have herr := vreg_assert_eq_real_run_err 4 rs1 s₄ dividend hrs1_s4 hguard
+    change vreg_assert_eq_real 4 rs1 s₄ = .ok r js₁ at hp
+    rw [herr] at hp
+    cases hp
 
 /-- Phase 4 soundness — if `phase_remainder_bound` ok-terminates, the
 unsigned remainder bound `rem.toNat < |adj|.toNat` held. -/
@@ -983,7 +1131,49 @@ theorem phase_remainder_bound_run_sound
       ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat ∧
     js₁.vregs 0 = q ∧
     js₁.sail = js.sail := by
-  sorry
+  unfold phase_remainder_bound at hp
+  -- Step 1: vreg_SRAI 3 2 63.
+  obtain ⟨_, s₁, hrun1, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₁, hrun1_ex, hs1_v3, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 3 2 63 js
+  rw [hrun1_ex] at hrun1
+  cases hrun1
+  -- Step 2: vreg_XOR 5 2 3.
+  obtain ⟨_, s₂, hrun2, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₂, hrun2_ex, hs2_v5, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 5 2 3 s₁
+  rw [hrun2_ex] at hrun2
+  cases hrun2
+  -- Step 3: vreg_SUB 5 5 3.
+  obtain ⟨_, s₃, hrun3, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s₃, hrun3_ex, hs3_v5, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex 5 5 3 s₂
+  rw [hrun3_ex] at hrun3
+  cases hrun3
+  -- Cross-state lookups for the v5 derivation = |adj|.
+  have hs1_v2 : s₁.vregs 2 = adj := (hs1_pres 2 (by decide)).trans h_v2
+  have hs1_v3' : s₁.vregs 3 = adj.sshiftRight 63 := by rw [hs1_v3, h_v2]; rfl
+  have hs2_v3 : s₂.vregs 3 = adj.sshiftRight 63 :=
+    (hs2_pres 3 (by decide)).trans hs1_v3'
+  have hs2_v5' : s₂.vregs 5 = adj ^^^ adj.sshiftRight 63 := by
+    rw [hs2_v5, hs1_v2, hs1_v3']
+  have hs3_v5' :
+      s₃.vregs 5 = (adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63 := by
+    rw [hs3_v5, hs2_v5', hs2_v3]
+  have hs3_v1 : s₃.vregs 1 = rem :=
+    (chain_pres_3 hs1_pres hs2_pres hs3_pres 1 (by decide)).trans h_v1
+  have hs3_sail_orig : s₃.sail = js.sail := hs3_sail.trans (hs2_sail.trans hs1_sail)
+  -- Step 4: assert v1 < v5. Case-split on guard.
+  by_cases hguard : (s₃.vregs 1).toNat < (s₃.vregs 5).toNat
+  · have hok := vreg_assert_valid_unsigned_remainder_run_ok 1 5 s₃ hguard
+    change vreg_assert_valid_unsigned_remainder 1 5 s₃ = .ok r js₁ at hp
+    rw [hok] at hp
+    cases hp
+    refine ⟨?_, ?_, hs3_sail_orig⟩
+    · rw [← hs3_v1, ← hs3_v5']; exact hguard
+    · exact (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)).trans h_v0
+  · exfalso
+    have herr := vreg_assert_valid_unsigned_remainder_run_err 1 5 s₃ hguard
+    change vreg_assert_valid_unsigned_remainder 1 5 s₃ = .ok r js₁ at hp
+    rw [herr] at hp
+    cases hp
 
 /-- Phase 5 soundness — writeback is unconditional; just characterises
 the final state. -/
@@ -995,6 +1185,20 @@ theorem phase_writeback_run_sound
     (h_sail : js.sail = js_ref)
     (hp : (phase_writeback rd).run js = .ok r js₁) :
     js₁.sail = stateAfterWrite js_ref rd q := by
-  sorry
+  unfold phase_writeback at hp
+  change vreg_ADDI_to_real rd 0 0 js = .ok r js₁ at hp
+  have hq : js.vregs (0 : BitVec 7) + sign_extend (m := 64) (0 : BitVec 12) = q := by
+    rw [h_v0]
+    have hz : sign_extend (m := 64) (0 : BitVec 12) = 0#64 := by decide
+    rw [hz, BitVec.add_zero]
+  obtain ⟨s', hw⟩ := wX_shape rd q js.sail
+  have hp_concrete : vreg_ADDI_to_real rd 0 0 js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } :=
+    vreg_ADDI_to_real_run rd 0 0 js s' (by rw [hq]; exact hw)
+  rw [hp_concrete] at hp
+  cases hp
+  show s' = stateAfterWrite js_ref rd q
+  rw [← h_sail]
+  exact wX_bits_eq_stateAfterWrite rd q js.sail s' hw
 
 end
