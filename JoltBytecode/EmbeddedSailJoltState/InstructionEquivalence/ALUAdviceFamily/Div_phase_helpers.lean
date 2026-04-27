@@ -424,10 +424,12 @@ theorem vreg_assert_eq_real_run_err (va : BitVec 7) (rb : regidx)
   rw [if_neg hguard]
   rfl
 
-/-- `vreg_assert_valid_unsigned_remainder vr vd` — success branch. -/
+/-- `vreg_assert_valid_unsigned_remainder vr vd` — success branch.
+The guard is the disjunction `vd = 0 ∨ vr < vd` (matching the Rust
+short-circuit on zero divisor). -/
 theorem vreg_assert_valid_unsigned_remainder_run_ok
     (vr vd : BitVec 7) (js : SailJoltState)
-    (hguard : (js.vregs vr).toNat < (js.vregs vd).toNat) :
+    (hguard : js.vregs vd = 0#64 ∨ (js.vregs vr).toNat < (js.vregs vd).toNat) :
     vreg_assert_valid_unsigned_remainder vr vd js
       = .ok RETIRE_SUCCESS js := by
   unfold vreg_assert_valid_unsigned_remainder
@@ -436,13 +438,14 @@ theorem vreg_assert_valid_unsigned_remainder_run_ok
   rw [if_pos hguard]
   rfl
 
-/-- `vreg_assert_valid_unsigned_remainder vr vd` — failure branch. -/
+/-- `vreg_assert_valid_unsigned_remainder vr vd` — failure branch.
+The throw fires precisely when `vd ≠ 0 ∧ vr ≥ vd`. -/
 theorem vreg_assert_valid_unsigned_remainder_run_err
     (vr vd : BitVec 7) (js : SailJoltState)
-    (hguard : ¬ (js.vregs vr).toNat < (js.vregs vd).toNat) :
+    (hguard : ¬ (js.vregs vd = 0#64 ∨ (js.vregs vr).toNat < (js.vregs vd).toNat)) :
     vreg_assert_valid_unsigned_remainder vr vd js =
       .error
-        (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d")
+        (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d ∧ d ≠ 0")
         js := by
   unfold vreg_assert_valid_unsigned_remainder
   simp only [bind, EStateM.bind, pure, EStateM.pure,
@@ -834,7 +837,9 @@ theorem phase_quotient_product_run
 
 /-- Phase 4 — compute |adj| + `assert_valid_unsigned_remainder v1 v5`.
 
-Guard: `rem.toNat < (|adj|).toNat` — the absolute remainder is strictly
+Guard: `|adj| = 0 ∨ rem.toNat < |adj|.toNat` — either the adjusted
+divisor is zero (which makes the assert vacuous, matching the Rust
+short-circuit on divisor = 0), or the absolute remainder is strictly
 less than the absolute adjusted divisor, unsigned. -/
 theorem phase_remainder_bound_run
     (js : SailJoltState)
@@ -843,6 +848,7 @@ theorem phase_remainder_bound_run
     (h_v1 : js.vregs 1 = rem)
     (h_v2 : js.vregs 2 = adj)
     (hguard_rem_bound :
+        ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63) = 0#64 ∨
         rem.toNat <
           ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat) :
     ∃ js',
@@ -872,7 +878,7 @@ theorem phase_remainder_bound_run
   have hs3_v1 : s3.vregs 1 = rem :=
     (chain_pres_3 h1_pres h2_pres h3_pres 1 (by decide)).trans h_v1
   -- Step 4: assert v1 < v5 — discharged via hguard_rem_bound.
-  have hguard_lt : (s3.vregs 1).toNat < (s3.vregs 5).toNat := by
+  have hguard_lt : s3.vregs 5 = 0#64 ∨ (s3.vregs 1).toNat < (s3.vregs 5).toNat := by
     rw [hs3_v1, hs3_v5]; exact hguard_rem_bound
   have h4 : (vreg_assert_valid_unsigned_remainder 1 5).run s3
               = .ok RETIRE_SUCCESS s3 :=
@@ -1123,7 +1129,8 @@ theorem phase_quotient_product_run_sound
     cases hp
 
 /-- Phase 4 soundness — if `phase_remainder_bound` ok-terminates, the
-unsigned remainder bound `rem.toNat < |adj|.toNat` held. -/
+unsigned remainder bound holds *or* the adjusted divisor is zero (the
+Rust assert short-circuits in that case). -/
 theorem phase_remainder_bound_run_sound
     (js js₁ : SailJoltState) (r : ExecutionResult)
     (q rem adj : BitVec 64)
@@ -1131,8 +1138,9 @@ theorem phase_remainder_bound_run_sound
     (h_v1 : js.vregs 1 = rem)
     (h_v2 : js.vregs 2 = adj)
     (hp : (phase_remainder_bound).run js = .ok r js₁) :
-    rem.toNat <
-      ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat ∧
+    (((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63) = 0#64 ∨
+      rem.toNat <
+        ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat) ∧
     js₁.vregs 0 = q ∧
     js₁.sail = js.sail := by
   unfold phase_remainder_bound at hp
@@ -1164,14 +1172,16 @@ theorem phase_remainder_bound_run_sound
   have hs3_v1 : s₃.vregs 1 = rem :=
     (chain_pres_3 hs1_pres hs2_pres hs3_pres 1 (by decide)).trans h_v1
   have hs3_sail_orig : s₃.sail = js.sail := hs3_sail.trans (hs2_sail.trans hs1_sail)
-  -- Step 4: assert v1 < v5. Case-split on guard.
-  by_cases hguard : (s₃.vregs 1).toNat < (s₃.vregs 5).toNat
+  -- Step 4: assert (v5 = 0 ∨ v1 < v5). Case-split on guard.
+  by_cases hguard : s₃.vregs 5 = 0#64 ∨ (s₃.vregs 1).toNat < (s₃.vregs 5).toNat
   · have hok := vreg_assert_valid_unsigned_remainder_run_ok 1 5 s₃ hguard
     change vreg_assert_valid_unsigned_remainder 1 5 s₃ = .ok r js₁ at hp
     rw [hok] at hp
     cases hp
     refine ⟨?_, ?_, hs3_sail_orig⟩
-    · rw [← hs3_v1, ← hs3_v5']; exact hguard
+    · rcases hguard with h0 | hlt
+      · left; rw [← hs3_v5']; exact h0
+      · right; rw [← hs3_v1, ← hs3_v5']; exact hlt
     · exact (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)).trans h_v0
   · exfalso
     have herr := vreg_assert_valid_unsigned_remainder_run_err 1 5 s₃ hguard

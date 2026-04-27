@@ -241,6 +241,302 @@ theorem v3_eq_v5_of_honest
 --   3. `VirtualAssertEQ v4 rs1`        — step 13 (quotient·divisor + r = dividend)
 --   4. `VirtualAssertValidUnsignedRemainder` — step 17 (|r| < |adj|)
 
+-- ============================================================================
+-- Round-trip helpers for `to_bits_truncate ∘ BitVec.toInt`
+-- ============================================================================
+-- 64-bit analogs of `mod33_toNat_mod32` / `trunc32_eq_intCast` from
+-- `ALUFamily/Bridges/Mul.lean`. They bridge the Sail transpilation's
+-- `to_bits_truncate (l := 64) x` to `BitVec.ofInt 64 x` (the IntCast),
+-- which then simp-collapses with `BitVec.ofInt_toInt`.
+
+private theorem mod65_toNat_mod64 (x : Int) :
+    (x % 36893488147419103232).toNat % 18446744073709551616
+      = (x % 18446744073709551616).toNat := by
+  apply Int.ofNat.inj
+  simp [Int.toNat_of_nonneg
+          (Int.emod_nonneg _ (by norm_num : (36893488147419103232 : Int) ≠ 0)),
+        Int.toNat_of_nonneg
+          (Int.emod_nonneg _ (by norm_num : (18446744073709551616 : Int) ≠ 0))]
+
+private theorem trunc64_eq_intCast (x : Int) :
+    to_bits_truncate (l := 64) x = (x : BitVec 64) := by
+  apply BitVec.eq_of_toFin_eq
+  rw [show to_bits_truncate (l := 64) x
+        = BitVec.ofNat 64 ((x % 36893488147419103232).toNat) by
+        simp [to_bits_truncate, get_slice_int, BitVec.extractLsb']]
+  rw [BitVec.toFin_ofNat, BitVec.toFin_intCast]
+  ext
+  simpa [Fin.ofNat] using mod65_toNat_mod64 x
+
+-- ============================================================================
+-- Case helpers for sail_div_value / sail_rem_value / bv_abs
+-- ============================================================================
+/-!
+The four `hguard_*_of_honest` lemmas all need to inspect what
+`sail_div_value` and `sail_rem_value` return in each branch (zero
+divisor, signed-overflow pair, normal case). Pulling those case
+reductions into named lemmas — sorried for now — keeps each downstream
+proof short and factors the Sail/Mathlib bridge into one place per
+case.
+
+* `sail_div_value` cases:
+  - `divisor = 0`                                  → returns `-1`.
+  - `(dividend, divisor) = (INT_MIN, -1)` (overflow) → returns `INT_MIN`.
+  - otherwise (`normal`)                            → returns `BitVec.sdiv`.
+
+* `sail_rem_value` cases:
+  - `divisor = 0`                                  → returns `dividend`.
+  - otherwise (`normal`)                            → returns `BitVec.srem`.
+
+* General two's-complement identity reused by `hguard_quotient_product`
+  and `hguard_rem_bound`:
+  - `bv_abs x = (x ^^^ x.sshiftRight 63) - x.sshiftRight 63`.
+-/
+
+/-- `sail_div_value` returns `-1` when the divisor is zero. -/
+theorem sail_div_value_of_zero (dividend divisor : BitVec 64) (h : divisor = 0#64) :
+    sail_div_value dividend divisor false = (-1 : BitVec 64) := by
+  subst h
+  unfold sail_div_value
+  simp
+  decide
+
+/-- `sail_div_value` returns `INT_MIN` in the signed-overflow case
+`(dividend, divisor) = (INT_MIN, -1)`. -/
+theorem sail_div_value_of_overflow (dividend divisor : BitVec 64)
+    (h_pair : dividend = (1 : BitVec 64) <<< 63 ∧ divisor = -1) :
+    sail_div_value dividend divisor false = (1 : BitVec 64) <<< 63 := by
+  obtain ⟨hd, hdv⟩ := h_pair
+  subst hd
+  subst hdv
+  decide
+
+/-- `sail_div_value` agrees with `BitVec.sdiv` outside the divide-by-zero
+and signed-overflow cases. -/
+theorem sail_div_value_of_normal (dividend divisor : BitVec 64)
+    (h_ne : divisor ≠ 0#64)
+    (h_no_ovf : ¬ (dividend = (1 : BitVec 64) <<< 63 ∧ divisor = -1)) :
+    sail_div_value dividend divisor false = BitVec.sdiv dividend divisor := by
+  -- Standard prologue: divisor.toInt ≠ 0, and `dividend ≠ INT_MIN ∨ divisor ≠ -1`.
+  have hdivInt : divisor.toInt ≠ 0 := by
+    intro h; apply h_ne; apply BitVec.eq_of_toInt_eq
+    rw [BitVec.toInt_zero]; exact h
+  have hshift_eq_intMin : ((1 : BitVec 64) <<< 63) = BitVec.intMin 64 := by decide
+  have hneg_eq : ((-1 : BitVec 64)) = (-1#64) := by decide
+  have hne_pair : dividend ≠ BitVec.intMin 64 ∨ divisor ≠ -1#64 := by
+    by_cases ha : dividend = BitVec.intMin 64
+    · right; intro hb; apply h_no_ovf
+      exact ⟨hshift_eq_intMin ▸ ha, hneg_eq ▸ hb⟩
+    · left; exact ha
+  have hsdivInt : (BitVec.sdiv dividend divisor).toInt
+                = dividend.toInt.tdiv divisor.toInt :=
+    BitVec.toInt_sdiv_of_ne_or_ne dividend divisor hne_pair
+  have hbnd_hi : dividend.toInt.tdiv divisor.toInt < 2^63 := by
+    rw [← hsdivInt]
+    have := @BitVec.toInt_lt 64 (BitVec.sdiv dividend divisor); simpa using this
+  -- Resolve the two sail ifs; the second (overflow correction) takes the else.
+  unfold sail_div_value
+  simp only [Bool.false_eq_true, ↓reduceIte, beq_iff_eq, hdivInt,
+             show LeanRV64D.Functions.not false = true from rfl, Bool.true_and]
+  -- Goal: to_bits_truncate (if Int.tdiv ... ≥b 2^(xlen-1) then -... else Int.tdiv ...) = BitVec.sdiv ...
+  have hge_false :
+      (dividend.toInt.tdiv divisor.toInt ≥b
+        2 ^ ((LeanRV64D.Functions.xlen : Int) - 1)) = false := by
+    show decide _ = false
+    apply decide_eq_false
+    push_neg
+    have : (2 : Int) ^ ((LeanRV64D.Functions.xlen : Int) - 1) = 2^63 := by decide
+    rw [this]
+    exact hbnd_hi
+  rw [hge_false]
+  simp only [Bool.false_eq_true, ↓reduceIte]
+  -- Goal: to_bits_truncate (Int.tdiv ...) = BitVec.sdiv ...
+  rw [trunc64_eq_intCast, ← hsdivInt]
+  exact BitVec.ofInt_toInt
+
+/-- `sail_rem_value` returns the dividend when the divisor is zero. -/
+theorem sail_rem_value_of_zero (dividend divisor : BitVec 64) (h : divisor = 0#64) :
+    sail_rem_value dividend divisor false = dividend := by
+  subst h
+  unfold sail_rem_value
+  simp only [BitVec.toInt_zero, beq_iff_eq, decide_true, ↓reduceIte]
+  rw [trunc64_eq_intCast]
+  exact BitVec.ofInt_toInt
+
+/-- `sail_rem_value` agrees with `BitVec.srem` (truncated signed
+remainder) when the divisor is nonzero. -/
+theorem sail_rem_value_of_normal (dividend divisor : BitVec 64)
+    (h_ne : divisor ≠ 0#64) :
+    sail_rem_value dividend divisor false = BitVec.srem dividend divisor := by
+  have hdivInt : divisor.toInt ≠ 0 := by
+    intro h; apply h_ne; apply BitVec.eq_of_toInt_eq
+    rw [BitVec.toInt_zero]; exact h
+  unfold sail_rem_value
+  simp only [Bool.false_eq_true, ↓reduceIte, beq_iff_eq, hdivInt]
+  -- Goal: to_bits_truncate (Int.tmod dividend.toInt divisor.toInt) = BitVec.srem dividend divisor
+  rw [trunc64_eq_intCast, ← BitVec.toInt_srem]
+  exact BitVec.ofInt_toInt
+
+/-- Sign-broadcast at bit 63: when the msb is clear, `sshiftRight 63`
+returns the all-zeros bitvector. -/
+private theorem sshiftRight_63_of_msb_false {x : BitVec 64}
+    (h : x.msb = false) : x.sshiftRight 63 = 0#64 := by
+  rw [BitVec.sshiftRight_eq_of_msb_false h]
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_ushiftRight, BitVec.toNat_ofNat, Nat.zero_mod]
+  have hx : 2 * x.toNat < 2 ^ 64 := BitVec.msb_eq_false_iff_two_mul_lt.mp h
+  have : x.toNat / 2^63 = 0 := by omega
+  rw [Nat.shiftRight_eq_div_pow]; exact this
+
+/-- Sign-broadcast at bit 63: when the msb is set, `sshiftRight 63`
+returns the all-ones bitvector (`= -1`). -/
+private theorem sshiftRight_63_of_msb_true {x : BitVec 64}
+    (h : x.msb = true) : x.sshiftRight 63 = -1#64 := by
+  rw [BitVec.sshiftRight_eq_of_msb_true h]
+  have hnotmsb : (~~~x).msb = false := by
+    rw [BitVec.msb_not]; simp [h]
+  -- `(~~~x).sshiftRight 63 = 0`, and `(~~~x).sshiftRight 63 = (~~~x) >>> 63` by msb-false lemma.
+  have hush_zero : (~~~x) >>> 63 = 0#64 := by
+    rw [← BitVec.sshiftRight_eq_of_msb_false hnotmsb]
+    exact sshiftRight_63_of_msb_false hnotmsb
+  rw [hush_zero]
+  decide
+
+/-- Inverse of `bv_abs_eq_xor_sub_sign`: applying the sign-fixup XOR-SUB to
+`bv_abs x` (with `x`'s own sign-broadcast) recovers `x` itself. Useful in
+`hguard_quotient_product_of_honest`'s divisor=0 branch, where the sign-fixup
+of `|dividend|` with `dividend`'s sign yields `dividend`. -/
+theorem x_eq_bv_abs_xor_sub_sign (x : BitVec 64) :
+    (bv_abs x ^^^ x.sshiftRight 63) - x.sshiftRight 63 = x := by
+  unfold bv_abs
+  by_cases hmsb : x.msb = true
+  · rw [if_pos hmsb, sshiftRight_63_of_msb_true hmsb]
+    rw [show (-1#64 : BitVec 64) = BitVec.allOnes 64 from by decide,
+        BitVec.xor_allOnes]
+    -- Goal: ~~~(-x) - allOnes 64 = x
+    rw [show BitVec.allOnes 64 = -1#64 from by decide, BitVec.sub_neg]
+    -- Goal: ~~~(-x) + 1#64 = x; rewrite via `← neg_eq_not_add` then `neg_neg`.
+    rw [← BitVec.neg_eq_not_add, neg_neg]
+  · have hf : x.msb = false := by cases h : x.msb; rfl; exact (hmsb h).elim
+    rw [if_neg hmsb, sshiftRight_63_of_msb_false hf, BitVec.xor_zero, BitVec.sub_zero]
+
+/-- Two's-complement absolute value identity: `(x ^^^ sign(x)) - sign(x) = |x|`,
+where `sign(x) = x.sshiftRight 63` is the sign-broadcast (all-zeros for
+non-negative `x`, all-ones for negative `x`). Used to fold the Jolt
+sign-fixup expression into `bv_abs` in `hguard_quotient_product` and
+`hguard_rem_bound`. -/
+theorem bv_abs_eq_xor_sub_sign (x : BitVec 64) :
+    bv_abs x = (x ^^^ x.sshiftRight 63) - x.sshiftRight 63 := by
+  unfold bv_abs
+  by_cases hmsb : x.msb = true
+  · -- msb = true: sshiftRight 63 = -1; bv_abs x = -x.
+    rw [if_pos hmsb, sshiftRight_63_of_msb_true hmsb]
+    -- Goal: -x = (x ^^^ -1#64) - -1#64
+    rw [show (-1#64 : BitVec 64) = BitVec.allOnes 64 from by decide,
+        BitVec.xor_allOnes]
+    -- Goal: -x = ~~~x - allOnes 64. Since allOnes = -1 and ~~~x + 1 = -x,
+    -- we have ~~~x - (-1) = ~~~x + 1 = -x.
+    rw [show BitVec.allOnes 64 = -1#64 from by decide,
+        BitVec.sub_neg, BitVec.neg_eq_not_add]
+  · -- msb = false: sshiftRight 63 = 0; bv_abs x = x.
+    rw [if_neg hmsb]
+    have hf : x.msb = false := by
+      cases h : x.msb
+      · rfl
+      · exact (hmsb h).elim
+    rw [sshiftRight_63_of_msb_false hf, BitVec.xor_zero, BitVec.sub_zero]
+
+/-- BitVec division equation: `x = (x.sdiv y) * y + x.srem y`. The BitVec
+analog of `Int.tmod_add_mul_tdiv`; holds for every input pair, including
+`y = 0` and the signed-overflow pair (in those cases the modular wrap of
+`BitVec.mul`/`BitVec.add` makes both sides agree on `x`). Proved by
+transferring to `Int` via `BitVec.toInt_*`, peeling the `bmod`s with
+`Int.bmod_mul_bmod`/`bmod_add_bmod`, applying `Int.tmod_add_mul_tdiv`,
+and noting `x.toInt` is already in the canonical bmod range. -/
+theorem BitVec.sdiv_mul_add_srem (x y : BitVec 64) :
+    x = BitVec.sdiv x y * y + BitVec.srem x y := by
+  apply BitVec.eq_of_toInt_eq
+  rw [BitVec.toInt_add, BitVec.toInt_mul, BitVec.toInt_sdiv, BitVec.toInt_srem]
+  rw [Int.bmod_mul_bmod, Int.bmod_add_bmod]
+  rw [show x.toInt.tdiv y.toInt * y.toInt
+        = y.toInt * x.toInt.tdiv y.toInt from Int.mul_comm _ _]
+  rw [show y.toInt * x.toInt.tdiv y.toInt + x.toInt.tmod y.toInt
+        = x.toInt.tmod y.toInt + y.toInt * x.toInt.tdiv y.toInt from Int.add_comm _ _]
+  rw [Int.tmod_add_mul_tdiv]
+  -- Goal: x.toInt = x.toInt.bmod (2^64)
+  have hlo : -(2^63 : Int) ≤ x.toInt := by
+    have := @BitVec.le_toInt 64 x; simpa using this
+  have hhi : x.toInt < (2^63 : Int) := by
+    have := @BitVec.toInt_lt 64 x; simpa using this
+  have hbmod : x.toInt.bmod (2^64) = x.toInt := by
+    apply Int.bmod_eq_of_le
+    · show -(((2^64 : Nat) : Int) / 2) ≤ x.toInt
+      have h : (((2^64 : Nat) : Int) / 2) = (2^63 : Int) := by decide
+      rw [h]; exact hlo
+    · show x.toInt < ((((2^64 : Nat) : Int) + 1) / 2)
+      have h : ((((2^64 : Nat) : Int) + 1) / 2) = (2^63 : Int) := by decide
+      rw [h]; exact hhi
+  rw [hbmod]
+
+/-- Sign-fixup recovery for `BitVec.srem`: when `divisor ≠ 0`, the Jolt
+sign-fixup (XOR with `dividend`'s sign-broadcast, then subtract that sign-
+broadcast) of `bv_abs (BitVec.srem dividend divisor)` recovers
+`BitVec.srem dividend divisor` itself. This relies on the RISC-V truncated-
+remainder convention `sign(srem) = sign(dividend)` (when `srem ≠ 0`), which
+makes `srem.sshiftRight 63 = dividend.sshiftRight 63`. -/
+theorem srem_xor_sub_sign_eq_srem
+    (dividend divisor : BitVec 64) (h_ne : divisor ≠ 0#64) :
+    (bv_abs (BitVec.srem dividend divisor) ^^^ dividend.sshiftRight 63)
+      - dividend.sshiftRight 63
+    = BitVec.srem dividend divisor := by
+  by_cases hzero : BitVec.srem dividend divisor = 0#64
+  · rw [hzero]
+    rw [show bv_abs (0#64 : BitVec 64) = 0#64 from by decide]
+    rw [BitVec.zero_xor, BitVec.sub_self]
+  · -- srem ≠ 0: msb(srem) = msb(dividend), so the sign-broadcasts agree.
+    have hmsb_eq : (BitVec.srem dividend divisor).msb = dividend.msb := by
+      rw [BitVec.msb_srem]
+      simp [hzero]
+    have hssr_eq :
+        (BitVec.srem dividend divisor).sshiftRight 63 = dividend.sshiftRight 63 := by
+      by_cases hd : dividend.msb = true
+      · have hsrem_msb : (BitVec.srem dividend divisor).msb = true :=
+          hmsb_eq.trans hd
+        rw [sshiftRight_63_of_msb_true hsrem_msb, sshiftRight_63_of_msb_true hd]
+      · have hd_f : dividend.msb = false := by
+          cases h : dividend.msb; rfl; exact (hd h).elim
+        have hsrem_f : (BitVec.srem dividend divisor).msb = false :=
+          hmsb_eq.trans hd_f
+        rw [sshiftRight_63_of_msb_false hsrem_f, sshiftRight_63_of_msb_false hd_f]
+    rw [← hssr_eq]
+    exact x_eq_bv_abs_xor_sub_sign (BitVec.srem dividend divisor)
+
+/-- Bridging `bv_abs` (BitVec absolute value) to `Int.natAbs`: the unsigned
+size of `bv_abs x` equals the integer absolute value of `x.toInt`. The two
+sides agree on every input, including `INT_MIN` (where both are `2^63`). -/
+theorem bv_abs_toNat_eq_natAbs (x : BitVec 64) :
+    (bv_abs x).toNat = x.toInt.natAbs := by
+  -- `bv_abs = BitVec.abs` definitionally, so reuse Mathlib's `BitVec.toNat_abs`.
+  rw [show bv_abs x = BitVec.abs x from rfl, BitVec.toNat_abs]
+  rw [BitVec.toInt_eq_toNat_cond]
+  have hxlt : x.toNat < 2^64 := x.isLt
+  by_cases hmsb : x.msb = true
+  · rw [if_pos hmsb]
+    have hge : 2 * x.toNat ≥ 2^64 := BitVec.msb_eq_true_iff_two_mul_ge.mp hmsb
+    rw [if_neg (by omega)]
+    -- Goal: 2^64 - x.toNat = ((x.toNat : Int) - 2^64).natAbs
+    omega
+  · have hf : x.msb = false := by cases h : x.msb; rfl; exact (hmsb h).elim
+    rw [if_neg hmsb]
+    have hlt : 2 * x.toNat < 2^64 := BitVec.msb_eq_false_iff_two_mul_lt.mp hf
+    rw [if_pos hlt]
+    -- Goal: x.toNat = ((x.toNat : Int)).natAbs
+    omega
+
+-- ============================================================================
+-- Assertion-guard lemmas (cont'd)
+-- ============================================================================
+
 /-- **Guard 1 — `VirtualAssertValidDiv0`.**
 
 When the divisor is zero, the RISC-V spec fixes the quotient as `-1`
@@ -253,7 +549,12 @@ holds vacuously in the `divisor = 0` case and trivially when
 theorem hguard_div0_of_honest (dividend divisor : BitVec 64) :
     ¬ (divisor = 0#64 ∧
        sail_div_value dividend divisor false ≠ (-1 : BitVec 64)) := by
-  sorry
+  rintro ⟨hd, hq⟩
+  apply hq
+  subst hd
+  unfold sail_div_value
+  simp
+  decide
 
 /-- **Guard 2 — `VirtualAssertEQ v3 v5` (overflow check).**
 
@@ -267,7 +568,47 @@ theorem hguard_overflow_of_honest (dividend divisor : BitVec 64) :
     let q   := sail_div_value dividend divisor false
     let adj := change_divisor_value dividend divisor
     mulhs q adj = (q * adj).sshiftRight 63 := by
-  sorry
+  intro q adj
+  by_cases h_zero : divisor = 0#64
+  · -- divisor = 0: q = -1, adj = 0; both sides reduce to 0.
+    have hq : q = -1#64 := sail_div_value_of_zero dividend divisor h_zero
+    have hadj : adj = 0#64 := by
+      show change_divisor_value dividend divisor = 0#64
+      unfold change_divisor_value
+      rw [h_zero]
+      simp
+    rw [hq, hadj]
+    decide
+  · by_cases h_ovf : dividend = (1 : BitVec 64) <<< 63 ∧ divisor = -1
+    · -- Overflow: q = INT_MIN, adj = 1; both sides reduce to -1.
+      have hq : q = (1 : BitVec 64) <<< 63 :=
+        sail_div_value_of_overflow dividend divisor h_ovf
+      have hadj : adj = (1 : BitVec 64) := by
+        show change_divisor_value dividend divisor = 1
+        unfold change_divisor_value
+        rw [if_pos h_ovf]
+      rw [hq, hadj]
+      decide
+    · -- Normal: q = BitVec.sdiv, adj = divisor; apply `v3_eq_v5_of_honest`.
+      have hq : q = BitVec.sdiv dividend divisor :=
+        sail_div_value_of_normal dividend divisor h_zero h_ovf
+      have hadj : adj = divisor := by
+        show change_divisor_value dividend divisor = divisor
+        unfold change_divisor_value
+        rw [if_neg h_ovf]
+      rw [hq, hadj]
+      have hr : dividend = BitVec.sdiv dividend divisor * divisor +
+                  BitVec.srem dividend divisor :=
+        BitVec.sdiv_mul_add_srem dividend divisor
+      have hr_small :
+          (BitVec.srem dividend divisor).toInt.natAbs < divisor.toInt.natAbs := by
+        rw [BitVec.toInt_srem, Int.natAbs_tmod]
+        have hdivInt : divisor.toInt ≠ 0 := by
+          intro h; apply h_zero; apply BitVec.eq_of_toInt_eq
+          rw [BitVec.toInt_zero]; exact h
+        exact Nat.mod_lt _ (Int.natAbs_pos.mpr hdivInt)
+      exact v3_eq_v5_of_honest dividend divisor (BitVec.sdiv dividend divisor)
+        (BitVec.srem dividend divisor) h_zero h_ovf rfl hr hr_small
 
 /-- **Guard 3 — `VirtualAssertEQ v4 rs1` (division equation).**
 
@@ -287,7 +628,55 @@ theorem hguard_quotient_product_of_honest (dividend divisor : BitVec 64) :
     q * adj +
       ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63)
       = dividend := by
-  sorry
+  intro q rem adj
+  by_cases h_zero : divisor = 0#64
+  · -- divisor = 0: q = -1, adj = 0, sail_rem = dividend; signed-rem recovers dividend.
+    have hq : q = -1#64 := sail_div_value_of_zero dividend divisor h_zero
+    have hadj : adj = 0#64 := by
+      show change_divisor_value dividend divisor = 0#64
+      unfold change_divisor_value; rw [h_zero]; simp
+    have hrem : rem = bv_abs dividend := by
+      show bv_abs (sail_rem_value dividend divisor false) = _
+      rw [sail_rem_value_of_zero dividend divisor h_zero]
+    rw [hq, hadj, hrem]
+    -- Goal: -1 * 0 + (bv_abs d ^^^ d.sshiftRight 63 - d.sshiftRight 63) = d
+    rw [BitVec.mul_zero, BitVec.zero_add]
+    exact x_eq_bv_abs_xor_sub_sign dividend
+  · by_cases h_ovf : dividend = (1 : BitVec 64) <<< 63 ∧ divisor = -1
+    · -- Overflow: q = INT_MIN, adj = 1, sail_rem = 0, rem = 0; both sides reduce to dividend.
+      have hq : q = (1 : BitVec 64) <<< 63 :=
+        sail_div_value_of_overflow dividend divisor h_ovf
+      have hadj : adj = (1 : BitVec 64) := by
+        show change_divisor_value dividend divisor = 1
+        unfold change_divisor_value; rw [if_pos h_ovf]
+      have hsail_rem : sail_rem_value dividend divisor false = 0#64 := by
+        rw [sail_rem_value_of_normal dividend divisor h_zero]
+        apply BitVec.eq_of_toInt_eq
+        rw [BitVec.toInt_srem, BitVec.toInt_zero]
+        obtain ⟨hd, hdv⟩ := h_ovf
+        subst hd; subst hdv
+        decide
+      have hrem : rem = 0#64 := by
+        show bv_abs (sail_rem_value dividend divisor false) = _
+        rw [hsail_rem]; decide
+      rw [hq, hadj, hrem]
+      obtain ⟨hd, _⟩ := h_ovf
+      subst hd
+      decide
+    · -- Normal: q = sdiv, adj = divisor, sail_rem = srem.
+      have hq : q = BitVec.sdiv dividend divisor :=
+        sail_div_value_of_normal dividend divisor h_zero h_ovf
+      have hadj : adj = divisor := by
+        show change_divisor_value dividend divisor = divisor
+        unfold change_divisor_value; rw [if_neg h_ovf]
+      have hrem : rem = bv_abs (BitVec.srem dividend divisor) := by
+        show bv_abs (sail_rem_value dividend divisor false) = _
+        rw [sail_rem_value_of_normal dividend divisor h_zero]
+      rw [hq, hadj, hrem]
+      -- Goal: sdiv * divisor + (bv_abs(srem) ^^^ d.sshiftRight 63 - d.sshiftRight 63) = d
+      rw [srem_xor_sub_sign_eq_srem dividend divisor h_zero]
+      -- Goal: sdiv * divisor + srem = d
+      exact (BitVec.sdiv_mul_add_srem dividend divisor).symm
 
 /-- **Guard 4 — `VirtualAssertValidUnsignedRemainder`.**
 
@@ -303,8 +692,55 @@ computing `|adj|` with the sign-fixup trick. -/
 theorem hguard_rem_bound_of_honest (dividend divisor : BitVec 64) :
     let rem := bv_abs (sail_rem_value dividend divisor false)
     let adj := change_divisor_value dividend divisor
-    rem.toNat < ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat := by
-  sorry
+    ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63) = 0#64 ∨
+      rem.toNat < ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat := by
+  intro rem adj
+  -- Fold the XOR-SUB sign-fixup into `bv_abs adj`.
+  rw [← bv_abs_eq_xor_sub_sign]
+  -- Goal: bv_abs adj = 0#64 ∨ rem.toNat < (bv_abs adj).toNat
+  by_cases h_zero : divisor = 0#64
+  · -- divisor = 0 → adj = 0 → bv_abs adj = 0. Left disjunct.
+    left
+    show bv_abs adj = 0#64
+    have hadj0 : adj = 0#64 := by
+      show change_divisor_value dividend divisor = 0#64
+      unfold change_divisor_value
+      rw [h_zero]
+      simp
+    rw [hadj0]
+    decide
+  · by_cases h_ovf : dividend = (1 : BitVec 64) <<< 63 ∧ divisor = -1
+    · -- overflow case: adj = 1, sail_rem = 0, so rem = 0 < |adj| = 1. Right disjunct.
+      right
+      show rem.toNat < (bv_abs adj).toNat
+      obtain ⟨hd, hdv⟩ := h_ovf
+      subst hd
+      subst hdv
+      decide
+    · -- normal case: adj = divisor, sail_rem = BitVec.srem dividend divisor,
+      -- bv_abs(srem).toNat = |srem|.toInt.natAbs < divisor.toInt.natAbs = (bv_abs divisor).toNat.
+      right
+      show rem.toNat < (bv_abs adj).toNat
+      -- Specialise adj and sail_rem via the case helpers.
+      have hadj : adj = divisor := by
+        show change_divisor_value dividend divisor = divisor
+        unfold change_divisor_value
+        rw [if_neg h_ovf]
+      have hsail :
+          sail_rem_value dividend divisor false = BitVec.srem dividend divisor :=
+        sail_rem_value_of_normal dividend divisor h_zero
+      have hrem_eq : rem = bv_abs (BitVec.srem dividend divisor) := by
+        show bv_abs (sail_rem_value dividend divisor false) = _
+        rw [hsail]
+      rw [hrem_eq, hadj]
+      -- Bridge to Int via bv_abs_toNat_eq_natAbs and BitVec.toInt_srem.
+      rw [bv_abs_toNat_eq_natAbs, bv_abs_toNat_eq_natAbs]
+      -- Goal: (BitVec.srem dividend divisor).toInt.natAbs < divisor.toInt.natAbs
+      have hdiv_ne : divisor.toInt ≠ 0 := by
+        intro h; apply h_zero
+        exact BitVec.eq_of_toInt_eq (by simpa using h)
+      rw [BitVec.toInt_srem, Int.natAbs_tmod]
+      exact Nat.mod_lt _ (Int.natAbs_pos.mpr hdiv_ne)
 
 -- ----------------------------------------------------------------------------
 -- Uniqueness of advice — soundness core
@@ -329,8 +765,9 @@ theorem advice_unique_of_guards
     (h3 : q * adj +
             ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63)
           = dividend)
-    (h4 : rem.toNat <
-            ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat) :
+    (h4 : ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63) = 0#64 ∨
+            rem.toNat <
+              ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat) :
     q = sail_div_value dividend divisor false ∧
     rem = bv_abs (sail_rem_value dividend divisor false) := by
   sorry
