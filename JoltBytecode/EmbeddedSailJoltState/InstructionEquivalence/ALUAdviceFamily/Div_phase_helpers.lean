@@ -135,6 +135,30 @@ theorem vregs_write_pres (js : SailJoltState) (vd : BitVec 7) (v : BitVec 64)
       = js.vregs k := by
   sorry
 
+/-- Chain four preservation hypotheses: if `k` differs from each of the four
+write destinations, the vregs lookup is preserved through all four writes. -/
+theorem chain_pres_4 {s_a s_b s_c s_d s_e : SailJoltState}
+    {vd_a vd_b vd_c vd_d : BitVec 7}
+    (h_a : ∀ k, k ≠ vd_a → s_b.vregs k = s_a.vregs k)
+    (h_b : ∀ k, k ≠ vd_b → s_c.vregs k = s_b.vregs k)
+    (h_c : ∀ k, k ≠ vd_c → s_d.vregs k = s_c.vregs k)
+    (h_d : ∀ k, k ≠ vd_d → s_e.vregs k = s_d.vregs k)
+    (k : BitVec 7)
+    (h_k : k ≠ vd_a ∧ k ≠ vd_b ∧ k ≠ vd_c ∧ k ≠ vd_d) :
+    s_e.vregs k = s_a.vregs k := by
+  sorry
+
+/-- Chain three preservation hypotheses (Phase 4 has only three writes). -/
+theorem chain_pres_3 {s_a s_b s_c s_d : SailJoltState}
+    {vd_a vd_b vd_c : BitVec 7}
+    (h_a : ∀ k, k ≠ vd_a → s_b.vregs k = s_a.vregs k)
+    (h_b : ∀ k, k ≠ vd_b → s_c.vregs k = s_b.vregs k)
+    (h_c : ∀ k, k ≠ vd_c → s_d.vregs k = s_c.vregs k)
+    (k : BitVec 7)
+    (h_k : k ≠ vd_a ∧ k ≠ vd_b ∧ k ≠ vd_c) :
+    s_d.vregs k = s_a.vregs k := by
+  sorry
+
 -- ============================================================================
 -- Per-instruction `_run` lemmas (scaffolding for the phase helpers)
 -- ============================================================================
@@ -452,7 +476,14 @@ theorem vreg_advice_run_ex (vd : BitVec 7) (advice : BitVec 64) (js : SailJoltSt
       js'.vregs vd = advice ∧
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
       js'.sail = js.sail := by
-  sorry
+  unfold vreg_advice
+  simp only [bind, pure, writeVReg, modify, modifyGet, MonadStateOf.modifyGet]
+  refine ⟨_, rfl, ?_, ?_, rfl⟩
+  · show (if vd = vd then _ else js.vregs vd) = _
+    rw [if_pos rfl]
+  · intro k h
+    show (if k = vd then _ else js.vregs k) = _
+    rw [if_neg h]
 
 /-- Existential variant of `vreg_MULH_run`. -/
 theorem vreg_MULH_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
@@ -461,7 +492,17 @@ theorem vreg_MULH_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
       js'.vregs vd = mulhs (js.vregs vs1) (js.vregs vs2) ∧
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
       js'.sail = js.sail := by
-  sorry
+  unfold vreg_MULH
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+  refine ⟨_, rfl, ?_, ?_, rfl⟩
+  · show (if vd = vd then _ else js.vregs vd) = _
+    rw [if_pos rfl]
+  · intro k h
+    show (if k = vd then _ else js.vregs k) = _
+    rw [if_neg h]
 
 /-- Existential variant of `vreg_MUL_run`. -/
 theorem vreg_MUL_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
@@ -470,7 +511,17 @@ theorem vreg_MUL_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
       js'.vregs vd = js.vregs vs1 * js.vregs vs2 ∧
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
       js'.sail = js.sail := by
-  sorry
+  unfold vreg_MUL
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+  refine ⟨_, rfl, ?_, ?_, rfl⟩
+  · show (if vd = vd then _ else js.vregs vd) = _
+    rw [if_pos rfl]
+  · intro k h
+    show (if k = vd then _ else js.vregs k) = _
+    rw [if_neg h]
 
 /-- Existential variant of `vreg_SRAI_run`. -/
 theorem vreg_SRAI_run_ex (vd vs1 : BitVec 7) (shamt : BitVec 6) (js : SailJoltState) :
@@ -479,7 +530,17 @@ theorem vreg_SRAI_run_ex (vd vs1 : BitVec 7) (shamt : BitVec 6) (js : SailJoltSt
       js'.vregs vd = shift_bits_right_arith (js.vregs vs1) shamt ∧
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
       js'.sail = js.sail := by
-  sorry
+  unfold vreg_SRAI
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+  refine ⟨_, rfl, ?_, ?_, rfl⟩
+  · show (if vd = vd then _ else js.vregs vd) = _
+    rw [if_pos rfl]
+  · intro k h
+    show (if k = vd then _ else js.vregs k) = _
+    rw [if_neg h]
 
 /-- Existential variant of `vreg_change_divisor_run`. -/
 theorem vreg_change_divisor_run_ex (vd : BitVec 7) (rs1 rs2 : regidx)
@@ -491,7 +552,99 @@ theorem vreg_change_divisor_run_ex (vd : BitVec 7) (rs1 rs2 : regidx)
       js'.vregs vd = change_divisor_value dividend divisor ∧
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
       js'.sail = js.sail := by
-  sorry
+  show ∃ js', vreg_change_divisor vd rs1 rs2 js = .ok RETIRE_SUCCESS js' ∧ _
+  unfold vreg_change_divisor liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             writeVReg, modify, modifyGet,
+             MonadStateOf.modifyGet, EStateM.modifyGet]
+  rw [hrs1]
+  simp only []
+  rw [hrs2]
+  refine ⟨_, rfl, ?_, ?_, rfl⟩
+  · show (if vd = vd then _ else js.vregs vd) = _
+    rw [if_pos rfl]
+  · intro k h
+    show (if k = vd then _ else js.vregs k) = _
+    rw [if_neg h]
+
+/-- Existential variant of `vreg_SRAI_from_real_run`. -/
+theorem vreg_SRAI_from_real_run_ex (vd : BitVec 7) (rs1 : regidx) (shamt : BitVec 6)
+    (js : SailJoltState) (rs1_val : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail) :
+    ∃ js',
+      (vreg_SRAI_from_real vd rs1 shamt).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = shift_bits_right_arith rs1_val shamt ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  show ∃ js', vreg_SRAI_from_real vd rs1 shamt js = .ok RETIRE_SUCCESS js' ∧ _
+  unfold vreg_SRAI_from_real liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             writeVReg, modify, modifyGet,
+             MonadStateOf.modifyGet, EStateM.modifyGet]
+  rw [hrs1]
+  refine ⟨_, rfl, ?_, ?_, rfl⟩
+  · show (if vd = vd then _ else js.vregs vd) = _
+    rw [if_pos rfl]
+  · intro k h
+    show (if k = vd then _ else js.vregs k) = _
+    rw [if_neg h]
+
+/-- Existential variant for `vreg_XOR`. -/
+theorem vreg_XOR_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    ∃ js',
+      (vreg_XOR vd vs1 vs2).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = js.vregs vs1 ^^^ js.vregs vs2 ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  unfold vreg_XOR
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+  refine ⟨_, rfl, ?_, ?_, rfl⟩
+  · show (if vd = vd then _ else js.vregs vd) = _
+    rw [if_pos rfl]
+  · intro k h
+    show (if k = vd then _ else js.vregs k) = _
+    rw [if_neg h]
+
+/-- Existential variant of `vreg_SUB_run`. -/
+theorem vreg_SUB_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    ∃ js',
+      (vreg_SUB vd vs1 vs2).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = js.vregs vs1 - js.vregs vs2 ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  unfold vreg_SUB
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+  refine ⟨_, rfl, ?_, ?_, rfl⟩
+  · show (if vd = vd then _ else js.vregs vd) = _
+    rw [if_pos rfl]
+  · intro k h
+    show (if k = vd then _ else js.vregs k) = _
+    rw [if_neg h]
+
+/-- Existential variant of `vreg_ADD_run`. -/
+theorem vreg_ADD_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+    ∃ js',
+      (vreg_ADD vd vs1 vs2).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = js.vregs vs1 + js.vregs vs2 ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  unfold vreg_ADD
+  simp only [bind, EStateM.bind, pure, EStateM.pure,
+             readVReg, writeVReg, get, modify, modifyGet,
+             getThe, MonadStateOf.get, MonadStateOf.modifyGet,
+             EStateM.get, EStateM.modifyGet]
+  refine ⟨_, rfl, ?_, ?_, rfl⟩
+  · show (if vd = vd then _ else js.vregs vd) = _
+    rw [if_pos rfl]
+  · intro k h
+    show (if k = vd then _ else js.vregs k) = _
+    rw [if_neg h]
 
 -- ----------------------------------------------------------------------------
 -- Phase-run lemmas
@@ -587,15 +740,15 @@ theorem phase_overflow_check_run
     rw [hs4_v3, hs4_v5]; exact hguard_overflow
   have h5 : (vreg_assert_eq 3 5).run s4 = .ok RETIRE_SUCCESS s4 :=
     vreg_assert_eq_run_ok 3 5 s4 hguard_eq
-  -- Post-condition vregs lookups on s4 (chained through preservation).
-  have hs2_v1 : s2.vregs 1 = rem :=
-    (h2_pres 1 (by decide)).trans ((h1_pres 1 (by decide)).trans h_v1)
-  have hs3_v0 : s3.vregs 0 = q := (h3_pres 0 (by decide)).trans hs2_v0
-  have hs3_v1 : s3.vregs 1 = rem := (h3_pres 1 (by decide)).trans hs2_v1
-  have hs3_v2 : s3.vregs 2 = adj := (h3_pres 2 (by decide)).trans hs2_v2
-  have hs4_v0 : s4.vregs 0 = q := (h4_pres 0 (by decide)).trans hs3_v0
-  have hs4_v1 : s4.vregs 1 = rem := (h4_pres 1 (by decide)).trans hs3_v1
-  have hs4_v2 : s4.vregs 2 = adj := (h4_pres 2 (by decide)).trans hs3_v2
+  -- Post-condition vregs lookups on s4: v0/v1 chain from js via combinator;
+  -- v2 chains from s1 (after the v2 write) so manual 3-step .trans; v4 is one step.
+  have hs4_v0 : s4.vregs 0 = q :=
+    (chain_pres_4 h1_pres h2_pres h3_pres h4_pres 0 (by decide)).trans h_v0
+  have hs4_v1 : s4.vregs 1 = rem :=
+    (chain_pres_4 h1_pres h2_pres h3_pres h4_pres 1 (by decide)).trans h_v1
+  have hs4_v2 : s4.vregs 2 = adj :=
+    (((h4_pres 2 (by decide)).trans (h3_pres 2 (by decide))).trans
+      (h2_pres 2 (by decide))).trans hs1_v2
   have hs4_v4 : s4.vregs 4 = q * adj := (h4_pres 4 (by decide)).trans hs3_v4
   have hs4_sail : s4.sail = js.sail :=
     h4_sail.trans (h3_sail.trans (h2_sail.trans h1_sail))
@@ -620,7 +773,7 @@ theorem phase_quotient_product_run
     (h_v4 : js.vregs 4 = q * adj)
     (hguard_quotient_product :
         q * adj +
-          (rem ^^^ dividend.sshiftRight 63 - dividend.sshiftRight 63)
+          ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63)
         = dividend) :
     ∃ js',
       (phase_quotient_product rs1).run js = .ok RETIRE_SUCCESS js' ∧
@@ -628,7 +781,52 @@ theorem phase_quotient_product_run
       js'.vregs 1 = rem ∧
       js'.vregs 2 = adj ∧
       js'.sail = js.sail := by
-  sorry
+  unfold phase_quotient_product
+  -- Step 1: vreg_SRAI_from_real 3 rs1 63 → writes sshiftRight dividend 63 to v3.
+  obtain ⟨s1, h1, h1_v3, h1_pres, h1_sail⟩ :=
+    vreg_SRAI_from_real_run_ex 3 rs1 63 js dividend hrs1
+  -- Step 2: vreg_XOR 5 1 3 → writes (s1.v1 ^^^ s1.v3) to v5.
+  obtain ⟨s2, h2, h2_v5, h2_pres, h2_sail⟩ := vreg_XOR_run_ex 5 1 3 s1
+  -- Step 3: vreg_SUB 5 5 3 → writes (s2.v5 - s2.v3) to v5.
+  obtain ⟨s3, h3, h3_v5, h3_pres, h3_sail⟩ := vreg_SUB_run_ex 5 5 3 s2
+  -- Step 4: vreg_ADD 4 4 5 → writes (s3.v4 + s3.v5) to v4.
+  obtain ⟨s4, h4, h4_v4, h4_pres, h4_sail⟩ := vreg_ADD_run_ex 4 4 5 s3
+  -- Sail propagation.
+  have hs4_sail : s4.sail = js.sail :=
+    h4_sail.trans (h3_sail.trans (h2_sail.trans h1_sail))
+  -- Lookups on s1.
+  have hs1_v1 : s1.vregs 1 = rem := (h1_pres 1 (by decide)).trans h_v1
+  have hs1_v3 : s1.vregs 3 = dividend.sshiftRight 63 := by rw [h1_v3]; rfl
+  have hs1_v4 : s1.vregs 4 = q * adj := (h1_pres 4 (by decide)).trans h_v4
+  -- Lookups on s2.
+  have hs2_v3 : s2.vregs 3 = dividend.sshiftRight 63 :=
+    (h2_pres 3 (by decide)).trans hs1_v3
+  have hs2_v4 : s2.vregs 4 = q * adj := (h2_pres 4 (by decide)).trans hs1_v4
+  have hs2_v5 : s2.vregs 5 = rem ^^^ dividend.sshiftRight 63 := by
+    rw [h2_v5, hs1_v1, hs1_v3]
+  -- Lookups on s3.
+  have hs3_v4 : s3.vregs 4 = q * adj := (h3_pres 4 (by decide)).trans hs2_v4
+  have hs3_v5 :
+      s3.vregs 5 = (rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63 := by
+    rw [h3_v5, hs2_v5, hs2_v3]
+  -- Lookup on s4: v4 derivation for the assert.
+  have hs4_v4 : s4.vregs 4 = dividend := by
+    rw [h4_v4, hs3_v4, hs3_v5]; exact hguard_quotient_product
+  -- Step 5: assert v4 = rs1 — discharged via hguard_quotient_product.
+  have hrs1_s4 : rX_bits rs1 s4.sail = .ok dividend s4.sail := hs4_sail.symm ▸ hrs1
+  have h5 : (vreg_assert_eq_real 4 rs1).run s4 = .ok RETIRE_SUCCESS s4 :=
+    vreg_assert_eq_real_run_ok 4 rs1 s4 dividend hrs1_s4 hs4_v4
+  -- Post-condition vregs lookups: v0/v1/v2 all preserved through writes {3, 5, 5, 4}.
+  have hs4_v0 : s4.vregs 0 = q :=
+    (chain_pres_4 h1_pres h2_pres h3_pres h4_pres 0 (by decide)).trans h_v0
+  have hs4_v1 : s4.vregs 1 = rem :=
+    (chain_pres_4 h1_pres h2_pres h3_pres h4_pres 1 (by decide)).trans h_v1
+  have hs4_v2 : s4.vregs 2 = adj :=
+    (chain_pres_4 h1_pres h2_pres h3_pres h4_pres 2 (by decide)).trans h_v2
+  -- Stitch the bind chain.
+  refine ⟨s4, ?_, hs4_v0, hs4_v1, hs4_v2, hs4_sail⟩
+  rw [bind_run_of_ok h1, bind_run_of_ok h2, bind_run_of_ok h3, bind_run_of_ok h4]
+  exact h5
 
 /-- Phase 4 — compute |adj| + `assert_valid_unsigned_remainder v1 v5`.
 
@@ -642,12 +840,46 @@ theorem phase_remainder_bound_run
     (h_v2 : js.vregs 2 = adj)
     (hguard_rem_bound :
         rem.toNat <
-          (adj ^^^ adj.sshiftRight 63 - adj.sshiftRight 63).toNat) :
+          ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat) :
     ∃ js',
       (phase_remainder_bound).run js = .ok RETIRE_SUCCESS js' ∧
       js'.vregs 0 = q ∧
       js'.sail = js.sail := by
-  sorry
+  unfold phase_remainder_bound
+  -- Step 1: vreg_SRAI 3 2 63 → writes shift_bits_right_arith (s.v2) 63 to v3.
+  obtain ⟨s1, h1, h1_v3, h1_pres, h1_sail⟩ := vreg_SRAI_run_ex 3 2 63 js
+  -- Step 2: vreg_XOR 5 2 3 → writes (s1.v2 ^^^ s1.v3) to v5.
+  obtain ⟨s2, h2, h2_v5, h2_pres, h2_sail⟩ := vreg_XOR_run_ex 5 2 3 s1
+  -- Step 3: vreg_SUB 5 5 3 → writes (s2.v5 - s2.v3) to v5.
+  obtain ⟨s3, h3, h3_v5, h3_pres, h3_sail⟩ := vreg_SUB_run_ex 5 5 3 s2
+  -- Sail propagation.
+  have hs3_sail : s3.sail = js.sail := h3_sail.trans (h2_sail.trans h1_sail)
+  -- Lookups on s1.
+  have hs1_v2 : s1.vregs 2 = adj := (h1_pres 2 (by decide)).trans h_v2
+  have hs1_v3 : s1.vregs 3 = adj.sshiftRight 63 := by rw [h1_v3, h_v2]; rfl
+  -- Lookups on s2.
+  have hs2_v3 : s2.vregs 3 = adj.sshiftRight 63 :=
+    (h2_pres 3 (by decide)).trans hs1_v3
+  have hs2_v5 : s2.vregs 5 = adj ^^^ adj.sshiftRight 63 := by
+    rw [h2_v5, hs1_v2, hs1_v3]
+  -- Lookups on s3 — for the assert.
+  have hs3_v5 : s3.vregs 5 = (adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63 := by
+    rw [h3_v5, hs2_v5, hs2_v3]
+  have hs3_v1 : s3.vregs 1 = rem :=
+    (chain_pres_3 h1_pres h2_pres h3_pres 1 (by decide)).trans h_v1
+  -- Step 4: assert v1 < v5 — discharged via hguard_rem_bound.
+  have hguard_lt : (s3.vregs 1).toNat < (s3.vregs 5).toNat := by
+    rw [hs3_v1, hs3_v5]; exact hguard_rem_bound
+  have h4 : (vreg_assert_valid_unsigned_remainder 1 5).run s3
+              = .ok RETIRE_SUCCESS s3 :=
+    vreg_assert_valid_unsigned_remainder_run_ok 1 5 s3 hguard_lt
+  -- Post-condition: v0 preserved through all 3 writes.
+  have hs3_v0 : s3.vregs 0 = q :=
+    (chain_pres_3 h1_pres h2_pres h3_pres 0 (by decide)).trans h_v0
+  -- Stitch the bind chain.
+  refine ⟨s3, ?_, hs3_v0, hs3_sail⟩
+  rw [bind_run_of_ok h1, bind_run_of_ok h2, bind_run_of_ok h3]
+  exact h4
 
 /-- Phase 5 — writeback `rd := v0`. Writes the quotient to real `rd`
 via `liftSail (wX_bits rd q)`; produces `sail = stateAfterWrite js.sail rd q`. -/
@@ -730,7 +962,7 @@ theorem phase_quotient_product_run_sound
     (h_v4 : js.vregs 4 = q * adj)
     (hp : (phase_quotient_product rs1).run js = .ok r js₁) :
     q * adj +
-      (rem ^^^ dividend.sshiftRight 63 - dividend.sshiftRight 63)
+      ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63)
       = dividend ∧
     js₁.vregs 0 = q ∧
     js₁.vregs 1 = rem ∧
@@ -748,7 +980,7 @@ theorem phase_remainder_bound_run_sound
     (h_v2 : js.vregs 2 = adj)
     (hp : (phase_remainder_bound).run js = .ok r js₁) :
     rem.toNat <
-      (adj ^^^ adj.sshiftRight 63 - adj.sshiftRight 63).toNat ∧
+      ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat ∧
     js₁.vregs 0 = q ∧
     js₁.sail = js.sail := by
   sorry

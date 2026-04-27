@@ -285,7 +285,7 @@ theorem hguard_quotient_product_of_honest (dividend divisor : BitVec 64) :
     let rem := bv_abs (sail_rem_value dividend divisor false)
     let adj := change_divisor_value dividend divisor
     q * adj +
-      (rem ^^^ dividend.sshiftRight 63 - dividend.sshiftRight 63)
+      ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63)
       = dividend := by
   sorry
 
@@ -303,7 +303,7 @@ computing `|adj|` with the sign-fixup trick. -/
 theorem hguard_rem_bound_of_honest (dividend divisor : BitVec 64) :
     let rem := bv_abs (sail_rem_value dividend divisor false)
     let adj := change_divisor_value dividend divisor
-    rem.toNat < (adj ^^^ adj.sshiftRight 63 - adj.sshiftRight 63).toNat := by
+    rem.toNat < ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat := by
   sorry
 
 -- ----------------------------------------------------------------------------
@@ -327,10 +327,10 @@ theorem advice_unique_of_guards
     (h1 : ¬ (divisor = 0#64 ∧ q ≠ (-1 : BitVec 64)))
     (h2 : mulhs q adj = (q * adj).sshiftRight 63)
     (h3 : q * adj +
-            (rem ^^^ dividend.sshiftRight 63 - dividend.sshiftRight 63)
+            ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63)
           = dividend)
     (h4 : rem.toNat <
-            (adj ^^^ adj.sshiftRight 63 - adj.sshiftRight 63).toNat) :
+            ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat) :
     q = sail_div_value dividend divisor false ∧
     rem = bv_abs (sail_rem_value dividend divisor false) := by
   sorry
