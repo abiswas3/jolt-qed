@@ -400,6 +400,24 @@ def vreg_MUL (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
   writeVReg vd (x * y)
   pure RETIRE_SUCCESS
 
+/-- `MUL vd, vs1, rs2`: multiply virtual `vs1` by *real* `rs2`, write
+    virtual `vd`. Used by DIVU's `quotient * divisor` step. -/
+def vreg_MUL_from_real_vs2 (vd vs1 : BitVec 7) (rs2 : regidx) :
+    JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  let y ← liftSail (rX_bits rs2)
+  writeVReg vd (x * y)
+  pure RETIRE_SUCCESS
+
+/-- `SUB vd, rs1, vs2`: subtract virtual `vs2` from *real* `rs1`, write
+    virtual `vd`. Used by DIVU's `dividend - q*d` step. -/
+def vreg_SUB_from_real_vs1 (vd : BitVec 7) (rs1 : regidx) (vs2 : BitVec 7) :
+    JoltMonad ExecutionResult := do
+  let x ← liftSail (rX_bits rs1)
+  let y ← readVReg vs2
+  writeVReg vd (x - y)
+  pure RETIRE_SUCCESS
+
 /-- Upper 64 bits of a signed 64×64 multiply (the pure value written by
     the `MULH` instruction). Factored out so the monadic primitive and
     the pure-math lemmas (e.g. overflow-check proofs in `Div.lean`)

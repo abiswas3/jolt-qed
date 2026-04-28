@@ -66,4 +66,89 @@ def vreg_assert_valid_unsigned_remainder (vr vd : BitVec 7) : JoltMonad Executio
   if d = 0#64 ∨ r.toNat < d.toNat then pure RETIRE_SUCCESS
   else throw (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d ∧ d ≠ 0")
 
+/-- DIVU variant of `VirtualAssertValidUnsignedRemainder`: divisor lives
+    in a *real* register (DIVU does no sign-fixup, so the divisor is
+    simply `rs2` rather than the absolute value of an adjusted divisor). -/
+def vreg_assert_valid_unsigned_remainder_real
+    (vr : BitVec 7) (rs : regidx) : JoltMonad ExecutionResult := do
+  let r ← readVReg vr
+  let d ← liftSail (rX_bits rs)
+  if d = 0#64 ∨ r.toNat < d.toNat then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d ∧ d ≠ 0")
+
+/-- `VirtualAssertMulUNoOverflow va, rs`: asserts the unsigned 64×64
+    product `va.toNat * rs.toNat` fits in 64 bits (no overflow). Matches
+    the Rust impl in `tracer/src/instruction/virtual_assert_mulu_no_overflow.rs`:
+    `assert!((a as u128) * (b as u128) <= u64::MAX as u128)`. -/
+def vreg_assert_mulu_no_overflow
+    (va : BitVec 7) (rs : regidx) : JoltMonad ExecutionResult := do
+  let a ← readVReg va
+  let b ← liftSail (rX_bits rs)
+  if a.toNat * b.toNat < 2^64 then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertMulUNoOverflow")
+
+/-- `VirtualAssertLTE va, rs`: asserts `va ≤ rs` (unsigned). Used by
+    DIVU to check `quotient * divisor ≤ dividend`. -/
+def vreg_assert_lte_real
+    (va : BitVec 7) (rs : regidx) : JoltMonad ExecutionResult := do
+  let a ← readVReg va
+  let b ← liftSail (rX_bits rs)
+  if a.toNat ≤ b.toNat then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertLTE")
+
+/-- DIVW variant of `VirtualAssertValidDiv0`: divisor is in a *virtual*
+    register (DIVW first sign-extends the real divisor into `t3`, then
+    runs all subsequent constraints over the virtual `t3`). -/
+def vreg_assert_valid_div0_v
+    (vd : BitVec 7) (vq : BitVec 7) : JoltMonad ExecutionResult := do
+  let divisor ← readVReg vd
+  let q ← readVReg vq
+  if divisor = 0#64 ∧ q ≠ (-1 : BitVec 64) then
+    throw (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
+  else
+    pure RETIRE_SUCCESS
+
+/-- `VirtualSignExtendWord vd, vs1`: sign-extend the low 32 bits of
+    virtual `vs1` to 64 bits, write virtual `vd`. -/
+def vreg_sign_extend_word (vd vs1 : BitVec 7) : JoltMonad ExecutionResult := do
+  let v ← readVReg vs1
+  writeVReg vd (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0))
+  pure RETIRE_SUCCESS
+
+/-- `VirtualSignExtendWord vd, rs1`: sign-extend the low 32 bits of
+    *real* `rs1` to 64 bits, write virtual `vd`. -/
+def vreg_sign_extend_word_from_real
+    (vd : BitVec 7) (rs1 : regidx) : JoltMonad ExecutionResult := do
+  let v ← liftSail (rX_bits rs1)
+  writeVReg vd (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0))
+  pure RETIRE_SUCCESS
+
+/-- `VirtualSignExtendWord rd, vs1`: sign-extend the low 32 bits of
+    virtual `vs1` to 64 bits, write *real* `rd`. -/
+def vreg_sign_extend_word_to_real
+    (rd : regidx) (vs1 : BitVec 7) : JoltMonad ExecutionResult := do
+  let v ← readVReg vs1
+  liftSail (wX_bits rd (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0)))
+  pure RETIRE_SUCCESS
+
+/-- 32-bit version of `change_divisor_value`: the dividend and divisor
+    arguments are sign-extended 32-bit values living in 64-bit BitVecs.
+    The overflow pair is `(i32::MIN, -1)`, where `i32::MIN` sign-extended
+    to 64 bits is `0xFFFFFFFF80000000`. Matches the Rust impl in
+    `tracer/src/instruction/virtual_change_divisor_w.rs`. -/
+def change_divisor_w_value (dividend divisor : BitVec 64) : BitVec 64 :=
+  let i32MinSext : BitVec 64 := -((1 : BitVec 64) <<< 31)
+  let negOne     : BitVec 64 := -1
+  if dividend = i32MinSext ∧ divisor = negOne then 1 else divisor
+
+/-- `VirtualChangeDivisorW vd, vs1, vs2`: 32-bit version of
+    `vreg_change_divisor`, taking sign-extended dividend `vs1` and
+    sign-extended divisor `vs2` from virtual registers. -/
+def vreg_change_divisor_w
+    (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
+  let dividend ← readVReg vs1
+  let divisor  ← readVReg vs2
+  writeVReg vd (change_divisor_w_value dividend divisor)
+  pure RETIRE_SUCCESS
+
 end
