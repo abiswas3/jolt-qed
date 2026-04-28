@@ -127,10 +127,11 @@ theorem jolt_div_concrete (rs2 rs1 rd : regidx)
     hguard_overflow_of_honest dividend divisor
   have hguard_quotient_product :
       q * adj +
-        (rem ^^^ dividend.sshiftRight 63 - dividend.sshiftRight 63) = dividend :=
+        ((rem ^^^ dividend.sshiftRight 63) - dividend.sshiftRight 63) = dividend :=
     hguard_quotient_product_of_honest dividend divisor
   have hguard_rem_bound :
-      rem.toNat < (adj ^^^ adj.sshiftRight 63 - adj.sshiftRight 63).toNat :=
+      ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63) = 0#64 ∨
+        rem.toNat < ((adj ^^^ adj.sshiftRight 63) - adj.sshiftRight 63).toNat :=
     hguard_rem_bound_of_honest dividend divisor
   -- PHASE 1 — advice loads + div0 check.
   obtain ⟨js₁, hrun1, h1_v0, h1_v1, h1_sail⟩ :=
