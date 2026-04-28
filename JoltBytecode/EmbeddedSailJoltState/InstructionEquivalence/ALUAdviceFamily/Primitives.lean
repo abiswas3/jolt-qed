@@ -151,4 +151,32 @@ def vreg_change_divisor_w
   writeVReg vd (change_divisor_w_value dividend divisor)
   pure RETIRE_SUCCESS
 
+/-- `VirtualZeroExtendWord vd, rs1`: zero-extend the low 32 bits of
+    *real* `rs1` to 64 bits, write virtual `vd`. -/
+def vreg_zero_extend_word_from_real
+    (vd : BitVec 7) (rs1 : regidx) : JoltMonad ExecutionResult := do
+  let v ← liftSail (rX_bits rs1)
+  writeVReg vd (zero_extend (m := 64) (Sail.BitVec.extractLsb v 31 0))
+  pure RETIRE_SUCCESS
+
+/-- DIVUW variant of `VirtualAssertMulUNoOverflow`: divisor is in a
+    *virtual* register (DIVUW first zero-extends the real divisor into
+    a virtual register, then runs all subsequent constraints on the
+    virtual copy). -/
+def vreg_assert_mulu_no_overflow_v
+    (va vb : BitVec 7) : JoltMonad ExecutionResult := do
+  let a ← readVReg va
+  let b ← readVReg vb
+  if a.toNat * b.toNat < 2^64 then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertMulUNoOverflow")
+
+/-- DIVUW variant of `VirtualAssertLTE`: both operands in *virtual*
+    registers. -/
+def vreg_assert_lte
+    (va vb : BitVec 7) : JoltMonad ExecutionResult := do
+  let a ← readVReg va
+  let b ← readVReg vb
+  if a.toNat ≤ b.toNat then pure RETIRE_SUCCESS
+  else throw (Error.Assertion "VirtualAssertLTE")
+
 end
