@@ -298,7 +298,30 @@ theorem phase_setup_run
       js'.vregs 5 = sign_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0) ∧
       js'.vregs 6 = sign_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0) ∧
       js'.sail = js.sail := by
-  sorry
+  unfold phase_setup
+  obtain ⟨s1, h1, hs1_v0, hs1_pres, hs1_sail⟩ := vreg_advice_run_ex 0 q js
+  obtain ⟨s2, h2, hs2_v1, hs2_pres, hs2_sail⟩ := vreg_advice_run_ex 1 rem s1
+  obtain ⟨s3, h3, hs3_v6, hs3_pres, hs3_sail⟩ :=
+    vreg_sign_extend_word_from_real_run_ex 6 rs1 s2 dividend
+      ((hs2_sail.trans hs1_sail).symm ▸ hrs1)
+  obtain ⟨s4, h4, hs4_v5, hs4_pres, hs4_sail⟩ :=
+    vreg_sign_extend_word_from_real_run_ex 5 rs2 s3 divisor
+      ((hs3_sail.trans (hs2_sail.trans hs1_sail)).symm ▸ hrs2)
+  have hs4_v0 : s4.vregs 0 = q :=
+    (hs4_pres 0 (by decide)).trans ((hs3_pres 0 (by decide)).trans
+      ((hs2_pres 0 (by decide)).trans hs1_v0))
+  have hs4_v1 : s4.vregs 1 = rem :=
+    (hs4_pres 1 (by decide)).trans ((hs3_pres 1 (by decide)).trans hs2_v1)
+  have hs4_v6 : s4.vregs 6 = sign_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0) :=
+    (hs4_pres 6 (by decide)).trans hs3_v6
+  have hguard : ¬ (s4.vregs 5 = 0#64 ∧ s4.vregs 0 ≠ (-1 : BitVec 64)) := by
+    rw [hs4_v5, hs4_v0]; exact hguard_div0
+  have h5 := vreg_assert_valid_div0_v_run_ok 5 0 s4 hguard
+  have hs4_sail_orig : s4.sail = js.sail :=
+    hs4_sail.trans (hs3_sail.trans (hs2_sail.trans hs1_sail))
+  refine ⟨s4, ?_, hs4_v0, hs4_v1, hs4_v5, hs4_v6, hs4_sail_orig⟩
+  rw [bind_run_of_ok h1, bind_run_of_ok h2, bind_run_of_ok h3, bind_run_of_ok h4]
+  exact h5
 
 /-- Phase 2 — adjusted divisor + 32-bit quotient-fits check. -/
 theorem phase_overflow_check_run
@@ -320,7 +343,27 @@ theorem phase_overflow_check_run
       js'.vregs 5 = sext_divisor ∧
       js'.vregs 6 = sext_dividend ∧
       js'.sail = js.sail := by
-  sorry
+  unfold phase_overflow_check
+  obtain ⟨s1, h1, hs1_v2, hs1_pres, hs1_sail⟩ := vreg_change_divisor_w_run_ex 2 6 5 js
+  obtain ⟨s2, h2, hs2_v3, hs2_pres, hs2_sail⟩ := vreg_sign_extend_word_run_ex 3 0 s1
+  have hs1_v0 : s1.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
+  have hs1_v1 : s1.vregs 1 = rem := (hs1_pres 1 (by decide)).trans h_v1
+  have hs1_v5 : s1.vregs 5 = sext_divisor := (hs1_pres 5 (by decide)).trans h_v5
+  have hs1_v6 : s1.vregs 6 = sext_dividend := (hs1_pres 6 (by decide)).trans h_v6
+  have hs1_v2_eq : s1.vregs 2 = adj := by rw [hs1_v2, h_v6, h_v5]; exact hadj.symm
+  have hs2_v0 : s2.vregs 0 = q := (hs2_pres 0 (by decide)).trans hs1_v0
+  have hs2_v1 : s2.vregs 1 = rem := (hs2_pres 1 (by decide)).trans hs1_v1
+  have hs2_v2 : s2.vregs 2 = adj := (hs2_pres 2 (by decide)).trans hs1_v2_eq
+  have hs2_v5 : s2.vregs 5 = sext_divisor := (hs2_pres 5 (by decide)).trans hs1_v5
+  have hs2_v6 : s2.vregs 6 = sext_dividend := (hs2_pres 6 (by decide)).trans hs1_v6
+  have hs2_v3_eq : s2.vregs 3 = sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0) := by
+    rw [hs2_v3, hs1_v0]
+  have hguard : s2.vregs 3 = s2.vregs 0 := by rw [hs2_v3_eq, hs2_v0]; exact hguard_q_fits
+  have h3 := vreg_assert_eq_run_ok 3 0 s2 hguard
+  have hs2_sail_orig : s2.sail = js.sail := hs2_sail.trans hs1_sail
+  refine ⟨s2, ?_, hs2_v0, hs2_v1, hs2_v2, hs2_v5, hs2_v6, hs2_sail_orig⟩
+  rw [bind_run_of_ok h1, bind_run_of_ok h2]
+  exact h3
 
 /-- Phase 3 — DIVW-only `|rem|` ≥ 0 (as i32) check. -/
 theorem phase_rem_nonneg_run
@@ -342,7 +385,19 @@ theorem phase_rem_nonneg_run
       js'.vregs 5 = sext_divisor ∧
       js'.vregs 6 = sext_dividend ∧
       js'.sail = js.sail := by
-  sorry
+  unfold phase_rem_nonneg
+  obtain ⟨s1, h1, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 1 31 js
+  have hs1_v0 : s1.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
+  have hs1_v1 : s1.vregs 1 = rem := (hs1_pres 1 (by decide)).trans h_v1
+  have hs1_v2 : s1.vregs 2 = adj := (hs1_pres 2 (by decide)).trans h_v2
+  have hs1_v5 : s1.vregs 5 = sext_divisor := (hs1_pres 5 (by decide)).trans h_v5
+  have hs1_v6 : s1.vregs 6 = sext_dividend := (hs1_pres 6 (by decide)).trans h_v6
+  have hs1_v4_eq : s1.vregs 4 = shift_bits_right_arith rem 31 := by rw [hs1_v4, h_v1]
+  have hx0_s1 : rX_bits (regidx.Regidx 0) s1.sail = .ok 0#64 s1.sail := hs1_sail.symm ▸ hx0
+  have hguard : s1.vregs 4 = 0#64 := by rw [hs1_v4_eq]; exact hguard_rem_nonneg
+  have h2 := vreg_assert_eq_real_run_ok 4 (regidx.Regidx 0) s1 0#64 hx0_s1 hguard
+  refine ⟨s1, ?_, hs1_v0, hs1_v1, hs1_v2, hs1_v5, hs1_v6, hs1_sail⟩
+  rw [bind_run_of_ok h1]; exact h2
 
 /-- Phase 4 — signed-remainder reconstruction + `q*adj + signed_rem = sext(rs1)`. -/
 theorem phase_quotient_product_run
@@ -363,7 +418,62 @@ theorem phase_quotient_product_run
       js'.vregs 1 = rem ∧
       js'.vregs 2 = adj ∧
       js'.sail = js.sail := by
-  sorry
+  unfold phase_quotient_product
+  obtain ⟨s1, h1, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 6 31 js
+  obtain ⟨s2, h2, hs2_v5, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 5 1 4 s1
+  obtain ⟨s3, h3, hs3_v5, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex 5 5 4 s2
+  obtain ⟨s4, h4, hs4_v3, hs4_pres, hs4_sail⟩ := vreg_MUL_run_ex 3 0 2 s3
+  obtain ⟨s5, h5, hs5_v3, hs5_pres, hs5_sail⟩ := vreg_ADD_run_ex 3 3 5 s4
+  have hs5_sail_orig : s5.sail = js.sail :=
+    hs5_sail.trans (hs4_sail.trans (hs3_sail.trans (hs2_sail.trans hs1_sail)))
+  -- Lookups on s1
+  have hs1_v1 : s1.vregs 1 = rem := (hs1_pres 1 (by decide)).trans h_v1
+  have hs1_v6 : s1.vregs 6 = sext_dividend := (hs1_pres 6 (by decide)).trans h_v6
+  have hs1_v4_eq : s1.vregs 4 = sext_dividend.sshiftRight 31 := by rw [hs1_v4, h_v6]; rfl
+  -- Lookups on s2
+  have hs2_v4 : s2.vregs 4 = sext_dividend.sshiftRight 31 :=
+    (hs2_pres 4 (by decide)).trans hs1_v4_eq
+  have hs2_v5_eq : s2.vregs 5 = rem ^^^ sext_dividend.sshiftRight 31 := by
+    rw [hs2_v5, hs1_v1, hs1_v4_eq]
+  -- Lookups on s3
+  have hs3_v4 : s3.vregs 4 = sext_dividend.sshiftRight 31 :=
+    (hs3_pres 4 (by decide)).trans hs2_v4
+  have hs3_v5_eq : s3.vregs 5 =
+      (rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31 := by
+    rw [hs3_v5, hs2_v5_eq, hs2_v4]
+  have hs3_v0 : s3.vregs 0 = q :=
+    (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)).trans h_v0
+  have hs3_v2 : s3.vregs 2 = adj :=
+    (chain_pres_3 hs1_pres hs2_pres hs3_pres 2 (by decide)).trans h_v2
+  -- Lookups on s4
+  have hs4_v5 : s4.vregs 5 =
+      (rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31 :=
+    (hs4_pres 5 (by decide)).trans hs3_v5_eq
+  have hs4_v3_eq : s4.vregs 3 = q * adj := by rw [hs4_v3, hs3_v0, hs3_v2]
+  -- Lookups on s5
+  have hs5_v6 : s5.vregs 6 = sext_dividend :=
+    ((hs5_pres 6 (by decide)).trans ((hs4_pres 6 (by decide)).trans
+      (chain_pres_3 hs1_pres hs2_pres hs3_pres 6 (by decide)))).trans h_v6
+  have hs5_v3_eq : s5.vregs 3 = q * adj +
+      ((rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31) := by
+    rw [hs5_v3, hs4_v3_eq, hs4_v5]
+  -- Assert
+  have hguard : s5.vregs 3 = s5.vregs 6 := by rw [hs5_v3_eq, hs5_v6]; exact hguard_quotient_product
+  have h6 := vreg_assert_eq_run_ok 3 6 s5 hguard
+  -- Post-condition
+  have hs5_v0 : s5.vregs 0 = q :=
+    ((hs5_pres 0 (by decide)).trans ((hs4_pres 0 (by decide)).trans
+      (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)))).trans h_v0
+  have hs5_v1 : s5.vregs 1 = rem :=
+    ((hs5_pres 1 (by decide)).trans ((hs4_pres 1 (by decide)).trans
+      (chain_pres_3 hs1_pres hs2_pres hs3_pres 1 (by decide)))).trans h_v1
+  have hs5_v2 : s5.vregs 2 = adj :=
+    ((hs5_pres 2 (by decide)).trans ((hs4_pres 2 (by decide)).trans
+      (chain_pres_3 hs1_pres hs2_pres hs3_pres 2 (by decide)))).trans h_v2
+  refine ⟨s5, ?_, hs5_v0, hs5_v1, hs5_v2, hs5_sail_orig⟩
+  rw [bind_run_of_ok h1, bind_run_of_ok h2, bind_run_of_ok h3,
+      bind_run_of_ok h4, bind_run_of_ok h5]
+  exact h6
 
 /-- Phase 5 — compute `|adj|` (32-bit shamt) + `|rem| < |adj|` check. -/
 theorem phase_remainder_bound_run
@@ -380,7 +490,33 @@ theorem phase_remainder_bound_run
       phase_remainder_bound.run js = .ok RETIRE_SUCCESS js' ∧
       js'.vregs 0 = q ∧
       js'.sail = js.sail := by
-  sorry
+  unfold phase_remainder_bound
+  obtain ⟨s1, h1, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 2 31 js
+  obtain ⟨s2, h2, hs2_v3, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 3 2 4 s1
+  obtain ⟨s3, h3, hs3_v3, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex 3 3 4 s2
+  have hs3_sail_orig : s3.sail = js.sail := hs3_sail.trans (hs2_sail.trans hs1_sail)
+  -- Lookups on s1
+  have hs1_v2 : s1.vregs 2 = adj := (hs1_pres 2 (by decide)).trans h_v2
+  have hs1_v4_eq : s1.vregs 4 = adj.sshiftRight 31 := by rw [hs1_v4, h_v2]; rfl
+  -- Lookups on s2
+  have hs2_v4 : s2.vregs 4 = adj.sshiftRight 31 := (hs2_pres 4 (by decide)).trans hs1_v4_eq
+  have hs2_v3_eq : s2.vregs 3 = adj ^^^ adj.sshiftRight 31 := by
+    rw [hs2_v3, hs1_v2, hs1_v4_eq]
+  -- Lookups on s3
+  have hs3_v3_eq : s3.vregs 3 = (adj ^^^ adj.sshiftRight 31) - adj.sshiftRight 31 := by
+    rw [hs3_v3, hs2_v3_eq, hs2_v4]
+  have hs3_v1 : s3.vregs 1 = rem :=
+    (chain_pres_3 hs1_pres hs2_pres hs3_pres 1 (by decide)).trans h_v1
+  -- Assert
+  have hguard : s3.vregs 3 = 0#64 ∨ (s3.vregs 1).toNat < (s3.vregs 3).toNat := by
+    rw [hs3_v3_eq, hs3_v1]; exact hguard_rem_bound
+  have h4 := vreg_assert_valid_unsigned_remainder_run_ok 1 3 s3 hguard
+  -- Post-condition
+  have hs3_v0 : s3.vregs 0 = q :=
+    (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)).trans h_v0
+  refine ⟨s3, ?_, hs3_v0, hs3_sail_orig⟩
+  rw [bind_run_of_ok h1, bind_run_of_ok h2, bind_run_of_ok h3]
+  exact h4
 
 /-- Phase 6 — sign-extend writeback `rd := SignExtendWord(v0)`. -/
 theorem phase_writeback_run
@@ -393,7 +529,15 @@ theorem phase_writeback_run
       (phase_writeback rd).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js_ref rd
                    (sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0)) := by
-  sorry
+  unfold phase_writeback
+  obtain ⟨s', hw⟩ := wX_shape rd (sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0)) js.sail
+  refine ⟨{ sail := s', vregs := js.vregs }, ?_, ?_⟩
+  · show vreg_sign_extend_word_to_real rd 0 js = _
+    apply vreg_sign_extend_word_to_real_run rd 0 js s'
+    rw [h_v0]; exact hw
+  · show s' = stateAfterWrite js_ref rd (sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0))
+    rw [← h_sail]
+    exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 -- ----------------------------------------------------------------------------
 -- Phase-run soundness lemmas (reverse direction; for `jolt_divw_sound`)
@@ -415,7 +559,41 @@ theorem phase_setup_run_sound
     js₁.vregs 5 = sign_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0) ∧
     js₁.vregs 6 = sign_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0) ∧
     js₁.sail = js.sail := by
-  sorry
+  unfold phase_setup at hp
+  obtain ⟨_, s1, hrun1, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s1', hrun1_ex, hs1_v0, hs1_pres, hs1_sail⟩ := vreg_advice_run_ex 0 q js
+  rw [hrun1_ex] at hrun1; cases hrun1
+  obtain ⟨_, s2, hrun2, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s2', hrun2_ex, hs2_v1, hs2_pres, hs2_sail⟩ := vreg_advice_run_ex 1 rem s1
+  rw [hrun2_ex] at hrun2; cases hrun2
+  obtain ⟨_, s3, hrun3, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s3', hrun3_ex, hs3_v6, hs3_pres, hs3_sail⟩ :=
+    vreg_sign_extend_word_from_real_run_ex 6 rs1 s2 dividend
+      ((hs2_sail.trans hs1_sail).symm ▸ hrs1)
+  rw [hrun3_ex] at hrun3; cases hrun3
+  obtain ⟨_, s4, hrun4, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s4', hrun4_ex, hs4_v5, hs4_pres, hs4_sail⟩ :=
+    vreg_sign_extend_word_from_real_run_ex 5 rs2 s3 divisor
+      ((hs3_sail.trans (hs2_sail.trans hs1_sail)).symm ▸ hrs2)
+  rw [hrun4_ex] at hrun4; cases hrun4
+  have hs4_v0 : s4.vregs 0 = q :=
+    (hs4_pres 0 (by decide)).trans ((hs3_pres 0 (by decide)).trans
+      ((hs2_pres 0 (by decide)).trans hs1_v0))
+  have hs4_v1 : s4.vregs 1 = rem :=
+    (hs4_pres 1 (by decide)).trans ((hs3_pres 1 (by decide)).trans hs2_v1)
+  have hs4_v6 : s4.vregs 6 = sign_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0) :=
+    (hs4_pres 6 (by decide)).trans hs3_v6
+  have hs4_sail_orig : s4.sail = js.sail :=
+    hs4_sail.trans (hs3_sail.trans (hs2_sail.trans hs1_sail))
+  change vreg_assert_valid_div0_v 5 0 s4 = .ok r js₁ at hp
+  by_cases hguard : s4.vregs 5 = 0#64 ∧ s4.vregs 0 ≠ (-1 : BitVec 64)
+  · exfalso
+    have herr := vreg_assert_valid_div0_v_run_err 5 0 s4 hguard
+    rw [herr] at hp; cases hp
+  · have hok := vreg_assert_valid_div0_v_run_ok 5 0 s4 hguard
+    rw [hok] at hp; cases hp
+    refine ⟨?_, hs4_v0, hs4_v1, hs4_v5, hs4_v6, hs4_sail_orig⟩
+    rw [hs4_v5, hs4_v0] at hguard; exact hguard
 
 /-- Phase 2 soundness — extract the quotient-fits-in-32 guard. -/
 theorem phase_overflow_check_run_sound
@@ -435,7 +613,35 @@ theorem phase_overflow_check_run_sound
     js₁.vregs 5 = sext_divisor ∧
     js₁.vregs 6 = sext_dividend ∧
     js₁.sail = js.sail := by
-  sorry
+  unfold phase_overflow_check at hp
+  obtain ⟨_, s1, hrun1, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s1', hrun1_ex, hs1_v2, hs1_pres, hs1_sail⟩ := vreg_change_divisor_w_run_ex 2 6 5 js
+  rw [hrun1_ex] at hrun1; cases hrun1
+  obtain ⟨_, s2, hrun2, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s2', hrun2_ex, hs2_v3, hs2_pres, hs2_sail⟩ := vreg_sign_extend_word_run_ex 3 0 s1
+  rw [hrun2_ex] at hrun2; cases hrun2
+  have hs1_v0 : s1.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
+  have hs1_v5 : s1.vregs 5 = sext_divisor := (hs1_pres 5 (by decide)).trans h_v5
+  have hs1_v6 : s1.vregs 6 = sext_dividend := (hs1_pres 6 (by decide)).trans h_v6
+  have hs1_v2_eq : s1.vregs 2 = adj := by rw [hs1_v2, h_v6, h_v5]; exact hadj.symm
+  have hs2_v0 : s2.vregs 0 = q := (hs2_pres 0 (by decide)).trans hs1_v0
+  have hs2_v1 : s2.vregs 1 = rem :=
+    (hs2_pres 1 (by decide)).trans ((hs1_pres 1 (by decide)).trans h_v1)
+  have hs2_v2 : s2.vregs 2 = adj := (hs2_pres 2 (by decide)).trans hs1_v2_eq
+  have hs2_v5 : s2.vregs 5 = sext_divisor := (hs2_pres 5 (by decide)).trans hs1_v5
+  have hs2_v6 : s2.vregs 6 = sext_dividend := (hs2_pres 6 (by decide)).trans hs1_v6
+  have hs2_v3_eq : s2.vregs 3 = sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0) := by
+    rw [hs2_v3, hs1_v0]
+  have hs2_sail_orig : s2.sail = js.sail := hs2_sail.trans hs1_sail
+  change vreg_assert_eq 3 0 s2 = .ok r js₁ at hp
+  by_cases hguard : s2.vregs 3 = s2.vregs 0
+  · have hok := vreg_assert_eq_run_ok 3 0 s2 hguard
+    rw [hok] at hp; cases hp
+    refine ⟨?_, hs2_v0, hs2_v1, hs2_v2, hs2_v5, hs2_v6, hs2_sail_orig⟩
+    rw [hs2_v3_eq, hs2_v0] at hguard; exact hguard
+  · exfalso
+    have herr := vreg_assert_eq_run_err 3 0 s2 hguard
+    rw [herr] at hp; cases hp
 
 /-- Phase 3 soundness — extract the `|rem| ≥ 0` (as i32) guard. -/
 theorem phase_rem_nonneg_run_sound
@@ -456,7 +662,26 @@ theorem phase_rem_nonneg_run_sound
     js₁.vregs 5 = sext_divisor ∧
     js₁.vregs 6 = sext_dividend ∧
     js₁.sail = js.sail := by
-  sorry
+  unfold phase_rem_nonneg at hp
+  obtain ⟨_, s1, hrun1, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s1', hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 1 31 js
+  rw [hrun1_ex] at hrun1; cases hrun1
+  have hs1_v0 : s1.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
+  have hs1_v1 : s1.vregs 1 = rem := (hs1_pres 1 (by decide)).trans h_v1
+  have hs1_v2 : s1.vregs 2 = adj := (hs1_pres 2 (by decide)).trans h_v2
+  have hs1_v5 : s1.vregs 5 = sext_divisor := (hs1_pres 5 (by decide)).trans h_v5
+  have hs1_v6 : s1.vregs 6 = sext_dividend := (hs1_pres 6 (by decide)).trans h_v6
+  have hs1_v4_eq : s1.vregs 4 = shift_bits_right_arith rem 31 := by rw [hs1_v4, h_v1]
+  have hx0_s1 : rX_bits (regidx.Regidx 0) s1.sail = .ok 0#64 s1.sail := hs1_sail.symm ▸ hx0
+  change vreg_assert_eq_real 4 (regidx.Regidx 0) s1 = .ok r js₁ at hp
+  by_cases hguard : s1.vregs 4 = 0#64
+  · have hok := vreg_assert_eq_real_run_ok 4 (regidx.Regidx 0) s1 0#64 hx0_s1 hguard
+    rw [hok] at hp; cases hp
+    refine ⟨?_, hs1_v0, hs1_v1, hs1_v2, hs1_v5, hs1_v6, hs1_sail⟩
+    rw [← hs1_v4_eq]; exact hguard
+  · exfalso
+    have herr := vreg_assert_eq_real_run_err 4 (regidx.Regidx 0) s1 0#64 hx0_s1 hguard
+    rw [herr] at hp; cases hp
 
 /-- Phase 4 soundness — extract the division-equation guard. -/
 theorem phase_quotient_product_run_sound
@@ -475,7 +700,69 @@ theorem phase_quotient_product_run_sound
     js₁.vregs 1 = rem ∧
     js₁.vregs 2 = adj ∧
     js₁.sail = js.sail := by
-  sorry
+  unfold phase_quotient_product at hp
+  obtain ⟨_, s1, hrun1, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s1', hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 6 31 js
+  rw [hrun1_ex] at hrun1; cases hrun1
+  obtain ⟨_, s2, hrun2, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s2', hrun2_ex, hs2_v5, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 5 1 4 s1
+  rw [hrun2_ex] at hrun2; cases hrun2
+  obtain ⟨_, s3, hrun3, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s3', hrun3_ex, hs3_v5, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex 5 5 4 s2
+  rw [hrun3_ex] at hrun3; cases hrun3
+  obtain ⟨_, s4, hrun4, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s4', hrun4_ex, hs4_v3, hs4_pres, hs4_sail⟩ := vreg_MUL_run_ex 3 0 2 s3
+  rw [hrun4_ex] at hrun4; cases hrun4
+  obtain ⟨_, s5, hrun5, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s5', hrun5_ex, hs5_v3, hs5_pres, hs5_sail⟩ := vreg_ADD_run_ex 3 3 5 s4
+  rw [hrun5_ex] at hrun5; cases hrun5
+  -- Lookups
+  have hs1_v1 : s1.vregs 1 = rem := (hs1_pres 1 (by decide)).trans h_v1
+  have hs1_v6 : s1.vregs 6 = sext_dividend := (hs1_pres 6 (by decide)).trans h_v6
+  have hs1_v4_eq : s1.vregs 4 = sext_dividend.sshiftRight 31 := by rw [hs1_v4, h_v6]; rfl
+  have hs2_v4 : s2.vregs 4 = sext_dividend.sshiftRight 31 :=
+    (hs2_pres 4 (by decide)).trans hs1_v4_eq
+  have hs2_v5_eq : s2.vregs 5 = rem ^^^ sext_dividend.sshiftRight 31 := by
+    rw [hs2_v5, hs1_v1, hs1_v4_eq]
+  have hs3_v4 : s3.vregs 4 = sext_dividend.sshiftRight 31 :=
+    (hs3_pres 4 (by decide)).trans hs2_v4
+  have hs3_v5_eq : s3.vregs 5 =
+      (rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31 := by
+    rw [hs3_v5, hs2_v5_eq, hs2_v4]
+  have hs3_v0 : s3.vregs 0 = q :=
+    (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)).trans h_v0
+  have hs3_v2 : s3.vregs 2 = adj :=
+    (chain_pres_3 hs1_pres hs2_pres hs3_pres 2 (by decide)).trans h_v2
+  have hs4_v5 : s4.vregs 5 =
+      (rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31 :=
+    (hs4_pres 5 (by decide)).trans hs3_v5_eq
+  have hs4_v3_eq : s4.vregs 3 = q * adj := by rw [hs4_v3, hs3_v0, hs3_v2]
+  have hs5_v3_eq : s5.vregs 3 = q * adj +
+      ((rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31) := by
+    rw [hs5_v3, hs4_v3_eq, hs4_v5]
+  have hs5_v6 : s5.vregs 6 = sext_dividend :=
+    ((hs5_pres 6 (by decide)).trans ((hs4_pres 6 (by decide)).trans
+      (chain_pres_3 hs1_pres hs2_pres hs3_pres 6 (by decide)))).trans h_v6
+  have hs5_sail_orig : s5.sail = js.sail :=
+    hs5_sail.trans (hs4_sail.trans (hs3_sail.trans (hs2_sail.trans hs1_sail)))
+  change vreg_assert_eq 3 6 s5 = .ok r js₁ at hp
+  by_cases hguard : s5.vregs 3 = s5.vregs 6
+  · have hok := vreg_assert_eq_run_ok 3 6 s5 hguard
+    rw [hok] at hp; cases hp
+    have hs5_v0 : s5.vregs 0 = q :=
+      ((hs5_pres 0 (by decide)).trans ((hs4_pres 0 (by decide)).trans
+        (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)))).trans h_v0
+    have hs5_v1 : s5.vregs 1 = rem :=
+      ((hs5_pres 1 (by decide)).trans ((hs4_pres 1 (by decide)).trans
+        (chain_pres_3 hs1_pres hs2_pres hs3_pres 1 (by decide)))).trans h_v1
+    have hs5_v2 : s5.vregs 2 = adj :=
+      ((hs5_pres 2 (by decide)).trans ((hs4_pres 2 (by decide)).trans
+        (chain_pres_3 hs1_pres hs2_pres hs3_pres 2 (by decide)))).trans h_v2
+    refine ⟨?_, hs5_v0, hs5_v1, hs5_v2, hs5_sail_orig⟩
+    rw [hs5_v3_eq, hs5_v6] at hguard; exact hguard
+  · exfalso
+    have herr := vreg_assert_eq_run_err 3 6 s5 hguard
+    rw [herr] at hp; cases hp
 
 /-- Phase 5 soundness — extract the `|rem| < |adj|` (or adj=0) guard. -/
 theorem phase_remainder_bound_run_sound
@@ -490,7 +777,39 @@ theorem phase_remainder_bound_run_sound
         ((adj ^^^ adj.sshiftRight 31) - adj.sshiftRight 31).toNat) ∧
     js₁.vregs 0 = q ∧
     js₁.sail = js.sail := by
-  sorry
+  unfold phase_remainder_bound at hp
+  obtain ⟨_, s1, hrun1, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s1', hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 2 31 js
+  rw [hrun1_ex] at hrun1; cases hrun1
+  obtain ⟨_, s2, hrun2, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s2', hrun2_ex, hs2_v3, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 3 2 4 s1
+  rw [hrun2_ex] at hrun2; cases hrun2
+  obtain ⟨_, s3, hrun3, hp⟩ := bind_unpeel_of_ok hp
+  obtain ⟨s3', hrun3_ex, hs3_v3, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex 3 3 4 s2
+  rw [hrun3_ex] at hrun3; cases hrun3
+  have hs1_v2 : s1.vregs 2 = adj := (hs1_pres 2 (by decide)).trans h_v2
+  have hs1_v4_eq : s1.vregs 4 = adj.sshiftRight 31 := by rw [hs1_v4, h_v2]; rfl
+  have hs2_v4 : s2.vregs 4 = adj.sshiftRight 31 := (hs2_pres 4 (by decide)).trans hs1_v4_eq
+  have hs2_v3_eq : s2.vregs 3 = adj ^^^ adj.sshiftRight 31 := by
+    rw [hs2_v3, hs1_v2, hs1_v4_eq]
+  have hs3_v3_eq : s3.vregs 3 = (adj ^^^ adj.sshiftRight 31) - adj.sshiftRight 31 := by
+    rw [hs3_v3, hs2_v3_eq, hs2_v4]
+  have hs3_v1 : s3.vregs 1 = rem :=
+    (chain_pres_3 hs1_pres hs2_pres hs3_pres 1 (by decide)).trans h_v1
+  have hs3_v0 : s3.vregs 0 = q :=
+    (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)).trans h_v0
+  have hs3_sail_orig : s3.sail = js.sail := hs3_sail.trans (hs2_sail.trans hs1_sail)
+  change vreg_assert_valid_unsigned_remainder 1 3 s3 = .ok r js₁ at hp
+  by_cases hguard : s3.vregs 3 = 0#64 ∨ (s3.vregs 1).toNat < (s3.vregs 3).toNat
+  · have hok := vreg_assert_valid_unsigned_remainder_run_ok 1 3 s3 hguard
+    rw [hok] at hp; cases hp
+    refine ⟨?_, hs3_v0, hs3_sail_orig⟩
+    rcases hguard with h0 | hlt
+    · left; rw [← hs3_v3_eq]; exact h0
+    · right; rw [← hs3_v3_eq, ← hs3_v1]; exact hlt
+  · exfalso
+    have herr := vreg_assert_valid_unsigned_remainder_run_err 1 3 s3 hguard
+    rw [herr] at hp; cases hp
 
 /-- Phase 6 soundness — characterise the post-writeback Sail state. -/
 theorem phase_writeback_run_sound
@@ -502,7 +821,16 @@ theorem phase_writeback_run_sound
     (hp : (phase_writeback rd).run js = .ok r js₁) :
     js₁.sail = stateAfterWrite js_ref rd
                  (sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0)) := by
-  sorry
+  unfold phase_writeback at hp
+  change vreg_sign_extend_word_to_real rd 0 js = .ok r js₁ at hp
+  obtain ⟨s', hw⟩ := wX_shape rd (sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0)) js.sail
+  have hrun : vreg_sign_extend_word_to_real rd 0 js = .ok RETIRE_SUCCESS
+      { sail := s', vregs := js.vregs } :=
+    vreg_sign_extend_word_to_real_run rd 0 js s' (by rw [h_v0]; exact hw)
+  rw [hrun] at hp; cases hp
+  show s' = stateAfterWrite js_ref rd (sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0))
+  rw [← h_sail]
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 end Divw
 

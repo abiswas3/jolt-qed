@@ -31,17 +31,24 @@ These are often called FormatR and FormatI instructions, and their RISCV counter
 
 There is a general strategy for this group of instructions, ill put this in.
 
-## ALU Instructions With Advice (DONE: 0 | INPROGRESS: 0 | TODO: 8)
+## ALU Instructions With Advice (DONE: 1 | INPROGRESS: 3 | TODO: 4)
 
-This is the DIV, REM, class of formatR and formatI instructions which do the same as above but they also use an advice string in jolt. 
-So here the proofs are different: We do not necessarily step through both monads and say sail state is the same. 
-Here we have to do soundness and completeness proofs. 
-If advice is right, then the jolt-expansion goes through cleanly without panics.
-Otherwise it does not. 
-So will have to prove completeness and soundness lemmas here. 
-We have not started this type of instructions. 
+The general strategy to close these proofs can be found [here](https://randomwalks.xyz/blog/bytecode-expansions/chainsmokers/).
+Most of the blog focuses on closing the top level lemmas. 
+We found that in order to close the phase lemmas -- we had to implement existential lemmas along with `run_ok` and `run_err` lemmas for individual instruction.
+The issue was that `vregs` was a function, and each write had an if `vd = x` then vregs[x] = v else vregs = vregs (I paraphrase, i forget the syntax).
+This means a sequence of 4 or more writes was leading to a bit of a blow up in cases. 
+Instead we say at the end of the write, there exists some jolt state `js'` such that the following holds. 
+When chaining in the main lemmas we can easily find a value that satisfies this existential. 
 
-- TODO: DIV, DIVU, DIVW, DIVUW
+Note that the above helps characterise the monadic step functions using `EStateM`. 
+The pure math lemmas of div are proven but quite a handful.
+They will be modularised later. 
+For now we focus on the remaining. 
+- DONE: DIV
+
+These will mostly follow div, we will just have to close out some differences.
+- TODO:  DIVU, DIVW, DIVUW
 - TODO: REM, REMU, REMW, REMUW
 
 Helper: `Advice.lean` — shared advice collapse theorem, SLLI/SRAI step lemmas, projectResult lifting

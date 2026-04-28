@@ -105,7 +105,8 @@ transpilation reflects this in `rX (Regno 0) = pure zero_reg`. Used
 to discharge `Divw.phase_rem_nonneg_run`'s `hx0` argument. -/
 theorem rX_bits_x0_eq_zero (s : SailState) :
     rX_bits (regidx.Regidx 0) s = .ok 0#64 s := by
-  sorry
+  unfold rX_bits rX regval_from_reg zero_reg zeros
+  simp only [bind, EStateM.bind, pure, EStateM.pure]
 
 -- ----------------------------------------------------------------------------
 -- The five honest-advice guard lemmas
@@ -122,6 +123,14 @@ theorem hguard_div0_of_honest_w (dividend divisor : BitVec 64) :
        q_w dividend divisor ≠ (-1 : BitVec 64)) := by
   sorry
 
+-- Extracting the low 32 bits of a 64-bit sign-extension of a 32-bit value
+-- gives back the original 32-bit value.
+private lemma extractLsb_signExtend_32_64 (x : BitVec 32) :
+    (x.signExtend 64).extractLsb 31 0 = x := by
+  cases hmsb : x.msb
+  · rw [BitVec.signExtend_eq_not_setWidth_not_of_msb_false hmsb]; bv_omega
+  · rw [BitVec.signExtend_eq_not_setWidth_not_of_msb_true hmsb]; bv_omega
+
 /-- **Guard 2 — `VirtualAssertEQ v3 v0` (32-bit quotient round-trip).**
 
 The quotient produced by Sail's `execute_DIVW` is the result of
@@ -131,7 +140,9 @@ hence it satisfies the round-trip identity
 theorem hguard_q_fits_of_honest_w (dividend divisor : BitVec 64) :
     sign_extend (m := 64) (Sail.BitVec.extractLsb (q_w dividend divisor) 31 0)
       = q_w dividend divisor := by
-  sorry
+  unfold q_w sail_divw_value sign_extend Sail.BitVec.signExtend Sail.BitVec.extractLsb
+  congr 1
+  exact extractLsb_signExtend_32_64 _
 
 /-- **Guard 3 — `VirtualAssertEQ v4 x0` (`|rem|` ≥ 0 as i32).**
 
