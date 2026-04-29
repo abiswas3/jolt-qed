@@ -192,7 +192,12 @@ theorem jolt_divuw_complete (rs2 rs1 rd : regidx)
 -- ----------------------------------------------------------------------------
 
 /-- **Soundness.** Any successful run of `jolt_divuw` on advice `q`
-forces `q = sail_divuw_advice dividend divisor`. -/
+produces the same Sail writeback state as `execute_DIVW ... true`.
+
+DIVUW does not require raw 64-bit advice uniqueness: in the divisor-zero
+case, multiple advice words can have low 32 bits `0xFFFFFFFF`. The
+guards still force the post-`SignExtendWord` value written to `rd` to
+be Sail's architectural DIVUW result. -/
 theorem jolt_divuw_sound (rs2 rs1 rd : regidx)
     (q : BitVec 64)
     (js : SailJoltState)
@@ -201,7 +206,8 @@ theorem jolt_divuw_sound (rs2 rs1 rd : regidx)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
     (js' : SailJoltState)
     (hok : (jolt_divuw rs2 rs1 rd q).run js = .ok RETIRE_SUCCESS js') :
-    q = sail_divuw_advice dividend divisor := by
+    js'.sail =
+      stateAfterWrite js.sail rd (sail_divw_value dividend divisor true) := by
   rw [jolt_divuw_phased] at hok
   let zd := zero_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0)
   let zv := zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0)
@@ -212,22 +218,31 @@ theorem jolt_divuw_sound (rs2 rs1 rd : regidx)
       hrs1 hrs2 hp1
   -- PHASE 2 unpeel.
   obtain ⟨_, js₂, hp2, hok⟩ := bind_unpeel_of_ok hok
-  obtain ⟨hguard2, h2_v0, h2_v1, h2_v2, h2_v3, _⟩ :=
+  obtain ⟨hguard2, h2_v0, h2_v1, h2_v2, h2_v3, h2_sail⟩ :=
     Divuw.phase_quotient_product_run_sound js₁ js₂ _ q zd zv
       h1_v0 h1_v1 h1_v2 hp2
   -- PHASE 3 unpeel.
   obtain ⟨_, js₃, hp3, hok⟩ := bind_unpeel_of_ok hok
-  obtain ⟨hguard3, h3_v0, h3_v1, h3_v2, _⟩ :=
+  obtain ⟨hguard3, h3_v0, h3_v1, h3_v2, h3_sail⟩ :=
     Divuw.phase_remainder_bound_run_sound js₂ js₃ _ q zd zv
       h2_v0 h2_v1 h2_v2 h2_v3 hp3
   -- PHASE 4 unpeel.
-  -- (Phase 5's writeback has no guard.)
-  obtain ⟨_, js₄, hp4, _⟩ := bind_unpeel_of_ok hok
-  obtain ⟨hguard4, _, _⟩ :=
+  obtain ⟨_, js₄, hp4, hp5⟩ := bind_unpeel_of_ok hok
+  obtain ⟨hguard4, h4_v3, h4_sail⟩ :=
     Divuw.phase_div0_check_run_sound js₃ js₄ _ q zv
       h3_v1 h3_v2 hp4
-  -- All four guards in hand. Uniqueness lemma closes the goal.
-  exact advice_unique_of_guards_uw dividend divisor q
-    hguard1 hguard2 hguard3 hguard4
+  have h_sext :
+      sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0) =
+        sail_divw_value dividend divisor true :=
+    sext_advice_eq_sail_divw_value_of_guards_uw dividend divisor q
+      hguard1 hguard2 hguard3 hguard4
+  have h4_sail_orig : js₄.sail = js.sail :=
+    h4_sail.trans (h3_sail.trans (h2_sail.trans h1_sail))
+  have hwrite :=
+    Divuw.phase_writeback_run_sound rd js₄ js' js.sail RETIRE_SUCCESS
+      (sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0))
+      h4_v3 h4_sail_orig hp5
+  rw [h_sext] at hwrite
+  exact hwrite
 
 end

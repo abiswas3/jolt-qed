@@ -26,7 +26,8 @@ The DIVUW counterpart of `Div_math.lean` / `Divu_math.lean` /
   `rd`).
 * Four **honest-advice guard lemmas** corresponding to the four
   asserts in `jolt_divuw`'s inline sequence.
-* The **uniqueness lemma** `advice_unique_of_guards_uw`.
+* The **writeback-value soundness lemma**
+  `sext_advice_eq_sail_divw_value_of_guards_uw`.
 * The **sign-extension round-trip** lemma
   `sext_advice_eq_sail_divw_value` — used by `jolt_divuw_concrete`'s
   writeback step to convert the post-state's `sext(q)` into
@@ -199,6 +200,18 @@ private theorem zeroExtend32_mul_toNat_uw (x y : BitVec 32) :
   have hy : y.toNat < 2^32 := y.isLt
   nlinarith
 
+private theorem nat_quotient_unique_of_mul_le_and_sub_lt_uw
+    {a b q : Nat} (hb : b ≠ 0)
+    (hle : q * b ≤ a)
+    (hlt : a - q * b < b) :
+    q = a / b := by
+  have hbpos : 0 < b := Nat.pos_of_ne_zero hb
+  have hq_le : q ≤ a / b := (Nat.le_div_iff_mul_le hbpos).mpr hle
+  have hdiv_le : a / b ≤ q := by
+    rw [Nat.div_le_iff_le_mul hbpos]
+    omega
+  omega
+
 -- ----------------------------------------------------------------------------
 -- Sign-extension round-trip
 -- ----------------------------------------------------------------------------
@@ -340,19 +353,89 @@ theorem hguard_div0_of_honest_uw (dividend divisor : BitVec 64) :
     exact hzv
 
 -- ----------------------------------------------------------------------------
--- Soundness uniqueness
+-- Soundness of the writeback value
 -- ----------------------------------------------------------------------------
 
-/-- **Soundness uniqueness.** If the four guards hold for some advice
-`q`, then `q = sail_divuw_advice dividend divisor` (the unique honest
-u32 quotient, zero-extended).
+private theorem advice_eq_honest_of_guards_uw_of_nonzero
+    (dividend divisor q : BitVec 64)
+    (hnez : Sail.BitVec.extractLsb divisor 31 0 ≠ 0#32)
+    (h1 : q.toNat *
+            (zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0)).toNat
+          < 2^64)
+    (h2 :
+      let zd := zero_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0)
+      let zv := zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0)
+      (q * zv).toNat ≤ zd.toNat)
+    (h3 :
+      let zd := zero_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0)
+      let zv := zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0)
+      zv = 0#64 ∨ (zd - q * zv).toNat < zv.toNat)
+    :
+    q = sail_divuw_advice dividend divisor := by
+  set x32 := Sail.BitVec.extractLsb dividend 31 0 with hx32
+  set y32 := Sail.BitVec.extractLsb divisor 31 0 with hy32
+  have hy_ne : y32 ≠ 0#32 := by
+    intro h
+    exact hnez h
+  have hyNat_ne : y32.toNat ≠ 0 := by
+    intro h
+    apply hy_ne
+    apply BitVec.eq_of_toNat_eq
+    simp [h]
+  let zd := zero_extend (m := 64) x32
+  let zv := zero_extend (m := 64) y32
+  have hzd_orig :
+      zero_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0) = zd := by
+    rw [← hx32]
+  have hzv_orig :
+      zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0) = zv := by
+    rw [← hy32]
+  have hprod_toNat : (q * zv).toNat = q.toNat * zv.toNat := by
+    apply toNat_mul_of_no_overflow_uw
+    rw [← hzv_orig]
+    exact h1
+  have hprod_le : q.toNat * zv.toNat ≤ zd.toNat := by
+    rw [← hprod_toNat]
+    rw [← hzd_orig, ← hzv_orig]
+    exact h2
+  have hrem_lt : (zd - q * zv).toNat < zv.toNat := by
+    have h3' := h3
+    rw [hzd_orig, hzv_orig] at h3'
+    rcases h3' with hz | hlt
+    · exfalso
+      apply hy_ne
+      apply eq_zero_of_zeroExtend32_eq_zero_uw y32
+      exact hz
+    · exact hlt
+  have hsub_nat : zd.toNat - q.toNat * zv.toNat < zv.toNat := by
+    rw [← hprod_toNat]
+    rw [← toNat_sub_of_le_uw]
+    · exact hrem_lt
+    · rw [hprod_toNat]
+      exact hprod_le
+  have hq_nat : q.toNat = x32.toNat / y32.toNat := by
+    have hquot :=
+      nat_quotient_unique_of_mul_le_and_sub_lt_uw
+        (a := zd.toNat) (b := zv.toNat) (q := q.toNat)
+        (by rw [zeroExtend32_64_toNat_uw]; exact hyNat_ne)
+        hprod_le hsub_nat
+    rw [zeroExtend32_64_toNat_uw, zeroExtend32_64_toNat_uw] at hquot
+    exact hquot
+  have hhonest :
+      sail_divuw_advice dividend divisor =
+        zero_extend (m := 64) (x32 / y32) := by
+    rw [sail_divuw_advice_of_normal dividend divisor hnez, ← hx32, ← hy32]
+  rw [hhonest]
+  apply BitVec.eq_of_toNat_eq
+  rw [zeroExtend32_64_toNat_uw, BitVec.toNat_udiv]
+  exact hq_nat
 
-DIVUW analogue of `advice_unique_of_guards_u`. The proof plan splits
-on `zv = 0` (forces `sext(q) = -1`, i.e. `q.low_32 = u32::MAX`, plus
-upper bits constrained to 0 by the no-overflow guard with `zv` already
-in u32 range) and the normal case (unsigned u32 uniqueness of the
-truncating quotient with `0 ≤ rem < zv`). -/
-theorem advice_unique_of_guards_uw
+/-- **Writeback-value soundness.** If the four DIVUW guards hold for
+some raw 64-bit advice `q`, then the value written after the
+`SignExtendWord` phase is exactly Sail's DIVUW result. This is the right
+DIVUW soundness shape: raw advice is not unique in the divisor-zero case,
+but its low 32 bits still sign-extend to the architectural result. -/
+theorem sext_advice_eq_sail_divw_value_of_guards_uw
     (dividend divisor q : BitVec 64)
     (h1 : q.toNat *
             (zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0)).toNat
@@ -369,7 +452,27 @@ theorem advice_unique_of_guards_uw
       let zv := zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0)
       ¬ (zv = 0#64 ∧
          sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0) ≠ (-1 : BitVec 64))) :
-    q = sail_divuw_advice dividend divisor := by
-  sorry
+    sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0) =
+      sail_divw_value dividend divisor true := by
+  by_cases hzero : Sail.BitVec.extractLsb divisor 31 0 = 0#32
+  · have hzv : zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0) = 0#64 := by
+      rw [hzero]
+      unfold zero_extend Sail.BitVec.zeroExtend
+      bv_decide
+    have hsext_q :
+        sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0) =
+          (-1 : BitVec 64) := by
+      by_contra hne
+      exact h4 ⟨hzv, hne⟩
+    have hsail : sail_divw_value dividend divisor true = (-1 : BitVec 64) := by
+      have hhonest := signExtend_extract_sail_divuw_advice_of_zero dividend divisor hzero
+      rw [sext_advice_eq_sail_divw_value dividend divisor] at hhonest
+      exact hhonest
+    rw [hsext_q, hsail]
+  · have hq :
+        q = sail_divuw_advice dividend divisor :=
+      advice_eq_honest_of_guards_uw_of_nonzero dividend divisor q hzero h1 h2 h3
+    rw [hq]
+    exact sext_advice_eq_sail_divw_value dividend divisor
 
 end
