@@ -235,13 +235,19 @@ def phase_overflow_check : JoltMonad ExecutionResult := do
 
 /-- Phase 3 — remainder-non-negative check (DIVW-only, no DIV analogue).
 
-Asserts `SRAI v1 31 = x0`, which holds iff the upper 33 bits of the
-`|remainder|` advice are zero — i.e. `rem_abs.toNat < 2^31`. The DIV
-sequence doesn't need this because its `|rem|` is a full 64-bit value.
+-- WARNING: MISALIGNED — the Rust inline sequence uses `SRAI rem 31` but this
+-- should be `SRAI rem 32` to correctly check `rem < 2^32` (fits in u32).
+-- With shift 31, the case rs1_low = i32::MIN, rs2_low = 0 gives rem = 2^31
+-- which fails the check, yet is the unique valid advice for that input.
+-- See bug_reports/divw.md. The Rust fix is to change the shift from 31 to 32.
+
+Asserts `SRAI v1 32 = x0`, which holds iff the upper 32 bits of the
+`|remainder|` advice are zero — i.e. `rem_abs.toNat < 2^32` (fits in u32).
+The DIV sequence doesn't need this because its `|rem|` is a full 64-bit value.
 For DIVW the `|rem|` lives inside a 64-bit BitVec but represents a u32,
 so the high half must be checked explicitly. -/
 def phase_rem_nonneg : JoltMonad ExecutionResult := do
-  let _ ← vreg_SRAI 4 1 31
+  let _ ← vreg_SRAI 4 1 32
   vreg_assert_eq_real 4 (regidx.Regidx 0)
 
 /-- Phase 4 — reconstruct signed remainder, sum, assert equals
@@ -365,7 +371,9 @@ theorem phase_overflow_check_run
   rw [bind_run_of_ok h1, bind_run_of_ok h2]
   exact h3
 
-/-- Phase 3 — DIVW-only `|rem|` ≥ 0 (as i32) check. -/
+-- WARNING: MISALIGNED — shift changed from 31 to 32 to match the required Rust fix.
+-- See bug_reports/divw.md for full analysis.
+/-- Phase 3 — DIVW-only `|rem|` ≥ 0 (as u32) check. -/
 theorem phase_rem_nonneg_run
     (js : SailJoltState)
     (q rem adj : BitVec 64)
@@ -376,7 +384,7 @@ theorem phase_rem_nonneg_run
     (h_v5 : js.vregs 5 = sext_divisor)
     (h_v6 : js.vregs 6 = sext_dividend)
     (hx0 : rX_bits (regidx.Regidx 0) js.sail = .ok 0#64 js.sail)
-    (hguard_rem_nonneg : shift_bits_right_arith rem (31 : BitVec 6) = 0#64) :
+    (hguard_rem_nonneg : shift_bits_right_arith rem (32 : BitVec 6) = 0#64) :
     ∃ js',
       phase_rem_nonneg.run js = .ok RETIRE_SUCCESS js' ∧
       js'.vregs 0 = q ∧
@@ -386,13 +394,13 @@ theorem phase_rem_nonneg_run
       js'.vregs 6 = sext_dividend ∧
       js'.sail = js.sail := by
   unfold phase_rem_nonneg
-  obtain ⟨s1, h1, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 1 31 js
+  obtain ⟨s1, h1, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 1 32 js
   have hs1_v0 : s1.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
   have hs1_v1 : s1.vregs 1 = rem := (hs1_pres 1 (by decide)).trans h_v1
   have hs1_v2 : s1.vregs 2 = adj := (hs1_pres 2 (by decide)).trans h_v2
   have hs1_v5 : s1.vregs 5 = sext_divisor := (hs1_pres 5 (by decide)).trans h_v5
   have hs1_v6 : s1.vregs 6 = sext_dividend := (hs1_pres 6 (by decide)).trans h_v6
-  have hs1_v4_eq : s1.vregs 4 = shift_bits_right_arith rem 31 := by rw [hs1_v4, h_v1]
+  have hs1_v4_eq : s1.vregs 4 = shift_bits_right_arith rem (32 : BitVec 6) := by rw [hs1_v4, h_v1]
   have hx0_s1 : rX_bits (regidx.Regidx 0) s1.sail = .ok 0#64 s1.sail := hs1_sail.symm ▸ hx0
   have hguard : s1.vregs 4 = 0#64 := by rw [hs1_v4_eq]; exact hguard_rem_nonneg
   have h2 := vreg_assert_eq_real_run_ok 4 (regidx.Regidx 0) s1 0#64 hx0_s1 hguard
@@ -655,7 +663,7 @@ theorem phase_rem_nonneg_run_sound
     (h_v6 : js.vregs 6 = sext_dividend)
     (hx0 : rX_bits (regidx.Regidx 0) js.sail = .ok 0#64 js.sail)
     (hp : phase_rem_nonneg.run js = .ok r js₁) :
-    shift_bits_right_arith rem (31 : BitVec 6) = 0#64 ∧
+    shift_bits_right_arith rem (32 : BitVec 6) = 0#64 ∧
     js₁.vregs 0 = q ∧
     js₁.vregs 1 = rem ∧
     js₁.vregs 2 = adj ∧
@@ -664,14 +672,14 @@ theorem phase_rem_nonneg_run_sound
     js₁.sail = js.sail := by
   unfold phase_rem_nonneg at hp
   obtain ⟨_, s1, hrun1, hp⟩ := bind_unpeel_of_ok hp
-  obtain ⟨s1', hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 1 31 js
+  obtain ⟨s1', hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 1 32 js
   rw [hrun1_ex] at hrun1; cases hrun1
   have hs1_v0 : s1.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
   have hs1_v1 : s1.vregs 1 = rem := (hs1_pres 1 (by decide)).trans h_v1
   have hs1_v2 : s1.vregs 2 = adj := (hs1_pres 2 (by decide)).trans h_v2
   have hs1_v5 : s1.vregs 5 = sext_divisor := (hs1_pres 5 (by decide)).trans h_v5
   have hs1_v6 : s1.vregs 6 = sext_dividend := (hs1_pres 6 (by decide)).trans h_v6
-  have hs1_v4_eq : s1.vregs 4 = shift_bits_right_arith rem 31 := by rw [hs1_v4, h_v1]
+  have hs1_v4_eq : s1.vregs 4 = shift_bits_right_arith rem (32 : BitVec 6) := by rw [hs1_v4, h_v1]
   have hx0_s1 : rX_bits (regidx.Regidx 0) s1.sail = .ok 0#64 s1.sail := hs1_sail.symm ▸ hx0
   change vreg_assert_eq_real 4 (regidx.Regidx 0) s1 = .ok r js₁ at hp
   by_cases hguard : s1.vregs 4 = 0#64
@@ -745,19 +753,20 @@ theorem phase_quotient_product_run_sound
       (chain_pres_3 hs1_pres hs2_pres hs3_pres 6 (by decide)))).trans h_v6
   have hs5_sail_orig : s5.sail = js.sail :=
     hs5_sail.trans (hs4_sail.trans (hs3_sail.trans (hs2_sail.trans hs1_sail)))
+  -- Derive post-state facts BEFORE cases hp (cases hp substitutes s5 → js₁).
+  have hs5_v0 : s5.vregs 0 = q :=
+    ((hs5_pres 0 (by decide)).trans ((hs4_pres 0 (by decide)).trans
+      (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)))).trans h_v0
+  have hs5_v1 : s5.vregs 1 = rem :=
+    ((hs5_pres 1 (by decide)).trans ((hs4_pres 1 (by decide)).trans
+      (chain_pres_3 hs1_pres hs2_pres hs3_pres 1 (by decide)))).trans h_v1
+  have hs5_v2 : s5.vregs 2 = adj :=
+    ((hs5_pres 2 (by decide)).trans ((hs4_pres 2 (by decide)).trans
+      (chain_pres_3 hs1_pres hs2_pres hs3_pres 2 (by decide)))).trans h_v2
   change vreg_assert_eq 3 6 s5 = .ok r js₁ at hp
   by_cases hguard : s5.vregs 3 = s5.vregs 6
   · have hok := vreg_assert_eq_run_ok 3 6 s5 hguard
     rw [hok] at hp; cases hp
-    have hs5_v0 : s5.vregs 0 = q :=
-      ((hs5_pres 0 (by decide)).trans ((hs4_pres 0 (by decide)).trans
-        (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)))).trans h_v0
-    have hs5_v1 : s5.vregs 1 = rem :=
-      ((hs5_pres 1 (by decide)).trans ((hs4_pres 1 (by decide)).trans
-        (chain_pres_3 hs1_pres hs2_pres hs3_pres 1 (by decide)))).trans h_v1
-    have hs5_v2 : s5.vregs 2 = adj :=
-      ((hs5_pres 2 (by decide)).trans ((hs4_pres 2 (by decide)).trans
-        (chain_pres_3 hs1_pres hs2_pres hs3_pres 2 (by decide)))).trans h_v2
     refine ⟨?_, hs5_v0, hs5_v1, hs5_v2, hs5_sail_orig⟩
     rw [hs5_v3_eq, hs5_v6] at hguard; exact hguard
   · exfalso

@@ -61,7 +61,7 @@ def jolt_divw (rs2 rs1 rd : regidx)
   let _ ← vreg_change_divisor_w 2 6 5                     -- VirtualChangeDivisorW       v2, v6, v5
   let _ ← vreg_sign_extend_word 3 0                       -- VirtualSignExtendWord       v3, v0, 0
   let _ ← vreg_assert_eq 3 0                              -- VirtualAssertEQ             v3, v0, 0
-  let _ ← vreg_SRAI 4 1 31                                -- SRAI                        v4, v1, 31
+  let _ ← vreg_SRAI 4 1 32                                -- SRAI                        v4, v1, 32
   let _ ← vreg_assert_eq_real 4 (regidx.Regidx 0)         -- VirtualAssertEQ             v4, x0, 0
   let _ ← vreg_SRAI 4 6 31                                -- SRAI                        v4, v6, 31
   let _ ← vreg_XOR 5 1 4                                  -- XOR                         v5, v1, v4
@@ -124,7 +124,7 @@ theorem jolt_divw_concrete (rs2 rs1 rd : regidx)
     hguard_div0_of_honest_w dividend divisor
   have hguard_q_fits : sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0) = q :=
     hguard_q_fits_of_honest_w dividend divisor
-  have hguard_rem_nonneg : shift_bits_right_arith rem (31 : BitVec 6) = 0#64 :=
+  have hguard_rem_nonneg : shift_bits_right_arith rem (32 : BitVec 6) = 0#64 :=
     hguard_rem_nonneg_of_honest_w dividend divisor
   have hguard_quotient_product :
       q * adj + ((rem ^^^ sd.sshiftRight 31) - sd.sshiftRight 31) = sd :=
