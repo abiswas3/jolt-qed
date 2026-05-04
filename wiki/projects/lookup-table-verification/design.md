@@ -1,5 +1,8 @@
 # Lookup Table Verification Design
 
+![Type](https://img.shields.io/badge/type-design_note-24292f)
+![Project](https://img.shields.io/badge/project-lookup_tables-yellow)
+
 ## Problem
 
 The verifier checks table consistency using polynomial evaluations. The public
@@ -7,6 +10,10 @@ table is conceptually large, so the verifier evaluates its multilinear
 extension directly instead of materializing every entry.
 
 The first target is the AND table.
+
+> [!TIP]
+> Keep the first theorem about the concrete Rust table code:
+> `materialize_entry` and `evaluate_mle`.
 
 ## AND Table
 
@@ -58,3 +65,11 @@ $$
 
 The second proof should show that the evaluator is the multilinear extension of
 the public table.
+
+## Design Checklist
+
+- [x] Identify `materialize_entry` as the finite table definition.
+- [x] Identify `evaluate_mle` as the verifier-facing evaluator.
+- [ ] State Boolean-hypercube agreement in Lean.
+- [ ] State full MLE correctness in Lean.
+- [ ] Decide how this connects to the sum-check constraints.

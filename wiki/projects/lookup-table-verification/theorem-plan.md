@@ -1,13 +1,33 @@
 # Lookup Table Verification Theorem Plan
 
+![Type](https://img.shields.io/badge/type-theorem_plan-24292f)
+![Status](https://img.shields.io/badge/status-planning-yellow)
+
 ## First Target: AND
 
-| Theorem | Status | Notes |
-|---|---|---|
-| `materialize_entry` matches bitwise AND | Planning | Dummy row. |
-| `evaluate_mle` agrees on Boolean points | Not started | Main first theorem. |
-| `evaluate_mle` is the full MLE | Not started | Main polynomial theorem. |
-| Sum-check bridge | Not started | Later theorem relating table consistency checks to CPU semantics. |
+### `materialize_entry` Matches Bitwise AND
+
+![Status](https://img.shields.io/badge/status-planning-yellow)
+
+- Notes: dummy row.
+
+### `evaluate_mle` Agrees on Boolean Points
+
+![Status](https://img.shields.io/badge/status-todo-lightgrey)
+
+- Notes: main first theorem.
+
+### `evaluate_mle` Is the Full MLE
+
+![Status](https://img.shields.io/badge/status-todo-lightgrey)
+
+- Notes: main polynomial theorem.
+
+### Sum-check Bridge
+
+![Status](https://img.shields.io/badge/status-todo-lightgrey)
+
+- Notes: later theorem relating table consistency checks to CPU semantics.
 
 ## Dummy Theorem Shapes
 
@@ -38,3 +58,7 @@ $$
 $$
 
 The actual theorem should use the real Jolt polynomial names.
+
+> [!NOTE]
+> Boolean-hypercube agreement and full MLE correctness are related but should
+> remain separate theorem statements.
