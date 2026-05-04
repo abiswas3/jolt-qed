@@ -14,6 +14,25 @@ For every RISC-V instruction Jolt expands, there are two Lean functions: the Jol
 >![IMPORTANT] We are assuming that our transcription of the rust expansion into is faithfu.
 
 
-## May 
+## May
+
+Goal: close every red-risk item that doesn't depend on a structural rewrite, and finish the in-progress ALU + store proofs.
+
++ [ ] ![Target](https://img.shields.io/badge/target-2026--05--10-yellow) Fix the recursive virtual-extension issue — prove compositional lowering theorems and use them in caller proofs. See [Risks: recursive_expansion](risks.md).
++ [ ] ![Target](https://img.shields.io/badge/target-2026--05--14-yellow) Close the two `Bridges/Shift.lean` sorries (`sll_32_eq_mul_trunc`, `ctz_srlw_bitmask`) so `SLLW` and `SRLW` become sorry-free.
++ [ ] ![Target](https://img.shields.io/badge/target-2026--05--17-yellow) Centralise the memory envelope: introduce `JoltFlatMemoryEnvelope` and rewrite load/store theorems to use it. See [Risks: memory_envelope](risks.md).
++ [ ] ![Target](https://img.shields.io/badge/target-2026--05--24-yellow) Discharge the two `SwMonad.lean` prefix-success lemmas, then instantiate the splice argument for `SH` and `SB` on top of `xor_and_xor_splice`.
++ [ ] ![Target](https://img.shields.io/badge/target-2026--05--31-yellow) Add `rd = x0` wrapper theorems where Rust handles the case explicitly — covers no-op replacement and side-effecting remaps. See [Risks: rd_x0](risks.md).
+
+## June
+
+Goal: extend coverage to the atomic, load-reserved, store-conditional, and remaining multiplication families on top of the May infrastructure.
+
++ [ ] ![Target](https://img.shields.io/badge/target-2026--06--07-yellow) Close `AMOSWAP.W/D`, `AMOAND.W/D`, `AMOOR.W/D`, `AMOXOR.W/D` (the eight degenerate-splice atomics) using the SW splice and centralised memory envelope.
++ [ ] ![Target](https://img.shields.io/badge/target-2026--06--14-yellow) Close `AMOADD.W/D`, `AMOMIN.W/D`, `AMOMINU.W/D`, `AMOMAX.W/D`, `AMOMAXU.W/D` (the ten arithmetic atomics).
++ [ ] ![Target](https://img.shields.io/badge/target-2026--06--18-yellow) State and prove `LR.W` and `LR.D` on top of the closed `LW` / `LD` theorems.
++ [ ] ![Target](https://img.shields.io/badge/target-2026--06--22-yellow) State and prove `SC.W` and `SC.D` on top of the SW splice + reservation set.
++ [ ] ![Target](https://img.shields.io/badge/target-2026--06--27-yellow) State and prove `MULH` and `MULHSU` via the unsigned-high-multiply + sign-correction decomposition outlined in `Mulh.lean`.
++ [ ] ![Target](https://img.shields.io/badge/target-2026--06--30-yellow) Decide scope for the system instructions (`ECALL`, `EBREAK`, `MRET`, `CSRRW`, `CSRRS`) — either state stub theorems or document them as out-of-scope for the August claim. 
 
 
