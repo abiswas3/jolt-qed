@@ -37,35 +37,9 @@ This project is an attempt to formalise the [Jolt Zk-VM]() in Lean4.
     - [risks](projects/lookjup-table-verification/risks.md)
 
 
-## Current Priorities
-
-1. Close the bytecode expansion theorem structure for inline instruction sequences.
-2. State the bytecode memory-region assumptions for loads and stores precisely.
-3. Start lookup-table verification with the AND table MLE theorem.
 
 ## Global Checklist
 
-- [x] Plain Markdown source directory exists.
-- [x] Project pages render directly on GitHub.
-- [x] Timelines and status pages have a consistent shape.
-- [x] Markdown tables have been removed from the wiki source.
-- [ ] Replace dummy project data with current facts.
-- [ ] Add issue and PR links once the tracking policy is settled.
-
-## Conventions
-
-- `README.md` is the overview page for each directory.
-- `timeline.md` tracks milestones and deadlines.
-- `status.md` tracks dated updates.
-- `design.md` explains how the project works.
-- `theorem-plan.md` records target Lean theorem shapes.
-- `risks.md` tracks assumptions, blockers, and open decisions.
-- Do not use Markdown tables for content that needs frequent editing.
-
-> [!TIP]
-> Prefer headings, bullet lists, task lists, fenced code blocks, LaTeX blocks,
-> badges, and GitHub alert blocks. Avoid raw HTML and generator-specific syntax
-> in `wiki/`.
 
 ## Status Labels
 

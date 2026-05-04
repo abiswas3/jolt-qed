@@ -1,7 +1,9 @@
 # Bytecode Expansion Risks
 
 
-## Open Risks
+## AI Generated Audit
+
+The following were flagged as **Risks** in an AI generated audit.
 
 ### Recursive Expansion Is Not Yet Final-Row Faithful
 
