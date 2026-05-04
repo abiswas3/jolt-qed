@@ -1,59 +1,23 @@
-# Bytecode Expansion Timeline
+# Bytecode Expansion Status
 
-![Status](https://img.shields.io/badge/status-in_progress-blue)
-![Target](https://img.shields.io/badge/target-2026--08--31-green)
+## March – April
 
-> [!IMPORTANT]
-> Dates below are dummy planning dates. Replace them with the real project
-> commitments before sharing this as the authoritative schedule.
+We started tracking in May. Below is a summary of the work that got done in March and April. See [notes](design.md) for links to code and documentation.
 
-## Milestones
+In March, we transpiled the Sail specification of the RISC-V CPU into Lean using the trusted Sail-to-Lean transpiler from Galois and Cambridge. That gives us a Lean function for every RISC-V instruction whose meaning is exactly what the Sail spec says — our reference semantics. Pipeline details are at [Compiling RISCV-SAIL Into Lean4](https://randomwalks.xyz/blog/sail-to-lean/).
 
-### 2026-06-15: Baseline Jolt ISA in Lean
+In April, we hand-wrote the Jolt-side execution model on top of that. The Jolt model carries Sail's architectural state alongside a virtual-register file, and defines each *virtual instruction* — the building blocks of Jolt's bytecode expansions — in terms of the same Sail bitvector primitives the trusted CPU model already uses. A Jolt expansion is therefore a Lean program reading and writing the same state the Sail spec does, just through Jolt's virtual ISA.
 
-![Status](https://img.shields.io/badge/status-in_progress-blue)
+### What "proving" means here
 
-- Notes: dummy checkpoint for stable instruction definitions.
+For every RISC-V instruction Jolt expands, there are two Lean functions: the Jolt-side expansion (a sequence of virtual instructions) and the Sail-side reference (the trusted semantics). The proof obligation is that running them from the same starting state lands in the same ending state — same registers, same memory, same flags. We discharge it as one theorem per instruction (`jolt_<inst>_eq_sail`). Once that theorem is closed, the expansion is sound by construction: anything the Jolt prover accepts must agree with what the Sail spec would have produced.
 
-### 2026-06-30: Lowering Theorem Framework
+## May 
 
-![Status](https://img.shields.io/badge/status-planning-yellow)
++ [ ] Fix the recursive virtual extension issue. See [Risks](risks.md) ![Target](https://img.shields.io/badge/target-2026--05--10-yellow) 
 
-- Notes: define the reusable theorem pattern for inline sequences.
++ [ ] Close remaining ALU and Store instructions. These changed due to recent modularisation efforts.![Target](https://img.shields.io/badge/target-2026--05--14-yellow) 
 
-### 2026-07-15: Load/Store Theorem Envelope
 
-![Status](https://img.shields.io/badge/status-planning-yellow)
++ [ ] Update Memory envelope in Lean to accomodate for panic, advice, inputs etc. The currently memory outline treats all regions as RAM. See [Risks](risks.md) ![Target](https://img.shields.io/badge/target-2026--05--17-yellow) 
 
-- Notes: state ordinary-RAM and special-region assumptions.
-
-### 2026-07-31: Missing Instruction Families
-
-![Status](https://img.shields.io/badge/status-planning-yellow)
-
-- Notes: fill gaps for advice, stores, and boundary variants.
-
-### 2026-08-15: Atomics Pass
-
-![Status](https://img.shields.io/badge/status-todo-lightgrey)
-
-- Notes: add AMO, LR, and SC theorem skeletons.
-
-### 2026-08-31: Final Audit Pass
-
-![Status](https://img.shields.io/badge/status-todo-lightgrey)
-
-- Notes: close or document trace metadata and virtual-register issues.
-
-## Deadline Notes
-
-- The August target assumes the current Jolt ISA work remains stable.
-- Store modeling and atomics are the main dummy blockers.
-- Trace metadata and virtual-register renaming are tracked separately unless
-  they become theorem blockers.
-
-## Immediate Timeline Tasks
-
-- [ ] Replace dummy dates with real commitments.
-- [ ] Add issue links for store and atomic milestones.
-- [ ] Mark which milestones block the paper story.

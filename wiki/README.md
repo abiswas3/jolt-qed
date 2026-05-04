@@ -1,39 +1,41 @@
 # Jolt QED Project Wiki
 
-![Wiki](https://img.shields.io/badge/wiki-source_of_truth-0b57d0)
-![Render](https://img.shields.io/badge/render-GitHub_Markdown-24292f)
-![Math](https://img.shields.io/badge/math-GitHub_LaTeX-7b1fa2)
 
-This directory is the source of truth for project documentation. Every page
-should be readable directly in GitHub without requiring a generated site.
+This project is an attempt to formalise the [Jolt Zk-VM]() in Lean4.
 
 > [!IMPORTANT]
-> Keep the Markdown in this directory readable on GitHub by itself. Any future
-> rendered site should treat `wiki/` as input, not as generated output.
+> This project is currently under active development. 
+> We will aim to keep the wiki as up to date as possible, but the code and roadmap map are subject to change,
 
-## Projects
+
+## Active Projects
 
 ### [Bytecode Expansion](projects/bytecode-expansion/README.md)
 
 ![Status](https://img.shields.io/badge/status-in_progress-blue)
-![Target](https://img.shields.io/badge/target-2026--08--31-green)
-![Owner](https://img.shields.io/badge/owner-abiswas3-lightgrey)
 
 - Owner: [abiswas3](https://github.com/abiswas3)
-- Target: 2026-08-31
-- Summary: Prove that Rust tracer bytecode expansion matches the Lean semantics.
-- Pages: [timeline](projects/bytecode-expansion/timeline.md), [status](projects/bytecode-expansion/status.md), [design](projects/bytecode-expansion/design.md), [theorem plan](projects/bytecode-expansion/theorem-plan.md), [risks](projects/bytecode-expansion/risks.md)
+- Expected Completion date: 2026-08-31
+- Summary: The Lean build passes and many main bytecode-expansion theorems are now in place, including shifts, word instructions, loads, and the advice division/remainder family. Stores, atomics, and a few bridge lemmas remain open. See [progress report](projects/bytecode-expansion/timeline.md) and [risks](projects/bytecode-expansion/risks.md).
+
+- Pages: 
+    - [progress report](projects/bytecode-expansion/timeline.md)
+    - [project wiki](projects/bytecode-expansion/design.md)
+    - [risks](projects/bytecode-expansion/risks.md)
 
 ### [Lookup Table Verification](projects/lookup-table-verification/README.md)
 
 ![Status](https://img.shields.io/badge/status-planning-yellow)
-![Target](https://img.shields.io/badge/target-2026--09--30-green)
-![Owner](https://img.shields.io/badge/owner-abiswas3-lightgrey)
 
 - Owner: [abiswas3](https://github.com/abiswas3)
-- Target: 2026-09-30
-- Summary: Prove that verifier table polynomials represent the intended public lookup tables.
-- Pages: [timeline](projects/lookup-table-verification/timeline.md), [status](projects/lookup-table-verification/status.md), [design](projects/lookup-table-verification/design.md), [theorem plan](projects/lookup-table-verification/theorem-plan.md), [risks](projects/lookup-table-verification/risks.md)
+- Target: 2026-12-31
+- Summary: Prove the each lookup table is correctly evaluated at a random point.
+
+- Pages: 
+    - [progress report](projects/lookjup-table-verification/timeline.md)
+    - [project wiki](projects/lookjup-table-verification/design.md)
+    - [risks](projects/lookjup-table-verification/risks.md)
+
 
 ## Current Priorities
 
