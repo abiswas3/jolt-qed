@@ -17,9 +17,7 @@ Jolt decomposes SLLW into (from `BytecodeExpansions/Sllw.lean`):
 2. `MUL rd, rs1, v_pow` — multiply rs1 by the power of two
 3. `VirtualSignExtendWord rd, rd` — sign-extend lower 32 bits
 
-Bridge: `sllw_mul_eq_shift` (in `Bridges/Shift.lean`). The bridge
-internally depends on `sll_32_eq_mul_trunc` which is currently `sorry`;
-this is flagged there, not here.
+Bridge: `sllw_mul_eq_shift` (in `Bridges/Shift.lean`).
 -/
 
 theorem execute_RTYPEW_SLLW_factored (rs2 rs1 rd : regidx) :
