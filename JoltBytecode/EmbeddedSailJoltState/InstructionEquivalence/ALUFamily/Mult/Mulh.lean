@@ -25,8 +25,7 @@ ADD            v_tmp, v_tmp, v_sx
 ADD            rd,    v_tmp, v_sy
 ```
 
-The local helpers below are intentionally narrow and Rust-faithful; they can
-move to shared virtual-instruction modules later without changing the theorem.
+The Jolt-ISA virtual instructions used here live in `VirtualInstructions.lean`.
 -/
 
 def mulhOp : mul_op :=
@@ -34,38 +33,9 @@ def mulhOp : mul_op :=
     signed_rs1 := Signedness.Signed
     signed_rs2 := Signedness.Signed }
 
-/-- RV64 `VirtualMovsign`: all ones if the real source sign bit is set,
-otherwise zero. -/
-def jolt_movsign_value (x : BitVec 64) : BitVec 64 :=
-  if x.msb then (-1 : BitVec 64) else 0
-
-/-- RV64 `MULHU`: high 64 bits of the unsigned 64x64 product. -/
-def jolt_mulhu_value (x y : BitVec 64) : BitVec 64 :=
-  BitVec.ofNat 64 (x.toNat * y.toNat / 2^64)
-
 /-- The pure value written by the Rust `MULH` inline sequence. -/
 def jolt_mulh_value (x y : BitVec 64) : BitVec 64 :=
   jolt_mulhu_value x y + jolt_movsign_value x * y + jolt_movsign_value y * x
-
-/-- `VirtualMovsign vd, rs1, 0`: read real `rs1`, write virtual `vd`. -/
-def vreg_movsign_from_real (vd : BitVec 7) (rs1 : regidx) : JoltMonad ExecutionResult := do
-  let x ← liftSail (rX_bits rs1)
-  writeVReg vd (jolt_movsign_value x)
-  pure RETIRE_SUCCESS
-
-/-- `MULHU vd, rs1, rs2`: read real sources, write virtual `vd`. -/
-def vreg_MULHU_from_real (vd : BitVec 7) (rs1 rs2 : regidx) : JoltMonad ExecutionResult := do
-  let x ← liftSail (rX_bits rs1)
-  let y ← liftSail (rX_bits rs2)
-  writeVReg vd (jolt_mulhu_value x y)
-  pure RETIRE_SUCCESS
-
-/-- `ADD rd, vs1, vs2`: read virtual sources, write real `rd`. -/
-def vreg_ADD_to_real (rd : regidx) (vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
-  let x ← readVReg vs1
-  let y ← readVReg vs2
-  liftSail (wX_bits rd (x + y))
-  pure RETIRE_SUCCESS
 
 /-- Rust's RV64 `MULH::inline_sequence`, with allocator outputs fixed as
 `v_sx = 0`, `v_sy = 1`, `v_tmp = 2`. -/
@@ -98,26 +68,6 @@ private theorem mulhs_eq_sail_mulh_value (v1 v2 : BitVec 64) :
         (to_bits_truncate (l := 128) (v1.toInt * v2.toInt)) 127 64)
   rw [extract_high64_to_bits_truncate_eq_ofInt_div]
   simp
-
-private theorem movsign_zero_of_toNat_lt_half (x : BitVec 64)
-    (h : x.toNat < 9223372036854775808) :
-    jolt_movsign_value x = 0 := by
-  unfold jolt_movsign_value
-  have hmsb : x.msb = false := by
-    rw [BitVec.msb_eq_decide]
-    exact decide_eq_false_iff_not.mpr (by omega)
-  rw [hmsb]
-  rfl
-
-private theorem movsign_neg_one_of_half_le (x : BitVec 64)
-    (h : ¬ x.toNat < 9223372036854775808) :
-    jolt_movsign_value x = (-1 : BitVec 64) := by
-  unfold jolt_movsign_value
-  have hmsb : x.msb = true := by
-    rw [BitVec.msb_eq_decide]
-    exact decide_eq_true_eq.mpr (by omega)
-  rw [hmsb]
-  rfl
 
 private theorem toInt_of_toNat_lt_half (x : BitVec 64)
     (h : x.toNat < 9223372036854775808) :
@@ -175,30 +125,30 @@ private theorem mulh_correction_eq_mulhs (x y : BitVec 64) :
     jolt_mulh_value x y = mulhs x y := by
   by_cases hx : x.toNat < 9223372036854775808
   · by_cases hy : y.toNat < 9223372036854775808
-    · rw [jolt_mulh_value, movsign_zero_of_toNat_lt_half x hx,
-          movsign_zero_of_toNat_lt_half y hy]
+    · rw [jolt_mulh_value, jolt_movsign_value_eq_zero_of_toNat_lt_half x hx,
+          jolt_movsign_value_eq_zero_of_toNat_lt_half y hy]
       unfold jolt_mulhu_value mulhs
       rw [toInt_of_toNat_lt_half x hx, toInt_of_toNat_lt_half y hy]
       apply BitVec.eq_of_toNat_eq
       simp
       omega
-    · rw [jolt_mulh_value, movsign_zero_of_toNat_lt_half x hx,
-          movsign_neg_one_of_half_le y hy]
+    · rw [jolt_mulh_value, jolt_movsign_value_eq_zero_of_toNat_lt_half x hx,
+          jolt_movsign_value_eq_neg_one_of_half_le y hy]
       unfold jolt_mulhu_value mulhs
       rw [toInt_of_toNat_lt_half x hx, toInt_of_half_le y hy]
       apply BitVec.eq_of_toNat_eq
       simp
       exact mulh_corr_pos_neg_arith x.toNat y.toNat
   · by_cases hy : y.toNat < 9223372036854775808
-    · rw [jolt_mulh_value, movsign_neg_one_of_half_le x hx,
-          movsign_zero_of_toNat_lt_half y hy]
+    · rw [jolt_mulh_value, jolt_movsign_value_eq_neg_one_of_half_le x hx,
+          jolt_movsign_value_eq_zero_of_toNat_lt_half y hy]
       unfold jolt_mulhu_value mulhs
       rw [toInt_of_half_le x hx, toInt_of_toNat_lt_half y hy]
       apply BitVec.eq_of_toNat_eq
       simp
       exact mulh_corr_neg_pos_arith x.toNat y.toNat
-    · rw [jolt_mulh_value, movsign_neg_one_of_half_le x hx,
-          movsign_neg_one_of_half_le y hy]
+    · rw [jolt_mulh_value, jolt_movsign_value_eq_neg_one_of_half_le x hx,
+          jolt_movsign_value_eq_neg_one_of_half_le y hy]
       unfold jolt_mulhu_value mulhs
       rw [toInt_of_half_le x hx, toInt_of_half_le y hy]
       apply BitVec.eq_of_toNat_eq
