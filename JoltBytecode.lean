@@ -14,8 +14,8 @@ import JoltBytecode.EmbeddedSailJoltState.ShiftDefs                             
 
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Addw                        -- DONE: ADDW (ADD + VSEW)
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Subw                        -- DONE: SUBW (SUB + VSEW)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Sllw                        -- INPROGRESS: SLLW (1 sorry in bridge)
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Srlw                        -- INPROGRESS: SRLW (1 sorry in bridge)
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Sllw                        -- DONE: SLLW
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Srlw                        -- DONE: SRLW
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Sraw                        -- DONE: SRAW
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Shift.Sll                     -- DONE: SLL
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Shift.Srl                     -- DONE: SRL
@@ -23,7 +23,7 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype
 
 -- Multiplication
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Mulw                        -- DONE: MULW (MUL + VSEW)
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Mult.Mulh             -- TODO: execute_MUL, upper-half multiply
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Mult.Mulh                         -- DONE: MULH (Rust inline sequence)
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
 
 -- Divide / Remainder [The Advice Family]
