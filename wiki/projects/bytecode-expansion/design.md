@@ -1,11 +1,18 @@
 # Bytecode Expansion Design
 
+![Type](https://img.shields.io/badge/type-design_note-24292f)
+![Project](https://img.shields.io/badge/project-bytecode_expansion-blue)
+
 ## Problem
 
 The Rust tracer expands some source-level instructions into Jolt bytecode
 sequences. The Lean development should prove that these expansions preserve the
 intended semantics without expanding every nested sequence from scratch at every
 use site.
+
+> [!TIP]
+> The design rule is compositionality: prove each lowering theorem once, then
+> reuse it in caller proofs.
 
 ## Intended Approach
 
@@ -52,8 +59,21 @@ $$
 
 ## Open Design Questions
 
-| Question | Current answer |
-|---|---|
-| Do inline sequences get expanded at every caller? | No. Use lowering theorems. |
-| Are special memory regions modeled? | Not yet. Track as explicit assumptions. |
-| Is virtual-register renaming part of the first pass? | No. Track separately unless it blocks theorem statements. |
+### Do inline sequences get expanded at every caller?
+
+- Current answer: no. Use lowering theorems.
+
+### Are special memory regions modeled?
+
+- Current answer: not yet. Track as explicit assumptions.
+
+### Is virtual-register renaming part of the first pass?
+
+- Current answer: no. Track separately unless it blocks theorem statements.
+
+## Design Checklist
+
+- [x] Use compositional lowering as the default proof shape.
+- [ ] State the memory-region envelope in the theorem assumptions.
+- [ ] Decide how trace metadata enters the final theorem.
+- [ ] Decide whether virtual-register renaming is a theorem or a convention.

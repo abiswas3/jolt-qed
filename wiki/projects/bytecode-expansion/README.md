@@ -1,51 +1,81 @@
 # Bytecode Expansion
 
+![Status](https://img.shields.io/badge/status-in_progress-blue)
+![Target](https://img.shields.io/badge/target-2026--08--31-green)
+![Owner](https://img.shields.io/badge/owner-abiswas3-lightgrey)
+![Area](https://img.shields.io/badge/area-JoltBytecode-24292f)
+
 ## Summary
 
 Bytecode Expansion is a Lean verification project for the Rust tracer expansion
 pipeline. The goal is to prove that each Jolt bytecode expansion implements the
 intended instruction semantics under explicit assumptions.
 
-The content on this page is dummy data. It exists to test whether the raw
-Markdown layout is clean enough to read directly on GitHub.
+> [!NOTE]
+> This page still uses dummy data. The layout is intended to test whether native
+> GitHub Markdown is good enough for the project wiki.
 
 ## Metadata
 
-| Field | Value |
-|---|---|
-| Status | In progress |
-| Target | 2026-08-31 |
-| Owner | Ari |
-| Reviewer | TBD |
-| Code area | `JoltBytecode/` |
-| Planning notes | `planning/JOLT_COMPOSITIONAL_LOWERING_PLAN.md` |
+- Status: ![In progress](https://img.shields.io/badge/status-in_progress-blue)
+- Target: 2026-08-31
+- Owner: [abiswas3](https://github.com/abiswas3)
+- Reviewer: TBD
+- Code area: `JoltBytecode/`
+- Planning notes: `planning/JOLT_COMPOSITIONAL_LOWERING_PLAN.md`
 
 ## Pages
 
-| Page | Purpose |
-|---|---|
-| [Timeline](timeline.md) | Milestones, deadlines, and target dates. |
-| [Status](status.md) | Dated progress updates. |
-| [Design](design.md) | Technical explanation of how the project works. |
-| [Theorem Plan](theorem-plan.md) | Target theorem statements and proof decomposition. |
-| [Risks](risks.md) | Assumptions, blockers, and decisions. |
+- [Timeline](timeline.md): milestones, deadlines, and target dates.
+- [Status](status.md): dated progress updates.
+- [Design](design.md): technical explanation of how the project works.
+- [Theorem Plan](theorem-plan.md): target theorem statements and proof decomposition.
+- [Risks](risks.md): assumptions, blockers, and decisions.
 
 ## Success Criteria
 
-| Item | Done when |
-|---|---|
-| Instruction coverage | Every Rust tracer bytecode expansion has a Lean theorem or an explicit exclusion. |
-| Compositional lowering | Instructions that expand into sequences use semantic lowering theorems instead of duplicated nested proofs. |
-| Memory envelope | Load/store theorems state ordinary-RAM and special-region assumptions precisely. |
-| Atomics | Missing atomic expansions have statements and proof skeletons. |
-| Audit cleanup | Known limitations are either fixed or explicitly documented as theorem assumptions. |
+- [ ] Every Rust tracer bytecode expansion has a Lean theorem or an explicit exclusion.
+- [ ] Instructions that expand into sequences use semantic lowering theorems instead of duplicated nested proofs.
+- [ ] Load/store theorems state ordinary-RAM and special-region assumptions precisely.
+- [ ] Missing atomic expansions have statements and proof skeletons.
+- [ ] Known limitations are either fixed or explicitly documented as theorem assumptions.
+
+## Project Checklist
+
+- [x] Project page skeleton exists.
+- [x] Timeline, status, design, theorem plan, and risks pages exist.
+- [ ] Replace dummy instruction coverage with current Lean status.
+- [ ] Link relevant issues and PRs.
+- [ ] Decide whether August target needs per-family owners.
 
 ## Current Snapshot
 
-| Area | Status | Note |
-|---|---|---|
-| ALU word instructions | In progress | Dummy row. |
-| Shifts | In progress | Dummy row. |
-| Loads | Planning | Needs precise memory envelope. |
-| Stores | Not started | Known incomplete area. |
-| Atomics | Not started | Required before August completion target. |
+### ALU Word Instructions
+
+![Status](https://img.shields.io/badge/status-in_progress-blue)
+
+- Note: dummy row.
+
+### Shifts
+
+![Status](https://img.shields.io/badge/status-in_progress-blue)
+
+- Note: dummy row.
+
+### Loads
+
+![Status](https://img.shields.io/badge/status-planning-yellow)
+
+- Note: needs precise memory envelope.
+
+### Stores
+
+![Status](https://img.shields.io/badge/status-todo-lightgrey)
+
+- Note: known incomplete area.
+
+### Atomics
+
+![Status](https://img.shields.io/badge/status-todo-lightgrey)
+
+- Note: required before August completion target.
