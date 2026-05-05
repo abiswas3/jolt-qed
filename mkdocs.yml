@@ -39,6 +39,7 @@ nav:
   - Home: index.md
   - Bytecode Expansion:
       - projects/bytecode-expansion/README.md
+      - Status: projects/bytecode-expansion/status.md
       - Timeline: projects/bytecode-expansion/timeline.md
       - Risks: projects/bytecode-expansion/risks.md
   - Lookup Table Verification:

@@ -33,9 +33,9 @@ On completetion, we get the following gurantee:
 Below are resources that inform how we designed the code till now. 
 
 
-- [progress report](projects/bytecode-expansion/timeline.md)
-
-- [risks](projects/bytecode-expansion/risks.md): Issues, risks and other things to flag in our existing code base (to be moved to issues).
+- [status](status.md): per-instruction snapshot — what's closed, in progress, and todo.
+- [timeline](timeline.md): March–April recap and the May / June roadmap.
+- [risks](risks.md): issues, risks, and other things to flag in our existing code base (to be moved to issues).
 
 
 + Jolt CPU design in Lean: https://randomwalks.xyz/blog/bytecode-expansions/state/ 
