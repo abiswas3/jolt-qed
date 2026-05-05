@@ -1,0 +1,61 @@
+site_name: Jolt QED
+site_description: Formal verification notes and project documentation for Jolt QED.
+repo_url: https://github.com/abiswas3/jolt-qed
+repo_name: abiswas3/jolt-qed
+edit_uri: edit/main/wiki/
+
+docs_dir: wiki
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Bytecode Expansion:
+      - projects/bytecode-expansion/README.md
+      - Timeline: projects/bytecode-expansion/timeline.md
+      - Risks: projects/bytecode-expansion/risks.md
+  - Lookup Table Verification:
+      - projects/lookup-table-verification/README.md
+      - Timeline: projects/lookup-table-verification/timeline.md
+      - Design: projects/lookup-table-verification/design.md
+      - Risks: projects/lookup-table-verification/risks.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
