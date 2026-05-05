@@ -19,8 +19,7 @@ Jolt decomposes SRLW into (from `BytecodeExpansions/Srlw.lean`):
 4. `VirtualSRL rd, v0, v1` — logical right shift via `ctz(bitmask)`
 5. `VirtualSignExtendWord rd, rd`
 
-Bridge: `srlw_shift_eq` (in `Bridges/Shift.lean`); depends on
-`ctz_srlw_bitmask` which is currently `sorry`.
+Bridge: `srlw_shift_eq` (in `Bridges/Shift.lean`).
 -/
 
 theorem execute_RTYPEW_SRLW_factored (rs2 rs1 rd : regidx) :

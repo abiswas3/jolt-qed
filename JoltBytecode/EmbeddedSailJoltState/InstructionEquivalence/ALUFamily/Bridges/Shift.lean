@@ -1,3 +1,4 @@
+import Mathlib.Data.Nat.Bitwise
 import JoltBytecode.EmbeddedSailJoltState.RegisterOps
 import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
@@ -21,9 +22,6 @@ groups, one per shift direction:
 * `sraw_five_step_value` — SRAW: sign-extend + bitmask arithmetic shift
   equals 32-bit arithmetic right shift
 
-Two sorrys survive the port: `sll_32_eq_mul_trunc` (depends on a
-BytecodeExpansions proof) and `ctz_srlw_bitmask` (asserted without proof).
-These are flagged here rather than buried in instruction files.
 -/
 
 -- ============================================================================
@@ -36,12 +34,11 @@ def sllwJolt (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   let product := Riscv.mul rs1_val v_pow
   Jolt.virtualSignExtendWord product
 
-/-- TODO: this depends on a `BytecodeExpansions` proof. Leaving as sorry
-for now; does not affect the Jolt-side state equivalence, only the link
-to the Rust reference semantics. -/
 private lemma sll_32_eq_mul_trunc (x : BitVec 64) (s : Nat) (hs : s < 32) :
     x.setWidth 32 <<< s = (x * BitVec.ofNat 64 (2 ^ s)).setWidth 32 := by
-  sorry
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_shiftLeft, BitVec.toNat_mul, BitVec.toNat_ofNat,
+        BitVec.toNat_setWidth, Nat.shiftLeft_eq]
 
 theorem sllw_eq_sllwJolt (rs1_val rs2_val : BitVec 64) :
     Riscv.sllw rs1_val rs2_val = sllwJolt rs1_val rs2_val := by
@@ -84,10 +81,65 @@ def srlw_bitmask (rs2_val : BitVec 64) : Nat :=
   let ones := (1 <<< (64 - shift)) - 1
   ones <<< shift
 
-/-- TODO: asserted without proof. -/
+private lemma or32_setWidth6_toNat (x : BitVec 64) :
+    ((Riscv.ori x 32#64).setWidth 6).toNat = (x.setWidth 5).toNat + 32 := by
+  have h : (Riscv.ori x 32#64).setWidth 6 = ((1#1) +++ x.setWidth 5) := by
+    unfold Riscv.ori
+    bv_decide
+  rw [h, BitVec.toNat_append]
+  norm_num [Nat.shiftLeft_eq]
+  change (2 ^ 5 ||| (x.setWidth 5).toNat) = (x.setWidth 5).toNat + 32
+  rw [show (x.setWidth 5).toNat + 32 = 2 ^ 5 + (x.setWidth 5).toNat by
+    norm_num
+    omega]
+  have hx : (x.setWidth 5).toNat < 2 ^ 5 := by
+    have := (x.setWidth 5).isLt
+    norm_num at this
+    exact this
+  apply Nat.eq_of_testBit_eq
+  intro i
+  rw [Nat.testBit_lor]
+  by_cases hi5 : i = 5
+  · subst i
+    rw [Nat.testBit_two_pow_self, Nat.testBit_two_pow_add_eq]
+    have hk : (x.setWidth 5).toNat.testBit 5 = false := Nat.testBit_lt_two_pow hx
+    simpa [BitVec.toNat_setWidth] using hk
+  · by_cases hlt : i < 5
+    · have hpow : (2 ^ 5 : Nat).testBit i = false := by
+        rw [Nat.testBit_two_pow]
+        simp [show ¬5 = i by omega]
+      rw [hpow, Bool.false_or, Nat.testBit_two_pow_add_gt hlt]
+    · have hgt : 5 < i := by omega
+      have hk : (x.setWidth 5).toNat.testBit i = false := by
+        exact Nat.testBit_lt_two_pow
+          (lt_of_lt_of_le hx (Nat.pow_le_pow_right (by norm_num : 0 < 2) (by omega)))
+      have hpow : (2 ^ 5 : Nat).testBit i = false := by
+        rw [Nat.testBit_two_pow]
+        simp [show ¬5 = i by omega]
+      have hadd : (2 ^ 5 + (x.setWidth 5).toNat).testBit i = false := by
+        apply Nat.testBit_lt_two_pow
+        have hb : 2 ^ 5 + (x.setWidth 5).toNat < 2 ^ 6 := by omega
+        exact lt_of_lt_of_le hb (Nat.pow_le_pow_right (by norm_num : 0 < 2) (by omega))
+      rw [hpow, hk, hadd]
+      rfl
+
 lemma ctz_srlw_bitmask (rs2_val : BitVec 64) :
     ctz (srlw_bitmask rs2_val) = (rs2_val.setWidth 5).toNat + 32 := by
-  sorry
+  unfold srlw_bitmask
+  simp only [or32_setWidth6_toNat]
+  simp only [Nat.shiftLeft_eq, one_mul]
+  have h_lt : (rs2_val.setWidth 5).toNat < 32 := by
+    have := (rs2_val.setWidth 5).isLt
+    norm_num at this
+    exact this
+  have h_diff_pos : 0 < 64 - ((rs2_val.setWidth 5).toNat + 32) := by omega
+  have h_m_pos : 0 < 2 ^ (64 - ((rs2_val.setWidth 5).toNat + 32)) - 1 := by
+    have : 2 ≤ 2 ^ (64 - ((rs2_val.setWidth 5).toNat + 32)) :=
+      le_trans (show (2 : Nat) ≤ 2 ^ 1 from by norm_num)
+        (Nat.pow_le_pow_right (by omega) (by omega))
+    omega
+  rw [mul_comm, ctz_mul_pow2 ((rs2_val.setWidth 5).toNat + 32) h_m_pos,
+      ctz_of_odd (pow2_sub_one_odd h_diff_pos)]
 
 private lemma toNat_shl_32 (v : BitVec 64) :
     (v <<< 32).toNat = v.toNat * 2^32 % 2^64 := by
