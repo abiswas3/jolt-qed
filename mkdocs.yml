@@ -48,6 +48,10 @@ nav:
       - Design: projects/lookup-table-verification/design.md
       - Risks: projects/lookup-table-verification/risks.md
 
+plugins:
+  - search
+  - callouts
+
 markdown_extensions:
   - admonition
   - attr_list

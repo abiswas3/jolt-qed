@@ -4,7 +4,7 @@ For the current instruction-by-instruction status snapshot, see [status](status.
 
 ## March – April
 
-We started tracking in May. Below is a summary of the work that got done in March and April. See [notes](design.md) for links to code and documentation.
+We started tracking in May. Below is a summary of the work that got done in March and April. See the [external resources](README.md#external-resources) section of the project README for blog posts and the paper draft.
 
 In March and April, we transpiled the Sail specification of the RISC-V CPU into Lean using the trusted Sail-to-Lean transpiler from Galois and Cambridge. That gives us a Lean function for every RISC-V instruction whose meaning is exactly what the Sail spec says — our reference semantics. Pipeline details are at [Compiling RISCV-SAIL Into Lean4](https://randomwalks.xyz/blog/sail-to-lean/).
 We hand-wrote the Jolt-side execution model on top of that. The Jolt model carries Sail's architectural state alongside a virtual-register file, and defines each *virtual instruction* — the building blocks of Jolt's bytecode expansions — in terms of the same Sail bitvector primitives the trusted CPU model already uses. A Jolt expansion is therefore a Lean program reading and writing the same state the Sail spec does, just through Jolt's virtual ISA.
