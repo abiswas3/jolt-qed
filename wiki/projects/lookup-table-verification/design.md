@@ -66,6 +66,44 @@ $$
 The second proof should show that the evaluator is the multilinear extension of
 the public table.
 
+### Sketch in Lean
+
+```lean
+variable (F : Type*) [CommRing F] (XLEN : ℕ)
+
+/-- Concrete table entry, mirroring Rust `materialize_entry`. -/
+def T_AND (idx : BitVec (2 * XLEN)) : BitVec XLEN :=
+  let (x, y) := uninterleave_bits idx
+  x &&& y
+
+/-- Verifier-facing evaluator, mirroring Rust `evaluate_mle`. -/
+def mle_AND (r : Fin (2 * XLEN) → F) : F :=
+  ∑ i : Fin XLEN,
+    (2 ^ (XLEN - 1 - i.val) : F) *
+      r ⟨2 * i.val,     by omega⟩ *
+      r ⟨2 * i.val + 1, by omega⟩
+
+/-- (1) Boolean-hypercube agreement: on bit-decomposed indices, the evaluator
+    returns the concrete table entry. -/
+theorem mle_AND_eq_T_AND_on_bits
+    (j : BitVec (2 * XLEN)) :
+    mle_AND F XLEN (fun k => if j.getLsb k then (1 : F) else 0)
+      = ((T_AND XLEN j).toNat : F) := by
+  sorry
+
+/-- (2) Full MLE correctness: `mle_AND` *is* the multilinear extension of the
+    table over the Boolean hypercube. -/
+theorem mle_AND_is_MLE_of_T_AND :
+    IsMultilinearExtension
+      (mle_AND F XLEN)
+      (fun j : BitVec (2 * XLEN) => ((T_AND XLEN j).toNat : F)) := by
+  sorry
+```
+
+`IsMultilinearExtension` here stands for the predicate "polynomial is multilinear
+*and* agrees with the table on every Boolean point" — by uniqueness of the MLE,
+(2) follows from (1) plus a multilinearity check on `mle_AND`.
+
 ## Design Checklist
 
 - [x] Identify `materialize_entry` as the finite table definition.

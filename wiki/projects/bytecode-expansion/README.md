@@ -2,80 +2,41 @@
 
 ![Status](https://img.shields.io/badge/status-in_progress-blue)
 ![Target](https://img.shields.io/badge/target-2026--08--31-green)
-![Owner](https://img.shields.io/badge/owner-abiswas3-lightgrey)
-![Area](https://img.shields.io/badge/area-JoltBytecode-24292f)
+
+- Owner: [abiswas3](https://github.com/abiswas3)
 
 ## Summary
 
-Bytecode Expansion is a Lean verification project for the Rust tracer expansion
-pipeline. The goal is to prove that each Jolt bytecode expansion implements the
-intended instruction semantics under explicit assumptions.
+The user provides a guest program written in RISC-V assembly along with program inputs to the Jolt zkVM. In return, Jolt hands the user the output and a proof that it ran an "equivalent" program — written in Jolt assembly — correctly. Concretely, the Jolt tracer takes the guest program, translates it into a new program over Jolt's instruction set, and proves that it executed every instruction of *that* program correctly.
 
-> [!NOTE]
-> This page still uses dummy data. The layout is intended to test whether native
-> GitHub Markdown is good enough for the project wiki.
+For correctness to hold we must show the new program is equivalent to the original guest program. The translation works one guest instruction at a time: every RISC-V instruction `inst` is replaced by a fixed sequence of Jolt virtual + real instructions, the *bytecode expansion* `expand(inst)`. The Jolt program is the concatenation of those expansions, in order. So whole-program equivalence reduces to a per-instruction claim: each expansion must compute the same architectural state transition as the RISC-V instruction it stands in for.
 
-## Metadata
+## Formal statement
 
-- Status: ![In progress](https://img.shields.io/badge/status-in_progress-blue)
-- Target: 2026-08-31
-- Owner: [abiswas3](https://github.com/abiswas3)
-- Reviewer: TBD
-- Code area: `JoltBytecode/`
-- Planning notes: `planning/JOLT_COMPOSITIONAL_LOWERING_PLAN.md`
+Let `Sail.run : Inst → State → State` be the trusted RISC-V semantics produced by the Sail-to-Lean transpiler, and let `Jolt.run : List Inst → State → State` be the Jolt execution model running a sequence of (virtual + real) Jolt instructions. For each guest RISC-V instruction `inst` the tracer fixes an expansion `expand(inst) : List Inst`. The per-instruction proof obligation is:
+
+> For every RISC-V instruction `inst` in the supported subset and every starting state `s`,
+>
+> &nbsp;&nbsp;&nbsp;&nbsp;`Jolt.run (expand inst) s  =  Sail.run inst s`
+
+We discharge this as a single Lean theorem per instruction, named `jolt_<inst>_eq_sail`. Once it is closed for every `inst` in the supported subset, induction over the program lifts it to whole-program equivalence: for any guest program `p`, running `concatMap expand p` under the Jolt model lands in the same final architectural state as running `p` under the trusted Sail spec. That whole-program agreement is the 1:1 mapping the design relies on.
+
+> [!IMPORTANT]
+> If the Rust-to-Lean transcription of the Jolt ISA is faithful, and the Lean kernel is to be trusted, then the modified guest program written in Jolt assembly is equivalent to the original RISC-V guest program.
 
 ## Pages
 
-- [Timeline](timeline.md): milestones, deadlines, and target dates.
-- [Status](status.md): dated progress updates.
-- [Design](design.md): technical explanation of how the project works.
-- [Theorem Plan](theorem-plan.md): target theorem statements and proof decomposition.
-- [Risks](risks.md): assumptions, blockers, and decisions.
+- [Status](status.md) — per-instruction snapshot: closed, in progress, todo.
+- [Timeline](timeline.md) — March–April recap and the May / June roadmap.
+- [Risks](risks.md) — issues, blockers, and decisions (to be moved to issues).
 
-## Success Criteria
+## External resources
 
-- [ ] Every Rust tracer bytecode expansion has a Lean theorem or an explicit exclusion.
-- [ ] Instructions that expand into sequences use semantic lowering theorems instead of duplicated nested proofs.
-- [ ] Load/store theorems state ordinary-RAM and special-region assumptions precisely.
-- [ ] Missing atomic expansions have statements and proof skeletons.
-- [ ] Known limitations are either fixed or explicitly documented as theorem assumptions.
-
-## Project Checklist
-
-- [x] Project page skeleton exists.
-- [x] Timeline, status, design, theorem plan, and risks pages exist.
-- [ ] Replace dummy instruction coverage with current Lean status.
-- [ ] Link relevant issues and PRs.
-- [ ] Decide whether August target needs per-family owners.
-
-## Current Snapshot
-
-### ALU Word Instructions
-
-![Status](https://img.shields.io/badge/status-in_progress-blue)
-
-- Note: dummy row.
-
-### Shifts
-
-![Status](https://img.shields.io/badge/status-in_progress-blue)
-
-- Note: dummy row.
-
-### Loads
-
-![Status](https://img.shields.io/badge/status-planning-yellow)
-
-- Note: needs precise memory envelope.
-
-### Stores
-
-![Status](https://img.shields.io/badge/status-todo-lightgrey)
-
-- Note: known incomplete area.
-
-### Atomics
-
-![Status](https://img.shields.io/badge/status-todo-lightgrey)
-
-- Note: required before August completion target.
+- [Jolt CPU design in Lean](https://randomwalks.xyz/blog/bytecode-expansions/state/)
+- Modularising ALU proofs:
+  - [Theorem statement (`ADDW`)](https://randomwalks.xyz/blog/bytecode-expansions/theorem-statement-addw/)
+  - [Proof (`ADDW`)](https://randomwalks.xyz/blog/bytecode-expansions/proof-addw/)
+  - [Helper lemmas](https://randomwalks.xyz/blog/bytecode-expansions/helpers/)
+- Memory pipeline modelling and proof: see Section 4 of the paper draft below.
+- [Soundness and completeness of advice ALU instructions](https://randomwalks.xyz/blog/bytecode-expansions/theorem-statement-addw/)
+- Paper draft: TODO.

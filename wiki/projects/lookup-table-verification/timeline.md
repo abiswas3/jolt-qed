@@ -1,54 +1,19 @@
 # Lookup Table Verification Timeline
 
-![Status](https://img.shields.io/badge/status-planning-yellow)
-![Target](https://img.shields.io/badge/target-2026--09--30-green)
 
-> [!IMPORTANT]
-> The first milestone should stay concrete: prove the AND table evaluator,
-> then generalize. Do not start with vague "lookup relation" wording.
+## July
 
-## Milestones
+Goal: bring the AND lookup table into Lean with both definitions ported, and prove the easy half (Boolean-hypercube agreement).
 
-### 2026-06-01: State AND Table in Lean
++ [ ] ![Target](https://img.shields.io/badge/target-2026--07--12-yellow) Port the Rust `materialize_entry` for AND into Lean as `T_AND`, mirroring the `uninterleave_bits` shape. See [Design](design.md).
++ [ ] ![Target](https://img.shields.io/badge/target-2026--07--19-yellow) Port the Rust `evaluate_mle` for AND into Lean as `mle_AND`, keeping the polynomial form explicit.
++ [ ] ![Target](https://img.shields.io/badge/target-2026--07--31-yellow) Prove Boolean-hypercube agreement: `mle_AND (bits j) = T_AND j` for every `j`. See [Risks: theorem_shape](risks.md).
 
-![Status](https://img.shields.io/badge/status-planning-yellow)
+## August
 
-- Notes: define entry function and evaluator.
+Goal: close the full MLE-correctness theorem for AND and decide whether the pattern is ready to repeat on a second table.
 
-### 2026-06-15: Boolean Hypercube Theorem
++ [ ] ![Target](https://img.shields.io/badge/target-2026--08--16-yellow) Prove full MLE correctness for AND: `mle_AND` is *the* multilinear extension of `T_AND` (uniqueness + Boolean agreement).
++ [ ] ![Target](https://img.shields.io/badge/target-2026--08--23-yellow) Document the proof pattern in `design.md` so it can be re-applied per table.
++ [ ] ![Target](https://img.shields.io/badge/target-2026--08--31-yellow) Port a second table (`XOR`) using the documented pattern as a sanity check. Stop here if the pattern needs revision — fold lessons into the AND proof.
 
-![Status](https://img.shields.io/badge/status-todo-lightgrey)
-
-- Notes: prove evaluator agrees with materialized entries on Boolean points.
-
-### 2026-07-01: Full MLE Theorem
-
-![Status](https://img.shields.io/badge/status-todo-lightgrey)
-
-- Notes: prove evaluator is the multilinear extension of the table.
-
-### 2026-07-31: Template for More Tables
-
-![Status](https://img.shields.io/badge/status-todo-lightgrey)
-
-- Notes: generalize the AND proof pattern.
-
-### 2026-09-30: Project Checkpoint
-
-![Status](https://img.shields.io/badge/status-todo-lightgrey)
-
-- Notes: dummy target for the first lookup-table verification block.
-
-## Deadline Notes
-
-- The first real proof should be the AND table, not a vague generic lookup
-  relation.
-- The Rust table is public but not materialized at verifier time.
-- The Lean statement should be precise about `materialize_entry` and
-  `evaluate_mle`.
-
-## Immediate Timeline Tasks
-
-- [ ] Replace dummy dates with the real plan.
-- [ ] Add issue links for AND Boolean-hypercube agreement.
-- [ ] Add issue links for full MLE correctness.
