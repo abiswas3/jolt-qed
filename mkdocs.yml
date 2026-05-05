@@ -1,8 +1,5 @@
 site_name: Jolt QED
 site_description: Formal verification notes and project documentation for Jolt QED.
-repo_url: https://github.com/abiswas3/jolt-qed
-repo_name: abiswas3/jolt-qed
-edit_uri: edit/main/wiki/
 
 docs_dir: wiki
 
