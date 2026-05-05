@@ -6,7 +6,7 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 
 
-**Overall:** ![closed](https://img.shields.io/badge/closed-36-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-21-yellow) ![todo](https://img.shields.io/badge/todo-10-lightgrey) — **67 instructions total**
+**Overall:** ![closed](https://img.shields.io/badge/closed-37-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-21-yellow) ![todo](https://img.shields.io/badge/todo-9-lightgrey) — **67 instructions total**
 
 ## ALU — I-type shifts
 
@@ -54,12 +54,12 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 ## ALU — multiplication
 
-![closed](https://img.shields.io/badge/closed-1-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-1-lightgrey)
+![closed](https://img.shields.io/badge/closed-2-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-0-lightgrey)
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
 | MULH | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Mult/Mulh.lean#L247`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulh.lean#L247) |
-| MULHSU | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
+| MULHSU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Mult/Mulhsu.lean#L439`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulhsu.lean#L439) |
 
 ## ALU advice (div / rem)
 
@@ -165,6 +165,5 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 | MRET | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
 | CSRRW | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
 | CSRRS | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
-
 
 

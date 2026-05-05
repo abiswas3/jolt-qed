@@ -407,6 +407,35 @@ theorem jolt_movsign_value_eq_neg_one_of_half_le (x : BitVec 64)
   rw [hmsb]
   rfl
 
+/-- RV64 `SLTU` value: one if `x < y` as unsigned 64-bit integers,
+otherwise zero. -/
+def jolt_sltu_value (x y : BitVec 64) : BitVec 64 :=
+  zero_extend (m := 64) (bool_to_bit (zopz0zI_u x y))
+
+theorem jolt_sltu_value_eq_one_of_lt (x y : BitVec 64)
+    (h : x.toNat < y.toNat) :
+    jolt_sltu_value x y = 1 := by
+  unfold jolt_sltu_value zopz0zI_u BitVec.toNatInt bool_to_bit
+    bool_bit_forwards zero_extend
+  simp [h]
+  decide
+
+theorem jolt_sltu_value_eq_zero_of_not_lt (x y : BitVec 64)
+    (h : ¬ x.toNat < y.toNat) :
+    jolt_sltu_value x y = 0 := by
+  unfold jolt_sltu_value zopz0zI_u BitVec.toNatInt bool_to_bit
+    bool_bit_forwards zero_extend
+  simp [h]
+  decide
+
+theorem jolt_sltu_value_toNat (x y : BitVec 64) :
+    (jolt_sltu_value x y).toNat = if x.toNat < y.toNat then 1 else 0 := by
+  by_cases h : x.toNat < y.toNat
+  · rw [jolt_sltu_value_eq_one_of_lt x y h]
+    simp [h]
+  · rw [jolt_sltu_value_eq_zero_of_not_lt x y h]
+    simp [h]
+
 /-- `VirtualMovsign vd, rs1, 0`: read real `rs1`, write virtual `vd`. -/
 def vreg_movsign_from_real (vd : BitVec 7) (rs1 : regidx) : JoltMonad ExecutionResult := do
   let x ← liftSail (rX_bits rs1)
@@ -446,6 +475,14 @@ def vreg_MUL (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
   writeVReg vd (x * y)
   pure RETIRE_SUCCESS
 
+/-- `XOR vd, rs1, vs2`: read real `rs1` and virtual `vs2`, write virtual `vd`. -/
+def vreg_XOR_from_real_vs1 (vd : BitVec 7) (rs1 : regidx) (vs2 : BitVec 7) :
+    JoltMonad ExecutionResult := do
+  let x ← liftSail (rX_bits rs1)
+  let y ← readVReg vs2
+  writeVReg vd (x ^^^ y)
+  pure RETIRE_SUCCESS
+
 /-- `MUL vd, vs1, rs2`: multiply virtual `vs1` by *real* `rs2`, write
     virtual `vd`. Used by DIVU's `quotient * divisor` step. -/
 def vreg_MUL_from_real_vs2 (vd vs1 : BitVec 7) (rs2 : regidx) :
@@ -474,6 +511,15 @@ theorem vreg_MULHU_from_real_run (vd : BitVec 7) (rs1 rs2 : regidx)
     readVReg, writeVReg, get, modify, modifyGet, getThe,
     MonadStateOf.get, MonadStateOf.modifyGet, EStateM.get, EStateM.modifyGet]
 
+/-- `MULHU vd, vs1, rs2`: unsigned-high multiply of virtual `vs1` and real
+    `rs2`, write virtual `vd`. -/
+def vreg_MULHU_from_real_vs2 (vd vs1 : BitVec 7) (rs2 : regidx) :
+    JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  let y ← liftSail (rX_bits rs2)
+  writeVReg vd (jolt_mulhu_value x y)
+  pure RETIRE_SUCCESS
+
 /-- `SUB vd, rs1, vs2`: subtract virtual `vs2` from *real* `rs1`, write
     virtual `vd`. Used by DIVU's `dividend - q*d` step. -/
 def vreg_SUB_from_real_vs1 (vd : BitVec 7) (rs1 : regidx) (vs2 : BitVec 7) :
@@ -496,6 +542,13 @@ def vreg_MULH (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
   let x ← readVReg vs1
   let y ← readVReg vs2
   writeVReg vd (mulhs x y)
+  pure RETIRE_SUCCESS
+
+/-- `SLTU vd, vs1, vs2`: virtual-register unsigned less-than. -/
+def vreg_SLTU (vd vs1 vs2 : BitVec 7) : JoltMonad ExecutionResult := do
+  let x ← readVReg vs1
+  let y ← readVReg vs2
+  writeVReg vd (jolt_sltu_value x y)
   pure RETIRE_SUCCESS
 
 /-- `ADD rd, vs1, vs2`: read virtual sources, write real `rd`. -/
