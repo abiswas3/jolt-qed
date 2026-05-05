@@ -6,6 +6,15 @@ edit_uri: edit/main/wiki/
 
 docs_dir: wiki
 
+# Don't fail the build over relative links to Lean source files outside the
+# docs tree (e.g. `../../../JoltBytecode/.../X.lean#L42` — these resolve fine
+# in the GitHub repo viewer but mkdocs can't validate them).
+validation:
+  omitted_files: warn
+  absolute_links: ignore
+  unrecognized_links: ignore
+  anchors: ignore
+
 theme:
   name: material
   features:
