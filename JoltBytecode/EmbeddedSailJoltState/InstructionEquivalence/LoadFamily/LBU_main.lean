@@ -1,9 +1,11 @@
 import JoltBytecode.EmbeddedSailJoltState.Defs
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.Load
 import JoltBytecode.EmbeddedSailJoltState.MemoryUtils
 import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.DwordArithmetic
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.ProgramBlocks
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LB_decomposed
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LBU_decomposed
 import JoltBytecode.EmbeddedSailJoltState.RtypeW
@@ -191,6 +193,86 @@ theorem jolt_lbu_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
   have hsail := execute_LBU_reduces imm rs1 rd js hcfg val hrx hload
   rcases hjolt with ⟨js', hjolt_run, hjolt_sail⟩
   rw [hjolt_run]
+  simp only [projectResult, project]
+  rw [hjolt_sail, hsail]
+
+/-!
+## Program-level LBU theorem
+
+The Jolt side is now the structured `JoltISA.lbuProgram`.  This is identical
+to the program-level `LB` proof except for the final unsigned `SRLI` writeback
+and the pure bridge theorem's `zero_extend` result.
+-/
+
+/-- Program-level execution for LBU.
+
+The common setup and lane-positioning facts are shared with `LB`; the final
+write block is the logical-right-shift version, which zero-fills the result
+before writing the architectural destination. -/
+theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
+    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
+    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
+    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
+    ∃ js' : SailJoltState,
+      (JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.sail = stateAfterWrite js.sail rd
+        (zero_extend (m := 64)
+          (loaded_byte_at js.sail (load_effective_address val imm))) := by
+  let writeTail : JoltISA.Program :=
+    .instr (.SRLI (.xreg rd) (.vreg 1) (56 : BitVec 6)) (.done RETIRE_SUCCESS)
+  let logicTail : JoltISA.Program :=
+    .instr (.XORI (.vreg 0) (.vreg 0) (7 : BitVec 12)) <|
+    .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
+    .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) writeTail
+  rcases LoadProgramBlocks.setupBlock logicTail imm rs1 js hcfg val hrx
+      h_dword_translate h_dword_phys with
+    ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
+  rcases LoadProgramBlocks.xoriSlliSllBlock writeTail imm (7 : BitVec 12)
+      js js_load val hload_sail hload_v0 hload_v1 with
+    ⟨js_shift, hlogic_run, hshift_sail, _hshift_v0, hshift_v1⟩
+  let shiftedValue :=
+    shift_bits_left
+      (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
+      (Sail.BitVec.extractLsb
+        (shift_bits_left
+          (load_effective_address val imm ^^^ sign_extend (m := 64) (7 : BitVec 12))
+          (3 : BitVec 6)) 5 0)
+  have hshifted : js_shift.vregs 1 = shiftedValue := by
+    simpa [shiftedValue] using hshift_v1
+  rcases LoadProgramBlocks.srliWriteBlock (.done RETIRE_SUCCESS)
+      rd (56 : BitVec 6) js js_shift shiftedValue hshift_sail hshifted with
+    ⟨js', hwrite_run, hwrite_sail⟩
+  refine ⟨js', ?_, ?_⟩
+  · unfold JoltISA.lbuProgram
+    change (JoltISA.execProgram
+      (.instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
+       .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
+       .instr (.LD 1 1 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
+    rw [hload_run, hlogic_run, hwrite_run]
+    rfl
+  · rw [hwrite_sail]
+    exact congrArg (stateAfterWrite js.sail rd) (by
+      have h7 : sign_extend (m := 64) (7 : BitVec 12) = (7 : BitVec 64) := by decide
+      simpa [shiftedValue, compute_aligned_dword_base_address, h7] using
+        (jolt_lbu_bridge js.sail (load_effective_address val imm)))
+
+/-- **Main program theorem for LBU.**  The structured Jolt-ISA expansion
+`lbuProgram`, interpreted by `execProgram`, agrees with Sail's unsigned
+byte-load execution. -/
+theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
+    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
+    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
+    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hload : LoadReadAssumptions (load_effective_address val imm) 1 js.sail) :
+    projectResult ((JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js) =
+    (execute_LOAD imm rs1 rd true 1).run js.sail := by
+  rcases lbuProgram_concrete imm rs1 rd js hcfg val hrx
+      h_dword_translate h_dword_phys with
+    ⟨js', hjolt, hjolt_sail⟩
+  have hsail := execute_LBU_reduces imm rs1 rd js hcfg val hrx hload
+  rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]
 

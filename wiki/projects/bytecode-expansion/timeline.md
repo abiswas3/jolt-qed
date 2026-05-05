@@ -21,7 +21,7 @@ For every RISC-V instruction Jolt expands, there are two Lean functions: the Jol
 Goal: close every red-risk item that doesn't depend on a structural rewrite, and finish the in-progress ALU + store proofs.
 
 + [x] State and prove `MULH` and `MULHSU` via the unsigned-high-multiply + sign-correction decompositions outlined in `Mulh.lean` and `Mulhsu.lean`.
-  ![Closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) Proved `jolt_mulh_eq_sail` and `jolt_mulhsu_eq_sail` against the full monadic Jolt sequences, faithful to the Rust inline expansions.
+  ![Closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) Proved `mulhProgram_eq_sail` and `mulhsuProgram_eq_sail` for the `JoltISA.mulhProgram` and `JoltISA.mulhsuProgram` interpreters, with the legacy `jolt_*` theorem names retained as wrappers.
 
 + [ ] ![Target](https://img.shields.io/badge/target-2026--05--10-yellow) Fix the recursive virtual-extension issue — prove compositional lowering theorems and use them in caller proofs. See [Risks: recursive_expansion](risks.md).
 

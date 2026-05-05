@@ -58,8 +58,8 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| MULH | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Mult/Mulh.lean#L247`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulh.lean#L247) |
-| MULHSU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Mult/Mulhsu.lean#L439`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulhsu.lean#L439) |
+| MULH | ![closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) | [`ALUFamily/Mult/Mulh.lean#L367`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulh.lean#L367) |
+| MULHSU | ![closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) | [`ALUFamily/Mult/Mulhsu.lean#L664`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulhsu.lean#L664) |
 
 ## ALU advice (div / rem)
 
@@ -165,5 +165,3 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 | MRET | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
 | CSRRW | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
 | CSRRS | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
-
-
