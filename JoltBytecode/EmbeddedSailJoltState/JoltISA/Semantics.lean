@@ -62,6 +62,40 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let y ← readSrc rhs
       writeDst dst (jolt_mulhu_value x y)
       pure RETIRE_SUCCESS
+  | .VirtualMULI dst src imm => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_muli_value x imm)
+      pure RETIRE_SUCCESS
+  | .VirtualPow2 dst src => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_pow2_value x)
+      pure RETIRE_SUCCESS
+  | .VirtualPow2W dst src => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_pow2w_value x)
+      pure RETIRE_SUCCESS
+  | .VirtualShiftRightBitmask dst src => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_shift_right_bitmask_value x)
+      pure RETIRE_SUCCESS
+  | .VirtualSRLI dst src bitmask => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_srli_value x bitmask)
+      pure RETIRE_SUCCESS
+  | .VirtualSRAI dst src bitmask => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_srai_value x bitmask)
+      pure RETIRE_SUCCESS
+  | .VirtualSRL dst value bitmask => do
+      let x ← readSrc value
+      let b ← readSrc bitmask
+      writeDst dst (jolt_virtual_srl_value x b)
+      pure RETIRE_SUCCESS
+  | .VirtualSRA dst value bitmask => do
+      let x ← readSrc value
+      let b ← readSrc bitmask
+      writeDst dst (jolt_virtual_sra_value x b)
+      pure RETIRE_SUCCESS
   | .XOR dst lhs rhs => do
       let x ← readSrc lhs
       let y ← readSrc rhs

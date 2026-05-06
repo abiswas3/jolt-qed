@@ -1,0 +1,154 @@
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Instruction
+
+/-!
+# Jolt ISA ALU expansions
+
+These programs are the handwritten Jolt-ISA layer for ALU bytecode
+expansions.  They are intentionally close to the Rust `inline_sequence`
+methods: each constructor below corresponds to one emitted Jolt instruction,
+and temporary virtual registers are written explicitly.
+
+The fixed temporary convention used here matches the existing hand proofs:
+`v0` is the first scratch register and `v1` is the second scratch register.
+Later Rust-to-Lean extraction should replace these handwritten programs, but
+the theorem statements should not need to change.
+-/
+
+set_option maxHeartbeats 1_000_000_000
+
+open Sail PreSail LeanRV64D.Functions
+
+namespace JoltISA
+
+/-- Bitmask immediate used by RV64 `VirtualSRLI` for `SRLI`.  Its trailing-zero
+count is the six-bit shift amount. -/
+def srliBitmask (shamt : BitVec 6) : Nat :=
+  let shift := shamt.toNat
+  let ones := (1 <<< (64 - shift)) - 1
+  ones <<< shift
+
+/-- Bitmask immediate used by RV64 `VirtualSRAI` for `SRAI`.  It has the same
+encoding as `srliBitmask`; only the consuming virtual instruction differs. -/
+def sraiBitmask (shamt : BitVec 6) : Nat :=
+  srliBitmask shamt
+
+/-- Bitmask immediate used by RV64 `VirtualSRLI` for `SRLIW`.  The source word
+is first shifted left by 32, so the encoded right shift is `shamt + 32`. -/
+def srliwBitmask (shamt : BitVec 5) : Nat :=
+  let shift := shamt.toNat + 32
+  let ones := (1 <<< (64 - shift)) - 1
+  ones <<< shift
+
+/-- Bitmask immediate used by RV64 `VirtualSRAI` for `SRAIW`. -/
+def sraiwBitmask (shamt : BitVec 5) : Nat :=
+  let shift := shamt.toNat
+  let ones := (1 <<< (64 - shift)) - 1
+  ones <<< shift
+
+/-- `SLL`: compute `2 ^ rs2[5:0]` in `v0`, then multiply `rs1` by it. -/
+def sllProgram (rs2 rs1 rd : regidx) : Program :=
+  .instr (.VirtualPow2 (.vreg 0) (.xreg rs2)) <|
+  .instr (.MUL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SLLI`: multiply `rs1` by the immediate power of two. -/
+def slliProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
+  .instr (.VirtualMULI (.xreg rd) (.xreg rs1) (BitVec.ofNat 64 (2 ^ shamt.toNat))) <|
+  .done RETIRE_SUCCESS
+
+/-- `SRL`: compute a right-shift bitmask in `v0`, then run `VirtualSRL`. -/
+def srlProgram (rs2 rs1 rd : regidx) : Program :=
+  .instr (.VirtualShiftRightBitmask (.vreg 0) (.xreg rs2)) <|
+  .instr (.VirtualSRL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SRLI`: run `VirtualSRLI` with the statically encoded bitmask. -/
+def srliProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
+  .instr (.VirtualSRLI (.xreg rd) (.xreg rs1) (srliBitmask shamt)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SRA`: compute a right-shift bitmask in `v0`, then run `VirtualSRA`. -/
+def sraProgram (rs2 rs1 rd : regidx) : Program :=
+  .instr (.VirtualShiftRightBitmask (.vreg 0) (.xreg rs2)) <|
+  .instr (.VirtualSRA (.xreg rd) (.xreg rs1) (.vreg 0)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SRAI`: run `VirtualSRAI` with the statically encoded bitmask. -/
+def sraiProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
+  .instr (.VirtualSRAI (.xreg rd) (.xreg rs1) (sraiBitmask shamt)) <|
+  .done RETIRE_SUCCESS
+
+/-- `ADDW`: ordinary 64-bit `ADD`, then virtual sign-extend-word. -/
+def addwProgram (rs2 rs1 rd : regidx) : Program :=
+  .instr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SUBW`: ordinary 64-bit `SUB`, then virtual sign-extend-word. -/
+def subwProgram (rs2 rs1 rd : regidx) : Program :=
+  .instr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+/-- `MULW`: ordinary 64-bit `MUL`, then virtual sign-extend-word. -/
+def mulwProgram (rs2 rs1 rd : regidx) : Program :=
+  .instr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SLLW`: compute `2 ^ rs2[4:0]` in `v0`, multiply, then sign-extend. -/
+def sllwProgram (rs2 rs1 rd : regidx) : Program :=
+  .instr (.VirtualPow2W (.vreg 0) (.xreg rs2)) <|
+  .instr (.MUL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SRLW`: shift `rs1` left into the high word, encode `rs2 | 32` as a
+bitmask, logically shift right, then sign-extend. -/
+def srlwProgram (rs2 rs1 rd : regidx) : Program :=
+  .instr (.SLLI (.vreg 0) (.xreg rs1) (32 : BitVec 6)) <|
+  .instr (.ORI (.vreg 1) (.xreg rs2) (32 : BitVec 12)) <|
+  .instr (.VirtualShiftRightBitmask (.vreg 1) (.vreg 1)) <|
+  .instr (.VirtualSRL (.xreg rd) (.vreg 0) (.vreg 1)) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SRAW`: sign-extend the low word into `v0`, mask the shift amount in `v1`,
+encode that mask as a bitmask, arithmetically shift right, then sign-extend. -/
+def srawProgram (rs2 rs1 rd : regidx) : Program :=
+  .instr (.SExtW (.vreg 0) (.xreg rs1)) <|
+  .instr (.ANDI (.vreg 1) (.xreg rs2) (0x1f : BitVec 12)) <|
+  .instr (.VirtualShiftRightBitmask (.vreg 1) (.vreg 1)) <|
+  .instr (.VirtualSRA (.xreg rd) (.vreg 0) (.vreg 1)) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+/-- `ADDIW`: ordinary `ADDI`, then virtual sign-extend-word. -/
+def addiwProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
+  .instr (.ADDI (.xreg rd) (.xreg rs1) imm) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SLLIW`: multiply by the immediate power of two, then sign-extend. -/
+def slliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
+  .instr (.VirtualMULI (.xreg rd) (.xreg rs1) (BitVec.ofNat 64 (2 ^ shamt.toNat))) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SRLIW`: shift `rs1` left into the high word, logically shift right by the
+encoded immediate bitmask, then sign-extend. -/
+def srliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
+  .instr (.SLLI (.vreg 0) (.xreg rs1) (32 : BitVec 6)) <|
+  .instr (.VirtualSRLI (.xreg rd) (.vreg 0) (srliwBitmask shamt)) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+/-- `SRAIW`: sign-extend `rs1[31:0]` into `v1`, arithmetically shift right by
+the encoded immediate bitmask, then sign-extend again. -/
+def sraiwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
+  .instr (.SExtW (.vreg 1) (.xreg rs1)) <|
+  .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiwBitmask shamt)) <|
+  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .done RETIRE_SUCCESS
+
+end JoltISA

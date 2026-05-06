@@ -231,6 +231,42 @@ theorem execInstr_add_vreg_vreg_xreg_run (rd : regidx) (lhs rhs : VReg)
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get, h]
 
+/-- `ADD` from two real sources to a real destination reads both architectural
+sources and writes their sum through Sail.  This is the instruction effect used
+by the program-level `ADDW` expansion before the final sign-extension step. -/
+theorem execInstr_add_xreg_xreg_xreg_run (rd rs1 rs2 : regidx)
+    (js : SailJoltState) (x y : BitVec 64) (s' : SailState)
+    (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
+    (h₂ : rX_bits rs2 js.sail = .ok y js.sail)
+    (hw : wX_bits rd (x + y) js.sail = .ok () s') :
+    (execInstr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst liftSail
+  simp only [h₁, h₂, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+
+/-- `SUB` from two real sources to a real destination reads both architectural
+sources and writes their difference through Sail. -/
+theorem execInstr_sub_xreg_xreg_xreg_run (rd rs1 rs2 : regidx)
+    (js : SailJoltState) (x y : BitVec 64) (s' : SailState)
+    (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
+    (h₂ : rX_bits rs2 js.sail = .ok y js.sail)
+    (hw : wX_bits rd (x - y) js.sail = .ok () s') :
+    (execInstr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst liftSail
+  simp only [h₁, h₂, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+
+/-- `ADDI` from a real source to a real destination reads the source through
+Sail and writes the immediate sum through Sail. -/
+theorem execInstr_addi_xreg_xreg_run (rd rs1 : regidx) (imm : BitVec 12)
+    (js : SailJoltState) (x : BitVec 64) (s' : SailState)
+    (h : rX_bits rs1 js.sail = .ok x js.sail)
+    (hw : wX_bits rd (x + sign_extend (m := 64) imm) js.sail = .ok () s') :
+    (execInstr (.ADDI (.xreg rd) (.xreg rs1) imm)).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst liftSail
+  simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+
 /-- `MUL` from a virtual source and a real source to a virtual destination reads
 the real source through Sail, writes the low product to the virtual destination,
 and leaves the Sail state unchanged when the real read is state-preserving. -/
@@ -244,6 +280,244 @@ theorem execInstr_mul_vreg_xreg_vreg_run (vd lhs : VReg) (rhs : regidx)
   unfold execInstr readSrc writeDst readVReg liftSail writeVReg
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `MUL` from a real source and a virtual source to a real destination is the
+second instruction in the `SLL` and `SLLW` program expansions.  It consumes the
+scratch virtual register computed by a preceding power-of-two instruction and
+writes the product through Sail. -/
+theorem execInstr_mul_xreg_xreg_vreg_run (rd rs1 : regidx) (vs2 : VReg)
+    (js : SailJoltState) (x : BitVec 64) (s' : SailState)
+    (h : rX_bits rs1 js.sail = .ok x js.sail)
+    (hw : wX_bits rd (x * js.vregs vs2) js.sail = .ok () s') :
+    (execInstr (.MUL (.xreg rd) (.xreg rs1) (.vreg vs2))).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+
+/-- `MUL` from two real sources to a real destination reads both architectural
+sources and writes the low product through Sail. -/
+theorem execInstr_mul_xreg_xreg_xreg_run (rd rs1 rs2 : regidx)
+    (js : SailJoltState) (x y : BitVec 64) (s' : SailState)
+    (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
+    (h₂ : rX_bits rs2 js.sail = .ok y js.sail)
+    (hw : wX_bits rd (x * y) js.sail = .ok () s') :
+    (execInstr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst liftSail
+  simp only [h₁, h₂, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+
+/-- `VirtualMULI` from a real source to a real destination multiplies the
+source by the encoded immediate and writes the result through Sail. -/
+theorem execInstr_virtualMULI_xreg_xreg_run (rd rs1 : regidx)
+    (imm : BitVec 64) (js : SailJoltState) (x : BitVec 64) (s' : SailState)
+    (h : rX_bits rs1 js.sail = .ok x js.sail)
+    (hw : wX_bits rd (jolt_virtual_muli_value x imm) js.sail = .ok () s') :
+    (execInstr (.VirtualMULI (.xreg rd) (.xreg rs1) imm)).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst liftSail
+  simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+
+/-- `VirtualPow2` from a real source to a virtual destination writes
+`2 ^ rs[5:0]` to the scratch virtual register and leaves Sail unchanged. -/
+theorem execInstr_virtualPow2_xreg_vreg_run (vd : VReg) (rs : regidx)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (execInstr (.VirtualPow2 (.vreg vd) (.xreg rs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then jolt_virtual_pow2_value x else js.vregs r } := by
+  unfold execInstr readSrc writeDst liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `VirtualPow2W` is the word-sized power-of-two helper.  It writes
+`2 ^ rs[4:0]` to a virtual destination and leaves Sail unchanged. -/
+theorem execInstr_virtualPow2W_xreg_vreg_run (vd : VReg) (rs : regidx)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (execInstr (.VirtualPow2W (.vreg vd) (.xreg rs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then jolt_virtual_pow2w_value x else js.vregs r } := by
+  unfold execInstr readSrc writeDst liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `VirtualShiftRightBitmask` from a real source to a virtual destination
+materializes the bitmask consumed by `VirtualSRL` and `VirtualSRA`. -/
+theorem execInstr_virtualShiftRightBitmask_xreg_vreg_run (vd : VReg) (rs : regidx)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (execInstr (.VirtualShiftRightBitmask (.vreg vd) (.xreg rs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r =>
+            if r = vd then jolt_virtual_shift_right_bitmask_value x else js.vregs r } := by
+  unfold execInstr readSrc writeDst liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `VirtualShiftRightBitmask` can also read the shift amount from a virtual
+register, which is how the word-shift expansions feed masked shift amounts
+into `VirtualSRL`/`VirtualSRA`. -/
+theorem execInstr_virtualShiftRightBitmask_vreg_vreg_run (vd vs : VReg)
+    (js : SailJoltState) :
+    (execInstr (.VirtualShiftRightBitmask (.vreg vd) (.vreg vs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r =>
+            if r = vd then jolt_virtual_shift_right_bitmask_value (js.vregs vs) else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `VirtualSRLI` from a real source to a real destination writes the logical
+right shift selected by the encoded immediate bitmask. -/
+theorem execInstr_virtualSRLI_xreg_xreg_run (rd rs : regidx)
+    (bitmask : Nat) (js : SailJoltState) (x : BitVec 64) (s' : SailState)
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hw : wX_bits rd (jolt_virtual_srli_value x bitmask) js.sail = .ok () s') :
+    (execInstr (.VirtualSRLI (.xreg rd) (.xreg rs) bitmask)).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst liftSail
+  simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+
+/-- `VirtualSRLI` can consume a value from a virtual register and write the
+logical shift result to a real destination. -/
+theorem execInstr_virtualSRLI_vreg_xreg_run (rd : regidx) (vs : VReg)
+    (bitmask : Nat) (js : SailJoltState) (s' : SailState)
+    (hw : wX_bits rd (jolt_virtual_srli_value (js.vregs vs) bitmask) js.sail = .ok () s') :
+    (execInstr (.VirtualSRLI (.xreg rd) (.vreg vs) bitmask)).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+
+/-- `VirtualSRAI` from a real source to a real destination writes the
+arithmetic right shift selected by the encoded immediate bitmask. -/
+theorem execInstr_virtualSRAI_xreg_xreg_run (rd rs : regidx)
+    (bitmask : Nat) (js : SailJoltState) (x : BitVec 64) (s' : SailState)
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hw : wX_bits rd (jolt_virtual_srai_value x bitmask) js.sail = .ok () s') :
+    (execInstr (.VirtualSRAI (.xreg rd) (.xreg rs) bitmask)).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst liftSail
+  simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+
+/-- `VirtualSRAI` can consume a value from a virtual register and write the
+arithmetic shift result to a real destination. -/
+theorem execInstr_virtualSRAI_vreg_xreg_run (rd : regidx) (vs : VReg)
+    (bitmask : Nat) (js : SailJoltState) (s' : SailState)
+    (hw : wX_bits rd (jolt_virtual_srai_value (js.vregs vs) bitmask) js.sail = .ok () s') :
+    (execInstr (.VirtualSRAI (.xreg rd) (.vreg vs) bitmask)).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+
+/-- `VirtualSRL` from a real value and a virtual bitmask to a real destination
+is the two-instruction `SRL` program's final write. -/
+theorem execInstr_virtualSRL_xreg_vreg_xreg_run (rd rs : regidx) (vbitmask : VReg)
+    (js : SailJoltState) (x : BitVec 64) (s' : SailState)
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hw : wX_bits rd (jolt_virtual_srl_value x (js.vregs vbitmask)) js.sail = .ok () s') :
+    (execInstr (.VirtualSRL (.xreg rd) (.xreg rs) (.vreg vbitmask))).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+
+/-- `VirtualSRL` can also read both its value and its bitmask from virtual
+registers before writing the result to a real destination. -/
+theorem execInstr_virtualSRL_vreg_vreg_xreg_run (rd : regidx) (vvalue vbitmask : VReg)
+    (js : SailJoltState) (s' : SailState)
+    (hw : wX_bits rd (jolt_virtual_srl_value (js.vregs vvalue) (js.vregs vbitmask))
+      js.sail = .ok () s') :
+    (execInstr (.VirtualSRL (.xreg rd) (.vreg vvalue) (.vreg vbitmask))).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+
+/-- `VirtualSRA` from a real value and a virtual bitmask to a real destination
+is the arithmetic sibling of `execInstr_virtualSRL_xreg_vreg_xreg_run`. -/
+theorem execInstr_virtualSRA_xreg_vreg_xreg_run (rd rs : regidx) (vbitmask : VReg)
+    (js : SailJoltState) (x : BitVec 64) (s' : SailState)
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hw : wX_bits rd (jolt_virtual_sra_value x (js.vregs vbitmask)) js.sail = .ok () s') :
+    (execInstr (.VirtualSRA (.xreg rd) (.xreg rs) (.vreg vbitmask))).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+
+/-- `VirtualSRA` can read both its value and its bitmask from virtual registers
+before writing the result through Sail. -/
+theorem execInstr_virtualSRA_vreg_vreg_xreg_run (rd : regidx) (vvalue vbitmask : VReg)
+    (js : SailJoltState) (s' : SailState)
+    (hw : wX_bits rd (jolt_virtual_sra_value (js.vregs vvalue) (js.vregs vbitmask))
+      js.sail = .ok () s') :
+    (execInstr (.VirtualSRA (.xreg rd) (.vreg vvalue) (.vreg vbitmask))).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+
+/-- `SLLI` from a real source to a virtual destination writes the shifted value
+to the scratch register and leaves Sail unchanged. -/
+theorem execInstr_slli_xreg_vreg_run (vd : VReg) (rs : regidx) (shamt : BitVec 6)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (execInstr (.SLLI (.vreg vd) (.xreg rs) shamt)).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then shift_bits_left x shamt else js.vregs r } := by
+  unfold execInstr readSrc writeDst liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `ORI` from a real source to a virtual destination is the word-shift helper
+that sets bit five of a variable shift amount before bitmask encoding. -/
+theorem execInstr_ori_xreg_vreg_run (vd : VReg) (rs : regidx) (imm : BitVec 12)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (execInstr (.ORI (.vreg vd) (.xreg rs) imm)).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then x ||| sign_extend (m := 64) imm else js.vregs r } := by
+  unfold execInstr readSrc writeDst liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `ANDI` from a real source to a virtual destination is the word arithmetic
+right-shift helper that masks the variable shift amount to five bits. -/
+theorem execInstr_andi_xreg_vreg_run (vd : VReg) (rs : regidx) (imm : BitVec 12)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (execInstr (.ANDI (.vreg vd) (.xreg rs) imm)).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then x &&& sign_extend (m := 64) imm else js.vregs r } := by
+  unfold execInstr readSrc writeDst liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `SExtW` from a real source to a virtual destination computes the
+word-sign-extended scratch value used by `SRAW` and `SRAIW`. -/
+theorem execInstr_sextw_xreg_vreg_run (vd : VReg) (rs : regidx)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (execInstr (.SExtW (.vreg vd) (.xreg rs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r =>
+            if r = vd then sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0)
+            else js.vregs r } := by
+  unfold execInstr readSrc writeDst liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
 /-- `MULHU` from two real sources to a virtual destination reads both real

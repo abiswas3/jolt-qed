@@ -76,11 +76,6 @@ def jolt_mulhsu_value (x y : BitVec 64) : BitVec 64 :=
   let loNeg := lo ^^^ sx
   hiNeg + jolt_sltu_value (loNeg + one) loNeg
 
-/-- Rust's RV64 `MULHSU::inline_sequence`, with allocator outputs fixed as
-`v0 = 0`, `v1 = 1`, `v2 = 2`, `v3 = 3`. -/
-def jolt_mulhsu (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult :=
-  JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)
-
 /-- Extracting the upper half of a 128-bit truncated integer is the same as
 division by `2^64`, viewed as a 64-bit bitvector. -/
 private theorem extract_high64_to_bits_truncate_eq_ofInt_div (p : Int) :
@@ -648,17 +643,6 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx)
   refine ⟨jsf, v1, v2, h1, h2, hrun, ?_⟩
   simpa [jolt_mulhsu_value_eq_mulhsu] using hsail
 
-/-- Compatibility wrapper for older call sites that still refer to
-`jolt_mulhsu` instead of the program-level `JoltISA.mulhsuProgram`. -/
-theorem jolt_mulhsu_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
-    ∃ (jsf : SailJoltState) (v1 v2 : BitVec 64),
-      rX_bits rs1 js.sail = .ok v1 js.sail ∧
-      rX_bits rs2 js.sail = .ok v2 js.sail ∧
-      (jolt_mulhsu rs2 rs1 rd).run js = .ok RETIRE_SUCCESS jsf ∧
-      jsf.sail = stateAfterWrite js.sail rd (mulhsu v1 v2) := by
-  simpa [jolt_mulhsu] using mulhsuProgram_concrete rs2 rs1 rd hrd js hwf
-
 /-- Main program-level theorem: interpreting the Jolt ISA `MULHSU` expansion
 has the same projected architectural result as Sail's `MULHSU` semantics. -/
 theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
@@ -669,13 +653,5 @@ theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 
     (f := mulhsu)
     (execute_MULHSU_factored rs2 rs1 rd)
     (mulhsuProgram_concrete rs2 rs1 rd hrd js hwf)
-
-/-- Compatibility theorem for older names: `jolt_mulhsu` is just the program
-interpreter for `JoltISA.mulhsuProgram`. -/
-theorem jolt_mulhsu_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
-    projectResult ((jolt_mulhsu rs2 rs1 rd).run js) =
-    (execute_MUL rs2 rs1 rd mulhsuOp).run js.sail := by
-  simpa [jolt_mulhsu] using mulhsuProgram_eq_sail rs2 rs1 rd hrd js hwf
 
 end

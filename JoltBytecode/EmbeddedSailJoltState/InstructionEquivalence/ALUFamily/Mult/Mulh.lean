@@ -61,10 +61,6 @@ def mulhOp : mul_op :=
 def jolt_mulh_value (x y : BitVec 64) : BitVec 64 :=
   jolt_mulhu_value x y + jolt_movsign_value x * y + jolt_movsign_value y * x
 
-/-- Compatibility alias for the Jolt-ISA `MULH` program interpreter. -/
-def jolt_mulh (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult :=
-  JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)
-
 /-- Extracting bits 127 down to 64 from a 128-bit truncated integer is the same
 as dividing that integer by `2^64` and keeping the low 64 bits. -/
 private theorem extract_high64_to_bits_truncate_eq_ofInt_div (p : Int) :
@@ -351,17 +347,6 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx)
   refine ⟨jsf, v1, v2, h1, h2, hrun, ?_⟩
   simpa [mulh_correction_eq_mulhs] using hsail
 
-/-- Compatibility wrapper for older call sites that still refer to `jolt_mulh`
-instead of the program-level `JoltISA.mulhProgram`. -/
-theorem jolt_mulh_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
-    ∃ (jsf : SailJoltState) (v1 v2 : BitVec 64),
-      rX_bits rs1 js.sail = .ok v1 js.sail ∧
-      rX_bits rs2 js.sail = .ok v2 js.sail ∧
-      (jolt_mulh rs2 rs1 rd).run js = .ok RETIRE_SUCCESS jsf ∧
-      jsf.sail = stateAfterWrite js.sail rd (mulhs v1 v2) := by
-  simpa [jolt_mulh] using mulhProgram_concrete rs2 rs1 rd hrd js hwf
-
 /-- Main program-level theorem: interpreting the Jolt ISA `MULH` expansion has
 the same projected architectural result as Sail's `MULH` semantics. -/
 theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
@@ -372,13 +357,5 @@ theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     (f := mulhs)
     (execute_MULH_factored rs2 rs1 rd)
     (mulhProgram_concrete rs2 rs1 rd hrd js hwf)
-
-/-- Compatibility theorem for older names: `jolt_mulh` is just the program
-interpreter for `JoltISA.mulhProgram`. -/
-theorem jolt_mulh_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
-    projectResult ((jolt_mulh rs2 rs1 rd).run js) =
-    (execute_MUL rs2 rs1 rd mulhOp).run js.sail := by
-  simpa [jolt_mulh] using mulhProgram_eq_sail rs2 rs1 rd hrd js hwf
 
 end
