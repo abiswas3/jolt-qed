@@ -14,9 +14,9 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| SLLI | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Itype/Shift/Slli.lean#L63`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/Shift/Slli.lean#L63) |
-| SRLI | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Itype/Shift/Srli.lean#L86`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/Shift/Srli.lean#L86) |
-| SRAI | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Itype/Shift/Srai.lean#L73`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/Shift/Srai.lean#L73) |
+| SLLI | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Itype/Shift/Slli.lean#L68`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/Shift/Slli.lean#L68) |
+| SRLI | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Itype/Shift/Srli.lean#L99`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/Shift/Srli.lean#L99) |
+| SRAI | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Itype/Shift/Srai.lean#L91`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/Shift/Srai.lean#L91) |
 
 ## ALU — R-type shifts
 
@@ -24,9 +24,9 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| SLL | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Rtype/Shift/Sll.lean#L73`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/Shift/Sll.lean#L73) |
-| SRL | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Rtype/Shift/Srl.lean#L79`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/Shift/Srl.lean#L79) |
-| SRA | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Rtype/Shift/Sra.lean#L76`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/Shift/Sra.lean#L76) |
+| SLL | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Rtype/Shift/Sll.lean#L99`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/Shift/Sll.lean#L99) |
+| SRL | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Rtype/Shift/Srl.lean#L90`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/Shift/Srl.lean#L90) |
+| SRA | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Rtype/Shift/Sra.lean#L89`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/Shift/Sra.lean#L89) |
 
 ## ALU — I-type word
 
@@ -34,10 +34,10 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| ADDIW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Itype/W/Addiw.lean#L65`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/W/Addiw.lean#L65) |
-| SLLIW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Itype/W/Slliw.lean#L71`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/W/Slliw.lean#L71) |
-| SRLIW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Itype/W/Srliw.lean#L122`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/W/Srliw.lean#L122) |
-| SRAIW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Itype/W/Sraiw.lean#L122`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/W/Sraiw.lean#L122) |
+| ADDIW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Itype/W/Addiw.lean#L80`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/W/Addiw.lean#L80) |
+| SLLIW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Itype/W/Slliw.lean#L90`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/W/Slliw.lean#L90) |
+| SRLIW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Itype/W/Srliw.lean#L164`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/W/Srliw.lean#L164) |
+| SRAIW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Itype/W/Sraiw.lean#L140`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Itype/W/Sraiw.lean#L140) |
 
 ## ALU — R-type word
 
@@ -45,12 +45,12 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| ADDW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Rtype/W/Addw.lean#L73`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Addw.lean#L73) |
-| SUBW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Rtype/W/Subw.lean#L55`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Subw.lean#L55) |
-| MULW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Rtype/W/Mulw.lean#L81`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Mulw.lean#L81) |
-| SRAW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Rtype/W/Sraw.lean#L81`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Sraw.lean#L81) |
-| SLLW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Rtype/W/Sllw.lean#L75`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Sllw.lean#L75) |
-| SRLW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUFamily/Rtype/W/Srlw.lean#L74`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Srlw.lean#L74) |
+| ADDW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Rtype/W/Addw.lean#L98`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Addw.lean#L98) |
+| SUBW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Rtype/W/Subw.lean#L85`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Subw.lean#L85) |
+| MULW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Rtype/W/Mulw.lean#L91`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Mulw.lean#L91) |
+| SRAW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Rtype/W/Sraw.lean#L147`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Sraw.lean#L147) |
+| SLLW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Rtype/W/Sllw.lean#L99`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Sllw.lean#L99) |
+| SRLW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`ALUFamily/Rtype/W/Srlw.lean#L147`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Srlw.lean#L147) |
 
 ## ALU — multiplication
 
@@ -58,8 +58,8 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| MULH | ![closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) | [`ALUFamily/Mult/Mulh.lean#L367`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulh.lean#L367) |
-| MULHSU | ![closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) | [`ALUFamily/Mult/Mulhsu.lean#L664`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulhsu.lean#L664) |
+| MULH | ![closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) | [`ALUFamily/Mult/Mulh.lean#L352`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulh.lean#L352) |
+| MULHSU | ![closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) | [`ALUFamily/Mult/Mulhsu.lean#L648`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Mult/Mulhsu.lean#L648) |
 
 ## ALU advice (div / rem)
 
