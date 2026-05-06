@@ -1,4 +1,6 @@
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Shift.Family
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics
 import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 set_option maxHeartbeats 1_000_000_000
@@ -41,6 +43,19 @@ private lemma srai_bitmask_eq_arith_shift (v : BitVec 64) (shamt : BitVec 6) :
   simp [Sail.BitVec.toNatInt, Sail.BitVec.extractLsb, ctz_srai_bitmask]
   congr 1; omega
 
+/-- Widening a six-bit immediate to a machine word and truncating it back to
+six bits is identity. -/
+private theorem setWidth_6_roundtrip (shamt : BitVec 6) :
+    (shamt.setWidth 64).setWidth 6 = shamt := by
+  ext i; simp [BitVec.getLsbD_setWidth]
+
+/-- The program-level immediate bitmask matches the local bitvector
+definition after widening the six-bit shift amount to a machine word. -/
+private theorem sraiProgram_bitmask_eq (shamt : BitVec 6) :
+    JoltISA.sraiBitmask shamt = srai_bitmask (shamt.setWidth 64) := by
+  unfold JoltISA.sraiBitmask JoltISA.srliBitmask srai_bitmask
+  rw [setWidth_6_roundtrip]
+
 theorem execute_SHIFTIOP_SRAI_factored (shamt : BitVec 6) (rs1 rd : regidx) :
     execute_SHIFTIOP shamt rs1 rd sop.SRAI = (do
       let v ← rX_bits rs1
@@ -48,35 +63,38 @@ theorem execute_SHIFTIOP_SRAI_factored (shamt : BitVec 6) (rs1 rd : regidx) :
       pure RETIRE_SUCCESS) := by
   simp [execute_SHIFTIOP, LeanRV64D.Functions.log2_xlen]
 
-def jolt_srai (shamt : BitVec 6) (rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  let v ← liftSail (rX_bits rs1)
-  liftSail (wX_bits rd (v.sshiftRight (ctz (srai_bitmask (shamt.setWidth 64)))))
-  pure RETIRE_SUCCESS
+/-- Program-level concrete theorem for `SRAI`.
 
-theorem jolt_srai_concrete (shamt : BitVec 6) (rs1 rd : regidx)
+The Jolt-ISA program contains `VirtualSRAI` with the encoded bitmask
+immediate.  The local bridge lemma turns that encoding back into Sail's
+ordinary arithmetic shift. -/
+theorem sraiProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v : BitVec 64),
       rX_bits rs1 js.sail = .ok v js.sail ∧
-      (jolt_srai shamt rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
+      (JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js =
+        .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
         (shift_bits_right_arith v (Sail.BitVec.extractLsb shamt 5 0)) := by
-  unfold jolt_srai liftSail
+  unfold JoltISA.sraiProgram JoltISA.execProgram JoltISA.execInstr
+    JoltISA.readSrc JoltISA.writeDst liftSail jolt_virtual_srai_value
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   obtain ⟨v, hok⟩ := hwf rs1
   simp only [hok]
-  obtain ⟨s', hw⟩ := wX_shape rd (v.sshiftRight (ctz (srai_bitmask (shamt.setWidth 64)))) js.sail
+  obtain ⟨s', hw⟩ := wX_shape rd (v.sshiftRight (ctz (JoltISA.sraiBitmask shamt))) js.sail
   simp only [hw]
   refine ⟨_, v, rfl, rfl, ?_⟩
-  rw [← srai_bitmask_eq_arith_shift v shamt]
+  rw [← srai_bitmask_eq_arith_shift v shamt, ← sraiProgram_bitmask_eq shamt]
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
-theorem jolt_srai_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
+/-- Main program-level equivalence for `SRAI`. -/
+theorem sraiProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) :
-    projectResult ((jolt_srai shamt rs1 rd).run js) =
+    projectResult ((JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIOP shamt rs1 rd sop.SRAI).run js.sail :=
   itype_eq_sail_uniform
     (f := fun v => shift_bits_right_arith v (Sail.BitVec.extractLsb shamt 5 0))
     (execute_SHIFTIOP_SRAI_factored shamt rs1 rd)
-    (jolt_srai_concrete shamt rs1 rd js hwf)
+    (sraiProgram_concrete shamt rs1 rd js hwf)
 
 end

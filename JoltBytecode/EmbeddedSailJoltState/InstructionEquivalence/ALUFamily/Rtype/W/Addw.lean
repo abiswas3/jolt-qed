@@ -1,5 +1,7 @@
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Family
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Bridges.Add
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -43,41 +45,64 @@ theorem execute_RTYPEW_ADDW_factored (rs2 rs1 rd : regidx) :
       pure RETIRE_SUCCESS) := by
   simp [execute_RTYPEW, bind_pure_comp, pure_bind]
 
-/-- Jolt's ADDW: 64-bit `ADD` followed by virtual sign-extend-word. -/
-def jolt_addw (rs2 rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  let _ ← liftSail (execute_RTYPE rs2 rs1 rd rop.ADD)
-  jolt_virtual_sign_extend_word rd
-  pure RETIRE_SUCCESS
+/-- Program-level concrete theorem for `ADDW`.
 
-/-- After running `jolt_addw`, register `rd` holds
-`sext₆₄(v1[31:0] + v2[31:0])`, where `v1`, `v2` are the values read from
-`rs1`, `rs2` on the Sail side. -/
-theorem jolt_addw_concrete (rs2 rs1 rd : regidx)
+The new Jolt-ISA program states the Rust-style expansion directly:
+architectural `ADD`, followed by the virtual sign-extend-word instruction.
+The proof exposes the two real writes and collapses them to the final
+sign-extended architectural write. -/
+theorem addwProgram_concrete (rs2 rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
-      (jolt_addw rs2 rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
+      (JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js =
+        .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
         (sign_extend (m := 64)
           (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0)) := by
-  obtain ⟨js', v1, v2, h1, h2, h3, h4⟩ :=
-    jolt_rtype_w_concrete rop.ADD (· + ·) execute_RTYPE_ADD_factored rs2 rs1 rd hrd js hwf
-  refine ⟨js', v1, v2, h1, h2, h3, ?_⟩
-  rw [← extractLsb_add v1 v2]
-  exact h4
+  obtain ⟨v1, hok1⟩ := hwf rs1
+  obtain ⟨v2, hok2⟩ := hwf rs2
+  let raw := v1 + v2
+  obtain ⟨s_raw, hw_raw⟩ := wX_shape rd raw js.sail
+  let js_raw : SailJoltState := { sail := s_raw, vregs := js.vregs }
+  have hadd :
+      (JoltISA.execInstr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
+        .ok RETIRE_SUCCESS js_raw := by
+    simpa [js_raw, raw] using
+      (JoltISA.execInstr_add_xreg_xreg_xreg_run rd rs1 rs2
+        js v1 v2 s_raw hok1 hok2 hw_raw)
+  have hread_rd : rX_bits rd js_raw.sail = .ok raw js_raw.sail := by
+    simpa [js_raw] using (wX_rX_roundtrip rd raw js.sail s_raw hrd hw_raw)
+  let final :=
+    sign_extend (m := 64) (Sail.BitVec.extractLsb raw 31 0)
+  obtain ⟨s_final, hw_final⟩ := wX_shape rd final js_raw.sail
+  let js' : SailJoltState := { sail := s_final, vregs := js.vregs }
+  have hsextw :
+      (JoltISA.execInstr (.SExtW (.xreg rd) (.xreg rd))).run js_raw =
+        .ok RETIRE_SUCCESS js' := by
+    simpa [js', final] using
+      (JoltISA.execInstr_sextw_xreg_xreg_run rd rd js_raw raw s_final
+        hread_rd hw_final)
+  refine ⟨js', v1, v2, hok1, hok2, ?_, ?_⟩
+  · unfold JoltISA.addwProgram
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_raw hadd]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_raw js' hsextw]
+    rfl
+  · dsimp [js']
+    have hc := wX_wX_collapse rd raw final js.sail s_raw s_final hw_raw hw_final
+    rw [← extractLsb_add v1 v2]
+    exact wX_bits_eq_stateAfterWrite rd _ js.sail s_final hc
 
-/-- Main equivalence: running Jolt's ADDW decomposition and projecting
-onto the Sail state yields the same result as running Sail's native
-`ADDW` on the initial Sail state. -/
-theorem jolt_addw_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
+/-- Main program-level equivalence for `ADDW`. -/
+theorem addwProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) :
-    projectResult ((jolt_addw rs2 rs1 rd).run js) =
+    projectResult ((JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run js.sail :=
   rtype_eq_sail_uniform
     (f := fun v1 v2 => sign_extend (m := 64)
       (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0))
     (execute_RTYPEW_ADDW_factored rs2 rs1 rd)
-    (jolt_addw_concrete rs2 rs1 rd hrd js hwf)
+    (addwProgram_concrete rs2 rs1 rd hrd js hwf)
 
 end

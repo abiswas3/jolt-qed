@@ -1,4 +1,6 @@
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.W.Family
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -39,43 +41,60 @@ theorem execute_SHIFTIWOP_SLLIW_factored (shamt : BitVec 5) (rs1 rd : regidx) :
       pure RETIRE_SUCCESS) := by
   simp [execute_SHIFTIWOP, bind_pure_comp, pure_bind]
 
-def jolt_slliw (shamt : BitVec 5) (rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  let v ← liftSail (rX_bits rs1)
-  liftSail (wX_bits rd (v * BitVec.ofNat 64 (2 ^ shamt.toNat)))
-  jolt_virtual_sign_extend_word rd
-  pure RETIRE_SUCCESS
+/-- Program-level concrete theorem for `SLLIW`.
 
-theorem jolt_slliw_concrete (shamt : BitVec 5) (rs1 rd : regidx)
+The Jolt-ISA program uses `VirtualMULI` with the immediate power of two, then
+sign-extends the low word of `rd`. -/
+theorem slliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v : BitVec 64),
       rX_bits rs1 js.sail = .ok v js.sail ∧
-      (jolt_slliw shamt rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
+      (JoltISA.execProgram (JoltISA.slliwProgram shamt rs1 rd)).run js =
+        .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
         (sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v 31 0) shamt)) := by
-  unfold jolt_slliw jolt_virtual_sign_extend_word liftSail
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   obtain ⟨v, hok⟩ := hwf rs1
-  simp only [hok]
-  obtain ⟨s3, hw1⟩ := wX_shape rd (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) js.sail
-  simp only [hw1]
-  have hrx := wX_rX_roundtrip rd _ js.sail s3 hrd hw1
-  simp only [hrx]
-  obtain ⟨s4, hw2⟩ := wX_shape rd
-    (sign_extend (m := 64) (Sail.BitVec.extractLsb (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) 31 0)) s3
-  simp only [hw2]
-  have hc := wX_wX_collapse rd _ _ js.sail s3 s4 hw1 hw2
-  refine ⟨_, v, rfl, rfl, ?_⟩
-  rw [← slliw_mul_eq_shift v shamt]
-  exact wX_bits_eq_stateAfterWrite rd _ js.sail s4 hc
+  let imm := BitVec.ofNat 64 (2 ^ shamt.toNat)
+  let raw := jolt_virtual_muli_value v imm
+  obtain ⟨s_raw, hw_raw⟩ := wX_shape rd raw js.sail
+  let js_raw : SailJoltState := { sail := s_raw, vregs := js.vregs }
+  have hmuli :
+      (JoltISA.execInstr (.VirtualMULI (.xreg rd) (.xreg rs1) imm)).run js =
+        .ok RETIRE_SUCCESS js_raw := by
+    simpa [js_raw, raw] using
+      (JoltISA.execInstr_virtualMULI_xreg_xreg_run rd rs1 imm
+        js v s_raw hok hw_raw)
+  have hread_rd : rX_bits rd js_raw.sail = .ok raw js_raw.sail := by
+    simpa [js_raw] using (wX_rX_roundtrip rd raw js.sail s_raw hrd hw_raw)
+  let final := sign_extend (m := 64) (Sail.BitVec.extractLsb raw 31 0)
+  obtain ⟨s_final, hw_final⟩ := wX_shape rd final js_raw.sail
+  let js' : SailJoltState := { sail := s_final, vregs := js.vregs }
+  have hsextw :
+      (JoltISA.execInstr (.SExtW (.xreg rd) (.xreg rd))).run js_raw =
+        .ok RETIRE_SUCCESS js' := by
+    simpa [js', final] using
+      (JoltISA.execInstr_sextw_xreg_xreg_run rd rd js_raw raw s_final
+        hread_rd hw_final)
+  refine ⟨js', v, hok, ?_, ?_⟩
+  · unfold JoltISA.slliwProgram
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_raw hmuli]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_raw js' hsextw]
+    rfl
+  · dsimp [js']
+    have hc := wX_wX_collapse rd raw final js.sail s_raw s_final hw_raw hw_final
+    rw [wX_bits_eq_stateAfterWrite rd _ js.sail s_final hc]
+    dsimp [final, raw, imm, jolt_virtual_muli_value]
+    rw [slliw_mul_eq_shift v shamt]
 
-theorem jolt_slliw_eq_sail (shamt : BitVec 5) (rs1 rd : regidx)
+/-- Main program-level equivalence for `SLLIW`. -/
+theorem slliwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
-    projectResult ((jolt_slliw shamt rs1 rd).run js) =
+    projectResult ((JoltISA.execProgram (JoltISA.slliwProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIWOP shamt rs1 rd sopw.SLLIW).run js.sail :=
   itype_eq_sail_uniform
     (f := fun v => sign_extend (m := 64)
       (shift_bits_left (Sail.BitVec.extractLsb v 31 0) shamt))
     (execute_SHIFTIWOP_SLLIW_factored shamt rs1 rd)
-    (jolt_slliw_concrete shamt rs1 rd hrd js hwf)
+    (slliwProgram_concrete shamt rs1 rd hrd js hwf)
 
 end

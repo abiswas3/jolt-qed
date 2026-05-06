@@ -1,4 +1,6 @@
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Shift.Family
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -38,19 +40,21 @@ theorem execute_SHIFTIOP_SLLI_factored (shamt : BitVec 6) (rs1 rd : regidx) :
       pure RETIRE_SUCCESS) := by
   simp [execute_SHIFTIOP, bind_pure_comp]
 
-def jolt_slli (shamt : BitVec 6) (rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  let v ← liftSail (rX_bits rs1)
-  liftSail (wX_bits rd (v * BitVec.ofNat 64 (2 ^ shamt.toNat)))
-  pure RETIRE_SUCCESS
+/-- Program-level concrete theorem for `SLLI`.
 
-theorem jolt_slli_concrete (shamt : BitVec 6) (rs1 rd : regidx)
+This is the theorem that the new architecture wants proofs to consume: the
+left-hand side is the explicit Jolt-ISA program, not the older hand-written
+monadic expansion. The instruction sequence is visible in the statement. -/
+theorem slliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v : BitVec 64),
       rX_bits rs1 js.sail = .ok v js.sail ∧
-      (jolt_slli shamt rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
+      (JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js =
+        .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
         (shift_bits_left v (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
-  unfold jolt_slli liftSail
+  unfold JoltISA.slliProgram JoltISA.execProgram JoltISA.execInstr
+    JoltISA.readSrc JoltISA.writeDst liftSail jolt_virtual_muli_value
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   obtain ⟨v, hok⟩ := hwf rs1
   simp only [hok]
@@ -60,14 +64,15 @@ theorem jolt_slli_concrete (shamt : BitVec 6) (rs1 rd : regidx)
   rw [← slli_mul_eq_shift v shamt]
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
-theorem jolt_slli_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
+/-- Main program-level equivalence for `SLLI`. -/
+theorem slliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
     (js : SailJoltState) (hwf : WellFormed js) :
-    projectResult ((jolt_slli shamt rs1 rd).run js) =
+    projectResult ((JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIOP shamt rs1 rd sop.SLLI).run js.sail :=
   itype_eq_sail_uniform
     (f := fun v => shift_bits_left v
       (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0))
     (execute_SHIFTIOP_SLLI_factored shamt rs1 rd)
-    (jolt_slli_concrete shamt rs1 rd js hwf)
+    (slliProgram_concrete shamt rs1 rd js hwf)
 
 end

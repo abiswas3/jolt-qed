@@ -1,4 +1,4 @@
-import JoltBytecode.EmbeddedSailJoltState.Defs
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Values
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -374,68 +374,6 @@ def vreg_ADDI_to_real (rd : regidx) (vs1 : BitVec 7) (imm : BitVec 12) :
   liftSail (wX_bits rd (v + sign_extend (m := 64) imm))
   pure RETIRE_SUCCESS
 
--- ============================================================================
--- Extra pure arithmetic ops (all-virtual register file)
--- ============================================================================
-
-/-- RV64 `VirtualMovsign` value: all ones if the source sign bit is set,
-otherwise zero. -/
-def jolt_movsign_value (x : BitVec 64) : BitVec 64 :=
-  if x.msb then (-1 : BitVec 64) else 0
-
-/-- RV64 `MULHU` value: high 64 bits of the unsigned 64x64 product. -/
-def jolt_mulhu_value (x y : BitVec 64) : BitVec 64 :=
-  BitVec.ofNat 64 (x.toNat * y.toNat / 2^64)
-
-theorem jolt_movsign_value_eq_zero_of_toNat_lt_half (x : BitVec 64)
-    (h : x.toNat < 9223372036854775808) :
-    jolt_movsign_value x = 0 := by
-  unfold jolt_movsign_value
-  have hmsb : x.msb = false := by
-    rw [BitVec.msb_eq_decide]
-    exact decide_eq_false_iff_not.mpr (by omega)
-  rw [hmsb]
-  rfl
-
-theorem jolt_movsign_value_eq_neg_one_of_half_le (x : BitVec 64)
-    (h : ¬ x.toNat < 9223372036854775808) :
-    jolt_movsign_value x = (-1 : BitVec 64) := by
-  unfold jolt_movsign_value
-  have hmsb : x.msb = true := by
-    rw [BitVec.msb_eq_decide]
-    exact decide_eq_true_eq.mpr (by omega)
-  rw [hmsb]
-  rfl
-
-/-- RV64 `SLTU` value: one if `x < y` as unsigned 64-bit integers,
-otherwise zero. -/
-def jolt_sltu_value (x y : BitVec 64) : BitVec 64 :=
-  zero_extend (m := 64) (bool_to_bit (zopz0zI_u x y))
-
-theorem jolt_sltu_value_eq_one_of_lt (x y : BitVec 64)
-    (h : x.toNat < y.toNat) :
-    jolt_sltu_value x y = 1 := by
-  unfold jolt_sltu_value zopz0zI_u BitVec.toNatInt bool_to_bit
-    bool_bit_forwards zero_extend
-  simp [h]
-  decide
-
-theorem jolt_sltu_value_eq_zero_of_not_lt (x y : BitVec 64)
-    (h : ¬ x.toNat < y.toNat) :
-    jolt_sltu_value x y = 0 := by
-  unfold jolt_sltu_value zopz0zI_u BitVec.toNatInt bool_to_bit
-    bool_bit_forwards zero_extend
-  simp [h]
-  decide
-
-theorem jolt_sltu_value_toNat (x y : BitVec 64) :
-    (jolt_sltu_value x y).toNat = if x.toNat < y.toNat then 1 else 0 := by
-  by_cases h : x.toNat < y.toNat
-  · rw [jolt_sltu_value_eq_one_of_lt x y h]
-    simp [h]
-  · rw [jolt_sltu_value_eq_zero_of_not_lt x y h]
-    simp [h]
-
 /-- `VirtualMovsign vd, rs1, 0`: read real `rs1`, write virtual `vd`. -/
 def vreg_movsign_from_real (vd : BitVec 7) (rs1 : regidx) : JoltMonad ExecutionResult := do
   let x ← liftSail (rX_bits rs1)
@@ -528,13 +466,6 @@ def vreg_SUB_from_real_vs1 (vd : BitVec 7) (rs1 : regidx) (vs2 : BitVec 7) :
   let y ← readVReg vs2
   writeVReg vd (x - y)
   pure RETIRE_SUCCESS
-
-/-- Upper 64 bits of a signed 64×64 multiply (the pure value written by
-    the `MULH` instruction). Factored out so the monadic primitive and
-    the pure-math lemmas (e.g. overflow-check proofs in `Div.lean`)
-    share one definition. -/
-def mulhs (a b : BitVec 64) : BitVec 64 :=
-  BitVec.ofInt 64 ((a.toInt * b.toInt) / (2 ^ 64))
 
 /-- `MULH vd, vs1, vs2`: virtual-register signed high multiply — upper
     64 bits of the 128-bit signed product. -/

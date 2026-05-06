@@ -81,7 +81,10 @@ def srlw_bitmask (rs2_val : BitVec 64) : Nat :=
   let ones := (1 <<< (64 - shift)) - 1
   ones <<< shift
 
-private lemma or32_setWidth6_toNat (x : BitVec 64) :
+/-- Setting bit five of a shift amount with `ORI 32` makes the low-six-bit
+shift amount equal to `x[4:0] + 32`.  The SRLW expansion uses exactly this
+encoding before constructing the right-shift bitmask. -/
+theorem or32_setWidth6_toNat (x : BitVec 64) :
     ((Riscv.ori x 32#64).setWidth 6).toNat = (x.setWidth 5).toNat + 32 := by
   have h : (Riscv.ori x 32#64).setWidth 6 = ((1#1) +++ x.setWidth 5) := by
     unfold Riscv.ori
@@ -215,14 +218,20 @@ lemma ctz_sraw_bitmask (shamt_val : BitVec 64) :
     omega
   rw [mul_comm, ctz_mul_pow2 shift h_m_pos, ctz_of_odd (pow2_sub_one_odd h_diff_pos)]; omega
 
-private lemma ctz_sraw_chain (rs2_val : BitVec 64) :
-    ctz (sraw_bitmask (Riscv.andi rs2_val 0x1f#64)) = (rs2_val.setWidth 5).toNat := by
-  rw [ctz_sraw_bitmask]
+/-- Masking a shift amount with `0x1f` makes the low-six-bit shift amount
+equal to the original low five bits.  The SRAW expansion uses this before
+constructing the right-shift bitmask. -/
+theorem and31_setWidth6_toNat (rs2_val : BitVec 64) :
+    ((Riscv.andi rs2_val 0x1f#64).setWidth 6).toNat = (rs2_val.setWidth 5).toNat := by
   unfold Riscv.andi
   simp only [BitVec.toNat_setWidth, BitVec.toNat_and, BitVec.toNat_ofNat]
   have h1 : (31 : Nat) % 2 ^ 64 = 31 := by norm_num
   rw [h1, show (31 : Nat) = 2 ^ 5 - 1 from by norm_num, Nat.and_two_pow_sub_one_eq_mod]
   exact Nat.mod_eq_of_lt (by have := Nat.mod_lt rs2_val.toNat (show 0 < 2 ^ 5 from by positivity); omega)
+
+private lemma ctz_sraw_chain (rs2_val : BitVec 64) :
+    ctz (sraw_bitmask (Riscv.andi rs2_val 0x1f#64)) = (rs2_val.setWidth 5).toNat := by
+  rw [ctz_sraw_bitmask, and31_setWidth6_toNat]
 
 def srawJolt (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   let v_rs1     := Jolt.virtualSignExtendWord rs1_val
@@ -258,6 +267,40 @@ private lemma sail_sraw_eq_riscv (v1 v2 : BitVec 64) :
   simp [Sail.BitVec.signExtend, Sail.BitVec.toNatInt, Sail.BitVec.extractLsb,
         BitVec.extractLsb, BitVec.extractLsb']
   congr 2
+
+private lemma signExtend64_sshiftRight_setWidth32 (x : BitVec 32) (s : Nat)
+    (hs : s < 32) :
+    ((x.signExtend 64).sshiftRight s).setWidth 32 = x.sshiftRight s := by
+  ext i hi
+  simp only [BitVec.getElem_setWidth]
+  rw [BitVec.getLsbD_sshiftRight, BitVec.getElem_sshiftRight]
+  have hi64 : ¬64 ≤ i := by omega
+  have hi32 : ¬32 ≤ i := by omega
+  have hshift64 : s + i < 64 := by omega
+  by_cases hshift32 : s + i < 32
+  · simp [hi64, hshift64, hshift32, ← BitVec.getLsbD_eq_getElem,
+      BitVec.getLsbD_signExtend]
+  · simp [hi64, hi32, hshift64, hshift32, BitVec.getLsbD_signExtend,
+      ← BitVec.getLsbD_eq_getElem, BitVec.msb_eq_getLsbD_last]
+
+/-- Bridge for the current `VirtualSRA`-based SRAW program.
+
+After `rs1[31:0]` has been sign-extended to 64 bits, a 64-bit arithmetic
+right shift by `rs2[4:0]`, followed by sign-extension of the low word, agrees
+with Sail's native 32-bit arithmetic word shift. -/
+theorem sraw_virtual_sra_value (v1 v2 : BitVec 64) :
+    sign_extend (m := 64)
+      (Sail.BitVec.extractLsb
+        ((sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0)).sshiftRight
+          (v2.setWidth 5).toNat) 31 0) =
+    sign_extend (m := 64) (shift_bits_right_arith (Sail.BitVec.extractLsb v1 31 0)
+      (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
+  rw [sail_sraw_eq_riscv]
+  unfold Riscv.sraw sign_extend
+  simp [Sail.BitVec.signExtend, Sail.BitVec.extractLsb,
+    BitVec.extractLsb, BitVec.extractLsb']
+  exact congrArg (fun x : BitVec 32 => x.signExtend 64)
+    (signExtend64_sshiftRight_setWidth32 (v1.setWidth 32) (v2.toNat % 32) (by omega))
 
 /-- Bridge: the 5-step Jolt SRAW computation (sign-extend, mask, shift
 via bitmask, sign-extend) equals Sail's native SRAW. -/

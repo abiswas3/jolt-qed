@@ -1,11 +1,12 @@
-import LeanRV64D
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Operands
 
 /-!
-# Embedded Architecture: SailJoltState embeds SailState
+# Embedded Jolt/Sail compatibility imports
 
-Instead of duplicating SailState's fields, SailJoltState embeds it directly.
-This makes project/inject trivial (field access/update) and may eliminate
-the monadic plumbing noise in proofs.
+This file remains the broad compatibility import used by existing proofs.  The
+core state, monad, and virtual-register operations now live under
+`JoltISA.Core` and `JoltISA.Operands`; the memory/environment definitions below
+are still shared by the current instruction-equivalence development.
 -/
 
 set_option maxHeartbeats 1_000_000_000
@@ -18,116 +19,6 @@ open Sail PreSail LeanRV64D.Functions
 set_option autoImplicit true
 
 noncomputable section
-
--- ============================================================================
--- Types
--- ============================================================================
-
-abbrev SailState := SequentialState RegisterType trivialChoiceSource
-
--- SailJoltState embeds SailState directly instead of duplicating fields.
-structure SailJoltState where
-  sail : SailState
-  vregs : BitVec 7 → BitVec 64 := fun _ => 0
-
-@[ext]
-theorem SailJoltState.ext
-    {js₁ js₂ : SailJoltState}
-    (hsail : js₁.sail = js₂.sail)
-    (hvregs : js₁.vregs = js₂.vregs) :
-    js₁ = js₂ := by
-  cases js₁
-  cases js₂
-  cases hsail
-  cases hvregs
-  rfl
-
--- Note that SailM whiach is the Monad the transpilation exposes 
--- is just SailM (a: Type) := EStateM (Error exception) SailState α
-abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
-
--- ============================================================================
--- Projection: trivial field access/update
--- ============================================================================
-
--- project: just read the embedded SailState.
-@[simp] def project (js : SailJoltState) : SailState := js.sail
-
--- inject: replace the embedded SailState, keeping vregs unchanged.
-@[simp] def inject (js : SailJoltState) (ss : SailState) : SailJoltState :=
-  { js with sail := ss }
-
--- projectResult: strip vregs from an EStateM result.
--- Once you a run the EStateM type i.e. call the step function it models
--- the output is Result .ok α σ' or Result .error e σ' 
--- σ' is the updated Jolt State
--- we project this down to SailState while keeping the error and return value the same.
-def projectResult (r : EStateM.Result (Error exception) SailJoltState α) :
-    EStateM.Result (Error exception) SailState α :=
-  match r with
-  | .ok a js' => .ok a (project js')
-  | .error e js' => .error e (project js')
-
--- ============================================================================
--- liftSail
--- ============================================================================
--- Run Sail computation given by m as a JoltComputation
-def liftSail (m : SailM α) : JoltMonad α := fun js =>
-  match m js.sail with
-  | .ok a ss' => .ok a { js with sail := ss' }
-  | .error e ss' => .error e { js with sail := ss' }
-
--- ============================================================================
--- Structural lemmas
--- ============================================================================
--- Running sail computaiton ss as Joltcomputation and immediately projecting the state 
--- is the same thing as as running the sail computation on SailM monad.
-@[simp] theorem project_inject (js : SailJoltState) (ss : SailState) :
-    project (inject js ss) = ss := rfl
-
--- inject overwrites the sail field, so a second inject discards the first (set-then-set = set).
-@[simp] theorem inject_inject (js : SailJoltState) (ss1 ss2 : SailState) :
-    inject (inject js ss1) ss2 = inject js ss2 := rfl
-
-@[simp] theorem inject_project (js : SailJoltState) :
-    inject js (project js) = js := by 
-    unfold inject project 
-    rfl
-    
-
-theorem liftSail_project (m : SailM α) (js : SailJoltState) :
-    projectResult ((liftSail m).run js) = m.run js.sail := by
-  simp only [liftSail, projectResult, project, EStateM.run]
-  cases m js.sail <;> rfl
-
--- liftSail preserves bind.
-theorem liftSail_bind (m : SailM α) (f : α → SailM β) :
-    liftSail (m >>= f) = (do let a ← liftSail m; liftSail (f a) : JoltMonad β) := by
-  funext js
-  simp only [liftSail, bind, EStateM.bind]
-  cases m js.sail with
-  | ok a ss' => rfl
-  | error e ss' => rfl
-
--- liftSail preserves pure.
-theorem liftSail_pure (a : α) :
-    liftSail (pure a) = (pure a : JoltMonad α) := by
-  funext js
-  simp only [liftSail, pure, EStateM.pure]
-
--- ============================================================================
--- Virtual register operations
--- ============================================================================
-def readVReg (vr : BitVec 7) : JoltMonad (BitVec 64) := do
-  let js ← get; pure (js.vregs vr)
-
-def writeVReg (vr : BitVec 7) (val : BitVec 64) : JoltMonad Unit :=
-  modify fun js => { js with vregs := fun r => if r = vr then val else js.vregs r }
-
-@[simp] theorem readVReg_run (vr : BitVec 7) (js : SailJoltState) :
-    readVReg vr js = .ok (js.vregs vr) js := by
-  unfold readVReg get
-  rfl
 
 -- ============================================================================
 -- Memory read primitives (raw Sail memory access)
