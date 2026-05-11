@@ -35,8 +35,10 @@ Goal: close every red-risk item that doesn't depend on a structural rewrite, and
   ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) The I-type shift, R-type shift, I-type word, and R-type word families now have passing theorem statements in the newer style. The older advice-ALU monadic files remain useful history, but they are stale as the main proof architecture.
 
 + [ ] ![Target](https://img.shields.io/badge/target-2026--05--17-yellow) Centralise the memory envelope: introduce `JoltFlatMemoryEnvelope` and rewrite load/store theorems to use it. See [Risks: memory_envelope](risks.md).
+
 + [x] Close the store family (`SB`, `SH`, `SW`) in the new `JoltISA` architecture.
   ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) Added Rust-faithful store expansion programs plus shared store program blocks and splice bridges. The public `SB`, `SH`, and `SW` equivalence theorems now pass in `StoreFamily/{Sb,Sh,Sw}_main.lean`.
+
 + [ ] ![Target](https://img.shields.io/badge/target-2026--05--31-yellow) Add `rd = x0` wrapper theorems where Rust handles the case explicitly — covers no-op replacement and side-effecting remaps. See [Risks: rd_x0](risks.md).
 
 ## June
