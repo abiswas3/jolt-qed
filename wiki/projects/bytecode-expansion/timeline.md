@@ -34,6 +34,9 @@ Goal: close every red-risk item that doesn't depend on a structural rewrite, and
 + [x] Move the main non-advice ALU theorem fronts onto the new `JoltISA` program architecture.
   ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) The I-type shift, R-type shift, I-type word, and R-type word families now have passing theorem statements in the newer style. The older advice-ALU monadic files remain useful history, but they are stale as the main proof architecture.
 
++ [x] Rewrite the advice ALU family in the new `JoltISA.Program` style.
+  ![Closed](https://img.shields.io/badge/closed-2026--05--11-brightgreen) Added `ALUAdviceFamilyRW`, where the advice-backed division and remainder expansions are written as explicit Jolt programs. This matches the newer proof architecture and makes the family more translation-friendly.
+
 + [ ] ![Target](https://img.shields.io/badge/target-2026--05--17-yellow) Centralise the memory envelope: introduce `JoltFlatMemoryEnvelope` and rewrite load/store theorems to use it. See [Risks: memory_envelope](risks.md).
 
 + [x] Close the store family (`SB`, `SH`, `SW`) in the new `JoltISA` architecture.
