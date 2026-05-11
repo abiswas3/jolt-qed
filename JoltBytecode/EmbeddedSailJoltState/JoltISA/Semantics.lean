@@ -40,6 +40,27 @@ def execInstr : Instr → JoltMonad ExecutionResult
   | .LUI dst imm => do
       writeDst dst imm
       pure RETIRE_SUCCESS
+  | .AUIPC dst imm => do
+      let pc ← liftSail (get_arch_pc ())
+      let off : BitVec 64 := sign_extend (m := 64) (imm +++ 0x000#12)
+      writeDst dst (pc + off)
+      pure RETIRE_SUCCESS
+  | .JAL dst imm => do
+      let link ← liftSail (get_next_pc ())
+      let pc ← liftSail (Sail.readReg Register.PC)
+      match ← liftSail (jump_to (pc + sign_extend (m := 64) imm)) with
+      | .Retire_Success () =>
+          writeDst dst link
+          pure RETIRE_SUCCESS
+      | other => pure other
+  | .JALR dst base imm => do
+      let link ← liftSail (get_next_pc ())
+      let target ← readSrc base
+      match ← liftSail (jump_to (BitVec.update (target + sign_extend (m := 64) imm) 0 0#1)) with
+      | .Retire_Success () =>
+          writeDst dst link
+          pure RETIRE_SUCCESS
+      | other => pure other
   | .ADD dst lhs rhs => do
       let x ← readSrc lhs
       let y ← readSrc rhs
