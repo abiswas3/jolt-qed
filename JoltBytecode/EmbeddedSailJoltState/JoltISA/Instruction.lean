@@ -42,6 +42,7 @@ inductive Instr where
   | SLL  (dst : Dst) (value shamt : Src)
   | SRL  (dst : Dst) (value shamt : Src)
   | SExtW (dst : Dst) (src : Src)
+  | ZExtW (dst : Dst) (src : Src)
   | Movsign (dst : Dst) (src : Src)
   | AssertLoadAlign (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
   | AssertStoreAlign (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
@@ -50,6 +51,16 @@ inductive Instr where
   | Advice (vd : VReg) (value : BitVec 64)
   | AssertEq (lhs rhs : VReg)
   | AssertEqReal (lhs : VReg) (rhs : regidx)
+  | AssertValidDiv0 (divisor : regidx) (quotient : VReg)
+  | AssertValidDiv0V (divisor quotient : VReg)
+  | ChangeDivisor (dst : VReg) (dividend divisor : regidx)
+  | ChangeDivisorW (dst dividend divisor : VReg)
+  | AssertValidUnsignedRemainderReal (remainder : VReg) (divisor : regidx)
+  | AssertValidUnsignedRemainder (remainder divisor : VReg)
+  | AssertMulUNoOverflow (lhs : VReg) (rhs : regidx)
+  | AssertMulUNoOverflowV (lhs rhs : VReg)
+  | AssertLTEReal (lhs : VReg) (rhs : regidx)
+  | AssertLTE (lhs rhs : VReg)
   deriving Repr
 
 /-- Structured Jolt bytecode programs.
