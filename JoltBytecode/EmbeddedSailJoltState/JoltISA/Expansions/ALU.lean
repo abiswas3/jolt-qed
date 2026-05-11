@@ -14,8 +14,6 @@ Later Rust-to-Lean extraction should replace these handwritten programs, but
 the theorem statements should not need to change.
 -/
 
-set_option maxHeartbeats 1_000_000_000
-
 open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA

@@ -17,8 +17,6 @@ sequences for RV64 loads.  They intentionally expose both kinds of early exit:
   extraction/writeback tail from running.
 -/
 
-set_option maxHeartbeats 1_000_000_000
-
 open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA

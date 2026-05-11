@@ -28,9 +28,21 @@ Goal: close every red-risk item that doesn't depend on a structural rewrite, and
 + [x] Close the two `Bridges/Shift.lean` sorries (`sll_32_eq_mul_trunc`, `ctz_srlw_bitmask`) so `SLLW` and `SRLW` become sorry-free.
   ![Closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) Proved the SLLW/SRLW bridge lemmas in `ALUFamily/Bridges/Shift.lean`, closing the main `SLLW` and `SRLW` equivalence theorems.
 
++ [x] Close the load family in the new program-block proof style.
+  ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) The load proofs now use the three-part reduction pattern: Jolt program blocks, Sail-side reduction, and a pure memory/bitvector bridge. This became the template used for the store-family rewrite.
+
++ [x] Move the main non-advice ALU theorem fronts onto the new `JoltISA` program architecture.
+  ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) The I-type shift, R-type shift, I-type word, and R-type word families now have passing theorem statements in the newer style. The older advice-ALU monadic files remain useful history, but they are stale as the main proof architecture.
+
++ [x] Rewrite the advice ALU family in the new `JoltISA.Program` style.
+  ![Closed](https://img.shields.io/badge/closed-2026--05--11-brightgreen) Added `ALUAdviceFamilyRW`, where the advice-backed division and remainder expansions are written as explicit Jolt programs. This matches the newer proof architecture and makes the family more translation-friendly.
+
 + [ ] ![Target](https://img.shields.io/badge/target-2026--05--17-yellow) Centralise the memory envelope: introduce `JoltFlatMemoryEnvelope` and rewrite load/store theorems to use it. See [Risks: memory_envelope](risks.md).
-+ [ ] ![Target](https://img.shields.io/badge/target-2026--05--24-yellow) Discharge the two `SwMonad.lean` prefix-success lemmas, then instantiate the splice argument for `SH` and `SB` on top of `xor_and_xor_splice`.
-+ [ ] ![Target](https://img.shields.io/badge/target-2026--05--31-yellow) Add `rd = x0` wrapper theorems where Rust handles the case explicitly — covers no-op replacement and side-effecting remaps. See [Risks: rd_x0](risks.md).
+
++ [x] Close the store family (`SB`, `SH`, `SW`) in the new `JoltISA` architecture.
+  ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) Added Rust-faithful store expansion programs plus shared store program blocks and splice bridges. The public `SB`, `SH`, and `SW` equivalence theorems now pass in `StoreFamily/{Sb,Sh,Sw}_main.lean`.
+
++ [ ] ![Stalled](https://img.shields.io/badge/stalled-2026--05--11-lightgrey) Add `rd = x0` wrapper theorems where Rust handles the case explicitly. We are keeping the current `rd ≠ x0` theorem assumptions for now and will revisit wrapper coverage after the remaining instruction families settle. See [Risks: rd_x0](risks.md).
 
 ## June
 

@@ -8,7 +8,6 @@ import JoltBytecode.EmbeddedSailJoltState.JoltISA.Instruction
 Rust expansion lists.
 -/
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions
@@ -40,6 +39,27 @@ def execInstr : Instr → JoltMonad ExecutionResult
   | .LUI dst imm => do
       writeDst dst imm
       pure RETIRE_SUCCESS
+  | .AUIPC dst imm => do
+      let pc ← liftSail (get_arch_pc ())
+      let off : BitVec 64 := sign_extend (m := 64) (imm +++ 0x000#12)
+      writeDst dst (pc + off)
+      pure RETIRE_SUCCESS
+  | .JAL dst imm => do
+      let link ← liftSail (get_next_pc ())
+      let pc ← liftSail (Sail.readReg Register.PC)
+      match ← liftSail (jump_to (pc + sign_extend (m := 64) imm)) with
+      | .Retire_Success () =>
+          writeDst dst link
+          pure RETIRE_SUCCESS
+      | other => pure other
+  | .JALR dst base imm => do
+      let link ← liftSail (get_next_pc ())
+      let target ← readSrc base
+      match ← liftSail (jump_to (BitVec.update (target + sign_extend (m := 64) imm) 0 0#1)) with
+      | .Retire_Success () =>
+          writeDst dst link
+          pure RETIRE_SUCCESS
+      | other => pure other
   | .ADD dst lhs rhs => do
       let x ← readSrc lhs
       let y ← readSrc rhs
@@ -99,6 +119,11 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let b ← readSrc bitmask
       writeDst dst (jolt_virtual_sra_value x b)
       pure RETIRE_SUCCESS
+  | .OR dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (x ||| y)
+      pure RETIRE_SUCCESS
   | .XOR dst lhs rhs => do
       let x ← readSrc lhs
       let y ← readSrc rhs
@@ -108,6 +133,11 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc lhs
       let y ← readSrc rhs
       writeDst dst (x &&& y)
+      pure RETIRE_SUCCESS
+  | .SLT dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (zero_extend (m := 64) (bool_to_bit (zopz0zI_s x y)))
       pure RETIRE_SUCCESS
   | .SLTU dst lhs rhs => do
       let x ← readSrc lhs
@@ -140,6 +170,10 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc src
       writeDst dst (sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0))
       pure RETIRE_SUCCESS
+  | .ZExtW dst src => do
+      let x ← readSrc src
+      writeDst dst (zero_extend (m := 64) (Sail.BitVec.extractLsb x 31 0))
+      pure RETIRE_SUCCESS
   | .Movsign dst src => do
       let x ← readSrc src
       writeDst dst (jolt_movsign_value x)
@@ -168,10 +202,25 @@ def execInstr : Instr → JoltMonad ExecutionResult
           writeVReg vd dword
           pure RETIRE_SUCCESS
       | .Err e => pure e
+  | .LDFrom vd base imm => do
+      let baseValue ← readSrc base
+      let addr := baseValue + sign_extend (m := 64) imm
+      match ← liftSail (vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false) with
+      | .Ok dword =>
+          writeVReg vd dword
+          pure RETIRE_SUCCESS
+      | .Err e => pure e
   | .SD base value imm => do
       let baseValue ← readVReg base
       let addr := baseValue + sign_extend (m := 64) imm
       let stored ← readVReg value
+      match ← liftSail (vmem_write_addr (Virtaddr addr) 8 stored (Store Data) false false false) with
+      | .Ok _ => pure RETIRE_SUCCESS
+      | .Err e => pure e
+  | .SDFrom base value imm => do
+      let baseValue ← readSrc base
+      let addr := baseValue + sign_extend (m := 64) imm
+      let stored ← readSrc value
       match ← liftSail (vmem_write_addr (Virtaddr addr) 8 stored (Store Data) false false false) with
       | .Ok _ => pure RETIRE_SUCCESS
       | .Err e => pure e
@@ -188,6 +237,76 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let y ← liftSail (rX_bits rhs)
       if x = y then pure RETIRE_SUCCESS
       else throw (Error.Assertion "VirtualAssertEQ (vreg vs real)")
+  | .AssertValidDiv0 divisor quotient => do
+      let d ← liftSail (rX_bits divisor)
+      let q ← readVReg quotient
+      if d = 0#64 ∧ q ≠ (-1 : BitVec 64) then
+        throw (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
+      else
+        pure RETIRE_SUCCESS
+  | .AssertValidDiv0V divisor quotient => do
+      let d ← readVReg divisor
+      let q ← readVReg quotient
+      if d = 0#64 ∧ q ≠ (-1 : BitVec 64) then
+        throw (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
+      else
+        pure RETIRE_SUCCESS
+  | .ChangeDivisor dst dividend divisor => do
+      let a ← liftSail (rX_bits dividend)
+      let b ← liftSail (rX_bits divisor)
+      let mostNeg : BitVec 64 := (1 : BitVec 64) <<< 63
+      let negOne : BitVec 64 := -1
+      writeVReg dst (if a = mostNeg ∧ b = negOne then 1 else b)
+      pure RETIRE_SUCCESS
+  | .ChangeDivisorW dst dividend divisor => do
+      let a ← readVReg dividend
+      let b ← readVReg divisor
+      let i32MinSext : BitVec 64 := -((1 : BitVec 64) <<< 31)
+      let negOne : BitVec 64 := -1
+      writeVReg dst (if a = i32MinSext ∧ b = negOne then 1 else b)
+      pure RETIRE_SUCCESS
+  | .AssertValidUnsignedRemainder remainder divisor => do
+      let r ← readVReg remainder
+      let d ← readVReg divisor
+      if d = 0#64 ∨ r.toNat < d.toNat then
+        pure RETIRE_SUCCESS
+      else
+        throw (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d ∧ d ≠ 0")
+  | .AssertValidUnsignedRemainderReal remainder divisor => do
+      let r ← readVReg remainder
+      let d ← liftSail (rX_bits divisor)
+      if d = 0#64 ∨ r.toNat < d.toNat then
+        pure RETIRE_SUCCESS
+      else
+        throw (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d ∧ d ≠ 0")
+  | .AssertMulUNoOverflow lhs rhs => do
+      let x ← readVReg lhs
+      let y ← liftSail (rX_bits rhs)
+      if x.toNat * y.toNat < 2^64 then
+        pure RETIRE_SUCCESS
+      else
+        throw (Error.Assertion "VirtualAssertMulUNoOverflow")
+  | .AssertMulUNoOverflowV lhs rhs => do
+      let x ← readVReg lhs
+      let y ← readVReg rhs
+      if x.toNat * y.toNat < 2^64 then
+        pure RETIRE_SUCCESS
+      else
+        throw (Error.Assertion "VirtualAssertMulUNoOverflow")
+  | .AssertLTEReal lhs rhs => do
+      let x ← readVReg lhs
+      let y ← liftSail (rX_bits rhs)
+      if x.toNat ≤ y.toNat then
+        pure RETIRE_SUCCESS
+      else
+        throw (Error.Assertion "VirtualAssertLTE")
+  | .AssertLTE lhs rhs => do
+      let x ← readVReg lhs
+      let y ← readVReg rhs
+      if x.toNat ≤ y.toNat then
+        pure RETIRE_SUCCESS
+      else
+        throw (Error.Assertion "VirtualAssertLTE")
 
 def execProgram : Program → JoltMonad ExecutionResult
   | .done result => pure result

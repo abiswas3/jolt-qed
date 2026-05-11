@@ -8,8 +8,6 @@ constructors intentionally stay close to the inline bytecode instructions
 rather than baking in proof-specific factoring.
 -/
 
-set_option maxHeartbeats 1_000_000_000
-
 open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
@@ -20,6 +18,9 @@ inductive Instr where
   | ORI  (dst : Dst) (src : Src) (imm : BitVec 12)
   | XORI (dst : Dst) (src : Src) (imm : BitVec 12)
   | LUI  (dst : Dst) (imm : BitVec 64)
+  | AUIPC (dst : Dst) (imm : BitVec 20)
+  | JAL (dst : Dst) (imm : BitVec 21)
+  | JALR (dst : Dst) (base : Src) (imm : BitVec 12)
   | ADD  (dst : Dst) (lhs rhs : Src)
   | SUB  (dst : Dst) (lhs rhs : Src)
   | MUL  (dst : Dst) (lhs rhs : Src)
@@ -33,8 +34,10 @@ inductive Instr where
   | VirtualSRAI (dst : Dst) (src : Src) (bitmask : Nat)
   | VirtualSRL (dst : Dst) (value bitmask : Src)
   | VirtualSRA (dst : Dst) (value bitmask : Src)
+  | OR   (dst : Dst) (lhs rhs : Src)
   | XOR  (dst : Dst) (lhs rhs : Src)
   | AND  (dst : Dst) (lhs rhs : Src)
+  | SLT  (dst : Dst) (lhs rhs : Src)
   | SLTU (dst : Dst) (lhs rhs : Src)
   | SLLI (dst : Dst) (src : Src) (shamt : BitVec 6)
   | SRLI (dst : Dst) (src : Src) (shamt : BitVec 6)
@@ -42,14 +45,27 @@ inductive Instr where
   | SLL  (dst : Dst) (value shamt : Src)
   | SRL  (dst : Dst) (value shamt : Src)
   | SExtW (dst : Dst) (src : Src)
+  | ZExtW (dst : Dst) (src : Src)
   | Movsign (dst : Dst) (src : Src)
   | AssertLoadAlign (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
   | AssertStoreAlign (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
   | LD (vd base : VReg) (imm : BitVec 12)
+  | LDFrom (vd : VReg) (base : Src) (imm : BitVec 12)
   | SD (base value : VReg) (imm : BitVec 12)
+  | SDFrom (base value : Src) (imm : BitVec 12)
   | Advice (vd : VReg) (value : BitVec 64)
   | AssertEq (lhs rhs : VReg)
   | AssertEqReal (lhs : VReg) (rhs : regidx)
+  | AssertValidDiv0 (divisor : regidx) (quotient : VReg)
+  | AssertValidDiv0V (divisor quotient : VReg)
+  | ChangeDivisor (dst : VReg) (dividend divisor : regidx)
+  | ChangeDivisorW (dst dividend divisor : VReg)
+  | AssertValidUnsignedRemainderReal (remainder : VReg) (divisor : regidx)
+  | AssertValidUnsignedRemainder (remainder divisor : VReg)
+  | AssertMulUNoOverflow (lhs : VReg) (rhs : regidx)
+  | AssertMulUNoOverflowV (lhs rhs : VReg)
+  | AssertLTEReal (lhs : VReg) (rhs : regidx)
+  | AssertLTE (lhs rhs : VReg)
   deriving Repr
 
 /-- Structured Jolt bytecode programs.

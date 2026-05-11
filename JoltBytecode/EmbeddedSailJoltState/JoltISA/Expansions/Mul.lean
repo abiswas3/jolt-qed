@@ -8,8 +8,6 @@ Rust inline sequences and are the shape a future Rust-to-Lean extractor should
 produce.
 -/
 
-set_option maxHeartbeats 1_000_000_000
-
 open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA

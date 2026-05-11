@@ -68,6 +68,7 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LWU_
 -- ============================================================================
 -- Instruction proofs — Atomic (AMO)
 -- ============================================================================
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.AtomicFamily.Statements
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoaddd   -- TODO: atomic add dword
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoaddw   -- TODO: atomic add word
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoandd   -- TODO: atomic and dword
