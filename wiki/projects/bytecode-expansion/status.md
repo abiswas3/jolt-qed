@@ -6,7 +6,7 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 
 
-**Overall:** ![closed](https://img.shields.io/badge/closed-37-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-21-yellow) ![todo](https://img.shields.io/badge/todo-9-lightgrey) — **67 instructions total**
+**Overall:** ![closed](https://img.shields.io/badge/closed-40-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-18-yellow) ![todo](https://img.shields.io/badge/todo-9-lightgrey) — **67 instructions total**
 
 ## ALU — I-type shifts
 
@@ -112,13 +112,13 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 ## Stores
 
-![closed](https://img.shields.io/badge/closed-0-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-3-yellow) ![todo](https://img.shields.io/badge/todo-0-lightgrey)
+![closed](https://img.shields.io/badge/closed-3-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-0-lightgrey)
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| SW | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`SwMonad.lean#L257`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/SwMonad.lean#L257) |
-| SH | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`Sh.lean#L83`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/Sh.lean#L83) |
-| SB | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`Sb.lean#L80`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/Sb.lean#L80) |
+| SW | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`StoreFamily/Sw_main.lean#L296`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/StoreFamily/Sw_main.lean#L296) |
+| SH | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`StoreFamily/Sh_main.lean#L233`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/StoreFamily/Sh_main.lean#L233) |
+| SB | ![closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) | [`StoreFamily/Sb_main.lean#L245`](https://github.com/abiswas3/jolt-qed/blob/main/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/StoreFamily/Sb_main.lean#L245) |
 
 ## Store-conditional
 

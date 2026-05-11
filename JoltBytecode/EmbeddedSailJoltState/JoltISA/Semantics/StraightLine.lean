@@ -77,6 +77,18 @@ theorem execInstr_xori_vreg_vreg_run (vd vs : VReg) (imm : BitVec 12)
     get, getThe, MonadStateOf.get, EStateM.get,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
+/-- Jolt RV64 `LUI` writes the normalized immediate directly.  This is the
+store-family mask materialization step used by `SB` and `SH`. -/
+theorem execInstr_lui_vreg_run (vd : VReg) (imm : BitVec 64)
+    (js : SailJoltState) :
+    (execInstr (.LUI (.vreg vd) imm)).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then imm else js.vregs r } := by
+  unfold execInstr writeDst writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
 /-- `SLLI` on virtual registers is a pure virtual-register update.  Load
 expansions use it to multiply a byte offset by eight before shifting the
 loaded dword. -/
@@ -103,6 +115,52 @@ theorem execInstr_sll_vreg_vreg_vreg_run (vd value shamt : VReg)
             if r = vd then
               shift_bits_left (js.vregs value) (Sail.BitVec.extractLsb (js.vregs shamt) 5 0)
             else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `SLL` can also read the value from a real register and the shift amount
+from a virtual register before writing a virtual scratch register.  Store
+expansions use this to move the low byte/halfword/word of `rs2` into the target
+lane of the loaded dword. -/
+theorem execInstr_sll_xreg_vreg_vreg_run (vd : VReg) (rs : regidx) (shamt : VReg)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (execInstr (.SLL (.vreg vd) (.xreg rs) (.vreg shamt))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r =>
+            if r = vd then
+              shift_bits_left x (Sail.BitVec.extractLsb (js.vregs shamt) 5 0)
+            else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `SRLI` on virtual registers is a pure virtual-register update.  `SW` uses
+it to turn all-ones into the 32-bit store mask before shifting that mask into
+the target word lane. -/
+theorem execInstr_srli_vreg_vreg_run (vd vs : VReg) (shamt : BitVec 6)
+    (js : SailJoltState) :
+    (execInstr (.SRLI (.vreg vd) (.vreg vs) shamt)).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then shift_bits_right (js.vregs vs) shamt else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `AND` on virtual registers is a pure virtual-register update.  Store
+expansions use it to keep only the changed bytes under the shifted mask. -/
+theorem execInstr_and_vreg_vreg_vreg_run (vd lhs rhs : VReg)
+    (js : SailJoltState) :
+    (execInstr (.AND (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then js.vregs lhs &&& js.vregs rhs else js.vregs r } := by
   unfold execInstr readSrc writeDst readVReg writeVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
@@ -205,6 +263,52 @@ theorem execInstr_assertLoadAlign_run_misaligned (base : regidx) (imm : BitVec 1
   unfold execInstr liftSail
   simp only [hread, bind, EStateM.bind, pure, EStateM.run]
   rw [if_pos hmis]
+  rfl
+
+/-- Successful store-alignment assertion: when the effective address masked by
+the instruction's alignment mask is zero, the assertion retires without
+changing the combined Sail/Jolt state. -/
+theorem execInstr_assertStoreAlign_run_aligned (base : regidx) (imm : BitVec 12)
+    (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
+    (hread : rX_bits base js.sail = .ok x js.sail)
+    (halign : (x + sign_extend (m := 64) imm) &&& mask = 0) :
+    (execInstr (.AssertStoreAlign base imm mask)).run js =
+      .ok RETIRE_SUCCESS js := by
+  unfold execInstr liftSail
+  simp only [hread, bind, EStateM.bind, pure, EStateM.run]
+  rw [if_neg (by intro h; exact h halign)]
+  rfl
+
+/-- Failed store-alignment assertion: the virtual assertion returns exactly
+the Sail store/AMO address-alignment exception and prevents the tail of the
+program from running. -/
+theorem execInstr_assertStoreAlign_run_misaligned (base : regidx) (imm : BitVec 12)
+    (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
+    (hread : rX_bits base js.sail = .ok x js.sail)
+    (hmis : (x + sign_extend (m := 64) imm) &&& mask ≠ 0) :
+    (execInstr (.AssertStoreAlign base imm mask)).run js =
+      .ok (ExecutionResult.Memory_Exception
+        (Virtaddr (x + sign_extend (m := 64) imm), ExceptionType.E_SAMO_Addr_Align ())) js := by
+  unfold execInstr liftSail
+  simp only [hread, bind, EStateM.bind, pure, EStateM.run]
+  rw [if_pos hmis]
+  rfl
+
+/-- Successful `SD`: if Sail's dword write pipeline returns success, then the
+Jolt-ISA `SD` retires with the produced Sail state and preserves virtual
+registers. -/
+theorem execInstr_sd_vreg_run_of_write (base value : VReg) (imm : BitVec 12)
+    (js : SailJoltState) (s' : SailState)
+    (h :
+      vmem_write_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 8
+        (js.vregs value) (Store Data) false false false js.sail =
+        .ok (Ok true) s') :
+    (execInstr (.SD base value imm)).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readVReg liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+  rw [h]
   rfl
 
 /-- `ADD` on virtual sources and a virtual destination reads both virtual

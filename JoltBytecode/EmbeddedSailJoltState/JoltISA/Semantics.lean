@@ -37,6 +37,9 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc src
       writeDst dst (x ^^^ sign_extend (m := 64) imm)
       pure RETIRE_SUCCESS
+  | .LUI dst imm => do
+      writeDst dst imm
+      pure RETIRE_SUCCESS
   | .ADD dst lhs rhs => do
       let x ← readSrc lhs
       let y ← readSrc rhs
@@ -147,6 +150,14 @@ def execInstr : Instr → JoltMonad ExecutionResult
       if addr &&& mask ≠ 0 then
         pure (ExecutionResult.Memory_Exception
           (Virtaddr addr, ExceptionType.E_Load_Addr_Align ()))
+      else
+        pure RETIRE_SUCCESS
+  | .AssertStoreAlign base imm mask => do
+      let baseValue ← liftSail (rX_bits base)
+      let addr := baseValue + sign_extend (m := 64) imm
+      if addr &&& mask ≠ 0 then
+        pure (ExecutionResult.Memory_Exception
+          (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ()))
       else
         pure RETIRE_SUCCESS
   | .LD vd base imm => do
