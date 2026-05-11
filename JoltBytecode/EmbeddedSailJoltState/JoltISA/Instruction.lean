@@ -8,8 +8,6 @@ constructors intentionally stay close to the inline bytecode instructions
 rather than baking in proof-specific factoring.
 -/
 
-set_option maxHeartbeats 1_000_000_000
-
 open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
@@ -36,8 +34,10 @@ inductive Instr where
   | VirtualSRAI (dst : Dst) (src : Src) (bitmask : Nat)
   | VirtualSRL (dst : Dst) (value bitmask : Src)
   | VirtualSRA (dst : Dst) (value bitmask : Src)
+  | OR   (dst : Dst) (lhs rhs : Src)
   | XOR  (dst : Dst) (lhs rhs : Src)
   | AND  (dst : Dst) (lhs rhs : Src)
+  | SLT  (dst : Dst) (lhs rhs : Src)
   | SLTU (dst : Dst) (lhs rhs : Src)
   | SLLI (dst : Dst) (src : Src) (shamt : BitVec 6)
   | SRLI (dst : Dst) (src : Src) (shamt : BitVec 6)
@@ -50,7 +50,9 @@ inductive Instr where
   | AssertLoadAlign (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
   | AssertStoreAlign (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
   | LD (vd base : VReg) (imm : BitVec 12)
+  | LDFrom (vd : VReg) (base : Src) (imm : BitVec 12)
   | SD (base value : VReg) (imm : BitVec 12)
+  | SDFrom (base value : Src) (imm : BitVec 12)
   | Advice (vd : VReg) (value : BitVec 64)
   | AssertEq (lhs rhs : VReg)
   | AssertEqReal (lhs : VReg) (rhs : regidx)

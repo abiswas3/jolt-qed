@@ -8,7 +8,6 @@ import JoltBytecode.EmbeddedSailJoltState.JoltISA.Instruction
 Rust expansion lists.
 -/
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions
@@ -120,6 +119,11 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let b ← readSrc bitmask
       writeDst dst (jolt_virtual_sra_value x b)
       pure RETIRE_SUCCESS
+  | .OR dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (x ||| y)
+      pure RETIRE_SUCCESS
   | .XOR dst lhs rhs => do
       let x ← readSrc lhs
       let y ← readSrc rhs
@@ -129,6 +133,11 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc lhs
       let y ← readSrc rhs
       writeDst dst (x &&& y)
+      pure RETIRE_SUCCESS
+  | .SLT dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (zero_extend (m := 64) (bool_to_bit (zopz0zI_s x y)))
       pure RETIRE_SUCCESS
   | .SLTU dst lhs rhs => do
       let x ← readSrc lhs
@@ -193,10 +202,25 @@ def execInstr : Instr → JoltMonad ExecutionResult
           writeVReg vd dword
           pure RETIRE_SUCCESS
       | .Err e => pure e
+  | .LDFrom vd base imm => do
+      let baseValue ← readSrc base
+      let addr := baseValue + sign_extend (m := 64) imm
+      match ← liftSail (vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false) with
+      | .Ok dword =>
+          writeVReg vd dword
+          pure RETIRE_SUCCESS
+      | .Err e => pure e
   | .SD base value imm => do
       let baseValue ← readVReg base
       let addr := baseValue + sign_extend (m := 64) imm
       let stored ← readVReg value
+      match ← liftSail (vmem_write_addr (Virtaddr addr) 8 stored (Store Data) false false false) with
+      | .Ok _ => pure RETIRE_SUCCESS
+      | .Err e => pure e
+  | .SDFrom base value imm => do
+      let baseValue ← readSrc base
+      let addr := baseValue + sign_extend (m := 64) imm
+      let stored ← readSrc value
       match ← liftSail (vmem_write_addr (Virtaddr addr) 8 stored (Store Data) false false false) with
       | .Ok _ => pure RETIRE_SUCCESS
       | .Err e => pure e

@@ -1,2 +1,0 @@
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Atomics.Amoaddd
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Atomics.Amoaddw
