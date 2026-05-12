@@ -35,7 +35,10 @@ theorem execute_RTYPE_ADD_factored (rs2 rs1 rd : regidx) :
 
 /-- Factoring: `execute_RTYPEW rs2 rs1 rd ropw.ADDW` reads `rs1`, reads
 `rs2`, writes `sext₆₄(v1[31:0] +₃₂ v2[31:0])` to `rd`, returns
-`RETIRE_SUCCESS`. -/
+`RETIRE_SUCCESS`. 
+All this does is write the Sail code as do program.
+I am not sure we need this as much anymore (TODO:) 
+-/
 theorem execute_RTYPEW_ADDW_factored (rs2 rs1 rd : regidx) :
     execute_RTYPEW rs2 rs1 rd ropw.ADDW = (do
       let v1 ← rX_bits rs1
@@ -101,7 +104,8 @@ theorem addwProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run js.sail :=
   rtype_eq_sail_uniform
     (f := fun v1 v2 => sign_extend (m := 64)
-      (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0))
+      (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0)
+    )
     (execute_RTYPEW_ADDW_factored rs2 rs1 rd)
     (addwProgram_concrete rs2 rs1 rd hrd js hwf)
 
