@@ -7,9 +7,12 @@ These lemmas describe how `execProgram` steps through structured instruction
 programs.  They are meant for bytecode expansions whose instructions usually
 retire normally one after another, while still preserving the non-retire
 short-circuiting behavior needed by loads.
+
+This seems to be my step one instruction, state looks like this lemmas. 
+TODO: Not sure this is the right place for these.
 -/
 
-set_option maxHeartbeats 1_000_000_000
+/- set_option maxHeartbeats 1_000_000_000 -/
 
 open Sail PreSail LeanRV64D.Functions
 open virtaddr MemoryAccessType mem_payload

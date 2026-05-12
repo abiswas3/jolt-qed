@@ -17,8 +17,11 @@ noncomputable section
 
 namespace JoltISA
 
+-- TODO: Not sure if we need this as simp lemmas to clean up proof but to be seen.
+
 /-- Executing a terminal Jolt program returns its terminal result without
 changing the state. -/
+-- True by literally how we write execProgram
 @[simp] theorem execProgram_done (result : ExecutionResult) :
     execProgram (.done result) = (pure result : JoltMonad ExecutionResult) := rfl
 
@@ -28,8 +31,7 @@ only if it retires successfully, continuing with the tail. -/
     execProgram (.instr instr rest) =
       (execInstr instr >>= fun
         | .Retire_Success () => execProgram rest
-        | result => pure result) := rfl
-
+        | result => pure result) := rfl 
 end JoltISA
 
 end

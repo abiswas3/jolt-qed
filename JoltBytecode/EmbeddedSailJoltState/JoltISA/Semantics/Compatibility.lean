@@ -3,6 +3,11 @@ import JoltBytecode.EmbeddedSailJoltState.VirtualInstructions
 
 /-!
 # Compatibility with hand-written virtual instructions
+TODO: Not fully clear how this is helpign me clean up the proofs
+-- I am not sure I will keep this. 
+
+It seems like bridge between the new world of describing how to describe a progra
+and the old do block for an instruction.
 
 These lemmas connect the typed `JoltISA.Instr` interpreter to the existing
 `vreg_*` primitives used by the current instruction-equivalence proofs.  They
