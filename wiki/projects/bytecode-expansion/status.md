@@ -67,14 +67,14 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| DIV | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamily/Div.lean#L214`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamily/Div.lean#L214) |
-| DIVU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamily/Divu.lean#L175`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamily/Divu.lean#L175) |
-| DIVW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamily/Divw.lean#L214`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamily/Divw.lean#L214) |
-| DIVUW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamily/Divuw.lean#L175`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamily/Divuw.lean#L175) |
-| REM | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamily/Rem.lean#L165`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamily/Rem.lean#L165) |
-| REMU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamily/Remu.lean#L135`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamily/Remu.lean#L135) |
-| REMW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamily/Remw.lean#L172`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamily/Remw.lean#L172) |
-| REMUW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamily/Remuw.lean#L125`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamily/Remuw.lean#L125) |
+| DIV | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamilyRW/Div.lean#L305`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamilyRW/Div.lean#L305) |
+| DIVU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamilyRW/Divu.lean#L220`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamilyRW/Divu.lean#L220) |
+| DIVW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamilyRW/Divw.lean#L339`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamilyRW/Divw.lean#L339) |
+| DIVUW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamilyRW/Divuw.lean#L222`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamilyRW/Divuw.lean#L222) |
+| REM | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamilyRW/Rem.lean#L305`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamilyRW/Rem.lean#L305) |
+| REMU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamilyRW/Remu.lean#L193`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamilyRW/Remu.lean#L193) |
+| REMW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamilyRW/Remw.lean#L339`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamilyRW/Remw.lean#L339) |
+| REMUW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`ALUAdviceFamilyRW/Remuw.lean#L230`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUAdviceFamilyRW/Remuw.lean#L230) |
 
 ## Advice loads
 
@@ -107,8 +107,8 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| LR.W | ![todo](https://img.shields.io/badge/todo-lightgrey) | [`Lrw.lean`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/Lrw.lean) |
-| LR.D | ![todo](https://img.shields.io/badge/todo-lightgrey) | [`Lrd.lean`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/Lrd.lean) |
+| LR.W | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
+| LR.D | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
 
 ## Stores
 
