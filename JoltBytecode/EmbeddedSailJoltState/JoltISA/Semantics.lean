@@ -3,6 +3,12 @@ import JoltBytecode.EmbeddedSailJoltState.JoltISA.Instruction
 /-!
 # Jolt ISA semantics
 
+This file tells us how to run a program. 
+By run we mean how each intruction does state transition on Jolt CPU. 
+The exec logic should be matched against the fn exec block in the corresponding 
+rust code
+TODO: Double check this is the case still as project as grown over time
+
 `execInstr` gives each Jolt-ISA instruction its monadic meaning over
 `SailJoltState`.  `execProgram` is the small interpreter used by generated
 Rust expansion lists.
@@ -308,11 +314,40 @@ def execInstr : Instr → JoltMonad ExecutionResult
       else
         throw (Error.Assertion "VirtualAssertLTE")
 
+/-
+NOTE: Delete this in the final public facing publish of main, but keep them in the paper branch. 
+
+  `match ← execInstr instr with`
+  does not mean “run execInstr and match on both success and error.”
+  It means:
+
+  ```
+  EStateM.bind (execInstr instr) fun result =>
+    match result with
+    | .Retire_Success () => execProgram rest
+    | result => pure result
+  ```
+  And `EStateM.bind` handles errors by short-circuiting. Operationally:
+
+  ```
+  match execInstr instr s with
+  | .ok result s' =>
+      match result with
+      | .Retire_Success () => execProgram rest s'
+      | result => .ok result s'
+
+  | .error e s' =>
+      .error e s'
+  ```
+-/ 
 def execProgram : Program → JoltMonad ExecutionResult
   | .done result => pure result
   | .instr instr rest => do
       match ← execInstr instr with
       | .Retire_Success () => execProgram rest
+      -- If any instruction does not complete succesfully
+      -- then return Result.ok result s' 
+      -- Do not run the rest of the instructions in program.
       | result => pure result
 
 end JoltISA
