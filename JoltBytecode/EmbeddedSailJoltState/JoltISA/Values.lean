@@ -6,9 +6,13 @@ import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
 These definitions are the non-monadic value computations shared by the
 instruction semantics and the equivalence proofs.
+This makes it easier to describe the instruction semantics for writing and reading.
+
+Sometimes it's also helpful to have mini theorems about this computations.
+It helps while proving things.
 -/
 
-set_option maxHeartbeats 1_000_000_000
+/- set_option maxHeartbeats 1_000_000_000 -/
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions

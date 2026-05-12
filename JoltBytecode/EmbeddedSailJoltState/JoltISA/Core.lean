@@ -3,9 +3,8 @@ import LeanRV64D
 /-!
 # Jolt ISA core state
 
-This module contains the state and monad shared by the executable Jolt-ISA
-semantics.  The state embeds the Sail architectural state and adds Jolt's
-virtual-register file.
+This module defines the Jolt CPU in lean. 
+The semantics will then run instructions on this CPU.
 -/
 
 set_option maxHeartbeats 1_000_000_000
@@ -42,17 +41,24 @@ theorem SailJoltState.ext
 
 abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
 
+-- TODO: I thought structures had natural projects (so do we need this ?)
 @[simp] def project (js : SailJoltState) : SailState := js.sail
 
+-- Replace current Sail state with new Sail State
 @[simp] def inject (js : SailJoltState) (ss : SailState) : SailJoltState :=
   { js with sail := ss }
 
+-- Given the output of a step of a Jolt CPU, return the same output as Sail CPU 
+-- by projecting the JoltState down to Sail State
 def projectResult (r : EStateM.Result (Error exception) SailJoltState α) :
     EStateM.Result (Error exception) SailState α :=
   match r with
   | .ok a js' => .ok a (project js')
   | .error e js' => .error e (project js')
 
+-- Have some purely Sail computation i.e computation that a RISC CPU can hanle
+-- but we wish to run it as a Jolt CPU computation by running the sail field of 
+-- the joltstate which is just a RISC CPU
 def liftSail (m : SailM α) : JoltMonad α := fun js =>
   match m js.sail with
   | .ok a ss' => .ok a { js with sail := ss' }
