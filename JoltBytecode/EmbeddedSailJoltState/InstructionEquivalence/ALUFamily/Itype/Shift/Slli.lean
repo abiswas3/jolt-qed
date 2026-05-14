@@ -1,8 +1,8 @@
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Shift.Family
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Family
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
-import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.VirtualMULI
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions
@@ -12,19 +12,19 @@ noncomputable section
 /-!
 # SLLI: Jolt VirtualMULI = Sail SLLI
 
-Jolt decomposes SLLI as `VirtualMULI rd, rs1, 2^shamt`. Multiply by
-`2^s` = left shift by `s`; bridge is inlined.
+Jolt program sequence:
+1. `VirtualMULI rd, rs1, 2^shamt` — multiply by power of two
 -/
 
 private theorem extractLsb_shamt6_id (shamt : BitVec 6) :
     Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0 = shamt := by
   simp only [LeanRV64D.Functions.log2_xlen, Sail.BitVec.extractLsb]
-  ext i; simp [BitVec.getLsbD_extractLsb]; rfl
+  ext i; simp; rfl
 
 private theorem mul_pow2_eq_shiftLeft (v : BitVec 64) (s : BitVec 6) :
     v * BitVec.ofNat 64 (2 ^ s.toNat) = v <<< s := by
   apply BitVec.eq_of_toNat_eq
-  simp [BitVec.toNat_mul, BitVec.toNat_ofNat, BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
+  simp [BitVec.toNat_mul, BitVec.toNat_ofNat]
 
 private theorem slli_mul_eq_shift (v : BitVec 64) (shamt : BitVec 6) :
     v * BitVec.ofNat 64 (2 ^ shamt.toNat) =
@@ -53,16 +53,38 @@ theorem slliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
         (shift_bits_left v (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
-  unfold JoltISA.slliProgram JoltISA.execProgram JoltISA.execInstr
-    JoltISA.readSrc JoltISA.writeDst liftSail jolt_virtual_muli_value
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   obtain ⟨v, hok⟩ := hwf rs1
-  simp only [hok]
-  obtain ⟨s', hw⟩ := wX_shape rd (v * BitVec.ofNat 64 (2 ^ shamt.toNat)) js.sail
-  simp only [hw]
-  refine ⟨_, v, rfl, rfl, ?_⟩
-  rw [← slli_mul_eq_shift v shamt]
-  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
+
+  -- Instruction 1: `VirtualMULI rd, rs1, 2^shamt` writes `raw` to `rd`.
+  let imm := BitVec.ofNat 64 (2 ^ shamt.toNat)
+  let raw := jolt_virtual_muli_value v imm
+  obtain ⟨s', hrun_VirtualMULI, hw_raw⟩ :=
+    JoltISA.execInstr_virtualMULI_xreg_xreg_run_of_read rd rs1 imm js v hok
+  let js' : SailJoltState := { sail := s', vregs := js.vregs }
+  have instr1_VirtualMULI_writes_raw :
+      (JoltISA.execInstr (.VirtualMULI (.xreg rd) (.xreg rs1) imm)).run js =
+        .ok RETIRE_SUCCESS js' := by
+    simpa [js'] using hrun_VirtualMULI
+  refine ⟨js', v, hok, ?_, ?_⟩
+  · unfold JoltISA.slliProgram
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js' instr1_VirtualMULI_writes_raw]
+    rfl
+  · dsimp [js']
+    -- NOTE: Math theorem: `slli_mul_eq_shift` matches pow2 multiplication with Sail SLLI.
+    have math_raw_shift :
+        raw =
+          shift_bits_left v
+            (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
+      dsimp [raw, imm, jolt_virtual_muli_value]
+      rw [slli_mul_eq_shift]
+    have final_write_from_initial :
+        wX_bits rd
+          (shift_bits_left v
+            (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0))
+          js.sail = .ok () s' := by
+      rw [← math_raw_shift]
+      exact hw_raw
+    exact wX_bits_eq_stateAfterWrite rd _ js.sail s' final_write_from_initial
 
 /-- Main program-level equivalence for `SLLI`. -/
 theorem slliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)

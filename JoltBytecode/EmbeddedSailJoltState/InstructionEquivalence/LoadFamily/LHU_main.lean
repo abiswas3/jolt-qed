@@ -338,7 +338,7 @@ theorem lhuProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
   refine ⟨js', ?_, ?_⟩
   · unfold JoltISA.lhuProgram
     change (JoltISA.execProgram
-      (.instr (.AssertLoadAlign rs1 imm (1 : BitVec 64)) <|
+      (.instr (.VirtualAssertLoadAlignment rs1 imm (1 : BitVec 64)) <|
        .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
        .instr (.LD 1 1 0) logicTail)).run js = .ok RETIRE_SUCCESS js'

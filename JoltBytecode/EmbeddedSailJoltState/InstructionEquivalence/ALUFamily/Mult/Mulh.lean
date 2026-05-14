@@ -1,6 +1,6 @@
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.Mul
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Family
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Family
 import Mathlib
 
 set_option maxHeartbeats 1_000_000_000
@@ -264,12 +264,12 @@ theorem mulhProgram_eval_jolt_value (rs2 rs1 rd : regidx)
   have h2_js4 : rX_bits rs2 js4.sail = .ok v2 js4.sail := by
     simpa [js4, js3, js2, js1] using h2
   have hstep1 :
-      JoltISA.execInstr (.Movsign (.vreg (0 : JoltISA.VReg)) (.xreg rs1)) js =
+      JoltISA.execInstr (.VirtualMovsign (.vreg (0 : JoltISA.VReg)) (.xreg rs1)) js =
         .ok RETIRE_SUCCESS js1 := by
     simpa [js1, sx] using
       (JoltISA.execInstr_movsign_xreg_vreg_run (vd := (0 : JoltISA.VReg)) (rs := rs1) js v1 h1)
   have hstep2 :
-      JoltISA.execInstr (.Movsign (.vreg (1 : JoltISA.VReg)) (.xreg rs2)) js1 =
+      JoltISA.execInstr (.VirtualMovsign (.vreg (1 : JoltISA.VReg)) (.xreg rs2)) js1 =
         .ok RETIRE_SUCCESS js2 := by
     simpa [js2, sy] using
       (JoltISA.execInstr_movsign_xreg_vreg_run (vd := (1 : JoltISA.VReg)) (rs := rs2) js1 v2

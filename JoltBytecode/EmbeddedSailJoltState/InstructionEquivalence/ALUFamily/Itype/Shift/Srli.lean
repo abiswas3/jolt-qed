@@ -1,9 +1,9 @@
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Shift.Family
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Family
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
-import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.VirtualSRLI
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
 import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions
@@ -13,8 +13,8 @@ noncomputable section
 /-!
 # SRLI: Jolt VirtualSRLI via bitmask = Sail SRLI
 
-Jolt precomputes a bitmask from the shift amount and invokes
-`VirtualSRLI`, which performs logical right shift by `ctz(bitmask)`.
+Jolt program sequence:
+1. `VirtualSRLI rd, rs1, srliBitmask shamt` — logical right shift by `ctz(bitmask)`
 -/
 
 def srli_bitmask (shamt : BitVec 64) : Nat :=
@@ -38,11 +38,11 @@ theorem ctz_srli_bitmask (shamt : BitVec 64) :
 private theorem extractLsb_shamt6_id (shamt : BitVec 6) :
     Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0 = shamt := by
   simp only [LeanRV64D.Functions.log2_xlen, Sail.BitVec.extractLsb]
-  ext i; simp [BitVec.getLsbD_extractLsb]; rfl
+  ext i; simp; rfl
 
 private theorem setWidth_roundtrip (shamt : BitVec 6) :
-    (shamt.setWidth 64).setWidth 6 = shamt := by
-  ext i; simp [BitVec.getLsbD_setWidth]
+  (shamt.setWidth 64).setWidth 6 = shamt := by
+  ext i; simp
 
 private theorem ushiftRight_nat_eq_bv (v : BitVec 64) (s : BitVec 6) :
     v >>> s.toNat = v >>> s := by
@@ -84,16 +84,38 @@ theorem srliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
       js'.sail = stateAfterWrite js.sail rd
         (shift_bits_right v
           (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
-  unfold JoltISA.srliProgram JoltISA.execProgram JoltISA.execInstr
-    JoltISA.readSrc JoltISA.writeDst liftSail jolt_virtual_srli_value
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
   obtain ⟨v, hok⟩ := hwf rs1
-  simp only [hok]
-  obtain ⟨s', hw⟩ := wX_shape rd (v >>> ctz (JoltISA.srliBitmask shamt)) js.sail
-  simp only [hw]
-  refine ⟨_, v, rfl, rfl, ?_⟩
-  rw [← srli_bitmask_eq_shift v shamt, ← srliProgram_bitmask_eq shamt]
-  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
+
+  -- Instruction 1: `VirtualSRLI rd, rs1, srliBitmask shamt` writes `raw` to `rd`.
+  let bitmask := JoltISA.srliBitmask shamt
+  let raw := jolt_virtual_srli_value v bitmask
+  obtain ⟨s', hrun_VirtualSRLI, hw_raw⟩ :=
+    JoltISA.execInstr_virtualSRLI_xreg_xreg_run_of_read rd rs1 bitmask js v hok
+  let js' : SailJoltState := { sail := s', vregs := js.vregs }
+  have instr1_VirtualSRLI_writes_raw :
+      (JoltISA.execInstr (.VirtualSRLI (.xreg rd) (.xreg rs1) bitmask)).run js =
+        .ok RETIRE_SUCCESS js' := by
+    simpa [js'] using hrun_VirtualSRLI
+  refine ⟨js', v, hok, ?_, ?_⟩
+  · unfold JoltISA.srliProgram
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js' instr1_VirtualSRLI_writes_raw]
+    rfl
+  · dsimp [js']
+    -- NOTE: Math theorem: `srli_bitmask_eq_shift` decodes the immediate bitmask.
+    have math_raw_shift :
+        raw =
+          shift_bits_right v
+            (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
+      simpa [raw, bitmask, jolt_virtual_srli_value, srliProgram_bitmask_eq] using
+        srli_bitmask_eq_shift v shamt
+    have final_write_from_initial :
+        wX_bits rd
+          (shift_bits_right v
+            (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0))
+          js.sail = .ok () s' := by
+      rw [← math_raw_shift]
+      exact hw_raw
+    exact wX_bits_eq_stateAfterWrite rd _ js.sail s' final_write_from_initial
 
 /-- Main program-level equivalence for `SRLI`. -/
 theorem srliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)

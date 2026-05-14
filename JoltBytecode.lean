@@ -26,15 +26,15 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Mult.Mulh                         -- DONE: MULH (Rust inline sequence)
 -- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
 
--- Divide / Remainder [The Advice Family]
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Div       -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Divu      -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Divw      -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Divuw     -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Rem       -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remu      -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remw      -- TODO: needs advice
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Remuw     -- TODO: needs advice
+-- Divide / Remainder [Advice Family RW]
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamilyRW.Div
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamilyRW.Divu
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamilyRW.Divw
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamilyRW.Divuw
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamilyRW.Rem
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamilyRW.Remu
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamilyRW.Remw
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUAdviceFamilyRW.Remuw
 
 -- ============================================================================
 -- Instruction proofs — Format I (register-immediate)
@@ -61,37 +61,17 @@ import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.LoadFamily.LWU_
 -- ============================================================================
 -- Instruction proofs — Memory (store)
 -- ============================================================================
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sb        -- TODO: store byte
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sh        -- TODO: store halfword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Sw        -- TODO: store word
+-- Store proofs live under `InstructionEquivalence.StoreFamily`.
+-- They are not imported here until the duplicate memory-helper names shared
+-- with LoadFamily are reconciled.
 
 -- ============================================================================
 -- Instruction proofs — Atomic (AMO)
 -- ============================================================================
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoaddd   -- TODO: atomic add dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoaddw   -- TODO: atomic add word
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoandd   -- TODO: atomic and dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoandw   -- TODO: atomic and word
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amomaxd   -- TODO: atomic max dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amomaxud  -- TODO: atomic max unsigned dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amomaxuw  -- TODO: atomic max unsigned word
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amomaxw   -- TODO: atomic max word
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amomind   -- TODO: atomic min dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amominud  -- TODO: atomic min unsigned dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amominuw  -- TODO: atomic min unsigned word
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amominw   -- TODO: atomic min word
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoord    -- TODO: atomic or dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoorw    -- TODO: atomic or word
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoswapd  -- TODO: atomic swap dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoswapw  -- TODO: atomic swap word
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoxord   -- TODO: atomic xor dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Amoxorw   -- TODO: atomic xor word
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.AtomicFamily.Statements
 
 -- Load Reserved
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lrd       -- TODO: load reserved dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Lrw       -- TODO: load reserved word
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Scd       -- TODO: store conditional dword
--- import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.Scw       -- TODO: store conditional word
+-- LR/SC theorem statements are not yet stated.
 
 -- ============================================================================
 -- Instruction proofs — Advice / System / CSR

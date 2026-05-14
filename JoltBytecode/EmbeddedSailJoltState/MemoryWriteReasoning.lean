@@ -2,7 +2,6 @@ import JoltBytecode.EmbeddedSailJoltState.Defs
 import JoltBytecode.EmbeddedSailJoltState.MemoryUtils
 import Mathlib.Tactic.IntervalCases
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 set_option mvcgen.warning false
 
@@ -183,6 +182,34 @@ theorem stored_dword_untouched (s : SailState) (ea base : BitVec 64) (dword_new 
 def word_byte (word_val : BitVec 32) (k : Nat) : BitVec 8 :=
   word_val.extractLsb' (8 * k) 8
 
+-- Inputs: halfword_val (16-bit value), k (byte index)
+-- Assumptions: none
+-- Extracts the k-th byte from a 16-bit halfword in little-endian order.
+def halfword_byte (halfword_val : BitVec 16) (k : Nat) : BitVec 8 :=
+  halfword_val.extractLsb' (8 * k) 8
+
+-- Inputs: byte_val (8-bit value), k (byte index)
+-- Assumptions: none
+-- Extracts the k-th byte from a byte. Only index 0 is meaningful in callers.
+def byte_byte (byte_val : BitVec 8) (_k : Nat) : BitVec 8 :=
+  byte_val
+
+-- Inputs: s (Sail state), ea (byte address), byte_val (8-bit value to write)
+-- Assumptions: none
+-- Constructs the state after writing one byte at `ea`.
+def state_after_byte_store (s : SailState) (ea : BitVec 64) (byte_val : BitVec 8) :
+    SailState :=
+  { s with mem := s.mem.insert (ea.toNat + 0) (byte_byte byte_val 0) }
+
+-- Inputs: s (Sail state), ea (halfword address), halfword_val (16-bit value to write)
+-- Assumptions: none
+-- Constructs the state after writing two little-endian bytes at `ea..ea+1`.
+def state_after_halfword_store (s : SailState) (ea : BitVec 64) (halfword_val : BitVec 16) :
+    SailState :=
+  { s with mem := s.mem
+    |>.insert (ea.toNat + 0) (halfword_byte halfword_val 0)
+    |>.insert (ea.toNat + 1) (halfword_byte halfword_val 1) }
+
 -- Inputs: s (Sail state), ea (word-aligned address), word_val (32-bit value to write)
 -- Assumptions: none
 -- Constructs the state after writing 4 bytes of word_val at ea..ea+3.
@@ -234,6 +261,59 @@ theorem stored_word_untouched (s : SailState) (ea : BitVec 64) (word_val : BitVe
       s.mem (ea.toNat + 0) a (word_byte word_val 0)
       (outside_word_window_ne ea.toNat a 0 (by omega) hout)]
 
+-- Inputs: base (start of halfword window), a (lookup address), i (byte offset)
+-- Assumptions: i < 2, a lies outside the byte window [base, base+1]
+-- An address outside the halfword window cannot equal any byte address base+i.
+theorem outside_halfword_window_ne (base a i : Nat) (hi : i < 2)
+    (hout : a < base ∨ a ≥ base + 2) :
+    a ≠ base + i := by
+  intro hEq
+  rcases hout with hlt | hge
+  · omega
+  · omega
+
+-- Inputs: s (Sail state), ea (halfword address), halfword_val (halfword written),
+-- a (any address)
+-- Assumptions: a is outside ea..ea+1
+-- After writing `halfword_val` at `ea`, outside addresses are unchanged.
+theorem stored_halfword_untouched (s : SailState) (ea : BitVec 64)
+    (halfword_val : BitVec 16) :
+    ∀ a : Nat, (a < ea.toNat ∨ a ≥ ea.toNat + 2) →
+      (state_after_halfword_store s ea halfword_val).mem.get? a = s.mem.get? a := by
+  intro a hout
+  unfold state_after_halfword_store
+  simp only
+  rw [extHashMap_get_insert_of_ne
+      (s.mem.insert (ea.toNat + 0) (halfword_byte halfword_val 0))
+      (ea.toNat + 1) a (halfword_byte halfword_val 1)
+      (outside_halfword_window_ne ea.toNat a 1 (by omega) hout)]
+  rw [extHashMap_get_insert_of_ne
+      s.mem (ea.toNat + 0) a (halfword_byte halfword_val 0)
+      (outside_halfword_window_ne ea.toNat a 0 (by omega) hout)]
+
+-- Inputs: base (start of byte window), a (lookup address), i (byte offset)
+-- Assumptions: i < 1, a lies outside the singleton byte window [base, base]
+-- An address outside the byte window cannot equal base+i.
+theorem outside_byte_window_ne (base a i : Nat) (hi : i < 1)
+    (hout : a < base ∨ a ≥ base + 1) :
+    a ≠ base + i := by
+  intro hEq
+  rcases hout with hlt | hge
+  · omega
+  · omega
+
+-- Inputs: s (Sail state), ea (byte address), byte_val (byte written), a (any address)
+-- Assumptions: a is not `ea`
+-- After writing `byte_val` at `ea`, all other addresses are unchanged.
+theorem stored_byte_untouched (s : SailState) (ea : BitVec 64) (byte_val : BitVec 8) :
+    ∀ a : Nat, (a < ea.toNat ∨ a ≥ ea.toNat + 1) →
+      (state_after_byte_store s ea byte_val).mem.get? a = s.mem.get? a := by
+  intro a hout
+  unfold state_after_byte_store
+  rw [extHashMap_get_insert_of_ne
+      s.mem (ea.toNat + 0) a (byte_byte byte_val 0)
+      (outside_byte_window_ne ea.toNat a 0 (by omega) hout)]
+
 -- Inputs: s (Sail state), ea (word address), word_val (word written), j (byte index)
 -- Assumptions: j < 4
 -- Reading the byte just written at address ea + j returns the j-th byte of word_val.
@@ -257,6 +337,36 @@ theorem stored_word_get?_hit (s : SailState) (ea : BitVec 64) (word_val : BitVec
   · rw [Std.ExtHashMap.getElem?_insert,
         Std.ExtHashMap.getElem?_insert_self]
     simp
+  · rw [Std.ExtHashMap.getElem?_insert_self]
+
+-- Inputs: s (Sail state), ea (halfword address), halfword_val (halfword written),
+-- j (byte index)
+-- Assumptions: j < 2
+-- Reading back address ea+j returns the j-th little-endian halfword byte.
+theorem stored_halfword_get?_hit (s : SailState) (ea : BitVec 64)
+    (halfword_val : BitVec 16) :
+    ∀ j : Nat, j < 2 →
+      (state_after_halfword_store s ea halfword_val).mem.get? (ea.toNat + j) =
+      some (halfword_byte halfword_val j) := by
+  intro j hj
+  unfold state_after_halfword_store
+  rw [Std.ExtHashMap.get?_eq_getElem?]
+  interval_cases j
+  · rw [Std.ExtHashMap.getElem?_insert, Std.ExtHashMap.getElem?_insert_self]
+    simp
+  · rw [Std.ExtHashMap.getElem?_insert_self]
+
+-- Inputs: s (Sail state), ea (byte address), byte_val (byte written), j (byte index)
+-- Assumptions: j < 1
+-- Reading back address ea+j returns the stored byte.
+theorem stored_byte_get?_hit (s : SailState) (ea : BitVec 64) (byte_val : BitVec 8) :
+    ∀ j : Nat, j < 1 →
+      (state_after_byte_store s ea byte_val).mem.get? (ea.toNat + j) =
+      some (byte_byte byte_val j) := by
+  intro j hj
+  unfold state_after_byte_store
+  rw [Std.ExtHashMap.get?_eq_getElem?]
+  interval_cases j
   · rw [Std.ExtHashMap.getElem?_insert_self]
 
 -- Inputs: s (Sail state), base (dword address), dword_new (dword written), k (byte index)

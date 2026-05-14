@@ -9,3 +9,5 @@ import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Compatibility
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.Mul
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.Load
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.Store
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.Atomics
