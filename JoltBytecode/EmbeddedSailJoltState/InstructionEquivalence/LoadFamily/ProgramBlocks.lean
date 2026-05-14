@@ -142,7 +142,7 @@ theorem assertSetupBlockAligned (rest : JoltISA.Program)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
-        (.instr (.AssertLoadAlign rs1 imm mask) <|
+        (.instr (.VirtualAssertLoadAlignment rs1 imm mask) <|
          .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
          .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
          .instr (.LD 1 1 0) rest)).run js =
@@ -152,9 +152,9 @@ theorem assertSetupBlockAligned (rest : JoltISA.Program)
       js_load.vregs 1 =
         loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
   have hassert :
-      (JoltISA.execInstr (.AssertLoadAlign rs1 imm mask)).run js =
+      (JoltISA.execInstr (.VirtualAssertLoadAlignment rs1 imm mask)).run js =
         .ok RETIRE_SUCCESS js := by
-    exact JoltISA.execInstr_assertLoadAlign_run_aligned rs1 imm mask
+    exact JoltISA.execInstr_VirtualAssertLoadAlignment_run_aligned rs1 imm mask
       js val hrx (by simpa [load_effective_address] using halign)
   rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_translate h_dword_phys with
     ⟨js_load, hrun, hsail, hv0, hv1⟩
@@ -165,27 +165,27 @@ theorem assertSetupBlockAligned (rest : JoltISA.Program)
 /-- A failed leading load-alignment assertion stops the structured program.
 
 This is the generic early-exit fact for halfword/word program theorems.  When
-the masked low bits are nonzero, `AssertLoadAlign` returns the Sail-compatible
+the masked low bits are nonzero, `VirtualAssertLoadAlignment` returns the Sail-compatible
 load-address-alignment exception, and `execProgram` does not run the tail. -/
 theorem assertBlockMisaligned (tail : JoltISA.Program)
     (mask : BitVec 64) (imm : BitVec 12) (rs1 : regidx)
     (js : SailJoltState)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (hmis : load_effective_address val imm &&& mask ≠ 0) :
-    (JoltISA.execProgram (.instr (.AssertLoadAlign rs1 imm mask) tail)).run js =
+    (JoltISA.execProgram (.instr (.VirtualAssertLoadAlignment rs1 imm mask) tail)).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())) js := by
   let e :=
     (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())
   have hassert :
-      (JoltISA.execInstr (.AssertLoadAlign rs1 imm mask)).run js =
+      (JoltISA.execInstr (.VirtualAssertLoadAlignment rs1 imm mask)).run js =
         .ok (ExecutionResult.Memory_Exception e) js := by
     simpa [e, load_effective_address] using
-      (JoltISA.execInstr_assertLoadAlign_run_misaligned rs1 imm mask
+      (JoltISA.execInstr_VirtualAssertLoadAlignment_run_misaligned rs1 imm mask
         js val hrx (by simpa [load_effective_address] using hmis))
   simpa [e] using
     (JoltISA.execProgram_instr_run_memory_exception
-      (.AssertLoadAlign rs1 imm mask) tail js js e hassert)
+      (.VirtualAssertLoadAlignment rs1 imm mask) tail js js e hassert)
 
 /-- Common virtual extraction block for `LB`, `LBU`, `LH`, `LHU`, and `LWU`.
 
@@ -363,7 +363,7 @@ theorem srliWriteBlock (rest : JoltISA.Program)
 `LW` is the odd member of the load family: after the common dword setup it
 does not use the `XORI; SLL; SRAI/SRLI` lane-to-top shape.  Instead it shifts
 the loaded dword right by `(ea * 8) & 63`, writes that intermediate value to
-real `rd`, and leaves the final 32-to-64 sign extension to `SExtW`. -/
+real `rd`, and leaves the final 32-to-64 sign extension to `VirtualSignExtendWord`. -/
 theorem lwSrlBlock (rest : JoltISA.Program)
     (imm : BitVec 12) (rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0)
@@ -440,7 +440,7 @@ theorem lwSrlBlock (rest : JoltISA.Program)
 /-- Final `LW` sign-extension block.
 
 At this boundary, the preceding `SRL` has already written the shifted word to
-real `rd`.  `SExtW rd, rd` reads it back, sign-extends the low 32 bits, and
+real `rd`.  `VirtualSignExtendWord rd, rd` reads it back, sign-extends the low 32 bits, and
 writes the final architectural value. -/
 theorem sextwWriteBlock
     (rd : regidx) (js js_logic : SailJoltState) (logic_val : BitVec 64)
@@ -448,7 +448,7 @@ theorem sextwWriteBlock
     (hread_logic : rX_bits rd js_logic.sail = .ok logic_val js_logic.sail) :
     ∃ js' : SailJoltState,
       (JoltISA.execProgram
-        (.instr (.SExtW (.xreg rd) (.xreg rd)) (.done RETIRE_SUCCESS))).run js_logic =
+        (.instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) (.done RETIRE_SUCCESS))).run js_logic =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail =
         stateAfterWrite js.sail rd
@@ -458,7 +458,7 @@ theorem sextwWriteBlock
   obtain ⟨s_final, hw_final⟩ := wX_shape rd final_val js_logic.sail
   let js' : SailJoltState := { sail := s_final, vregs := js_logic.vregs }
   have hsextw :
-      (JoltISA.execInstr (.SExtW (.xreg rd) (.xreg rd))).run js_logic =
+      (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_logic =
         .ok RETIRE_SUCCESS js' := by
     simpa [js', final_val] using
       (JoltISA.execInstr_sextw_xreg_xreg_run rd rd js_logic logic_val s_final

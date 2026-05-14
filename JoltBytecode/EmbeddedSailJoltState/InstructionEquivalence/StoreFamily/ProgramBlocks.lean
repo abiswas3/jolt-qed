@@ -443,7 +443,7 @@ theorem assertSetupBlockAligned (rest : JoltISA.Program)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
-        (.instr (.AssertStoreAlign rs1 imm mask) <|
+        (.instr (.VirtualAssertStoreAlignment rs1 imm mask) <|
          .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
          .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
          .instr (.LD 2 1 0) rest)).run js =
@@ -454,9 +454,9 @@ theorem assertSetupBlockAligned (rest : JoltISA.Program)
       js_load.vregs 2 =
         loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
   have hassert :
-      (JoltISA.execInstr (.AssertStoreAlign rs1 imm mask)).run js =
+      (JoltISA.execInstr (.VirtualAssertStoreAlignment rs1 imm mask)).run js =
         .ok RETIRE_SUCCESS js := by
-    exact JoltISA.execInstr_assertStoreAlign_run_aligned rs1 imm mask
+    exact JoltISA.execInstr_VirtualAssertStoreAlignment_run_aligned rs1 imm mask
       js val hrx (by simpa [load_effective_address] using halign)
   rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_translate h_dword_phys with
     ⟨js_load, hrun, hsail, hv0, hv1, hv2⟩
@@ -471,20 +471,20 @@ theorem assertBlockMisaligned (tail : JoltISA.Program)
     (js : SailJoltState)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (hmis : load_effective_address val imm &&& mask ≠ 0) :
-    (JoltISA.execProgram (.instr (.AssertStoreAlign rs1 imm mask) tail)).run js =
+    (JoltISA.execProgram (.instr (.VirtualAssertStoreAlignment rs1 imm mask) tail)).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr (load_effective_address val imm), ExceptionType.E_SAMO_Addr_Align ())) js := by
   let e :=
     (Virtaddr (load_effective_address val imm), ExceptionType.E_SAMO_Addr_Align ())
   have hassert :
-      (JoltISA.execInstr (.AssertStoreAlign rs1 imm mask)).run js =
+      (JoltISA.execInstr (.VirtualAssertStoreAlignment rs1 imm mask)).run js =
         .ok (ExecutionResult.Memory_Exception e) js := by
     simpa [e, load_effective_address] using
-      (JoltISA.execInstr_assertStoreAlign_run_misaligned rs1 imm mask
+      (JoltISA.execInstr_VirtualAssertStoreAlignment_run_misaligned rs1 imm mask
         js val hrx (by simpa [load_effective_address] using hmis))
   simpa [e] using
     (JoltISA.execProgram_instr_run_memory_exception
-      (.AssertStoreAlign rs1 imm mask) tail js js e hassert)
+      (.VirtualAssertStoreAlignment rs1 imm mask) tail js js e hassert)
 
 /-- Byte-store splice block.
 

@@ -134,17 +134,17 @@ def phase_setup (rs1 rs2 : regidx) (quotient : BitVec 64) :
   let _ ← vreg_advice 2 quotient
   vreg_assert_mulu_no_overflow_v 2 1
 
-/-- Phase 2 — `MUL v3, v2, v1` + `AssertLTE v3, v0`. -/
+/-- Phase 2 — `MUL v3, v2, v1` + `VirtualAssertLTE v3, v0`. -/
 def phase_quotient_product : JoltMonad ExecutionResult := do
   let _ ← vreg_MUL 3 2 1
   vreg_assert_lte 3 0
 
-/-- Phase 3 — `SUB v3, v0, v3` + `AssertValidUnsignedRemainder v3, v1`. -/
+/-- Phase 3 — `SUB v3, v0, v3` + `VirtualAssertValidUnsignedRemainder v3, v1`. -/
 def phase_remainder_bound : JoltMonad ExecutionResult := do
   let _ ← vreg_SUB 3 0 3
   vreg_assert_valid_unsigned_remainder 3 1
 
-/-- Phase 4 — `SignExtendWord v3, v2` + `AssertValidDiv0 v1, v3`.
+/-- Phase 4 — `SignExtendWord v3, v2` + `VirtualAssertValidDiv0 v1, v3`.
 
 Sign-extends the u32 quotient `v2` into `v3` (overwriting the
 remainder), then asserts the div-by-zero special case

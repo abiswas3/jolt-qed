@@ -16,7 +16,7 @@ they are generated automatically.
 
 Two details matter for stores:
 
-* `AssertStoreAlign` is the virtual assertion used by `SH` and `SW`.  It
+* `VirtualAssertStoreAlignment` is the virtual assertion used by `SH` and `SW`.  It
   returns Sail's store/AMO alignment exception and stops the tail.
 * Jolt's RV64 `LUI` helper writes the normalized immediate directly.  Thus
   `LUI v0, 0xff` writes `0xFF`, and `LUI v0, 0xffff` writes `0xFFFF`.
@@ -45,7 +45,7 @@ def sbProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
 /-- RV64 Jolt expansion for `SH`, faithful to
 `tracer/src/instruction/sh.rs::inline_sequence_64`. -/
 def shProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
-  .instr (.AssertStoreAlign rs1 imm (1 : BitVec 64)) <|
+  .instr (.VirtualAssertStoreAlignment rs1 imm (1 : BitVec 64)) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
   .instr (.LD 2 1 0) <|
@@ -62,7 +62,7 @@ def shProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
 /-- RV64 Jolt expansion for `SW`, faithful to
 `tracer/src/instruction/sw.rs::inline_sequence_64`. -/
 def swProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
-  .instr (.AssertStoreAlign rs1 imm (3 : BitVec 64)) <|
+  .instr (.VirtualAssertStoreAlignment rs1 imm (3 : BitVec 64)) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
   .instr (.LD 2 1 0) <|

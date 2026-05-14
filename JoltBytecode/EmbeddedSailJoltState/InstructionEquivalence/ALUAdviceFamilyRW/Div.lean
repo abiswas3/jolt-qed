@@ -44,7 +44,7 @@ private theorem execProgram_instr_of_onlyRetire
   exact execProgram_instr_run_of_onlyRetire instr rest js hret
 
 private theorem onlyRetire_vreg_advice (vd : BitVec 7) (value : BitVec 64) :
-    ∀ js r js', (execInstr (.Advice vd value)).run js = .ok r js' →
+    ∀ js r js', (execInstr (.VirtualAdvice vd value)).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   simp [execInstr, writeVReg, RETIRE_SUCCESS, bind, EStateM.bind,
@@ -52,8 +52,8 @@ private theorem onlyRetire_vreg_advice (vd : BitVec 7) (value : BitVec 64) :
     MonadStateOf.modifyGet, EStateM.modifyGet] at h
   exact h.1.symm
 
-private theorem onlyRetire_AssertValidDiv0 (divisor : regidx) (quotient : VReg) :
-    ∀ js r js', (execInstr (.AssertValidDiv0 divisor quotient)).run js =
+private theorem onlyRetire_VirtualAssertValidDiv0 (divisor : regidx) (quotient : VReg) :
+    ∀ js r js', (execInstr (.VirtualAssertValidDiv0 divisor quotient)).run js =
       .ok r js' → r = RETIRE_SUCCESS := by
   intro js r js' h
   unfold execInstr liftSail readVReg at h
@@ -75,9 +75,9 @@ private theorem onlyRetire_AssertValidDiv0 (divisor : regidx) (quotient : VReg) 
   | error e s =>
       simp [hr] at h
 
-private theorem onlyRetire_ChangeDivisor
+private theorem onlyRetire_VirtualChangeDivisor
     (dst : VReg) (dividend divisor : regidx) :
-    ∀ js r js', (execInstr (.ChangeDivisor dst dividend divisor)).run js =
+    ∀ js r js', (execInstr (.VirtualChangeDivisor dst dividend divisor)).run js =
       .ok r js' → r = RETIRE_SUCCESS := by
   intro js r js' h
   unfold execInstr liftSail writeVReg at h
@@ -142,8 +142,8 @@ private theorem onlyRetire_SRAI_vreg_xreg
   | error e s =>
       simp [hr] at h
 
-private theorem onlyRetire_AssertEq (lhs rhs : VReg) :
-    ∀ js r js', (execInstr (.AssertEq lhs rhs)).run js = .ok r js' →
+private theorem onlyRetire_VirtualAssertEQ (lhs rhs : VReg) :
+    ∀ js r js', (execInstr (.VirtualAssertEQ lhs rhs)).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   simp [execInstr, readVReg, RETIRE_SUCCESS, bind, EStateM.bind, EStateM.run,
@@ -184,8 +184,8 @@ private theorem onlyRetire_ADD_vreg_vreg_vreg (vd lhs rhs : VReg) :
     EStateM.get, EStateM.modifyGet] at h
   exact h.1.symm
 
-private theorem onlyRetire_AssertEqReal (lhs : VReg) (rhs : regidx) :
-    ∀ js r js', (execInstr (.AssertEqReal lhs rhs)).run js = .ok r js' →
+private theorem onlyRetire_VirtualAssertEQReal (lhs : VReg) (rhs : regidx) :
+    ∀ js r js', (execInstr (.VirtualAssertEQReal lhs rhs)).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   unfold execInstr liftSail readVReg at h
@@ -202,9 +202,9 @@ private theorem onlyRetire_AssertEqReal (lhs : VReg) (rhs : regidx) :
   | error e s =>
       simp [hr] at h
 
-private theorem onlyRetire_AssertValidUnsignedRemainder
+private theorem onlyRetire_VirtualAssertValidUnsignedRemainder
     (remainder divisor : VReg) :
-    ∀ js r js', (execInstr (.AssertValidUnsignedRemainder remainder divisor)).run js =
+    ∀ js r js', (execInstr (.VirtualAssertValidUnsignedRemainder remainder divisor)).run js =
       .ok r js' → r = RETIRE_SUCCESS := by
   intro js r js' h
   simp [execInstr, readVReg, RETIRE_SUCCESS, bind, EStateM.bind, EStateM.run,
@@ -234,23 +234,23 @@ private theorem onlyRetire_ADDI_xreg_vreg (rd : regidx) (vs : BitVec 7)
 /-- New-style Jolt ISA program for RV64 `DIV`. -/
 def divProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
-  .instr (.Advice 0 quotient) <|
-  .instr (.Advice 1 remAbs) <|
-  .instr (.AssertValidDiv0 rs2 0) <|
-  .instr (.ChangeDivisor 2 rs1 rs2) <|
+  .instr (.VirtualAdvice 0 quotient) <|
+  .instr (.VirtualAdvice 1 remAbs) <|
+  .instr (.VirtualAssertValidDiv0 rs2 0) <|
+  .instr (.VirtualChangeDivisor 2 rs1 rs2) <|
   .instr (.MULH (.vreg 3) (.vreg 0) (.vreg 2)) <|
   .instr (.MUL (.vreg 4) (.vreg 0) (.vreg 2)) <|
   .instr (.SRAI (.vreg 5) (.vreg 4) (63 : BitVec 6)) <|
-  .instr (.AssertEq 3 5) <|
+  .instr (.VirtualAssertEQ 3 5) <|
   .instr (.SRAI (.vreg 3) (.xreg rs1) (63 : BitVec 6)) <|
   .instr (.XOR (.vreg 5) (.vreg 1) (.vreg 3)) <|
   .instr (.SUB (.vreg 5) (.vreg 5) (.vreg 3)) <|
   .instr (.ADD (.vreg 4) (.vreg 4) (.vreg 5)) <|
-  .instr (.AssertEqReal 4 rs1) <|
+  .instr (.VirtualAssertEQReal 4 rs1) <|
   .instr (.SRAI (.vreg 3) (.vreg 2) (63 : BitVec 6)) <|
   .instr (.XOR (.vreg 5) (.vreg 2) (.vreg 3)) <|
   .instr (.SUB (.vreg 5) (.vreg 5) (.vreg 3)) <|
-  .instr (.AssertValidUnsignedRemainder 1 5) <|
+  .instr (.VirtualAssertValidUnsignedRemainder 1 5) <|
   .instr (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
@@ -259,22 +259,22 @@ theorem divProgram_run_eq_jolt_div (rs2 rs1 rd : regidx)
     (execProgram (divProgram rs2 rs1 rd quotient remAbs)).run js =
       (jolt_div rs2 rs1 rd quotient remAbs).run js := by
   unfold divProgram jolt_div
-  rw [execProgram_instr_of_onlyRetire (.Advice 0 quotient) _
+  rw [execProgram_instr_of_onlyRetire (.VirtualAdvice 0 quotient) _
     (onlyRetire_vreg_advice 0 quotient)]
-  rw [execProgram_instr_of_onlyRetire (.Advice 1 remAbs) _
+  rw [execProgram_instr_of_onlyRetire (.VirtualAdvice 1 remAbs) _
     (onlyRetire_vreg_advice 1 remAbs)]
-  rw [execProgram_instr_of_onlyRetire (.AssertValidDiv0 rs2 0) _
-    (onlyRetire_AssertValidDiv0 rs2 0)]
-  rw [execProgram_instr_of_onlyRetire (.ChangeDivisor 2 rs1 rs2) _
-    (onlyRetire_ChangeDivisor 2 rs1 rs2)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertValidDiv0 rs2 0) _
+    (onlyRetire_VirtualAssertValidDiv0 rs2 0)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualChangeDivisor 2 rs1 rs2) _
+    (onlyRetire_VirtualChangeDivisor 2 rs1 rs2)]
   rw [execProgram_instr_of_onlyRetire (.MULH (.vreg 3) (.vreg 0) (.vreg 2)) _
     (onlyRetire_MULH_vreg_vreg_vreg 3 0 2)]
   rw [execProgram_instr_of_onlyRetire (.MUL (.vreg 4) (.vreg 0) (.vreg 2)) _
     (onlyRetire_MUL_vreg_vreg_vreg 4 0 2)]
   rw [execProgram_instr_of_onlyRetire (.SRAI (.vreg 5) (.vreg 4) (63 : BitVec 6)) _
     (onlyRetire_SRAI_vreg_vreg 5 4 63)]
-  rw [execProgram_instr_of_onlyRetire (.AssertEq 3 5) _
-    (onlyRetire_AssertEq 3 5)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertEQ 3 5) _
+    (onlyRetire_VirtualAssertEQ 3 5)]
   rw [execProgram_instr_of_onlyRetire (.SRAI (.vreg 3) (.xreg rs1) (63 : BitVec 6)) _
     (onlyRetire_SRAI_vreg_xreg 3 rs1 63)]
   rw [execProgram_instr_of_onlyRetire (.XOR (.vreg 5) (.vreg 1) (.vreg 3)) _
@@ -283,16 +283,16 @@ theorem divProgram_run_eq_jolt_div (rs2 rs1 rd : regidx)
     (onlyRetire_SUB_vreg_vreg_vreg 5 5 3)]
   rw [execProgram_instr_of_onlyRetire (.ADD (.vreg 4) (.vreg 4) (.vreg 5)) _
     (onlyRetire_ADD_vreg_vreg_vreg 4 4 5)]
-  rw [execProgram_instr_of_onlyRetire (.AssertEqReal 4 rs1) _
-    (onlyRetire_AssertEqReal 4 rs1)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertEQReal 4 rs1) _
+    (onlyRetire_VirtualAssertEQReal 4 rs1)]
   rw [execProgram_instr_of_onlyRetire (.SRAI (.vreg 3) (.vreg 2) (63 : BitVec 6)) _
     (onlyRetire_SRAI_vreg_vreg 3 2 63)]
   rw [execProgram_instr_of_onlyRetire (.XOR (.vreg 5) (.vreg 2) (.vreg 3)) _
     (onlyRetire_XOR_vreg_vreg_vreg 5 2 3)]
   rw [execProgram_instr_of_onlyRetire (.SUB (.vreg 5) (.vreg 5) (.vreg 3)) _
     (onlyRetire_SUB_vreg_vreg_vreg 5 5 3)]
-  rw [execProgram_instr_of_onlyRetire (.AssertValidUnsignedRemainder 1 5) _
-    (onlyRetire_AssertValidUnsignedRemainder 1 5)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertValidUnsignedRemainder 1 5) _
+    (onlyRetire_VirtualAssertValidUnsignedRemainder 1 5)]
   rw [execProgram_instr_of_onlyRetire (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) _
     (onlyRetire_ADDI_xreg_vreg rd 0 0)]
   simp [execProgram, execInstr, vreg_advice, vreg_assert_valid_div0,

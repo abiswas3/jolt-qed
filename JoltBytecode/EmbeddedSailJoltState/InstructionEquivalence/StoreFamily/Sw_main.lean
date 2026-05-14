@@ -69,7 +69,7 @@ that the structured Jolt-ISA program follows the Rust bytecode sequence and
 ends by writing the spliced enclosing dword with `SD`.
 
 Intended proof phases:
-1. `AssertStoreAlign; ADDI; ANDI; LD` establishes `ea`, `base`, and original
+1. `VirtualAssertStoreAlignment; ADDI; ANDI; LD` establishes `ea`, `base`, and original
    dword.
 2. The SW mask/value logic computes `swSplicedDword`.
 3. `SD v1, v2, 0` writes that dword through Sail's store pipeline. -/
@@ -335,7 +335,7 @@ theorem swProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
 
 /-- **Jolt-side misaligned SW skeleton.**
 
-The leading `AssertStoreAlign` should stop the Jolt program before setup,
+The leading `VirtualAssertStoreAlignment` should stop the Jolt program before setup,
 returning Sail's store/AMO alignment exception. -/
 theorem swProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState) (rs1_val : BitVec 64)
@@ -349,15 +349,15 @@ theorem swProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (Virtaddr (load_effective_address rs1_val imm),
       ExceptionType.E_SAMO_Addr_Align ())
   have hassert :
-      (JoltISA.execInstr (.AssertStoreAlign rs1 imm (3 : BitVec 64))).run js =
+      (JoltISA.execInstr (.VirtualAssertStoreAlignment rs1 imm (3 : BitVec 64))).run js =
         .ok (ExecutionResult.Memory_Exception e) js := by
     simpa [e, load_effective_address] using
-      (JoltISA.execInstr_assertStoreAlign_run_misaligned rs1 imm (3 : BitVec 64)
+      (JoltISA.execInstr_VirtualAssertStoreAlignment_run_misaligned rs1 imm (3 : BitVec 64)
         js rs1_val hrs1 (by simpa [load_effective_address] using hmis))
   unfold JoltISA.swProgram
   simpa [e] using
     (JoltISA.execProgram_instr_run_memory_exception
-      (.AssertStoreAlign rs1 imm (3 : BitVec 64))
+      (.VirtualAssertStoreAlignment rs1 imm (3 : BitVec 64))
       (.instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
        .instr (.LD 2 1 0) <|

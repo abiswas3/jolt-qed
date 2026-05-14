@@ -23,13 +23,13 @@ noncomputable section
 
 namespace JoltISA
 
-/-- `Movsign` from a real register to a virtual register reads the real source,
+/-- `VirtualMovsign` from a real register to a virtual register reads the real source,
 writes the sign mask to the virtual destination, and leaves the Sail state
 unchanged. -/
 theorem execInstr_movsign_xreg_vreg_run (vd : VReg) (rs : regidx)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
-    (execInstr (.Movsign (.vreg vd) (.xreg rs))).run js =
+    (execInstr (.VirtualMovsign (.vreg vd) (.xreg rs))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r => if r = vd then jolt_movsign_value x else js.vregs r } := by
@@ -205,7 +205,7 @@ theorem execInstr_srai_vreg_xreg_run (rd : regidx) (vs : VReg)
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get, h]
 
-/-- `SExtW` from a real register to the same real register models Jolt's
+/-- `VirtualSignExtendWord` from a real register to the same real register models Jolt's
 virtual sign-extension instruction after an `LW` shift.  The theorem is stated
 for any real source and destination because the semantics supports that
 generality. -/
@@ -214,7 +214,7 @@ theorem execInstr_sextw_xreg_xreg_run (rd rs : regidx)
     (hr : rX_bits rs js.sail = .ok x js.sail)
     (hw : wX_bits rd (sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0)) js.sail =
       .ok () s') :
-    (execInstr (.SExtW (.xreg rd) (.xreg rs))).run js =
+    (execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rs))).run js =
       .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
   unfold execInstr readSrc writeDst liftSail
   simp only [hr, bind, EStateM.bind, pure, EStateM.pure, EStateM.run, hw]
@@ -242,11 +242,11 @@ theorem execInstr_ld_vreg_run_of_read (vd base : VReg) (imm : BitVec 12)
 /-- Successful load-alignment assertion: when the effective address masked by
 the instruction's alignment mask is zero, the assertion retires and does not
 change either Sail state or virtual registers. -/
-theorem execInstr_assertLoadAlign_run_aligned (base : regidx) (imm : BitVec 12)
+theorem execInstr_VirtualAssertLoadAlignment_run_aligned (base : regidx) (imm : BitVec 12)
     (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
     (hread : rX_bits base js.sail = .ok x js.sail)
     (halign : (x + sign_extend (m := 64) imm) &&& mask = 0) :
-    (execInstr (.AssertLoadAlign base imm mask)).run js =
+    (execInstr (.VirtualAssertLoadAlignment base imm mask)).run js =
       .ok RETIRE_SUCCESS js := by
   unfold execInstr liftSail
   simp only [hread, bind, EStateM.bind, pure, EStateM.run]
@@ -256,11 +256,11 @@ theorem execInstr_assertLoadAlign_run_aligned (base : regidx) (imm : BitVec 12)
 /-- Failed load-alignment assertion: when the effective address has a masked
 low bit set, the assertion returns the same load-address-alignment exception
 that Sail will later produce for the corresponding `execute_LOAD`. -/
-theorem execInstr_assertLoadAlign_run_misaligned (base : regidx) (imm : BitVec 12)
+theorem execInstr_VirtualAssertLoadAlignment_run_misaligned (base : regidx) (imm : BitVec 12)
     (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
     (hread : rX_bits base js.sail = .ok x js.sail)
     (hmis : (x + sign_extend (m := 64) imm) &&& mask ≠ 0) :
-    (execInstr (.AssertLoadAlign base imm mask)).run js =
+    (execInstr (.VirtualAssertLoadAlignment base imm mask)).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr (x + sign_extend (m := 64) imm), ExceptionType.E_Load_Addr_Align ())) js := by
   unfold execInstr liftSail
@@ -271,11 +271,11 @@ theorem execInstr_assertLoadAlign_run_misaligned (base : regidx) (imm : BitVec 1
 /-- Successful store-alignment assertion: when the effective address masked by
 the instruction's alignment mask is zero, the assertion retires without
 changing the combined Sail/Jolt state. -/
-theorem execInstr_assertStoreAlign_run_aligned (base : regidx) (imm : BitVec 12)
+theorem execInstr_VirtualAssertStoreAlignment_run_aligned (base : regidx) (imm : BitVec 12)
     (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
     (hread : rX_bits base js.sail = .ok x js.sail)
     (halign : (x + sign_extend (m := 64) imm) &&& mask = 0) :
-    (execInstr (.AssertStoreAlign base imm mask)).run js =
+    (execInstr (.VirtualAssertStoreAlignment base imm mask)).run js =
       .ok RETIRE_SUCCESS js := by
   unfold execInstr liftSail
   simp only [hread, bind, EStateM.bind, pure, EStateM.run]
@@ -285,11 +285,11 @@ theorem execInstr_assertStoreAlign_run_aligned (base : regidx) (imm : BitVec 12)
 /-- Failed store-alignment assertion: the virtual assertion returns exactly
 the Sail store/AMO address-alignment exception and prevents the tail of the
 program from running. -/
-theorem execInstr_assertStoreAlign_run_misaligned (base : regidx) (imm : BitVec 12)
+theorem execInstr_VirtualAssertStoreAlignment_run_misaligned (base : regidx) (imm : BitVec 12)
     (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
     (hread : rX_bits base js.sail = .ok x js.sail)
     (hmis : (x + sign_extend (m := 64) imm) &&& mask ≠ 0) :
-    (execInstr (.AssertStoreAlign base imm mask)).run js =
+    (execInstr (.VirtualAssertStoreAlignment base imm mask)).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr (x + sign_extend (m := 64) imm), ExceptionType.E_SAMO_Addr_Align ())) js := by
   unfold execInstr liftSail
@@ -612,12 +612,12 @@ theorem execInstr_andi_xreg_vreg_run (vd : VReg) (rs : regidx) (imm : BitVec 12)
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
-/-- `SExtW` from a real source to a virtual destination computes the
+/-- `VirtualSignExtendWord` from a real source to a virtual destination computes the
 word-sign-extended scratch value used by `SRAW` and `SRAIW`. -/
 theorem execInstr_sextw_xreg_vreg_run (vd : VReg) (rs : regidx)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
-    (execInstr (.SExtW (.vreg vd) (.xreg rs))).run js =
+    (execInstr (.VirtualSignExtendWord (.vreg vd) (.xreg rs))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>

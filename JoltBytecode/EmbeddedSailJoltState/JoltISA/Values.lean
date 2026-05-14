@@ -72,6 +72,14 @@ def jolt_virtual_pow2_value (x : BitVec 64) : BitVec 64 :=
 def jolt_virtual_pow2w_value (x : BitVec 64) : BitVec 64 :=
   BitVec.ofNat 64 (2 ^ (x.setWidth 5).toNat)
 
+/-- RV64 `VirtualPow2I` value: `2 ^ (imm % 64)`. -/
+def jolt_virtual_pow2i_value (imm : Nat) : BitVec 64 :=
+  BitVec.ofNat 64 (2 ^ (imm % 64))
+
+/-- RV64 `VirtualPow2IW` value: `2 ^ (imm % 32)`. -/
+def jolt_virtual_pow2iw_value (imm : Nat) : BitVec 64 :=
+  BitVec.ofNat 64 (2 ^ (imm % 32))
+
 /-- RV64 `VirtualShiftRightBitmask` value.
 
 The tracer first masks the requested shift to six bits, then writes a word
@@ -79,6 +87,12 @@ whose trailing-zero count is exactly that shift.  Later `VirtualSRL` and
 `VirtualSRA` consume this bitmask by taking `ctz`. -/
 def jolt_virtual_shift_right_bitmask_value (x : BitVec 64) : BitVec 64 :=
   let shift := (x.setWidth 6).toNat
+  let ones := (1 <<< (64 - shift)) - 1
+  BitVec.ofNat 64 (ones <<< shift)
+
+/-- RV64 `VirtualShiftRightBitmaskI` value. -/
+def jolt_virtual_shift_right_bitmaski_value (imm : Nat) : BitVec 64 :=
+  let shift := imm % 64
   let ones := (1 <<< (64 - shift)) - 1
   BitVec.ofNat 64 (ones <<< shift)
 
@@ -164,6 +178,30 @@ def jolt_virtual_srl_value (x bitmask : BitVec 64) : BitVec 64 :=
 stored in the second source register. -/
 def jolt_virtual_sra_value (x bitmask : BitVec 64) : BitVec 64 :=
   x.sshiftRight (ctz bitmask.toNat)
+
+/-- RV64 `VirtualROTRI` value: rotate right by the trailing-zero count of the
+encoded bitmask immediate. -/
+def jolt_virtual_rotri_value (x : BitVec 64) (bitmask : Nat) : BitVec 64 :=
+  rotater x (ctz bitmask)
+
+/-- RV64 `VirtualROTRIW` value: rotate the low word right, then zero-extend. -/
+def jolt_virtual_rotriw_value (x : BitVec 64) (bitmask : Nat) : BitVec 64 :=
+  zero_extend (m := 64) (rotater (Sail.BitVec.extractLsb x 31 0) (min (ctz bitmask) 32))
+
+/-- RV64 `VirtualRev8W` value: reverse bytes separately in each 32-bit word. -/
+def jolt_virtual_rev8w_value (x : BitVec 64) : BitVec 64 :=
+  let lo : BitVec 32 := Sail.BitVec.extractLsb x 31 0
+  let hi : BitVec 32 := Sail.BitVec.extractLsb x 63 32
+  (rev8 hi) +++ (rev8 lo)
+
+/-- RV64 `VirtualXORROT*` value. -/
+def jolt_virtual_xorrot_value (rot : Nat) (x y : BitVec 64) : BitVec 64 :=
+  rotater (x ^^^ y) rot
+
+/-- RV64 `VirtualXORROTW*` value: xor low words, rotate, then zero-extend. -/
+def jolt_virtual_xorrotw_value (rot : Nat) (x y : BitVec 64) : BitVec 64 :=
+  zero_extend (m := 64)
+    (rotater ((Sail.BitVec.extractLsb x 31 0) ^^^ (Sail.BitVec.extractLsb y 31 0)) rot)
 
 /-- `SLTU` returns one when the unsigned comparison is true. -/
 theorem jolt_sltu_value_eq_one_of_lt (x y : BitVec 64)

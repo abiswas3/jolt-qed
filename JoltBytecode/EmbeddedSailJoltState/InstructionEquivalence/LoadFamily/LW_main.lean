@@ -395,7 +395,7 @@ theorem jolt_lw_eq_sail (imm : BitVec 12)
 This lemma is the program-level replacement for the old load phase.  It proves
 that, on an aligned input, the prefix
 
-`AssertLoadAlign; ADDI; ANDI; LD`
+`VirtualAssertLoadAlignment; ADDI; ANDI; LD`
 
 retire-runs to a state where `v0 = ea`, `v1 = loaded_dword_at daddr`, and Sail
 state is unchanged.  The statement is tail-parametric: after the block retires,
@@ -409,7 +409,7 @@ private theorem lwProgram_load_block_aligned (rest : JoltISA.Program)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
-        (.instr (.AssertLoadAlign rs1 imm (3 : BitVec 64)) <|
+        (.instr (.VirtualAssertLoadAlignment rs1 imm (3 : BitVec 64)) <|
          .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
          .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
          .instr (.LD 1 1 0) rest)).run js =
@@ -431,9 +431,9 @@ private theorem lwProgram_load_block_aligned (rest : JoltISA.Program)
     { sail := js.sail
       vregs := fun r => if r = (1 : JoltISA.VReg) then dword else js1.vregs r }
   have hassert :
-      (JoltISA.execInstr (.AssertLoadAlign rs1 imm (3 : BitVec 64))).run js =
+      (JoltISA.execInstr (.VirtualAssertLoadAlignment rs1 imm (3 : BitVec 64))).run js =
         .ok RETIRE_SUCCESS js := by
-    exact JoltISA.execInstr_assertLoadAlign_run_aligned rs1 imm (3 : BitVec 64)
+    exact JoltISA.execInstr_VirtualAssertLoadAlignment_run_aligned rs1 imm (3 : BitVec 64)
       js val hrx (by simpa [ea, load_effective_address] using halign)
   have haddi :
       (JoltISA.execInstr (.ADDI (.vreg 0) (.xreg rs1) imm)).run js =
@@ -569,7 +569,7 @@ private theorem lwProgram_logic_block (rest : JoltISA.Program)
 
 /-- Write block for the structured `LW` program.
 
-At this boundary, `SRL` has already written `logic_val` to real `rd`.  `SExtW`
+At this boundary, `SRL` has already written `logic_val` to real `rd`.  `VirtualSignExtendWord`
 reads `rd` back, sign-extends the low 32 bits, and writes the final value.
 The collapse `stateAfterWrite (stateAfterWrite s rd x) rd y = stateAfterWrite
 s rd y` keeps the theorem statement focused on the final architectural state. -/
@@ -579,7 +579,7 @@ private theorem lwProgram_write_block
     (hread_logic : rX_bits rd js_logic.sail = .ok logic_val js_logic.sail) :
     ∃ js' : SailJoltState,
       (JoltISA.execProgram
-        (.instr (.SExtW (.xreg rd) (.xreg rd)) (.done RETIRE_SUCCESS))).run js_logic =
+        (.instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) (.done RETIRE_SUCCESS))).run js_logic =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail =
         stateAfterWrite js.sail rd
@@ -589,7 +589,7 @@ private theorem lwProgram_write_block
   obtain ⟨s_final, hw_final⟩ := wX_shape rd final_val js_logic.sail
   let js' : SailJoltState := { sail := s_final, vregs := js_logic.vregs }
   have hsextw :
-      (JoltISA.execInstr (.SExtW (.xreg rd) (.xreg rd))).run js_logic =
+      (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_logic =
         .ok RETIRE_SUCCESS js' := by
     simpa [js', final_val] using
       (JoltISA.execInstr_sextw_xreg_xreg_run rd rd js_logic logic_val s_final
@@ -609,13 +609,13 @@ This is the design pilot for load-family Jolt-ISA proofs.  Unlike the older
 extraction should eventually emit.  The proof therefore traces the actual
 interpreter:
 
-* `AssertLoadAlign` checks `ea & 3 = 0`; on the aligned path it retires and
+* `VirtualAssertLoadAlignment` checks `ea & 3 = 0`; on the aligned path it retires and
   leaves the whole Jolt state unchanged.
 * `ADDI`, `ANDI`, and `LD` build the enclosing aligned dword address and load
   the dword into virtual register `v1`.
 * `SLLI` prepares the shift amount, and `SRL` writes the selected word into
   the real destination register.
-* `SExtW` reads that real destination back and sign-extends its low 32 bits.
+* `VirtualSignExtendWord` reads that real destination back and sign-extends its low 32 bits.
 
 The theorem is intentionally a trace rather than a black-box simplification:
 each local `have` names one bytecode instruction.  That is the pattern we want
@@ -634,7 +634,7 @@ theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
         (sign_extend (m := 64)
           (loaded_word_at js.sail (load_effective_address val imm))) := by
   let writeTail : JoltISA.Program :=
-    .instr (.SExtW (.xreg rd) (.xreg rd)) (.done RETIRE_SUCCESS)
+    .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) (.done RETIRE_SUCCESS)
   let logicTail : JoltISA.Program :=
     .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
     .instr (.SRL (.xreg rd) (.vreg 1) (.vreg 0)) writeTail
@@ -649,7 +649,7 @@ theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
   refine ⟨js', ?_, ?_⟩
   · unfold JoltISA.lwProgram
     change (JoltISA.execProgram
-      (.instr (.AssertLoadAlign rs1 imm (3 : BitVec 64)) <|
+      (.instr (.VirtualAssertLoadAlignment rs1 imm (3 : BitVec 64)) <|
        .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
        .instr (.LD 1 1 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
@@ -660,7 +660,7 @@ theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
 
 /-- Program-level misaligned execution for LW.
 
-This is the control-flow half of the pilot.  The leading `AssertLoadAlign`
+This is the control-flow half of the pilot.  The leading `VirtualAssertLoadAlignment`
 returns `Memory_Exception`; `execProgram` sees that the result is not
 `Retire_Success` and therefore does not execute `ADDI`, `LD`, or the writeback
 tail.  This is exactly why `Program.instr` carries retire-checking semantics
@@ -682,7 +682,7 @@ theorem lwProgram_concrete_misaligned (imm : BitVec 12) (rs1 rd : regidx)
        .instr (.LD 1 1 0) <|
        .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
        .instr (.SRL (.xreg rd) (.vreg 1) (.vreg 0)) <|
-       .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+       .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
        .done RETIRE_SUCCESS)
       (3 : BitVec 64) imm rs1 js val hrx h_align)
 
@@ -724,7 +724,7 @@ theorem lwProgram_eq_sail_aligned (imm : BitVec 12)
 
 /-- Misaligned public program theorem for LW.  Both sides return the same
 load-address-alignment exception, and the Jolt side does so at the explicit
-`AssertLoadAlign` instruction. -/
+`VirtualAssertLoadAlignment` instruction. -/
 theorem lwProgram_eq_sail_misaligned (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)

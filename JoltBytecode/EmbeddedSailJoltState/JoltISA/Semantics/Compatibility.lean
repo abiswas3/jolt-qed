@@ -131,18 +131,18 @@ virtual destination. -/
       writeVReg vd (x &&& sign_extend (m := 64) imm)
       pure RETIRE_SUCCESS) := rfl
 
-/-- Direct bridge: real-source `SExtW` writes the sign-extended low word to a
+/-- Direct bridge: real-source `VirtualSignExtendWord` writes the sign-extended low word to a
 virtual destination. -/
-@[simp] theorem execInstr_SExtW_vreg_xreg (vd : BitVec 7) (rs1 : regidx) :
-    execInstr (.SExtW (.vreg vd) (.xreg rs1)) = (do
+@[simp] theorem execInstr_VirtualSignExtendWord_vreg_xreg (vd : BitVec 7) (rs1 : regidx) :
+    execInstr (.VirtualSignExtendWord (.vreg vd) (.xreg rs1)) = (do
       let x ← liftSail (rX_bits rs1)
       writeVReg vd (sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0))
       pure RETIRE_SUCCESS) := rfl
 
-/-- Direct bridge: real-source `SExtW` writes the sign-extended low word to a
+/-- Direct bridge: real-source `VirtualSignExtendWord` writes the sign-extended low word to a
 real destination. -/
-@[simp] theorem execInstr_SExtW_xreg_xreg_direct (rd rs1 : regidx) :
-    execInstr (.SExtW (.xreg rd) (.xreg rs1)) = (do
+@[simp] theorem execInstr_VirtualSignExtendWord_xreg_xreg_direct (rd rs1 : regidx) :
+    execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rs1)) = (do
       let x ← liftSail (rX_bits rs1)
       liftSail (wX_bits rd (sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0)))
       pure RETIRE_SUCCESS) := rfl
@@ -333,10 +333,10 @@ old `vreg_SRL_to_real` primitive. -/
 @[simp] theorem execInstr_vreg_SRL_to_real (rd : regidx) (vs1 vs2 : BitVec 7) :
     execInstr (.SRL (.xreg rd) (.vreg vs1) (.vreg vs2)) = vreg_SRL_to_real rd vs1 vs2 := rfl
 
-/-- Legacy bridge: real-source `Movsign` is definitionally the old
+/-- Legacy bridge: real-source `VirtualMovsign` is definitionally the old
 `vreg_movsign_from_real` primitive. -/
 @[simp] theorem execInstr_vreg_movsign_from_real (vd : BitVec 7) (rs1 : regidx) :
-    execInstr (.Movsign (.vreg vd) (.xreg rs1)) = vreg_movsign_from_real vd rs1 := rfl
+    execInstr (.VirtualMovsign (.vreg vd) (.xreg rs1)) = vreg_movsign_from_real vd rs1 := rfl
 
 /-- Legacy bridge: real/virtual-source `XOR` is definitionally the old
 `vreg_XOR_from_real_vs1` primitive. -/
@@ -371,17 +371,17 @@ old `vreg_ADD_to_real` primitive. -/
 /-- Legacy bridge: typed advice writes are definitionally the old `vreg_advice`
 primitive. -/
 @[simp] theorem execInstr_vreg_advice (vd : BitVec 7) (value : BitVec 64) :
-    execInstr (.Advice vd value) = vreg_advice vd value := rfl
+    execInstr (.VirtualAdvice vd value) = vreg_advice vd value := rfl
 
 /-- Legacy bridge: typed virtual equality assertions are definitionally the old
 `vreg_assert_eq` primitive. -/
 @[simp] theorem execInstr_vreg_assert_eq (va vb : BitVec 7) :
-    execInstr (.AssertEq va vb) = vreg_assert_eq va vb := rfl
+    execInstr (.VirtualAssertEQ va vb) = vreg_assert_eq va vb := rfl
 
 /-- Legacy bridge: typed virtual-vs-real equality assertions are definitionally
 the old `vreg_assert_eq_real` primitive. -/
 @[simp] theorem execInstr_vreg_assert_eq_real (va : BitVec 7) (rb : regidx) :
-    execInstr (.AssertEqReal va rb) = vreg_assert_eq_real va rb := rfl
+    execInstr (.VirtualAssertEQReal va rb) = vreg_assert_eq_real va rb := rfl
 
 end JoltISA
 

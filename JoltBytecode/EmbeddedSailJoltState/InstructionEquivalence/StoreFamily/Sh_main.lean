@@ -272,7 +272,7 @@ theorem shProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
 
 /-- **Jolt-side misaligned SH reduction.**
 
-The leading `AssertStoreAlign` is the whole proof: it returns the Sail
+The leading `VirtualAssertStoreAlignment` is the whole proof: it returns the Sail
 store/AMO alignment exception and does not run the setup block. -/
 theorem shProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState) (rs1_val : BitVec 64)

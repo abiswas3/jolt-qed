@@ -525,7 +525,7 @@ theorem mulhsuProgram_eval_jolt_value (rs2 rs1 rd : regidx)
   have h2_js5 : rX_bits rs2 js5.sail = .ok v2 js5.sail := by
     simpa [js5, js4, js3, js2, js1] using h2
   have hstep1 :
-      JoltISA.execInstr (.Movsign (.vreg (0 : JoltISA.VReg)) (.xreg rs1)) js =
+      JoltISA.execInstr (.VirtualMovsign (.vreg (0 : JoltISA.VReg)) (.xreg rs1)) js =
         .ok RETIRE_SUCCESS js1 := by
     simpa [js1, sx] using
       (JoltISA.execInstr_movsign_xreg_vreg_run (vd := (0 : JoltISA.VReg)) (rs := rs1) js v1 h1)

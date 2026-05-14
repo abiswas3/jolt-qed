@@ -79,26 +79,26 @@ def sraiProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
 /-- `ADDW`: ordinary 64-bit `ADD`, then virtual sign-extend-word. -/
 def addwProgram (rs2 rs1 rd : regidx) : Program :=
   .instr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SUBW`: ordinary 64-bit `SUB`, then virtual sign-extend-word. -/
 def subwProgram (rs2 rs1 rd : regidx) : Program :=
   .instr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `MULW`: ordinary 64-bit `MUL`, then virtual sign-extend-word. -/
 def mulwProgram (rs2 rs1 rd : regidx) : Program :=
   .instr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SLLW`: compute `2 ^ rs2[4:0]` in `v0`, multiply, then sign-extend. -/
 def sllwProgram (rs2 rs1 rd : regidx) : Program :=
   .instr (.VirtualPow2W (.vreg 0) (.xreg rs2)) <|
   .instr (.MUL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SRLW`: shift `rs1` left into the high word, encode `rs2 | 32` as a
@@ -108,29 +108,29 @@ def srlwProgram (rs2 rs1 rd : regidx) : Program :=
   .instr (.ORI (.vreg 1) (.xreg rs2) (32 : BitVec 12)) <|
   .instr (.VirtualShiftRightBitmask (.vreg 1) (.vreg 1)) <|
   .instr (.VirtualSRL (.xreg rd) (.vreg 0) (.vreg 1)) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SRAW`: sign-extend the low word into `v0`, mask the shift amount in `v1`,
 encode that mask as a bitmask, arithmetically shift right, then sign-extend. -/
 def srawProgram (rs2 rs1 rd : regidx) : Program :=
-  .instr (.SExtW (.vreg 0) (.xreg rs1)) <|
+  .instr (.VirtualSignExtendWord (.vreg 0) (.xreg rs1)) <|
   .instr (.ANDI (.vreg 1) (.xreg rs2) (0x1f : BitVec 12)) <|
   .instr (.VirtualShiftRightBitmask (.vreg 1) (.vreg 1)) <|
   .instr (.VirtualSRA (.xreg rd) (.vreg 0) (.vreg 1)) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `ADDIW`: ordinary `ADDI`, then virtual sign-extend-word. -/
 def addiwProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.ADDI (.xreg rd) (.xreg rs1) imm) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SLLIW`: multiply by the immediate power of two, then sign-extend. -/
 def slliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
   .instr (.VirtualMULI (.xreg rd) (.xreg rs1) (BitVec.ofNat 64 (2 ^ shamt.toNat))) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SRLIW`: shift `rs1` left into the high word, logically shift right by the
@@ -138,15 +138,15 @@ encoded immediate bitmask, then sign-extend. -/
 def srliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
   .instr (.SLLI (.vreg 0) (.xreg rs1) (32 : BitVec 6)) <|
   .instr (.VirtualSRLI (.xreg rd) (.vreg 0) (srliwBitmask shamt)) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SRAIW`: sign-extend `rs1[31:0]` into `v1`, arithmetically shift right by
 the encoded immediate bitmask, then sign-extend again. -/
 def sraiwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
-  .instr (.SExtW (.vreg 1) (.xreg rs1)) <|
+  .instr (.VirtualSignExtendWord (.vreg 1) (.xreg rs1)) <|
   .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiwBitmask shamt)) <|
-  .instr (.SExtW (.xreg rd) (.xreg rd)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 end JoltISA

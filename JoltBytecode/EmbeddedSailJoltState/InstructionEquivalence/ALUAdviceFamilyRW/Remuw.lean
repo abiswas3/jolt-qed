@@ -43,8 +43,8 @@ private theorem execProgram_instr_of_onlyRetire
   funext js
   exact execProgram_instr_run_of_onlyRetire instr rest js hret
 
-private theorem onlyRetire_ZExtW_vreg_xreg (vd : BitVec 7) (rs : regidx) :
-    ∀ js r js', (execInstr (.ZExtW (.vreg vd) (.xreg rs))).run js = .ok r js' →
+private theorem onlyRetire_VirtualZeroExtendWord_vreg_xreg (vd : BitVec 7) (rs : regidx) :
+    ∀ js r js', (execInstr (.VirtualZeroExtendWord (.vreg vd) (.xreg rs))).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   unfold execInstr readSrc writeDst liftSail writeVReg at h
@@ -59,7 +59,7 @@ private theorem onlyRetire_ZExtW_vreg_xreg (vd : BitVec 7) (rs : regidx) :
       simp [hr] at h
 
 private theorem onlyRetire_vreg_advice (vd : BitVec 7) (value : BitVec 64) :
-    ∀ js r js', (execInstr (.Advice vd value)).run js = .ok r js' →
+    ∀ js r js', (execInstr (.VirtualAdvice vd value)).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   simp [execInstr, writeVReg, RETIRE_SUCCESS, bind, EStateM.bind,
@@ -67,8 +67,8 @@ private theorem onlyRetire_vreg_advice (vd : BitVec 7) (value : BitVec 64) :
     MonadStateOf.modifyGet, EStateM.modifyGet] at h
   exact h.1.symm
 
-private theorem onlyRetire_AssertMulUNoOverflowV (lhs rhs : VReg) :
-    ∀ js r js', (execInstr (.AssertMulUNoOverflowV lhs rhs)).run js = .ok r js' →
+private theorem onlyRetire_VirtualAssertMulUNoOverflowV (lhs rhs : VReg) :
+    ∀ js r js', (execInstr (.VirtualAssertMulUNoOverflowV lhs rhs)).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   by_cases hc : (js.vregs lhs).toNat * (js.vregs rhs).toNat <
@@ -92,8 +92,8 @@ private theorem onlyRetire_MUL_vreg_vreg_vreg (vd lhs rhs : VReg) :
     EStateM.get, EStateM.modifyGet] at h
   exact h.1.symm
 
-private theorem onlyRetire_AssertLTE (lhs rhs : VReg) :
-    ∀ js r js', (execInstr (.AssertLTE lhs rhs)).run js = .ok r js' →
+private theorem onlyRetire_VirtualAssertLTE (lhs rhs : VReg) :
+    ∀ js r js', (execInstr (.VirtualAssertLTE lhs rhs)).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   by_cases hc : (js.vregs lhs).toNat ≤ (js.vregs rhs).toNat
@@ -116,8 +116,8 @@ private theorem onlyRetire_SUB_vreg_vreg_vreg (vd lhs rhs : VReg) :
     EStateM.get, EStateM.modifyGet] at h
   exact h.1.symm
 
-private theorem onlyRetire_AssertValidUnsignedRemainder (remainder divisor : VReg) :
-    ∀ js r js', (execInstr (.AssertValidUnsignedRemainder remainder divisor)).run js =
+private theorem onlyRetire_VirtualAssertValidUnsignedRemainder (remainder divisor : VReg) :
+    ∀ js r js', (execInstr (.VirtualAssertValidUnsignedRemainder remainder divisor)).run js =
       .ok r js' → r = RETIRE_SUCCESS := by
   intro js r js' h
   simp [execInstr, readVReg, RETIRE_SUCCESS, bind, EStateM.bind, EStateM.run,
@@ -129,8 +129,8 @@ private theorem onlyRetire_AssertValidUnsignedRemainder (remainder divisor : VRe
     exact h.1.symm
   · simp [hc, throw, throwThe, MonadExceptOf.throw, EStateM.throw] at h
 
-private theorem onlyRetire_SExtW_vreg_vreg (vd vs : BitVec 7) :
-    ∀ js r js', (execInstr (.SExtW (.vreg vd) (.vreg vs))).run js = .ok r js' →
+private theorem onlyRetire_VirtualSignExtendWord_vreg_vreg (vd vs : BitVec 7) :
+    ∀ js r js', (execInstr (.VirtualSignExtendWord (.vreg vd) (.vreg vs))).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   simp [execInstr, readSrc, writeDst, readVReg, writeVReg, RETIRE_SUCCESS,
@@ -139,8 +139,8 @@ private theorem onlyRetire_SExtW_vreg_vreg (vd vs : BitVec 7) :
     EStateM.get, EStateM.modifyGet] at h
   exact h.1.symm
 
-private theorem onlyRetire_SExtW_xreg_vreg (rd : regidx) (vs : BitVec 7) :
-    ∀ js r js', (execInstr (.SExtW (.xreg rd) (.vreg vs))).run js = .ok r js' →
+private theorem onlyRetire_VirtualSignExtendWord_xreg_vreg (rd : regidx) (vs : BitVec 7) :
+    ∀ js r js', (execInstr (.VirtualSignExtendWord (.xreg rd) (.vreg vs))).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   unfold execInstr readSrc writeDst liftSail readVReg at h
@@ -154,8 +154,8 @@ private theorem onlyRetire_SExtW_xreg_vreg (rd : regidx) (vs : BitVec 7) :
   | error e s =>
       simp [hw] at h
 
-private theorem onlyRetire_AssertValidDiv0V (divisor quotient : VReg) :
-    ∀ js r js', (execInstr (.AssertValidDiv0V divisor quotient)).run js = .ok r js' →
+private theorem onlyRetire_VirtualAssertValidDiv0V (divisor quotient : VReg) :
+    ∀ js r js', (execInstr (.VirtualAssertValidDiv0V divisor quotient)).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   simp [execInstr, readVReg, RETIRE_SUCCESS, bind, EStateM.bind, EStateM.run,
@@ -188,15 +188,15 @@ private theorem onlyRetire_ADDI_xreg_vreg (rd : regidx) (vs : BitVec 7)
 
 /-- New-style Jolt ISA program for RV64 `REMUW`. -/
 def remuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
-  .instr (.ZExtW (.vreg 0) (.xreg rs1)) <|
-  .instr (.ZExtW (.vreg 1) (.xreg rs2)) <|
-  .instr (.Advice 2 quotient) <|
-  .instr (.AssertMulUNoOverflowV 2 1) <|
+  .instr (.VirtualZeroExtendWord (.vreg 0) (.xreg rs1)) <|
+  .instr (.VirtualZeroExtendWord (.vreg 1) (.xreg rs2)) <|
+  .instr (.VirtualAdvice 2 quotient) <|
+  .instr (.VirtualAssertMulUNoOverflowV 2 1) <|
   .instr (.MUL (.vreg 3) (.vreg 2) (.vreg 1)) <|
-  .instr (.AssertLTE 3 0) <|
+  .instr (.VirtualAssertLTE 3 0) <|
   .instr (.SUB (.vreg 3) (.vreg 0) (.vreg 3)) <|
-  .instr (.AssertValidUnsignedRemainder 3 1) <|
-  .instr (.SExtW (.xreg rd) (.vreg 3)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder 3 1) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 3)) <|
   .done RETIRE_SUCCESS
 
 theorem remuwProgram_run_eq_jolt_remuw (rs2 rs1 rd : regidx)
@@ -204,24 +204,24 @@ theorem remuwProgram_run_eq_jolt_remuw (rs2 rs1 rd : regidx)
     (execProgram (remuwProgram rs2 rs1 rd quotient)).run js =
       (jolt_remuw rs2 rs1 rd quotient).run js := by
   unfold remuwProgram jolt_remuw
-  rw [execProgram_instr_of_onlyRetire (.ZExtW (.vreg 0) (.xreg rs1)) _
-    (onlyRetire_ZExtW_vreg_xreg 0 rs1)]
-  rw [execProgram_instr_of_onlyRetire (.ZExtW (.vreg 1) (.xreg rs2)) _
-    (onlyRetire_ZExtW_vreg_xreg 1 rs2)]
-  rw [execProgram_instr_of_onlyRetire (.Advice 2 quotient) _
+  rw [execProgram_instr_of_onlyRetire (.VirtualZeroExtendWord (.vreg 0) (.xreg rs1)) _
+    (onlyRetire_VirtualZeroExtendWord_vreg_xreg 0 rs1)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualZeroExtendWord (.vreg 1) (.xreg rs2)) _
+    (onlyRetire_VirtualZeroExtendWord_vreg_xreg 1 rs2)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAdvice 2 quotient) _
     (onlyRetire_vreg_advice 2 quotient)]
-  rw [execProgram_instr_of_onlyRetire (.AssertMulUNoOverflowV 2 1) _
-    (onlyRetire_AssertMulUNoOverflowV 2 1)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertMulUNoOverflowV 2 1) _
+    (onlyRetire_VirtualAssertMulUNoOverflowV 2 1)]
   rw [execProgram_instr_of_onlyRetire (.MUL (.vreg 3) (.vreg 2) (.vreg 1)) _
     (onlyRetire_MUL_vreg_vreg_vreg 3 2 1)]
-  rw [execProgram_instr_of_onlyRetire (.AssertLTE 3 0) _
-    (onlyRetire_AssertLTE 3 0)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertLTE 3 0) _
+    (onlyRetire_VirtualAssertLTE 3 0)]
   rw [execProgram_instr_of_onlyRetire (.SUB (.vreg 3) (.vreg 0) (.vreg 3)) _
     (onlyRetire_SUB_vreg_vreg_vreg 3 0 3)]
-  rw [execProgram_instr_of_onlyRetire (.AssertValidUnsignedRemainder 3 1) _
-    (onlyRetire_AssertValidUnsignedRemainder 3 1)]
-  rw [execProgram_instr_of_onlyRetire (.SExtW (.xreg rd) (.vreg 3)) _
-    (onlyRetire_SExtW_xreg_vreg rd 3)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertValidUnsignedRemainder 3 1) _
+    (onlyRetire_VirtualAssertValidUnsignedRemainder 3 1)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualSignExtendWord (.xreg rd) (.vreg 3)) _
+    (onlyRetire_VirtualSignExtendWord_xreg_vreg rd 3)]
   simp [execProgram, execInstr, vreg_zero_extend_word_from_real, vreg_advice,
     vreg_assert_mulu_no_overflow_v, vreg_MUL, vreg_assert_lte, vreg_SUB,
     vreg_assert_valid_unsigned_remainder, vreg_sign_extend_word_to_real]

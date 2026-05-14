@@ -44,7 +44,7 @@ private theorem execProgram_instr_of_onlyRetire
   exact execProgram_instr_run_of_onlyRetire instr rest js hret
 
 private theorem onlyRetire_vreg_advice (vd : BitVec 7) (value : BitVec 64) :
-    ∀ js r js', (execInstr (.Advice vd value)).run js = .ok r js' →
+    ∀ js r js', (execInstr (.VirtualAdvice vd value)).run js = .ok r js' →
       r = RETIRE_SUCCESS := by
   intro js r js' h
   simp [execInstr, writeVReg, RETIRE_SUCCESS, bind, EStateM.bind,
@@ -52,8 +52,8 @@ private theorem onlyRetire_vreg_advice (vd : BitVec 7) (value : BitVec 64) :
     MonadStateOf.modifyGet, EStateM.modifyGet] at h
   exact h.1.symm
 
-private theorem onlyRetire_AssertMulUNoOverflow (lhs : VReg) (rhs : regidx) :
-    ∀ js r js', (execInstr (.AssertMulUNoOverflow lhs rhs)).run js =
+private theorem onlyRetire_VirtualAssertMulUNoOverflow (lhs : VReg) (rhs : regidx) :
+    ∀ js r js', (execInstr (.VirtualAssertMulUNoOverflow lhs rhs)).run js =
       .ok r js' → r = RETIRE_SUCCESS := by
   intro js r js' h
   unfold execInstr liftSail readVReg at h
@@ -86,8 +86,8 @@ private theorem onlyRetire_MUL_vreg_vreg_xreg
   | error e s =>
       simp [hr] at h
 
-private theorem onlyRetire_AssertLTEReal (lhs : VReg) (rhs : regidx) :
-    ∀ js r js', (execInstr (.AssertLTEReal lhs rhs)).run js =
+private theorem onlyRetire_VirtualAssertLTEReal (lhs : VReg) (rhs : regidx) :
+    ∀ js r js', (execInstr (.VirtualAssertLTEReal lhs rhs)).run js =
       .ok r js' → r = RETIRE_SUCCESS := by
   intro js r js' h
   unfold execInstr liftSail readVReg at h
@@ -120,10 +120,10 @@ private theorem onlyRetire_SUB_vreg_xreg_vreg
   | error e s =>
       simp [hr] at h
 
-private theorem onlyRetire_AssertValidUnsignedRemainderReal
+private theorem onlyRetire_VirtualAssertValidUnsignedRemainderReal
     (remainder : VReg) (divisor : regidx) :
     ∀ js r js',
-      (execInstr (.AssertValidUnsignedRemainderReal remainder divisor)).run js =
+      (execInstr (.VirtualAssertValidUnsignedRemainderReal remainder divisor)).run js =
         .ok r js' → r = RETIRE_SUCCESS := by
   intro js r js' h
   unfold execInstr liftSail readVReg at h
@@ -157,12 +157,12 @@ private theorem onlyRetire_ADDI_xreg_vreg (rd : regidx) (vs : BitVec 7)
 
 /-- New-style Jolt ISA program for RV64 `REMU`. -/
 def remuProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
-  .instr (.Advice 0 quotient) <|
-  .instr (.AssertMulUNoOverflow 0 rs2) <|
+  .instr (.VirtualAdvice 0 quotient) <|
+  .instr (.VirtualAssertMulUNoOverflow 0 rs2) <|
   .instr (.MUL (.vreg 0) (.vreg 0) (.xreg rs2)) <|
-  .instr (.AssertLTEReal 0 rs1) <|
+  .instr (.VirtualAssertLTEReal 0 rs1) <|
   .instr (.SUB (.vreg 0) (.xreg rs1) (.vreg 0)) <|
-  .instr (.AssertValidUnsignedRemainderReal 0 rs2) <|
+  .instr (.VirtualAssertValidUnsignedRemainderReal 0 rs2) <|
   .instr (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
@@ -171,18 +171,18 @@ theorem remuProgram_run_eq_jolt_remu (rs2 rs1 rd : regidx)
     (execProgram (remuProgram rs2 rs1 rd quotient)).run js =
       (jolt_remu rs2 rs1 rd quotient).run js := by
   unfold remuProgram jolt_remu
-  rw [execProgram_instr_of_onlyRetire (.Advice 0 quotient) _
+  rw [execProgram_instr_of_onlyRetire (.VirtualAdvice 0 quotient) _
     (onlyRetire_vreg_advice 0 quotient)]
-  rw [execProgram_instr_of_onlyRetire (.AssertMulUNoOverflow 0 rs2) _
-    (onlyRetire_AssertMulUNoOverflow 0 rs2)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertMulUNoOverflow 0 rs2) _
+    (onlyRetire_VirtualAssertMulUNoOverflow 0 rs2)]
   rw [execProgram_instr_of_onlyRetire (.MUL (.vreg 0) (.vreg 0) (.xreg rs2)) _
     (onlyRetire_MUL_vreg_vreg_xreg 0 0 rs2)]
-  rw [execProgram_instr_of_onlyRetire (.AssertLTEReal 0 rs1) _
-    (onlyRetire_AssertLTEReal 0 rs1)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertLTEReal 0 rs1) _
+    (onlyRetire_VirtualAssertLTEReal 0 rs1)]
   rw [execProgram_instr_of_onlyRetire (.SUB (.vreg 0) (.xreg rs1) (.vreg 0)) _
     (onlyRetire_SUB_vreg_xreg_vreg 0 rs1 0)]
-  rw [execProgram_instr_of_onlyRetire (.AssertValidUnsignedRemainderReal 0 rs2) _
-    (onlyRetire_AssertValidUnsignedRemainderReal 0 rs2)]
+  rw [execProgram_instr_of_onlyRetire (.VirtualAssertValidUnsignedRemainderReal 0 rs2) _
+    (onlyRetire_VirtualAssertValidUnsignedRemainderReal 0 rs2)]
   rw [execProgram_instr_of_onlyRetire (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) _
     (onlyRetire_ADDI_xreg_vreg rd 0 0)]
   simp [execProgram, execInstr, vreg_advice, vreg_assert_mulu_no_overflow,

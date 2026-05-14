@@ -142,7 +142,7 @@ theorem srliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx)
   obtain ⟨s_final, hw_final⟩ := wX_shape rd final js_raw.sail
   let js' : SailJoltState := { sail := s_final, vregs := js_shift.vregs }
   have hsextw :
-      (JoltISA.execInstr (.SExtW (.xreg rd) (.xreg rd))).run js_raw =
+      (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_raw =
         .ok RETIRE_SUCCESS js' := by
     simpa [js', final] using
       (JoltISA.execInstr_sextw_xreg_xreg_run rd rd js_raw raw s_final

@@ -27,7 +27,7 @@ def amoMaskVReg : VReg := 5
 doubleword, then extract the addressed word into `old`. -/
 def amoPre64Program (rs1 : regidx) (old dword shift : VReg) (tail : Program) :
     Program :=
-  .instr (.AssertStoreAlign rs1 (0 : BitVec 12) (3 : BitVec 64)) <|
+  .instr (.VirtualAssertStoreAlignment rs1 (0 : BitVec 12) (3 : BitVec 64)) <|
   .instr (.ANDI (.vreg shift) (.xreg rs1) (-8 : BitVec 12)) <|
   .instr (.LD dword shift (0 : BitVec 12)) <|
   .instr (.SLLI (.vreg shift) (.xreg rs1) (3 : BitVec 6)) <|
@@ -47,7 +47,7 @@ def amoPost64Program
   .instr (.XOR (.vreg dword) (.vreg dword) (.vreg shift)) <|
   .instr (.ANDI (.vreg mask) (.xreg rs1) (-8 : BitVec 12)) <|
   .instr (.SD mask dword (0 : BitVec 12)) <|
-  .instr (.SExtW (.xreg rd) (.vreg old)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg old)) <|
   .done RETIRE_SUCCESS
 
 def amoDoubleBinopProgram
@@ -142,22 +142,22 @@ def amoswapwProgram (rs2 rs1 rd : regidx) : Program :=
     amoDwordVReg amoShiftVReg amoMaskVReg amoOldVReg
 
 def amominwProgram (rs2 rs1 rd : regidx) : Program :=
-  amoWordSelectProgram (fun dst src => .SExtW dst src)
+  amoWordSelectProgram (fun dst src => .VirtualSignExtendWord dst src)
     (fun dst lhs rhs => .SLT dst lhs rhs)
     (.vreg amoNewVReg) (.vreg amoMaskVReg) rs2 rs1 rd
 
 def amomaxwProgram (rs2 rs1 rd : regidx) : Program :=
-  amoWordSelectProgram (fun dst src => .SExtW dst src)
+  amoWordSelectProgram (fun dst src => .VirtualSignExtendWord dst src)
     (fun dst lhs rhs => .SLT dst lhs rhs)
     (.vreg amoMaskVReg) (.vreg amoNewVReg) rs2 rs1 rd
 
 def amominuwProgram (rs2 rs1 rd : regidx) : Program :=
-  amoWordSelectProgram (fun dst src => .ZExtW dst src)
+  amoWordSelectProgram (fun dst src => .VirtualZeroExtendWord dst src)
     (fun dst lhs rhs => .SLTU dst lhs rhs)
     (.vreg amoNewVReg) (.vreg amoMaskVReg) rs2 rs1 rd
 
 def amomaxuwProgram (rs2 rs1 rd : regidx) : Program :=
-  amoWordSelectProgram (fun dst src => .ZExtW dst src)
+  amoWordSelectProgram (fun dst src => .VirtualZeroExtendWord dst src)
     (fun dst lhs rhs => .SLTU dst lhs rhs)
     (.vreg amoMaskVReg) (.vreg amoNewVReg) rs2 rs1 rd
 

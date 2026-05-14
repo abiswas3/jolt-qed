@@ -35,7 +35,7 @@ theorem execute_ADDIW_factored (imm : BitVec 12) (rs1 rd : regidx) :
 
 /-- Program-level concrete theorem for `ADDIW`.
 
-The program is architectural `ADDI`, then `SExtW rd, rd`.  As with the R-type
+The program is architectural `ADDI`, then `VirtualSignExtendWord rd, rd`.  As with the R-type
 W proofs, the two architectural writes collapse to the final sign-extended
 write. -/
 theorem addiwProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
@@ -62,7 +62,7 @@ theorem addiwProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
   obtain ⟨s_final, hw_final⟩ := wX_shape rd final js_raw.sail
   let js' : SailJoltState := { sail := s_final, vregs := js.vregs }
   have hsextw :
-      (JoltISA.execInstr (.SExtW (.xreg rd) (.xreg rd))).run js_raw =
+      (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_raw =
         .ok RETIRE_SUCCESS js' := by
     simpa [js', final] using
       (JoltISA.execInstr_sextw_xreg_xreg_run rd rd js_raw raw s_final
