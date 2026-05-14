@@ -27,6 +27,18 @@ theorem execInstr_virtualSRL_xreg_vreg_xreg_run (rd rs : regidx) (vbitmask : VRe
   simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
 
+/-- `VirtualSRL` from a real value and a virtual bitmask to a real destination,
+with the output state chosen by the instruction lemma. -/
+theorem execInstr_virtualSRL_xreg_vreg_xreg_run_of_read
+    (rd rs : regidx) (vbitmask : VReg) (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs js.sail = .ok x js.sail) :
+    ∃ s',
+      (execInstr (.VirtualSRL (.xreg rd) (.xreg rs) (.vreg vbitmask))).run js =
+        .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } ∧
+      wX_bits rd (jolt_virtual_srl_value x (js.vregs vbitmask)) js.sail = .ok () s' := by
+  obtain ⟨s', hw⟩ := wX_shape rd (jolt_virtual_srl_value x (js.vregs vbitmask)) js.sail
+  exact ⟨s', execInstr_virtualSRL_xreg_vreg_xreg_run rd rs vbitmask js x s' h hw, hw⟩
+
 /-- `VirtualSRL` can read both its value and its bitmask from virtual registers
 before writing the result to a real destination. -/
 theorem execInstr_virtualSRL_vreg_vreg_xreg_run (rd : regidx) (vvalue vbitmask : VReg)

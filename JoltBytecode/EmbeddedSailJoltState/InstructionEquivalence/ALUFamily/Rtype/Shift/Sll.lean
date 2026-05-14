@@ -1,10 +1,10 @@
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Family
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
-import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics
-import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Compatibility
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.Mul
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.VirtualPow2
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
+import JoltBytecode.EmbeddedSailJoltState.ShiftDefs
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions
@@ -14,9 +14,9 @@ noncomputable section
 /-!
 # SLL: Jolt VirtualPow2 + MUL = Sail SLL
 
-Jolt decomposes SLL as (from `BytecodeExpansions/Sll.lean`):
-1. `VirtualPow2 rs2 → v_pow` — compute `2^(rs2[5:0])`
-2. `MUL rd, rs1, v_pow` — multiply by power of two (= left shift)
+Jolt program sequence:
+1. `VirtualPow2 v0, rs2` — compute `2^(rs2[5:0])`
+2. `MUL rd, rs1, v0` — multiply by power of two
 
 Multiply-by-`2^s` = left-shift-by-`s`; the bridge fact is inlined here
 because it is SLL-specific (not shared with other shift instructions).
@@ -86,36 +86,53 @@ theorem sllProgram_concrete
         (shift_bits_left v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
   obtain ⟨v1, hok1⟩ := hwf rs1
   obtain ⟨v2, hok2⟩ := hwf rs2
-  let vp := BitVec.ofNat 64 (2 ^ (v2.setWidth 6).toNat)
-  obtain ⟨s', hw⟩ := wX_shape rd (v1 * vp) js.sail
+
+  -- Instruction 1: `VirtualPow2 v0, rs2` writes `vp = 2 ^ rs2[5:0]` to `v0`.
+  let vp := jolt_virtual_pow2_value v2
   let js_pow : SailJoltState :=
     { sail := js.sail
       vregs := fun r => if r = (0 : JoltISA.VReg) then vp else js.vregs r }
-  let js' : SailJoltState := { sail := s', vregs := js_pow.vregs }
-  have hpow :
+  have instr1_VirtualPow2_writes_vp :
       (JoltISA.execInstr (.VirtualPow2 (.vreg 0) (.xreg rs2))).run js =
         .ok RETIRE_SUCCESS js_pow := by
-    simpa [js_pow, vp, jolt_virtual_pow2_value] using
+    simpa [js_pow, vp] using
       (JoltISA.execInstr_virtualPow2_xreg_vreg_run (0 : JoltISA.VReg) rs2 js v2 hok2)
-  have hmul :
+
+  -- Instruction 2: `MUL rd, rs1, v0` writes `raw = v1 * vp` to `rd`.
+  let raw := v1 * vp
+  have hread_rs1_from_pow : rX_bits rs1 js_pow.sail = .ok v1 js_pow.sail := by
+    simpa [js_pow] using hok1
+  obtain ⟨s', hrun_MUL, hw_raw_mul⟩ :=
+    JoltISA.execInstr_mul_xreg_xreg_vreg_run_of_read rd rs1 (0 : JoltISA.VReg)
+      js_pow v1 hread_rs1_from_pow
+  have hw_raw : wX_bits rd raw js.sail = .ok () s' := by
+    simpa [js_pow, raw, vp] using hw_raw_mul
+  let js' : SailJoltState := { sail := s', vregs := js_pow.vregs }
+  have instr2_MUL_writes_raw :
       (JoltISA.execInstr (.MUL (.xreg rd) (.xreg rs1) (.vreg 0))).run js_pow =
         .ok RETIRE_SUCCESS js' := by
-    have hread : rX_bits rs1 js_pow.sail = .ok v1 js_pow.sail := by
-      simpa [js_pow] using hok1
-    have hwrite : wX_bits rd (v1 * js_pow.vregs (0 : JoltISA.VReg)) js_pow.sail =
-        .ok () s' := by
-      simpa [js_pow, vp] using hw
-    simpa [js'] using
-      (JoltISA.execInstr_mul_xreg_xreg_vreg_run rd rs1 (0 : JoltISA.VReg)
-        js_pow v1 s' hread hwrite)
+    simpa [js'] using hrun_MUL
   refine ⟨js', v1, v2, hok1, hok2, ?_, ?_⟩
   · unfold JoltISA.sllProgram
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js_pow hpow]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_pow js' hmul]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_pow instr1_VirtualPow2_writes_vp]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_pow js' instr2_MUL_writes_raw]
     rfl
   · dsimp [js']
-    rw [← sll_mul_eq_shift v1 v2]
-    exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
+    -- NOTE: Math theorem: `sll_mul_eq_shift` matches pow2 multiplication with Sail SLL.
+    have math_raw_shift :
+        raw =
+          shift_bits_left v1
+            (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
+      dsimp [raw, vp, jolt_virtual_pow2_value]
+      rw [sll_mul_eq_shift]
+    have final_write_from_initial :
+        wX_bits rd
+          (shift_bits_left v1
+            (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
+          js.sail = .ok () s' := by
+      rw [← math_raw_shift]
+      exact hw_raw
+    exact wX_bits_eq_stateAfterWrite rd _ js.sail s' final_write_from_initial
 
 /-- Main program-level equivalence for `SLL`. -/
 theorem sllProgram_eq_sail

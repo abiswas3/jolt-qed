@@ -67,12 +67,18 @@ sequence of Jolt instructions described by the expansion semantics:
   run equation and the `wX_bits` write fact;
 - concrete program proofs should read as: instruction 1 lemma, instruction 2
   lemma, ..., named math bridge, final state-write collapse;
+- each instruction-equivalence file should have a module-level comment listing
+  the Jolt program sequence for the reader;
 - in concrete program proofs, place a short comment before each emitted
   instruction block naming the instruction and the value/state update it proves;
+- mark the core arithmetic/bitvector bridge with `-- NOTE: Math theorem: ...`
+  where the concrete proof hands off from instruction semantics to math;
 - do not hide the instruction sequence behind a custom tactic until the
   instruction-local API has stabilized and repeated proof shape is obvious;
 - avoid non-terminal plain `simp` in production proofs. Use named rewrites,
   `simpa [...] using h`, or `simp only [...]` when the resulting shape matters.
+- do not use large `maxHeartbeats` overrides to force slow proofs through;
+  if a proof needs one, split out API lemmas or simplify the proof shape.
 
 ## Sources
 
