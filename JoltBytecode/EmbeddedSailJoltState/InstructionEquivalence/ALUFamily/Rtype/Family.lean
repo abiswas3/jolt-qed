@@ -8,33 +8,20 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# R-type W family plumbing
+# R-type family plumbing
 
-This file provides the one generic theorem shared by every R-type W ALU
-instruction: the uniform equivalence closer.
+This file provides the generic theorem shared by R-type ALU instructions
+with the same Sail-side surface shape: read `rs1`, read `rs2`, write a
+value to `rd`, and return `RETIRE_SUCCESS`.
 
-All R-type W instructions (ADDW, SUBW, MULW, SLLW, SRLW, SRAW) share the
-same surface shape on the Sail side: read `rs1`, read `rs2`, write a
-value to `rd`, return `RETIRE_SUCCESS`. They differ in *what* gets
-written (the arithmetic), and on the Jolt side some build the sequence
-via `execute_RTYPE op + VSEW` while others stack their own virtual
-register operations. None of that matters to the plumbing: once an
-instruction has a `_concrete` characterisation (final sail state =
-`stateAfterWrite js.sail rd (f v1 v2)`) and a factoring of its Sail
-target (`exec = read rs1, read rs2, write (f v1 v2), return`), the main
-`_eq_sail` proof is mechanical.
-
-We capture that mechanical proof here, once, as
-`rtype_eq_sail_uniform`. Every per-instruction file in `Rtype/W/`
-invokes it in a single line.
-
-This file deliberately avoids `mvcgen`, `@[spec]`, and `Std.Do`. The
-load family and the blog's original 8-step template both use a direct
-tactic style; we match that here so the ALU plumbing is the same shape
-as the plumbing readers have already seen elsewhere.
+It serves R-type W instructions (`ADDW`, `SUBW`, `MULW`, `SLLW`, `SRLW`,
+`SRAW`), non-W shifts (`SLL`, `SRL`, `SRA`), and selected multiply-family
+instructions using the same two-register/write-one-register plumbing.
+They differ in *what* gets written. The closer only needs a concrete
+Jolt characterisation and a factoring of the Sail target.
 -/
 
-/-- Uniform R-type W equivalence closer.
+/-- Uniform R-type equivalence closer.
 
 Given:
 * a Jolt sequence `jolt`,
@@ -46,8 +33,7 @@ Given:
   side,
 
 the Jolt sequence and the Sail target produce equal results on the Sail
-state. The proof is the 14-line plumbing factored out of every
-per-instruction `_eq_sail` theorem. -/
+state. -/
 theorem rtype_eq_sail_uniform
     {rs1 rs2 rd : regidx}
     {jolt : JoltMonad ExecutionResult}

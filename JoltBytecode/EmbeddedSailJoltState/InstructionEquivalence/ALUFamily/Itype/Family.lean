@@ -8,20 +8,22 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# I-type W family plumbing
+# I-type family plumbing
 
-Uniform equivalence closer for I-type W ALU instructions. I-type W
-instructions (`ADDIW`, `SLLIW`, `SRLIW`, `SRAIW`) have the same surface
-shape on the Sail side as R-type W, differing only in that they read a
-single source register (`rs1`) rather than two. The immediate (`imm` or
-`shamt`) is a compile-time parameter; the generic closer sees it only
-through the closure over `exec` and `f`.
+Uniform equivalence closer for I-type ALU instructions that read one
+source register, write one destination register, and return
+`RETIRE_SUCCESS`. This serves both I-type W instructions (`ADDIW`,
+`SLLIW`, `SRLIW`, `SRAIW`) and non-W I-type shifts (`SLLI`, `SRLI`,
+`SRAI`).
 
-See `ALUFamily/Rtype/W/Family.lean` for the analogous R-type W closer
-and the rationale for extracting this plumbing.
+The immediate (`imm` or `shamt`) is a compile-time parameter; the
+generic closer sees it only through the closure over `exec` and `f`.
+
+See `ALUFamily/Rtype/Family.lean` for the analogous R-type closer and
+the rationale for extracting this plumbing.
 -/
 
-/-- Uniform I-type W equivalence closer.
+/-- Uniform I-type equivalence closer.
 
 Given a Jolt sequence `jolt`, a Sail execution function `exec` factoring
 as "read `rs1`, write `f v` to `rd`, return `RETIRE_SUCCESS`", and a

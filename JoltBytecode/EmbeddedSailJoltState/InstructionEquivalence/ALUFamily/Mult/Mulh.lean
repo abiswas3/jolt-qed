@@ -1,6 +1,6 @@
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.Mul
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Family
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Family
 import Mathlib
 
 set_option maxHeartbeats 1_000_000_000

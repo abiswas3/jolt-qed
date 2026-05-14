@@ -1,4 +1,4 @@
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Shift.Family
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Itype.Family
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics
 

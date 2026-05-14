@@ -1,4 +1,4 @@
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Family
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Family
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Bridges.Sub
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine

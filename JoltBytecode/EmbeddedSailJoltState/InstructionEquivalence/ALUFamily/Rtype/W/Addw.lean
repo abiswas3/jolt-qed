@@ -1,4 +1,4 @@
-import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.W.Family
+import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Family
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Bridges.Add
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
@@ -25,7 +25,10 @@ addition, so both sides produce the same result.
 
 /-- Factoring: `execute_RTYPE rs2 rs1 rd rop.ADD` reads `rs1`, reads
 `rs2`, writes `v1 + v2` to `rd`, returns `RETIRE_SUCCESS`. -/
-theorem execute_RTYPE_ADD_factored (rs2 rs1 rd : regidx) :
+theorem execute_RTYPE_ADD_factored
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx) :
     execute_RTYPE rs2 rs1 rd rop.ADD = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
@@ -39,7 +42,10 @@ theorem execute_RTYPE_ADD_factored (rs2 rs1 rd : regidx) :
 All this does is write the Sail code as do program.
 I am not sure we need this as much anymore (TODO:) 
 -/
-theorem execute_RTYPEW_ADDW_factored (rs2 rs1 rd : regidx) :
+theorem execute_RTYPEW_ADDW_factored
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx) :
     execute_RTYPEW rs2 rs1 rd ropw.ADDW = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
@@ -54,8 +60,13 @@ The new Jolt-ISA program states the Rust-style expansion directly:
 architectural `ADD`, followed by the virtual sign-extend-word instruction.
 The proof exposes the two real writes and collapses them to the final
 sign-extended architectural write. -/
-theorem addwProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
+theorem addwProgram_concrete
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
@@ -98,8 +109,13 @@ theorem addwProgram_concrete (rs2 rs1 rd : regidx)
     exact wX_bits_eq_stateAfterWrite rd _ js.sail s_final hc
 
 /-- Main program-level equivalence for `ADDW`. -/
-theorem addwProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem addwProgram_eq_sail
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run js.sail :=
   rtype_eq_sail_uniform
