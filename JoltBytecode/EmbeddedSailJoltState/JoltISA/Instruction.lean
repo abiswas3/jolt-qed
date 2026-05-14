@@ -14,6 +14,8 @@ open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
 
+-- TODO: Need to put in all the instructions
+-- Currently using 
 inductive Instr where
   | ADDI (dst : Dst) (src : Src) (imm : BitVec 12)
   | ANDI (dst : Dst) (src : Src) (imm : BitVec 12)

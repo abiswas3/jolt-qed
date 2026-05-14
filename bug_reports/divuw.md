@@ -1,5 +1,7 @@
 # Bug Report: DIVUW Inline Sequence Accepts Non-Canonical Quotient Advice
 
+> This is not a bug -- witness does not have to be unique.
+
 ## Instruction
 DIVUW — unsigned 32-bit division word (RV64M).
 Divides the low 32 bits of `rs1` by the low 32 bits of `rs2`, treating both as
