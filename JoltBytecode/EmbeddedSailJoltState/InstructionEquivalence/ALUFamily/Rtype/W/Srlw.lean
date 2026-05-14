@@ -24,16 +24,22 @@ Jolt decomposes SRLW into (from `BytecodeExpansions/Srlw.lean`):
 Bridge: `srlw_shift_eq` (in `Bridges/Shift.lean`).
 -/
 
-theorem execute_RTYPEW_SRLW_factored (rs2 rs1 rd : regidx) :
+theorem execute_RTYPEW_SRLW_factored
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx) :
     execute_RTYPEW rs2 rs1 rd ropw.SRLW = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
       wX_bits rd (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
         (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)))
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPEW, bind_pure_comp, pure_bind]
+  simp only [execute_RTYPEW]
+  simp only [bind_pure_comp, pure_bind]
 
-private lemma virtual_srlw_value_eq (v1 v2 : BitVec 64) :
+private lemma virtual_srlw_value_eq
+    (v1 : BitVec 64)
+    (v2 : BitVec 64) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
         (jolt_virtual_srl_value (shift_bits_left v1 (32 : BitVec 6))
@@ -51,15 +57,21 @@ private lemma virtual_srlw_value_eq (v1 v2 : BitVec 64) :
     rw [hsign]
     simpa [Riscv.ori] using or32_setWidth6_toNat v2
   rw [hmask]
-  simp [shift_bits_left]
+  simp only [shift_bits_left]
+  rfl
 
 /-- Program-level concrete theorem for `SRLW`.
 
 The program theorem follows the five Rust-emitted steps: shift `rs1` left into
 scratch `v0`, set bit five of `rs2` in scratch `v1`, encode that as a virtual
 right-shift bitmask, run `VirtualSRL`, and finally sign-extend `rd`. -/
-theorem srlwProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
+theorem srlwProgram_concrete
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
@@ -144,8 +156,13 @@ theorem srlwProgram_concrete (rs2 rs1 rd : regidx)
     simpa using virtual_srlw_value_eq v1 v2
 
 /-- Main program-level equivalence for `SRLW`. -/
-theorem srlwProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem srlwProgram_eq_sail
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.srlwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SRLW).run js.sail :=
   rtype_eq_sail_uniform

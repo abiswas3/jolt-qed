@@ -22,21 +22,30 @@ Jolt decomposes SLLW into (from `BytecodeExpansions/Sllw.lean`):
 Bridge: `sllw_mul_eq_shift` (in `Bridges/Shift.lean`).
 -/
 
-theorem execute_RTYPEW_SLLW_factored (rs2 rs1 rd : regidx) :
+theorem execute_RTYPEW_SLLW_factored
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx) :
     execute_RTYPEW rs2 rs1 rd ropw.SLLW = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
       wX_bits rd (sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v1 31 0)
         (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)))
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPEW, bind_pure_comp, pure_bind]
+  simp only [execute_RTYPEW]
+  simp only [bind_pure_comp, pure_bind]
 
 /-- Program-level concrete theorem for `SLLW`.
 
 The expansion is `VirtualPow2W` into scratch `v0`, a real-destination
 multiply by that scratch value, then `SExtW` on `rd`. -/
-theorem sllwProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
+theorem sllwProgram_concrete
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
@@ -96,8 +105,13 @@ theorem sllwProgram_concrete (rs2 rs1 rd : regidx)
     rw [sllw_mul_eq_shift v1 v2]
 
 /-- Main program-level equivalence for `SLLW`. -/
-theorem sllwProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem sllwProgram_eq_sail
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.sllwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SLLW).run js.sail :=
   rtype_eq_sail_uniform

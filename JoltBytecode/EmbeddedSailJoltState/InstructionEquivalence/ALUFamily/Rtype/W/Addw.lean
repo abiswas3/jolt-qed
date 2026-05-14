@@ -34,7 +34,11 @@ theorem execute_RTYPE_ADD_factored
       let v2 ← rX_bits rs2
       wX_bits rd (v1 + v2)
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPE, bind_pure_comp]
+  simp only [execute_RTYPE]
+  simp only [bind_pure_comp]
+  simp only [map_eq_pure_bind]
+  simp only [bind_assoc]
+  simp only [pure_bind]
 
 /-- Factoring: `execute_RTYPEW rs2 rs1 rd ropw.ADDW` reads `rs1`, reads
 `rs2`, writes `sext₆₄(v1[31:0] +₃₂ v2[31:0])` to `rd`, returns
@@ -52,7 +56,8 @@ theorem execute_RTYPEW_ADDW_factored
       wX_bits rd (sign_extend (m := 64)
         (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0))
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPEW, bind_pure_comp, pure_bind]
+  simp only [execute_RTYPEW]
+  simp only [bind_pure_comp, pure_bind]
 
 /-- Program-level concrete theorem for `ADDW`.
 

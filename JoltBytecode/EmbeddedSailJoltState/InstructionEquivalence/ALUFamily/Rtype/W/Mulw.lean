@@ -22,7 +22,10 @@ Bridge: `mulw32_eq_mul` (in `Bridges/Mul.lean`), connecting the Sail
 `extractLsb_mul`, truncation distributing over multiply.
 -/
 
-theorem execute_MULW_factored (rs2 rs1 rd : regidx) :
+theorem execute_MULW_factored
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx) :
     execute_MULW rs2 rs1 rd = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
@@ -31,7 +34,8 @@ theorem execute_MULW_factored (rs2 rs1 rd : regidx) :
           (BitVec.toInt (Sail.BitVec.extractLsb v1 31 0) *i
            BitVec.toInt (Sail.BitVec.extractLsb v2 31 0))))
       pure RETIRE_SUCCESS) := by
-  simp [execute_MULW, bind_pure_comp, pure_bind]
+  simp only [execute_MULW]
+  simp only [bind_pure_comp, pure_bind]
 
 /-- Program-level concrete theorem for `MULW`.
 
@@ -39,8 +43,13 @@ The Jolt-ISA program records the inline sequence as ordinary 64-bit multiply
 followed by sign-extension of the low word.  The pure bridge at the end
 identifies that low-word multiply with Sail's signed 32-bit multiplication
 encoding. -/
-theorem mulwProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
+theorem mulwProgram_concrete
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
@@ -88,8 +97,13 @@ theorem mulwProgram_concrete (rs2 rs1 rd : regidx)
     rw [extractLsb_mul, ← mulw32_eq_mul]
 
 /-- Main program-level equivalence for `MULW`. -/
-theorem mulwProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem mulwProgram_eq_sail
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.mulwProgram rs2 rs1 rd)).run js) =
     (execute_MULW rs2 rs1 rd).run js.sail :=
   rtype_eq_sail_uniform

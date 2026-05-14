@@ -17,29 +17,45 @@ Identical in shape to `ADDW`; the only differences are the operation
 (`rop.SUB` / `ropw.SUBW`) and the bridge (`extractLsb_sub`).
 -/
 
-theorem execute_RTYPE_SUB_factored (rs2 rs1 rd : regidx) :
+theorem execute_RTYPE_SUB_factored
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx) :
     execute_RTYPE rs2 rs1 rd rop.SUB = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
       wX_bits rd (v1 - v2)
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPE, bind_pure_comp, pure_bind]
+  simp only [execute_RTYPE]
+  simp only [bind_pure_comp]
+  simp only [map_eq_pure_bind]
+  simp only [bind_assoc]
+  simp only [pure_bind]
 
-theorem execute_RTYPEW_SUBW_factored (rs2 rs1 rd : regidx) :
+theorem execute_RTYPEW_SUBW_factored
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx) :
     execute_RTYPEW rs2 rs1 rd ropw.SUBW = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
       wX_bits rd (sign_extend (m := 64)
         (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0))
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPEW, bind_pure_comp, pure_bind]
+  simp only [execute_RTYPEW]
+  simp only [bind_pure_comp, pure_bind]
 
 /-- Program-level concrete theorem for `SUBW`.
 
 The program is the same two-step shape as `ADDW`: do the 64-bit architectural
 subtraction, then sign-extend the low word of `rd`. -/
-theorem subwProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
+theorem subwProgram_concrete
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
@@ -82,8 +98,13 @@ theorem subwProgram_concrete (rs2 rs1 rd : regidx)
     exact wX_bits_eq_stateAfterWrite rd _ js.sail s_final hc
 
 /-- Main program-level equivalence for `SUBW`. -/
-theorem subwProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem subwProgram_eq_sail
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.subwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SUBW).run js.sail :=
   rtype_eq_sail_uniform

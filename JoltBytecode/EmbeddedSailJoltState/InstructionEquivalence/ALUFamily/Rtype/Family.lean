@@ -35,7 +35,9 @@ Given:
 the Jolt sequence and the Sail target produce equal results on the Sail
 state. -/
 theorem rtype_eq_sail_uniform
-    {rs1 rs2 rd : regidx}
+    {rs1 : regidx}
+    {rs2 : regidx}
+    {rd : regidx}
     {jolt : JoltMonad ExecutionResult}
     {exec : SailM ExecutionResult}
     (f : BitVec 64 → BitVec 64 → BitVec 64)

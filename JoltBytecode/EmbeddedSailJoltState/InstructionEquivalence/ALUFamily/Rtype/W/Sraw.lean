@@ -24,7 +24,10 @@ Jolt decomposes SRAW into (from `BytecodeExpansions/Sraw.lean`):
 Bridge: `sraw_five_step_value` (in `Bridges/Shift.lean`).
 -/
 
-theorem execute_RTYPEW_SRAW_factored (rs2 rs1 rd : regidx) :
+theorem execute_RTYPEW_SRAW_factored
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx) :
     execute_RTYPEW rs2 rs1 rd ropw.SRAW = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
@@ -32,9 +35,12 @@ theorem execute_RTYPEW_SRAW_factored (rs2 rs1 rd : regidx) :
         (Sail.BitVec.extractLsb v1 31 0)
         (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)))
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPEW, bind_pure_comp, pure_bind, bind_assoc]
+  simp only [execute_RTYPEW]
+  simp only [bind_pure_comp, pure_bind]
 
-private lemma virtual_sraw_value_eq (v1 v2 : BitVec 64) :
+private lemma virtual_sraw_value_eq
+    (v1 : BitVec 64)
+    (v2 : BitVec 64) :
     sign_extend (m := 64)
       (Sail.BitVec.extractLsb
         (jolt_virtual_sra_value
@@ -59,8 +65,13 @@ private lemma virtual_sraw_value_eq (v1 v2 : BitVec 64) :
 This follows the five emitted steps: sign-extend `rs1[31:0]` into scratch
 `v0`, mask `rs2` into scratch `v1`, encode `v1` as a right-shift bitmask, run
 `VirtualSRA`, then sign-extend `rd` once more. -/
-theorem srawProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
+theorem srawProgram_concrete
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
@@ -144,8 +155,13 @@ theorem srawProgram_concrete (rs2 rs1 rd : regidx)
     simpa using virtual_sraw_value_eq v1 v2
 
 /-- Main program-level equivalence for `SRAW`. -/
-theorem srawProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem srawProgram_eq_sail
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.srawProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SRAW).run js.sail :=
   rtype_eq_sail_uniform

@@ -17,31 +17,43 @@ Same bitmask encoding as SRL but with arithmetic (sign-extending) right
 shift.
 -/
 
-private lemma virtual_sra_eq_shift (v1 v2 : BitVec 64) :
+private lemma virtual_sra_eq_shift
+    (v1 : BitVec 64)
+    (v2 : BitVec 64) :
     jolt_virtual_sra_value v1 (jolt_virtual_shift_right_bitmask_value v2) =
     shift_bits_right_arith v1
       (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
   unfold jolt_virtual_sra_value
   rw [ctz_jolt_virtual_shift_right_bitmask_value]
   unfold shift_bits_right_arith LeanRV64D.Functions.log2_xlen
-  simp [Sail.BitVec.toNatInt, Sail.BitVec.extractLsb]
   congr 1
 
-theorem execute_RTYPE_SRA_factored (rs2 rs1 rd : regidx) :
+theorem execute_RTYPE_SRA_factored
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx) :
     execute_RTYPE rs2 rs1 rd rop.SRA = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
       wX_bits rd (shift_bits_right_arith v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
       pure RETIRE_SUCCESS) := by
-  simp [execute_RTYPE, bind_pure_comp]
+  simp only [execute_RTYPE]
+  simp only [bind_pure_comp]
+  simp only [map_eq_pure_bind]
+  simp only [bind_assoc]
+  simp only [pure_bind]
 
 /-- Program-level concrete theorem for `SRA`.
 
 The program-level proof mirrors `SRL`: first materialize the encoded shift
 bitmask in scratch `v0`, then run the arithmetic virtual right shift that
 consumes that scratch value. -/
-theorem sraProgram_concrete (rs2 rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem sraProgram_concrete
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
       rX_bits rs2 js.sail = .ok v2 js.sail ∧
@@ -86,8 +98,12 @@ theorem sraProgram_concrete (rs2 rs1 rd : regidx)
     exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 /-- Main program-level equivalence for `SRA`. -/
-theorem sraProgram_eq_sail (rs2 rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem sraProgram_eq_sail
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (js : SailJoltState)
+    (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.sraProgram rs2 rs1 rd)).run js) =
     (execute_RTYPE rs2 rs1 rd rop.SRA).run js.sail :=
   rtype_eq_sail_uniform
