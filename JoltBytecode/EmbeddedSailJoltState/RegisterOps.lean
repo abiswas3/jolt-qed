@@ -83,6 +83,7 @@ theorem rX_bits_pure (r : regidx) (s : SailState) (v : BitVec 64) (s' : SailStat
 -- wX_bits lemmas
 -- ============================================================================
 
+--- TODO: Write always succeeds is the theorem but we have not given it a proper description yet.
 theorem wX_shape (r : regidx) (v : BitVec 64) (s : SailState) :
     ∃ s', wX_bits r v s = .ok () s' := by
   unfold wX_bits wX regval_into_reg
@@ -250,6 +251,7 @@ theorem rX_after_stateAfterWrite (rd : regidx) (v : BitVec 64) (s : SailState)
   unfold stateAfterWrite
   exact rX_after_wX rd v s hrd
 
+-- StateAfterWrite changes only rd with value v 
 theorem wX_bits_eq_stateAfterWrite (rd : regidx) (v : BitVec 64) (s s' : SailState)
     (hw : wX_bits rd v s = .ok () s') :
     s' = stateAfterWrite s rd v := by

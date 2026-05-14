@@ -67,14 +67,16 @@ theorem rtype_eq_sail_uniform
     projectResult (jolt.run js) = exec.run js.sail := by
   obtain ⟨js', v1, v2, hrx1, hrx2, hj, hj_sail⟩ := hconcrete
   rw [hexec]
-  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure, hrx1, hrx2]
-  show projectResult (jolt.run js) = _
+  simp only [EStateM.run]
+  simp only [bind, EStateM.bind, pure, EStateM.pure]
+  simp only [hrx1, hrx2]
+  simp only [EStateM.run] at hj
   rw [hj]
   simp only [projectResult, project]
   rw [hj_sail]
-  obtain ⟨s', hw⟩ := wX_shape rd _ js.sail
-  rw [hw]
+  obtain ⟨s', hw⟩ := wX_shape rd (f v1 v2) js.sail
+  simp only [hw]
   congr 1
-  exact (wX_bits_eq_stateAfterWrite rd _ js.sail s' hw).symm
+  exact (wX_bits_eq_stateAfterWrite rd (f v1 v2) js.sail s' hw).symm
 
 end
