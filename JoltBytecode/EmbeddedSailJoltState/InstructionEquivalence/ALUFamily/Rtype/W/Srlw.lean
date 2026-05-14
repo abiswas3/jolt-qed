@@ -1,9 +1,13 @@
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Family
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Bridges.Shift
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.ORI
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.SLLI
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.VirtualSRL
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.VirtualShiftRightBitmask
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.VirtualSignExtendWord
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions
@@ -13,13 +17,12 @@ noncomputable section
 /-!
 # SRLW: SLLI + ORI + bitmask + VirtualSRL + VSEW = Sail SRLW
 
-Jolt decomposes SRLW into (from `BytecodeExpansions/Srlw.lean`):
-
+Jolt program sequence:
 1. `SLLI v0, rs1, 32` — clear upper 32 bits
-2. `ORI v1, rs2, 32` — set bit 5 of shift amount
-3. `VirtualShiftRightBitmask` — compute bitmask
+2. `ORI v1, rs2, 32` — set bit 5 of the shift amount
+3. `VirtualShiftRightBitmask v1, v1` — compute bitmask
 4. `VirtualSRL rd, v0, v1` — logical right shift via `ctz(bitmask)`
-5. `VirtualSignExtendWord rd, rd`
+5. `VirtualSignExtendWord rd, rd` — sign-extend lower 32 bits of `rd`
 
 Bridge: `srlw_shift_eq` (in `Bridges/Shift.lean`).
 -/
@@ -37,6 +40,7 @@ theorem execute_RTYPEW_SRLW_factored
   simp only [execute_RTYPEW]
   simp only [bind_pure_comp, pure_bind]
 
+-- NOTE: Math theorem: the Jolt bitmask SRL sequence computes Sail SRLW.
 private lemma virtual_srlw_value_eq
     (v1 : BitVec 64)
     (v2 : BitVec 64) :
@@ -86,19 +90,23 @@ theorem srlwProgram_concrete
   let maskIn := v2 ||| sign_extend (m := 64) (32 : BitVec 12)
   let bitmask := jolt_virtual_shift_right_bitmask_value maskIn
   let raw := jolt_virtual_srl_value shifted bitmask
+
+  -- Instruction 1: `SLLI v0, rs1, 32` writes `shifted = v1 << 32` to `v0`.
   let js_shift : SailJoltState :=
     { sail := js.sail
       vregs := fun r => if r = (0 : JoltISA.VReg) then shifted else js.vregs r }
-  have hslli :
+  have instr1_SLLI_writes_shifted :
       (JoltISA.execInstr (.SLLI (.vreg 0) (.xreg rs1) (32 : BitVec 6))).run js =
         .ok RETIRE_SUCCESS js_shift := by
     simpa [js_shift, shifted] using
       (JoltISA.execInstr_slli_xreg_vreg_run (0 : JoltISA.VReg) rs1
         (32 : BitVec 6) js v1 hok1)
+
+  -- Instruction 2: `ORI v1, rs2, 32` writes `maskIn` to `v1`.
   let js_ori : SailJoltState :=
     { sail := js.sail
       vregs := fun r => if r = (1 : JoltISA.VReg) then maskIn else js_shift.vregs r }
-  have hori :
+  have instr2_ORI_writes_maskIn :
       (JoltISA.execInstr (.ORI (.vreg 1) (.xreg rs2) (32 : BitVec 12))).run js_shift =
         .ok RETIRE_SUCCESS js_ori := by
     have hread : rX_bits rs2 js_shift.sail = .ok v2 js_shift.sail := by
@@ -106,54 +114,73 @@ theorem srlwProgram_concrete
     simpa [js_ori, maskIn] using
       (JoltISA.execInstr_ori_xreg_vreg_run (1 : JoltISA.VReg) rs2
         (32 : BitVec 12) js_shift v2 hread)
+
+  -- Instruction 3: `VirtualShiftRightBitmask v1, v1` writes `bitmask` to `v1`.
   let js_mask : SailJoltState :=
     { sail := js.sail
       vregs := fun r => if r = (1 : JoltISA.VReg) then bitmask else js_ori.vregs r }
-  have hmask :
+  have instr3_VirtualShiftRightBitmask_writes_bitmask :
       (JoltISA.execInstr (.VirtualShiftRightBitmask (.vreg 1) (.vreg 1))).run js_ori =
         .ok RETIRE_SUCCESS js_mask := by
     simpa [js_mask, js_ori, bitmask, maskIn] using
       (JoltISA.execInstr_virtualShiftRightBitmask_vreg_vreg_run
         (1 : JoltISA.VReg) (1 : JoltISA.VReg) js_ori)
-  obtain ⟨s_raw, hw_raw⟩ := wX_shape rd raw js.sail
+
+  -- Instruction 4: `VirtualSRL rd, v0, v1` writes `raw` to `rd`.
+  obtain ⟨s_raw, hrun_VirtualSRL, hw_raw_srl⟩ :=
+    JoltISA.execInstr_virtualSRL_vreg_vreg_xreg_run_of_vregs rd
+      (0 : JoltISA.VReg) (1 : JoltISA.VReg) js_mask
+  have hw_raw : wX_bits rd raw js.sail = .ok () s_raw := by
+    simpa (config := { decide := true }) [js_mask, js_ori, js_shift, raw, shifted, bitmask] using
+      hw_raw_srl
   let js_raw : SailJoltState := { sail := s_raw, vregs := js_mask.vregs }
-  have hsrl :
+  have instr4_VirtualSRL_writes_raw :
       (JoltISA.execInstr (.VirtualSRL (.xreg rd) (.vreg 0) (.vreg 1))).run js_mask =
         .ok RETIRE_SUCCESS js_raw := by
-    have hwrite :
-        wX_bits rd
-          (jolt_virtual_srl_value (js_mask.vregs (0 : JoltISA.VReg))
-            (js_mask.vregs (1 : JoltISA.VReg))) js_mask.sail = .ok () s_raw := by
-      simpa (config := { decide := true }) [js_mask, js_ori, js_shift, raw, shifted, bitmask] using
-        hw_raw
-    simpa [js_raw] using
-      (JoltISA.execInstr_virtualSRL_vreg_vreg_xreg_run rd
-        (0 : JoltISA.VReg) (1 : JoltISA.VReg) js_mask s_raw hwrite)
-  have hread_rd : rX_bits rd js_raw.sail = .ok raw js_raw.sail := by
-    simpa [js_raw] using (wX_rX_roundtrip rd raw js.sail s_raw hrd hw_raw)
+    simpa [js_raw] using hrun_VirtualSRL
+
+  have hread_rd : rX_bits rd s_raw = .ok raw s_raw := by
+    exact wX_rX_roundtrip rd raw js.sail s_raw hrd hw_raw
+
+  -- Instruction 5: `VirtualSignExtendWord rd, rd` writes `sext(raw[31:0])`.
   let final := sign_extend (m := 64) (Sail.BitVec.extractLsb raw 31 0)
-  obtain ⟨s_final, hw_final⟩ := wX_shape rd final js_raw.sail
+  obtain ⟨s_final, hrun_VirtualSignExtendWord, hw_final_raw⟩ :=
+    JoltISA.execInstr_sextw_xreg_xreg_run_of_read rd rd js_raw raw
+      (by simpa [js_raw] using hread_rd)
+  have hw_final : wX_bits rd final s_raw = .ok () s_final := by
+    simpa [js_raw, final] using hw_final_raw
+
   let js' : SailJoltState := { sail := s_final, vregs := js_mask.vregs }
-  have hsextw :
+  have instr5_VirtualSignExtendWord_writes_final :
       (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_raw =
         .ok RETIRE_SUCCESS js' := by
-    simpa [js', final] using
-      (JoltISA.execInstr_sextw_xreg_xreg_run rd rd js_raw raw s_final
-        hread_rd hw_final)
+    simpa [js'] using hrun_VirtualSignExtendWord
   refine ⟨js', v1, v2, hok1, hok2, ?_, ?_⟩
   · unfold JoltISA.srlwProgram
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js_shift hslli]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_shift js_ori hori]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_ori js_mask hmask]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_mask js_raw hsrl]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_raw js' hsextw]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_shift instr1_SLLI_writes_shifted]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_shift js_ori instr2_ORI_writes_maskIn]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_ori js_mask
+      instr3_VirtualShiftRightBitmask_writes_bitmask]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_mask js_raw instr4_VirtualSRL_writes_raw]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_raw js'
+      instr5_VirtualSignExtendWord_writes_final]
     rfl
   · dsimp [js']
-    have hc := wX_wX_collapse rd raw final js.sail s_raw s_final hw_raw hw_final
-    rw [wX_bits_eq_stateAfterWrite rd _ js.sail s_final hc]
-    dsimp [final, raw, shifted, bitmask, maskIn]
-    congr 1
-    simpa using virtual_srlw_value_eq v1 v2
+    -- NOTE: Math theorem: `virtual_srlw_value_eq` matches the virtual sequence with Sail SRLW.
+    have math_raw_low32 :
+        final =
+          sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
+            (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
+      dsimp [final, raw, shifted, bitmask, maskIn]
+      simpa using virtual_srlw_value_eq v1 v2
+    have final_write_from_initial :
+        wX_bits rd
+          (sign_extend (m := 64) (shift_bits_right (Sail.BitVec.extractLsb v1 31 0)
+            (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)))
+          js.sail = .ok () s_final := by
+      rw [← math_raw_low32]
+      exact wX_wX_collapse rd raw final js.sail s_raw s_final hw_raw hw_final
+    exact wX_bits_eq_stateAfterWrite rd _ js.sail s_final final_write_from_initial
 
 /-- Main program-level equivalence for `SRLW`. -/
 theorem srlwProgram_eq_sail

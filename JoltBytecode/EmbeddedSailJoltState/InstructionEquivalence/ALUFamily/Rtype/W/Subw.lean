@@ -1,9 +1,10 @@
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Rtype.Family
 import JoltBytecode.EmbeddedSailJoltState.InstructionEquivalence.ALUFamily.Bridges.Sub
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Expansions.ALU
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.Sub
+import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.Instructions.VirtualSignExtendWord
 import JoltBytecode.EmbeddedSailJoltState.JoltISA.Semantics.StraightLine
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions
@@ -12,6 +13,10 @@ noncomputable section
 
 /-!
 # SUBW: Jolt SUB + VirtualSignExtendWord = Sail SUBW
+
+Jolt program sequence:
+1. `SUB rd, rs1, rs2` — 64-bit subtract, writes `v1 - v2` to `rd`
+2. `VirtualSignExtendWord rd, rd` — sign-extend lower 32 bits of `rd`
 
 Identical in shape to `ADDW`; the only differences are the operation
 (`rop.SUB` / `ropw.SUBW`) and the bridge (`extractLsb_sub`).
@@ -66,36 +71,56 @@ theorem subwProgram_concrete
           (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0)) := by
   obtain ⟨v1, hok1⟩ := hwf rs1
   obtain ⟨v2, hok2⟩ := hwf rs2
+
+  -- Instruction 1: `SUB rd, rs1, rs2` writes `raw = v1 - v2` to `rd`.
   let raw := v1 - v2
-  obtain ⟨s_raw, hw_raw⟩ := wX_shape rd raw js.sail
+  obtain ⟨s_raw, hrun_SUB, hw_raw⟩ :=
+    JoltISA.execInstr_sub_xreg_xreg_xreg_run_of_reads rd rs1 rs2 js v1 v2 hok1 hok2
   let js_raw : SailJoltState := { sail := s_raw, vregs := js.vregs }
-  have hsub :
+  have instr1_SUB_writes_raw :
       (JoltISA.execInstr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
         .ok RETIRE_SUCCESS js_raw := by
-    simpa [js_raw, raw] using
-      (JoltISA.execInstr_sub_xreg_xreg_xreg_run rd rs1 rs2
-        js v1 v2 s_raw hok1 hok2 hw_raw)
-  have hread_rd : rX_bits rd js_raw.sail = .ok raw js_raw.sail := by
-    simpa [js_raw] using (wX_rX_roundtrip rd raw js.sail s_raw hrd hw_raw)
+    simpa [js_raw] using hrun_SUB
+
+  have hread_rd : rX_bits rd s_raw = .ok raw s_raw := by
+    exact wX_rX_roundtrip rd raw js.sail s_raw hrd hw_raw
+
+  -- Instruction 2: `VirtualSignExtendWord rd, rd` writes `sext(raw[31:0])`.
   let final :=
     sign_extend (m := 64) (Sail.BitVec.extractLsb raw 31 0)
-  obtain ⟨s_final, hw_final⟩ := wX_shape rd final js_raw.sail
+  obtain ⟨s_final, hrun_VirtualSignExtendWord, hw_final_raw⟩ :=
+    JoltISA.execInstr_sextw_xreg_xreg_run_of_read rd rd js_raw raw
+      (by simpa [js_raw] using hread_rd)
+  have hw_final : wX_bits rd final s_raw = .ok () s_final := by
+    simpa [js_raw, final] using hw_final_raw
+
   let js' : SailJoltState := { sail := s_final, vregs := js.vregs }
-  have hsextw :
+  have instr2_VirtualSignExtendWord_writes_final :
       (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_raw =
         .ok RETIRE_SUCCESS js' := by
-    simpa [js', final] using
-      (JoltISA.execInstr_sextw_xreg_xreg_run rd rd js_raw raw s_final
-        hread_rd hw_final)
+    simpa [js'] using hrun_VirtualSignExtendWord
   refine ⟨js', v1, v2, hok1, hok2, ?_, ?_⟩
   · unfold JoltISA.subwProgram
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js_raw hsub]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_raw js' hsextw]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_raw instr1_SUB_writes_raw]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_raw js'
+      instr2_VirtualSignExtendWord_writes_final]
     rfl
   · dsimp [js']
-    have hc := wX_wX_collapse rd raw final js.sail s_raw s_final hw_raw hw_final
-    rw [← extractLsb_sub v1 v2]
-    exact wX_bits_eq_stateAfterWrite rd _ js.sail s_final hc
+    -- NOTE: Math theorem: `extractLsb_sub` identifies `raw[31:0]` with word subtraction.
+    have math_raw_low32 :
+        final =
+          sign_extend (m := 64)
+            (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0) := by
+      dsimp [final, raw]
+      rw [extractLsb_sub]
+    have final_write_from_initial :
+        wX_bits rd
+          (sign_extend (m := 64)
+            (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0))
+          js.sail = .ok () s_final := by
+      rw [← math_raw_low32]
+      exact wX_wX_collapse rd raw final js.sail s_raw s_final hw_raw hw_final
+    exact wX_bits_eq_stateAfterWrite rd _ js.sail s_final final_write_from_initial
 
 /-- Main program-level equivalence for `SUBW`. -/
 theorem subwProgram_eq_sail

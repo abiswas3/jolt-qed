@@ -55,6 +55,25 @@ For Jolt/Sail equivalence proofs, separate semantic content from plumbing:
   normalize the monadic computation;
 - if the same `wX_shape` / `stateAfterWrite` bridge appears repeatedly, consider a helper lemma.
 
+For Jolt ISA instruction-equivalence proofs, treat each Jolt program as the
+sequence of Jolt instructions described by the expansion semantics:
+
+- instruction semantics belong with the instruction, under
+  `JoltISA/Semantics/Instructions/<Instruction>.lean`;
+- each instruction should have run lemmas that state its source reads, state or
+  virtual-register update, and return status;
+- for real-register writes, prefer an `_of_read` or `_of_reads` wrapper that
+  chooses the output `SailState` via `wX_shape` and returns both the `execInstr`
+  run equation and the `wX_bits` write fact;
+- concrete program proofs should read as: instruction 1 lemma, instruction 2
+  lemma, ..., named math bridge, final state-write collapse;
+- in concrete program proofs, place a short comment before each emitted
+  instruction block naming the instruction and the value/state update it proves;
+- do not hide the instruction sequence behind a custom tactic until the
+  instruction-local API has stabilized and repeated proof shape is obvious;
+- avoid non-terminal plain `simp` in production proofs. Use named rewrites,
+  `simpa [...] using h`, or `simp only [...]` when the resulting shape matters.
+
 ## Sources
 
 Use [references/sources.md](references/sources.md) when source attribution is requested or when
