@@ -89,7 +89,10 @@ theorem addwProgram_concrete
   have instr1_ADD_writes_raw :
       (JoltISA.execInstr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
         .ok RETIRE_SUCCESS js_raw := by
-    simpa [js_raw] using hrun_ADD
+    unfold js_raw
+    --exact hrun_ADD
+    assumption
+    --simpa [js_raw] using hrun_ADD
 
   -- Instruction 2: `VirtualSignExtendWord rd, rd` writes `sext(raw[31:0])`.
   have hread_rd : rX_bits rd s_raw = .ok raw s_raw := by

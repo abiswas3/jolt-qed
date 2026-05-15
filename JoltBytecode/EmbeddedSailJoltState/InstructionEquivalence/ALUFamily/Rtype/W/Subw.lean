@@ -22,6 +22,10 @@ Identical in shape to `ADDW`; the only differences are the operation
 (`rop.SUB` / `ropw.SUBW`) and the bridge (`extractLsb_sub`).
 -/
 
+/-
+In English: 
+The Sail Sub program is simply this monadic block.
+-/ 
 theorem execute_RTYPE_SUB_factored
     (rs2 : regidx)
     (rs1 : regidx)
@@ -37,6 +41,10 @@ theorem execute_RTYPE_SUB_factored
   simp only [bind_assoc]
   simp only [pure_bind]
 
+/-
+In English: 
+The Sail Subw program is simply this monadic block.
+-/ 
 theorem execute_RTYPEW_SUBW_factored
     (rs2 : regidx)
     (rs1 : regidx)
@@ -69,6 +77,8 @@ theorem subwProgram_concrete
       js'.sail = stateAfterWrite js.sail rd
         (sign_extend (m := 64)
           (Sail.BitVec.extractLsb v1 31 0 - Sail.BitVec.extractLsb v2 31 0)) := by
+  
+  -- get v1 abd v2 and a proof that reads succeeded
   obtain ⟨v1, hok1⟩ := hwf rs1
   obtain ⟨v2, hok2⟩ := hwf rs2
 

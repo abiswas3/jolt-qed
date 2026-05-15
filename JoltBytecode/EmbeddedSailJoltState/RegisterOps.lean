@@ -221,6 +221,9 @@ theorem rX_after_wX (r : regidx) (v : BitVec 64) (s : SailState)
     simp only [h]
     simp only [readReg_insert_self, EStateM.bind, EStateM.pure])
 
+-- If you write v to r to update state to s' and then read r state does not change 
+-- and you get back v
+-- NOTE: You do not need well formed here as r is guaranteed to be populated.
 theorem wX_rX_roundtrip (r : regidx) (v : BitVec 64) (s s' : SailState)
     (hr : r ≠ regidx.Regidx 0)
     (hw : wX_bits r v s = .ok () s') :
