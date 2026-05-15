@@ -1,5 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Memory.Utils
-import JoltBytecode.VirtualInstructions
+import JoltBytecode.JoltISA.Semantics.Instructions.LD
 
 set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
@@ -143,7 +143,7 @@ theorem vreg_LD_run_of_dword_assumptions
     (vd vs1 : BitVec 7) (js : SailJoltState) (addr : BitVec 64)
     (hvs1 : js.vregs vs1 = addr) (hcfg : JoltConfig js.sail)
     (hd : DwordLoadAssumptions addr js.sail) :
-    vreg_LD vd vs1 0 js = .ok RETIRE_SUCCESS
+    (JoltISA.execInstr (.LD vd vs1 0)).run js = .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
           if r = vd then loaded_dword_at js.sail addr else js.vregs r } := by
@@ -156,5 +156,6 @@ theorem vreg_LD_run_of_dword_assumptions
     have haddr : addr + (0 : BitVec 64) = addr := by bv_decide
     rw [haddr]
     exact aligned_dword_vmem_read_reduces addr js.sail hcfg hd
-  simpa using
-    (vreg_LD_run_from_memory_read vd vs1 0 js (loaded_dword_at js.sail addr) hread)
+  exact
+    JoltISA.ld_run_vreg_vreg_from_memory_read
+      vd vs1 0 js (loaded_dword_at js.sail addr) hread

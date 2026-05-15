@@ -1,5 +1,5 @@
 import JoltBytecode.JoltISA.Expansions.Store
-import JoltBytecode.JoltISA.Semantics.StraightLine
+import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.StoreFamily.Splice
 import JoltBytecode.InstructionEquivalence.ProofSupport

@@ -39,4 +39,34 @@ theorem run_bind_pure
     | .error e s' => .error e s') = EStateM.run (f a) s
   rfl
 
+/-- Bind-peel: if `m` runs to `.ok a s₁`, the whole chain
+`(m >>= f).run s` reduces to `(f a).run s₁`. -/
+theorem bind_run_of_ok
+    {ε σ α β : Type} {m : EStateM ε σ α} {f : α → EStateM ε σ β}
+    {s s₁ : σ} {a : α}
+    (h : EStateM.run m s = .ok a s₁) :
+    EStateM.run (m >>= f) s = EStateM.run (f a) s₁ := by
+  exact run_bind_eq_ok h
+
+/-- Reverse bind-peel for successful runs. -/
+theorem bind_unpeel_of_ok
+    {ε σ α β : Type} {m : EStateM ε σ α} {f : α → EStateM ε σ β}
+    {s s' : σ} {b : β}
+    (h : EStateM.run (m >>= f) s = .ok b s') :
+    ∃ (a : α) (s₁ : σ),
+      EStateM.run m s = .ok a s₁ ∧ EStateM.run (f a) s₁ = .ok b s' := by
+  cases hm : EStateM.run m s with
+  | ok a s₁ =>
+      refine ⟨a, s₁, ?_, ?_⟩
+      · rfl
+      rw [bind_run_of_ok hm] at h
+      exact h
+  | error e s₁ =>
+      exfalso
+      change (match EStateM.run m s with
+        | .ok a s₁ => EStateM.run (f a) s₁
+        | .error e s₁ => .error e s₁) = .ok b s' at h
+      rw [hm] at h
+      cases h
+
 end
