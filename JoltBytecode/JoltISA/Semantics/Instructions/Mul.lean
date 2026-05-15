@@ -15,6 +15,18 @@ noncomputable section
 
 namespace JoltISA
 
+/-- `MUL` on virtual registers writes the low 64 bits of the product. -/
+theorem mul_run_vreg_vreg_vreg (vd lhs rhs : VReg) (js : SailJoltState) :
+    (execInstr (.MUL (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then js.vregs lhs * js.vregs rhs
+            else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
 /-- `MUL` from a virtual source and a real source to a virtual destination reads
 the real source through Sail, writes the low product to the virtual destination,
 and leaves the Sail state unchanged when the real read is state-preserving. -/

@@ -12,8 +12,6 @@ open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
 
--- TODO: Need to put in all the instructions
--- Currently using 
 inductive Instr where
   | ADDI (dst : Dst) (src : Src) (imm : BitVec 12)
   | ANDI (dst : Dst) (src : Src) (imm : BitVec 12)
@@ -120,5 +118,15 @@ early-return instruction apart from the generic non-retire short-circuiting
 handled by `Program.instr`. -/
 def Program.seq (instrs : List Instr) : Program :=
   instrs.foldr Program.instr (.done RETIRE_SUCCESS)
+
+/-- Append two Jolt programs.
+
+If the first program retires successfully, execution continues with the second
+program. If the first program ends with any other `ExecutionResult`, the second
+program is unreachable, matching `execProgram`'s short-circuiting behavior. -/
+def Program.append : Program → Program → Program
+  | .done (.Retire_Success ()), second => second
+  | .done result, _ => .done result
+  | .instr instruction rest, second => .instr instruction (rest.append second)
 
 end JoltISA

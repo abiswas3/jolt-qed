@@ -114,6 +114,31 @@ theorem virtual_sign_extend_word_run_vreg_xreg (vd : VReg) (rs : regidx)
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
+/-- `VirtualSignExtendWord` from a virtual source to a virtual destination. -/
+theorem virtual_sign_extend_word_run_vreg_vreg (vd vs : VReg) (js : SailJoltState) :
+    (execInstr (.VirtualSignExtendWord (.vreg vd) (.vreg vs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r =>
+            if r = vd then sign_extend (m := 64) (Sail.BitVec.extractLsb (js.vregs vs) 31 0)
+            else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `VirtualSignExtendWord` from a virtual source to a real destination. -/
+theorem virtual_sign_extend_word_run_xreg_vreg (rd : regidx) (vs : VReg)
+    (js : SailJoltState) (s' : SailState)
+    (hw : wX_bits rd
+      (sign_extend (m := 64) (Sail.BitVec.extractLsb (js.vregs vs) 31 0))
+      js.sail = .ok () s') :
+    (execInstr (.VirtualSignExtendWord (.xreg rd) (.vreg vs))).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+
 /-- `VirtualSignExtendWord` from a real source to a virtual destination,
 packaged as an instruction step. It exposes the read, the virtual-register
 write, the unchanged Sail state, and the successful run. -/

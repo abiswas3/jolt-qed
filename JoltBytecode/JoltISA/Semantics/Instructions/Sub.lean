@@ -15,6 +15,31 @@ noncomputable section
 
 namespace JoltISA
 
+/-- `SUB` on virtual registers writes `lhs - rhs` to the virtual destination. -/
+theorem sub_run_vreg_vreg_vreg (vd lhs rhs : VReg) (js : SailJoltState) :
+    (execInstr (.SUB (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then js.vregs lhs - js.vregs rhs
+            else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- `SUB` from a real source and virtual source writes into a virtual destination. -/
+theorem sub_run_vreg_xreg_vreg (vd : VReg) (lhs : regidx) (rhs : VReg)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits lhs js.sail = .ok x js.sail) :
+    (execInstr (.SUB (.vreg vd) (.xreg lhs) (.vreg rhs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then x - js.vregs rhs else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
 /-- `SUB` from two real sources to a real destination reads both architectural
 sources and writes their difference through Sail. -/
 theorem sub_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)

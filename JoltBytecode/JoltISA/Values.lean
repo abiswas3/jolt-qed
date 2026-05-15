@@ -235,4 +235,23 @@ theorem jolt_sltu_value_toNat (x y : BitVec 64) :
 def mulhs (a b : BitVec 64) : BitVec 64 :=
   BitVec.ofInt 64 ((a.toInt * b.toInt) / (2 ^ 64))
 
+/-- Signed-division overflow folding rule for `VirtualChangeDivisor`.
+
+When `dividend = INT64_MIN` and `divisor = -1`, signed division would
+overflow. Jolt substitutes `1` for the divisor in the verification sequence;
+otherwise it passes the divisor through unchanged. -/
+def change_divisor_value (dividend divisor : BitVec 64) : BitVec 64 :=
+  let mostNeg : BitVec 64 := (1 : BitVec 64) <<< 63
+  let negOne : BitVec 64 := -1
+  if dividend = mostNeg ∧ divisor = negOne then 1 else divisor
+
+/-- Word-sized version of `change_divisor_value`.
+
+The operands are already sign-extended 32-bit values stored in 64-bit words.
+The overflow pair is `(INT32_MIN, -1)`. -/
+def change_divisor_w_value (dividend divisor : BitVec 64) : BitVec 64 :=
+  let i32MinSext : BitVec 64 := -((1 : BitVec 64) <<< 31)
+  let negOne : BitVec 64 := -1
+  if dividend = i32MinSext ∧ divisor = negOne then 1 else divisor
+
 end

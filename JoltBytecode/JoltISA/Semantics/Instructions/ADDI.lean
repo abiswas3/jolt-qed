@@ -29,6 +29,16 @@ theorem addi_run_vreg_xreg (vd : VReg) (rs : regidx)
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
+/-- `ADDI` from a virtual source to a real destination writes through Sail. -/
+theorem addi_run_xreg_vreg (rd : regidx) (vs : VReg) (imm : BitVec 12)
+    (js : SailJoltState) (s' : SailState)
+    (hw : wX_bits rd (js.vregs vs + sign_extend (m := 64) imm) js.sail = .ok () s') :
+    (execInstr (.ADDI (.xreg rd) (.vreg vs) imm)).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get]
+
 /-- `ADDI` from a real source to a real destination reads the source through
 Sail and writes the immediate sum through Sail. -/
 theorem addi_run_xreg_xreg (rd rs1 : regidx) (imm : BitVec 12)

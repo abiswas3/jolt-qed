@@ -427,16 +427,12 @@ def execInstr : Instr → JoltMonad ExecutionResult
   | .VirtualChangeDivisor dst dividend divisor => do
       let a ← liftSail (rX_bits dividend)
       let b ← liftSail (rX_bits divisor)
-      let mostNeg : BitVec 64 := (1 : BitVec 64) <<< 63
-      let negOne : BitVec 64 := -1
-      writeVReg dst (if a = mostNeg ∧ b = negOne then 1 else b)
+      writeVReg dst (change_divisor_value a b)
       pure RETIRE_SUCCESS
   | .VirtualChangeDivisorW dst dividend divisor => do
       let a ← readVReg dividend
       let b ← readVReg divisor
-      let i32MinSext : BitVec 64 := -((1 : BitVec 64) <<< 31)
-      let negOne : BitVec 64 := -1
-      writeVReg dst (if a = i32MinSext ∧ b = negOne then 1 else b)
+      writeVReg dst (change_divisor_w_value a b)
       pure RETIRE_SUCCESS
   | .VirtualAssertValidUnsignedRemainder remainder divisor => do
       let r ← readVReg remainder
