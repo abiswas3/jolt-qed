@@ -8,7 +8,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Math content for `jolt_rem`
+# Math content for `remProgram`
 
 REM uses the same signed division guards as DIV. The advice pair is still
 `(quotient, |remainder|)`, but the architectural writeback is the signed

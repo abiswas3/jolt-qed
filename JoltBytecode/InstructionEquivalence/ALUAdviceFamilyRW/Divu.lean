@@ -1,184 +1,28 @@
-import JoltBytecode.JoltISA.Semantics.Compatibility
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivuReference
+import JoltBytecode.JoltISA.Environment
+import JoltBytecode.JoltISA.Semantics.RegisterOps
+import JoltBytecode.InstructionEquivalence.ProofSupport
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divu_math
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divu_phase_helpers
 
-/-!
-# DIVU rewrite program
-
-This file is the new-style `JoltISA.Program` transcription of the local
-`DivuReference.lean` monadic `jolt_divu` sequence.
--/
-
+set_option linter.unusedVariables false
 set_option linter.unusedSimpArgs false
 
 open Sail PreSail LeanRV64D.Functions
 
+noncomputable section
+
+/-!
+# DIVU: Jolt inline sequence with oracle advice
+
+The canonical bytecode object in this file is `divuProgram`. It is the literal
+8-instruction `DIVU` expansion. `divuProgramPhases` is only the proof-facing
+decomposition used to compose the phase lemmas.
+-/
+
 namespace JoltISA
 
-private theorem execProgram_instr_run_of_onlyRetire
-    (instr : Instr) (rest : Program) (js : SailJoltState)
-    (hret : ∀ js r js',
-      (execInstr instr).run js = .ok r js' → r = RETIRE_SUCCESS) :
-    (execProgram (.instr instr rest)).run js =
-      (do
-        let _ ← execInstr instr
-        execProgram rest).run js := by
-  unfold execProgram
-  simp only [bind, EStateM.bind, EStateM.run]
-  cases h : execInstr instr js with
-  | ok r js' =>
-      have hr := hret js r js' (by simpa [EStateM.run] using h)
-      cases hr
-      cases rest <;> rfl
-  | error e js' =>
-      rfl
-
-private theorem execProgram_instr_of_onlyRetire
-    (instr : Instr) (rest : Program)
-    (hret : ∀ js r js',
-      (execInstr instr).run js = .ok r js' → r = RETIRE_SUCCESS) :
-    execProgram (.instr instr rest) =
-      (do
-        let _ ← execInstr instr
-        execProgram rest) := by
-  funext js
-  exact execProgram_instr_run_of_onlyRetire instr rest js hret
-
-private theorem onlyRetire_vreg_advice (vd : BitVec 7) (value : BitVec 64) :
-    ∀ js r js', (execInstr (.VirtualAdvice vd value)).run js = .ok r js' →
-      r = RETIRE_SUCCESS := by
-  intro js r js' h
-  simp [execInstr, writeVReg, RETIRE_SUCCESS, bind, EStateM.bind,
-    EStateM.run, pure, EStateM.pure, modify, modifyGet,
-    MonadStateOf.modifyGet, EStateM.modifyGet] at h
-  exact h.1.symm
-
-private theorem onlyRetire_VirtualAssertValidDiv0 (divisor : regidx) (quotient : VReg) :
-    ∀ js r js', (execInstr (.VirtualAssertValidDiv0 divisor quotient)).run js =
-      .ok r js' → r = RETIRE_SUCCESS := by
-  intro js r js' h
-  unfold execInstr liftSail readVReg at h
-  simp only [bind, EStateM.bind, EStateM.run, pure, EStateM.pure,
-    get, getThe, MonadStateOf.get, EStateM.get, RETIRE_SUCCESS,
-    throw, throwThe, MonadExceptOf.throw, EStateM.throw] at h
-  cases hr : rX_bits divisor js.sail with
-  | ok d s =>
-      simp [hr] at h
-      by_cases hd : d = 0#64
-      · by_cases hq : js.vregs quotient = (-1 : BitVec 64)
-        · simp [hd, hq, pure, EStateM.pure] at h
-          exact h.1.symm
-        · have hq' : js.vregs quotient ≠ 18446744073709551615#64 := by
-            simpa using hq
-          simp [hd, hq', throw, throwThe, MonadExceptOf.throw, EStateM.throw] at h
-      · simp [hd, pure, EStateM.pure] at h
-        exact h.1.symm
-  | error e s =>
-      simp [hr] at h
-
-private theorem onlyRetire_VirtualAssertMulUNoOverflow (lhs : VReg) (rhs : regidx) :
-    ∀ js r js', (execInstr (.VirtualAssertMulUNoOverflow lhs rhs)).run js =
-      .ok r js' → r = RETIRE_SUCCESS := by
-  intro js r js' h
-  unfold execInstr liftSail readVReg at h
-  simp only [bind, EStateM.bind, EStateM.run, pure, EStateM.pure,
-    get, getThe, MonadStateOf.get, EStateM.get, RETIRE_SUCCESS,
-    throw, throwThe, MonadExceptOf.throw, EStateM.throw] at h
-  cases hr : rX_bits rhs js.sail with
-  | ok y s =>
-      simp [hr] at h
-      by_cases hc : (js.vregs lhs).toNat * y.toNat < 18446744073709551616
-      · simp [hc, pure, EStateM.pure] at h
-        exact h.1.symm
-      · simp [hc, throw, throwThe, MonadExceptOf.throw, EStateM.throw] at h
-  | error e s =>
-      simp [hr] at h
-
-private theorem onlyRetire_MUL_vreg_vreg_xreg
-    (vd lhs : VReg) (rhs : regidx) :
-    ∀ js r js', (execInstr (.MUL (.vreg vd) (.vreg lhs) (.xreg rhs))).run js =
-      .ok r js' → r = RETIRE_SUCCESS := by
-  intro js r js' h
-  unfold execInstr readSrc writeDst liftSail readVReg writeVReg at h
-  simp only [bind, EStateM.bind, EStateM.run, pure, EStateM.pure,
-    get, getThe, MonadStateOf.get, EStateM.get, RETIRE_SUCCESS,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet] at h
-  cases hr : rX_bits rhs js.sail with
-  | ok y s =>
-      simp [hr] at h
-      exact h.1.symm
-  | error e s =>
-      simp [hr] at h
-
-private theorem onlyRetire_VirtualAssertLTEReal (lhs : VReg) (rhs : regidx) :
-    ∀ js r js', (execInstr (.VirtualAssertLTEReal lhs rhs)).run js =
-      .ok r js' → r = RETIRE_SUCCESS := by
-  intro js r js' h
-  unfold execInstr liftSail readVReg at h
-  simp only [bind, EStateM.bind, EStateM.run, pure, EStateM.pure,
-    get, getThe, MonadStateOf.get, EStateM.get, RETIRE_SUCCESS,
-    throw, throwThe, MonadExceptOf.throw, EStateM.throw] at h
-  cases hr : rX_bits rhs js.sail with
-  | ok y s =>
-      simp [hr] at h
-      by_cases hc : (js.vregs lhs).toNat ≤ y.toNat
-      · simp [hc, pure, EStateM.pure] at h
-        exact h.1.symm
-      · simp [hc, throw, throwThe, MonadExceptOf.throw, EStateM.throw] at h
-  | error e s =>
-      simp [hr] at h
-
-private theorem onlyRetire_SUB_vreg_xreg_vreg
-    (vd : VReg) (lhs : regidx) (rhs : VReg) :
-    ∀ js r js', (execInstr (.SUB (.vreg vd) (.xreg lhs) (.vreg rhs))).run js =
-      .ok r js' → r = RETIRE_SUCCESS := by
-  intro js r js' h
-  unfold execInstr readSrc writeDst liftSail readVReg writeVReg at h
-  simp only [bind, EStateM.bind, EStateM.run, pure, EStateM.pure,
-    get, getThe, MonadStateOf.get, EStateM.get, RETIRE_SUCCESS,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet] at h
-  cases hr : rX_bits lhs js.sail with
-  | ok x s =>
-      simp [hr] at h
-      exact h.1.symm
-  | error e s =>
-      simp [hr] at h
-
-private theorem onlyRetire_VirtualAssertValidUnsignedRemainderReal
-    (remainder : VReg) (divisor : regidx) :
-    ∀ js r js',
-      (execInstr (.VirtualAssertValidUnsignedRemainderReal remainder divisor)).run js =
-        .ok r js' → r = RETIRE_SUCCESS := by
-  intro js r js' h
-  unfold execInstr liftSail readVReg at h
-  simp only [bind, EStateM.bind, EStateM.run, pure, EStateM.pure,
-    get, getThe, MonadStateOf.get, EStateM.get, RETIRE_SUCCESS,
-    throw, throwThe, MonadExceptOf.throw, EStateM.throw] at h
-  cases hr : rX_bits divisor js.sail with
-  | ok d s =>
-      simp [hr] at h
-      by_cases hc : d = 0#64 ∨ (js.vregs remainder).toNat < d.toNat
-      · simp [hc, pure, EStateM.pure] at h
-        exact h.1.symm
-      · simp [hc, throw, throwThe, MonadExceptOf.throw, EStateM.throw] at h
-  | error e s =>
-      simp [hr] at h
-
-private theorem onlyRetire_ADDI_xreg_vreg (rd : regidx) (vs : BitVec 7)
-    (imm : BitVec 12) :
-    ∀ js r js', (execInstr (.ADDI (.xreg rd) (.vreg vs) imm)).run js = .ok r js' →
-      r = RETIRE_SUCCESS := by
-  intro js r js' h
-  unfold execInstr readSrc writeDst liftSail readVReg at h
-  simp only [bind, EStateM.bind, EStateM.run, pure, EStateM.pure,
-    get, getThe, MonadStateOf.get, EStateM.get, RETIRE_SUCCESS] at h
-  cases hw : wX_bits rd (js.vregs vs + sign_extend (m := 64) imm) js.sail with
-  | ok u s =>
-      simp [hw] at h
-      exact h.1.symm
-  | error e s =>
-      simp [hw] at h
-
-/-- New-style Jolt ISA program for RV64 `DIVU`. -/
+/-- Jolt ISA program for RV64 `DIVU`. The quotient advice is explicit. -/
 def divuProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   .instr (.VirtualAdvice 0 quotient) <|
   .instr (.VirtualAssertValidDiv0 rs2 0) <|
@@ -190,33 +34,114 @@ def divuProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   .instr (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
-theorem divuProgram_run_eq_jolt_divu (rs2 rs1 rd : regidx)
-    (quotient : BitVec 64) (js : SailJoltState) :
-    (execProgram (divuProgram rs2 rs1 rd quotient)).run js =
-      (jolt_divu rs2 rs1 rd quotient).run js := by
-  unfold divuProgram jolt_divu
-  rw [execProgram_instr_of_onlyRetire (.VirtualAdvice 0 quotient) _
-    (onlyRetire_vreg_advice 0 quotient)]
-  rw [execProgram_instr_of_onlyRetire (.VirtualAssertValidDiv0 rs2 0) _
-    (onlyRetire_VirtualAssertValidDiv0 rs2 0)]
-  rw [execProgram_instr_of_onlyRetire (.VirtualAssertMulUNoOverflow 0 rs2) _
-    (onlyRetire_VirtualAssertMulUNoOverflow 0 rs2)]
-  rw [execProgram_instr_of_onlyRetire (.MUL (.vreg 1) (.vreg 0) (.xreg rs2)) _
-    (onlyRetire_MUL_vreg_vreg_xreg 1 0 rs2)]
-  rw [execProgram_instr_of_onlyRetire (.VirtualAssertLTEReal 1 rs1) _
-    (onlyRetire_VirtualAssertLTEReal 1 rs1)]
-  rw [execProgram_instr_of_onlyRetire (.SUB (.vreg 1) (.xreg rs1) (.vreg 1)) _
-    (onlyRetire_SUB_vreg_xreg_vreg 1 rs1 1)]
-  rw [execProgram_instr_of_onlyRetire (.VirtualAssertValidUnsignedRemainderReal 1 rs2) _
-    (onlyRetire_VirtualAssertValidUnsignedRemainderReal 1 rs2)]
-  rw [execProgram_instr_of_onlyRetire (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) _
-    (onlyRetire_ADDI_xreg_vreg rd 0 0)]
-  simp [execProgram, execInstr, vreg_advice, vreg_assert_valid_div0,
-    vreg_assert_mulu_no_overflow, vreg_MUL_from_real_vs2,
-    vreg_assert_lte_real, vreg_SUB_from_real_vs1,
-    vreg_assert_valid_unsigned_remainder_real, vreg_ADDI_to_real]
+/-- Proof-facing phase decomposition of `divuProgram`. -/
+def divuProgramPhases (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
+  (Divu.phase_setup rs2 quotient).append <|
+  (Divu.phase_overflow_check rs2).append <|
+  (Divu.phase_quotient_product rs1 rs2).append <|
+  (Divu.phase_remainder_bound rs1 rs2).append <|
+  Divu.phase_writeback rd
 
-/-- Completeness for the new-style DIVU bytecode program. -/
+/-- The phase decomposition is definitionally the same bytecode as `divuProgram`. -/
+theorem divuProgram_eq_phases (rs2 rs1 rd : regidx) (quotient : BitVec 64) :
+    divuProgram rs2 rs1 rd quotient = divuProgramPhases rs2 rs1 rd quotient := by
+  rfl
+
+/-- Running `divuProgram` with honest quotient advice succeeds and writes Sail's
+unsigned DIV value to `rd`. -/
+theorem divuProgram_concrete (rs2 rs1 rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    ∃ js',
+      (execProgram (divuProgram rs2 rs1 rd
+          (sail_div_value dividend divisor true))).run js =
+        .ok RETIRE_SUCCESS js' ∧
+      js'.sail = stateAfterWrite js.sail rd
+        (sail_div_value dividend divisor true) := by
+  let q := sail_div_value dividend divisor true
+  have hguard_div0 : ¬ (divisor = 0#64 ∧ q ≠ (-1 : BitVec 64)) :=
+    hguard_div0_of_honest_u dividend divisor
+  have hguard_no_overflow : q.toNat * divisor.toNat < 2^64 :=
+    hguard_no_overflow_of_honest_u dividend divisor
+  have hguard_lte : (q * divisor).toNat ≤ dividend.toNat :=
+    hguard_q_times_d_le_dividend_of_honest_u dividend divisor
+  have hguard_rem_bound :
+      divisor = 0#64 ∨ (dividend - q * divisor).toNat < divisor.toNat :=
+    hguard_rem_bound_of_honest_u dividend divisor
+
+  obtain ⟨js₁, hrun1, h1_v0, h1_sail⟩ :=
+    Divu.phase_setup_run rs2 q js divisor hrs2 hguard_div0
+
+  have hrs2_js1 : rX_bits rs2 js₁.sail = .ok divisor js₁.sail :=
+    h1_sail.symm ▸ hrs2
+  obtain ⟨js₂, hrun2, h2_v0, h2_sail⟩ :=
+    Divu.phase_overflow_check_run rs2 js₁ q divisor
+      hrs2_js1 h1_v0 hguard_no_overflow
+
+  have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
+  have hrs1_js2 : rX_bits rs1 js₂.sail = .ok dividend js₂.sail :=
+    h2_sail_orig.symm ▸ hrs1
+  have hrs2_js2 : rX_bits rs2 js₂.sail = .ok divisor js₂.sail :=
+    h2_sail_orig.symm ▸ hrs2
+  obtain ⟨js₃, hrun3, h3_v0, h3_v1, h3_sail⟩ :=
+    Divu.phase_quotient_product_run rs1 rs2 js₂ q dividend divisor
+      hrs1_js2 hrs2_js2 h2_v0 hguard_lte
+
+  have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
+  have hrs1_js3 : rX_bits rs1 js₃.sail = .ok dividend js₃.sail :=
+    h3_sail_orig.symm ▸ hrs1
+  have hrs2_js3 : rX_bits rs2 js₃.sail = .ok divisor js₃.sail :=
+    h3_sail_orig.symm ▸ hrs2
+  obtain ⟨js₄, hrun4, h4_v0, h4_sail⟩ :=
+    Divu.phase_remainder_bound_run rs1 rs2 js₃ q dividend divisor
+      hrs1_js3 hrs2_js3 h3_v0 h3_v1 hguard_rem_bound
+
+  have h4_sail_orig : js₄.sail = js.sail := h4_sail.trans h3_sail_orig
+  obtain ⟨js₅, hrun5, h5_sail⟩ :=
+    Divu.phase_writeback_run rd js₄ js.sail q h4_v0 h4_sail_orig
+
+  have h_phase_program_succeeds :
+      Program.Run (divuProgramPhases rs2 rs1 rd q) js js₅ := by
+    unfold divuProgramPhases
+    exact Program.Run.append hrun1
+      (Program.Run.append hrun2
+        (Program.Run.append hrun3
+          (Program.Run.append hrun4 hrun5)))
+  have h_program_succeeds :
+      Program.Run (divuProgram rs2 rs1 rd q) js js₅ := by
+    rw [divuProgram_eq_phases]
+    exact h_phase_program_succeeds
+  exact ⟨js₅, h_program_succeeds, h5_sail⟩
+
+/-- Factoring lemma: `execute_DIV` collapses to the pure `sail_div_value`. -/
+theorem execute_DIVU_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
+    execute_DIV rs2 rs1 rd is_unsigned = (do
+      let v1 ← rX_bits rs1
+      let v2 ← rX_bits rs2
+      wX_bits rd (sail_div_value v1 v2 is_unsigned)
+      pure RETIRE_SUCCESS) := by
+  simp [execute_DIV, sail_div_value, bind_pure_comp]
+
+/-- Sail's `execute_DIV ... true` writes `sail_div_value`. -/
+theorem execute_DIVU_reduces (rs2 rs1 rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    (execute_DIV rs2 rs1 rd true).run js.sail =
+      .ok RETIRE_SUCCESS
+        (stateAfterWrite js.sail rd (sail_div_value dividend divisor true)) := by
+  rw [execute_DIVU_factored]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure, hrs1, hrs2]
+  obtain ⟨s', hw⟩ := wX_shape rd (sail_div_value dividend divisor true) js.sail
+  rw [hw]
+  simp only []
+  congr 1
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
+
+/-- Honest quotient advice makes `divuProgram` match Sail DIVU. -/
 theorem divuProgram_complete (rs2 rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
     (dividend divisor : BitVec 64)
@@ -225,10 +150,14 @@ theorem divuProgram_complete (rs2 rs1 rd : regidx)
     projectResult ((execProgram (divuProgram rs2 rs1 rd
                       (sail_div_value dividend divisor true))).run js) =
     (execute_DIV rs2 rs1 rd true).run js.sail := by
-  rw [divuProgram_run_eq_jolt_divu]
-  exact jolt_divu_complete rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2
+  obtain ⟨js', hjolt, hjolt_sail⟩ :=
+    divuProgram_concrete rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2
+  rw [hjolt]
+  simp only [projectResult, project]
+  rw [hjolt_sail]
+  rw [execute_DIVU_reduces rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2]
 
-/-- Soundness for the new-style DIVU bytecode program. -/
+/-- Any successful DIVU run pins the quotient advice to Sail's quotient. -/
 theorem divuProgram_sound (rs2 rs1 rd : regidx)
     (q : BitVec 64)
     (js : SailJoltState)
@@ -239,8 +168,49 @@ theorem divuProgram_sound (rs2 rs1 rd : regidx)
     (hok : (execProgram (divuProgram rs2 rs1 rd q)).run js =
       .ok RETIRE_SUCCESS js') :
     q = sail_div_value dividend divisor true := by
-  apply jolt_divu_sound rs2 rs1 rd q js dividend divisor hrs1 hrs2 js'
-  rw [← divuProgram_run_eq_jolt_divu]
-  exact hok
+  have h_program_succeeds : Program.Run (divuProgramPhases rs2 rs1 rd q) js js' := by
+    rw [← divuProgram_eq_phases]
+    exact hok
+  unfold divuProgramPhases at h_program_succeeds
+  obtain ⟨js₁, hp1, h_program_succeeds⟩ :=
+    Program.Run.append_inv h_program_succeeds
+  obtain ⟨js₂, hp2, h_program_succeeds⟩ :=
+    Program.Run.append_inv h_program_succeeds
+  obtain ⟨js₃, hp3, h_program_succeeds⟩ :=
+    Program.Run.append_inv h_program_succeeds
+  obtain ⟨js₄, hp4, _hp5⟩ :=
+    Program.Run.append_inv h_program_succeeds
+
+  obtain ⟨hguard1, h1_v0, h1_sail⟩ :=
+    Divu.phase_setup_run_sound rs2 q js js₁ divisor hrs2 hp1
+
+  have hrs2_1 : rX_bits rs2 js₁.sail = .ok divisor js₁.sail :=
+    h1_sail.symm ▸ hrs2
+  obtain ⟨hguard2, h2_v0, h2_sail⟩ :=
+    Divu.phase_overflow_check_run_sound rs2 js₁ js₂ q divisor
+      hrs2_1 h1_v0 hp2
+
+  have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
+  have hrs1_2 : rX_bits rs1 js₂.sail = .ok dividend js₂.sail :=
+    h2_sail_orig.symm ▸ hrs1
+  have hrs2_2 : rX_bits rs2 js₂.sail = .ok divisor js₂.sail :=
+    h2_sail_orig.symm ▸ hrs2
+  obtain ⟨hguard3, h3_v0, h3_v1, h3_sail⟩ :=
+    Divu.phase_quotient_product_run_sound rs1 rs2 js₂ js₃ q dividend divisor
+      hrs1_2 hrs2_2 h2_v0 hp3
+
+  have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
+  have hrs1_3 : rX_bits rs1 js₃.sail = .ok dividend js₃.sail :=
+    h3_sail_orig.symm ▸ hrs1
+  have hrs2_3 : rX_bits rs2 js₃.sail = .ok divisor js₃.sail :=
+    h3_sail_orig.symm ▸ hrs2
+  obtain ⟨hguard4, _, _⟩ :=
+    Divu.phase_remainder_bound_run_sound rs1 rs2 js₃ js₄ q dividend divisor
+      hrs1_3 hrs2_3 h3_v0 h3_v1 hp4
+
+  exact advice_unique_of_guards_u dividend divisor q
+    hguard1 hguard2 hguard3 hguard4
 
 end JoltISA
+
+end

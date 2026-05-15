@@ -1,7 +1,6 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.InstructionEquivalence.ProofSupport
-import JoltBytecode.VirtualInstructions
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div_math
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divu_phase_helpers
@@ -14,7 +13,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Math content for `jolt_divu` (advice-verified DIVU)
+# Math content for `divuProgram` (advice-verified DIVU)
 
 The DIVU counterpart of `Div_math.lean`. Provides:
 

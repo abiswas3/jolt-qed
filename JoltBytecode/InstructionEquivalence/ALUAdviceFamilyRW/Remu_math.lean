@@ -8,7 +8,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Math content for `jolt_remu`
+# Math content for `remuProgram`
 
 REMU receives quotient advice, computes the remainder inline as
 `dividend - quotient * divisor`, and writes that remainder.  The guards

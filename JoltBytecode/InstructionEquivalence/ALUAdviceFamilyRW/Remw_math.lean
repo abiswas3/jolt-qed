@@ -8,7 +8,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Math content for `jolt_remw`
+# Math content for `remwProgram`
 
 REMW uses the same signed 32-bit advice guards as DIVW. The architectural
 writeback is the signed 32-bit remainder reconstructed from the advised

@@ -1,4 +1,3 @@
-import JoltBytecode.VirtualInstructions
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import Mathlib
 
@@ -13,7 +12,7 @@ noncomputable section
 # Pure BitVec/Int lemmas supporting the DIV proof
 
 Mathematical content that underpins the assertion-guard arguments in
-`jolt_div`'s completeness proof. Kept separate from `Div.lean` so that
+`divProgram_concrete`. Kept separate from `Div.lean` so that
 monadic/plumbing content and pure arithmetic content don't sit in the
 same file.
 
@@ -31,7 +30,7 @@ Contents:
 * **Four assertion-guard lemmas** — `hguard_div0_of_honest`,
   `hguard_overflow_of_honest`, `hguard_quotient_product_of_honest`,
   `hguard_rem_bound_of_honest` — showing that each assertion's guard
-  holds under honest advice. Consumed by `jolt_div_concrete` in
+  holds under honest advice. Consumed by `divProgram_concrete` in
   `Div.lean`.
 -/
 
@@ -230,7 +229,7 @@ theorem v3_eq_v5_of_honest
 -- ----------------------------------------------------------------------------
 -- Assertion-guard lemmas: each Jolt assertion's guard holds under honest advice
 -- ----------------------------------------------------------------------------
--- Each of the four lemmas below closes one of the asserts in `jolt_div`,
+-- Each of the four lemmas below closes one of the asserts in `divProgram`,
 -- showing that the guard condition follows purely from the fact that
 -- the oracle produced the advice Sail would produce. No trust is placed
 -- in the oracle beyond "it returned `sail_div_value` / `sail_rem_value`".
@@ -1133,7 +1132,7 @@ private theorem advice_unique_normal
     exact h_s_natAbs.symm
 
 /-- **Uniqueness.** If some advice `(q, rem)` makes all four assertion
-guards in `jolt_div` pass, then `(q, rem)` is exactly the honest pair
+guards in `divProgram` pass, then `(q, rem)` is exactly the honest pair
 `(sail_div_value …, bv_abs (sail_rem_value …))`.
 
 This is the pure-math content behind soundness: the conjunction of the

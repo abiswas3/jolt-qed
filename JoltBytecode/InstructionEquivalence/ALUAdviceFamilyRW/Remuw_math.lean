@@ -9,7 +9,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Math content for `jolt_remuw`
+# Math content for `remuwProgram`
 
 REMUW is REMU over the low 32-bit unsigned operands, followed by
 sign-extension of the low 32-bit remainder.

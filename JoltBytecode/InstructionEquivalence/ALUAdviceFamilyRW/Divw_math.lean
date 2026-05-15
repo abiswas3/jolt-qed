@@ -1,7 +1,6 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.InstructionEquivalence.ProofSupport
-import JoltBytecode.VirtualInstructions
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div_math
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divw_phase_helpers
@@ -14,7 +13,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Math content for `jolt_divw` (advice-verified DIVW)
+# Math content for `divwProgram` (advice-verified DIVW)
 
 The DIVW counterpart of `Div_math.lean`. Provides:
 
@@ -55,7 +54,7 @@ def sail_divw_value (rs1_bits rs2_bits : BitVec 64) (is_unsigned : Bool) : BitVe
   sign_extend (m := 64) (to_bits_truncate (l := 32) quotient)
 
 /-- 32-bit signed remainder corresponding to `sail_divw_value`. The
-remainder advice supplied to `jolt_divw` is `bv_abs (sail_remw_value …)`,
+remainder advice supplied to `divwProgram` is `bv_abs (sail_remw_value …)`,
 matching the `quotient × divisor + remainder = dividend` identity at
 32-bit width (sign-extended). -/
 def sail_remw_value (rs1_bits rs2_bits : BitVec 64) (is_unsigned : Bool) : BitVec 64 :=

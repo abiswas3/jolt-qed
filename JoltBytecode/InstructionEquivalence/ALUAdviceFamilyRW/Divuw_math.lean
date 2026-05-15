@@ -1,7 +1,6 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.InstructionEquivalence.ProofSupport
-import JoltBytecode.VirtualInstructions
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div_math
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divw_math
@@ -15,7 +14,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Math content for `jolt_divuw` (advice-verified DIVUW)
+# Math content for `divuwProgram` (advice-verified DIVUW)
 
 The DIVUW counterpart of `Div_math.lean` / `Divu_math.lean` /
 `Divw_math.lean`. Provides:
@@ -25,11 +24,11 @@ The DIVUW counterpart of `Div_math.lean` / `Divu_math.lean` /
   `sail_divw_value dividend divisor true` (the value Sail writes to
   `rd`).
 * Four **honest-advice guard lemmas** corresponding to the four
-  asserts in `jolt_divuw`'s inline sequence.
+  asserts in `divuwProgram`'s inline sequence.
 * The **writeback-value soundness lemma**
   `sext_advice_eq_sail_divw_value_of_guards_uw`.
 * The **sign-extension round-trip** lemma
-  `sext_advice_eq_sail_divw_value` — used by `jolt_divuw_concrete`'s
+  `sext_advice_eq_sail_divw_value` — used by `divuwProgram_concrete`'s
   writeback step to convert the post-state's `sext(q)` into
   `sail_divw_value`.
 -/
@@ -217,7 +216,7 @@ private theorem nat_quotient_unique_of_mul_le_and_sub_lt_uw
 -- ----------------------------------------------------------------------------
 
 /-- The honest advice round-trips through `sign_extend ∘ extractLsb 31 0`
-to give `sail_divw_value`. Used by `jolt_divuw_concrete`'s writeback
+to give `sail_divw_value`. Used by `divuwProgram_concrete`'s writeback
 step. -/
 theorem sext_advice_eq_sail_divw_value (dividend divisor : BitVec 64) :
     sign_extend (m := 64)
