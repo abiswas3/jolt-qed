@@ -157,5 +157,4 @@ theorem vreg_LD_run_of_dword_assumptions
     rw [haddr]
     exact aligned_dword_vmem_read_reduces addr js.sail hcfg hd
   simpa using
-    (vreg_LD_run_of_read vd vs1 0 js (loaded_dword_at js.sail addr) hread)
-
+    (vreg_LD_run_from_memory_read vd vs1 0 js (loaded_dword_at js.sail addr) hread)

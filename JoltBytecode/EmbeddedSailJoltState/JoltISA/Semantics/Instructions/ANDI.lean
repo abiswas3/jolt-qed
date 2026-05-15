@@ -16,7 +16,7 @@ namespace JoltISA
 
 /-- `ANDI` on virtual registers reads the virtual source, writes the masked
 value to the virtual destination, and leaves the Sail state unchanged. -/
-theorem execInstr_andi_vreg_vreg_run (vd vs : VReg) (imm : BitVec 12)
+theorem andi_run_vreg_vreg (vd vs : VReg) (imm : BitVec 12)
     (js : SailJoltState) :
     (execInstr (.ANDI (.vreg vd) (.vreg vs) imm)).run js =
       .ok RETIRE_SUCCESS
@@ -29,7 +29,7 @@ theorem execInstr_andi_vreg_vreg_run (vd vs : VReg) (imm : BitVec 12)
 
 /-- `ANDI` from a real source to a virtual destination masks the source value
 and leaves Sail unchanged. -/
-theorem execInstr_andi_xreg_vreg_run (vd : VReg) (rs : regidx) (imm : BitVec 12)
+theorem andi_run_vreg_xreg (vd : VReg) (rs : regidx) (imm : BitVec 12)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     (execInstr (.ANDI (.vreg vd) (.xreg rs) imm)).run js =

@@ -16,7 +16,7 @@ namespace JoltISA
 
 /-- `VirtualPow2` from a real source to a virtual destination writes
 `2 ^ rs[5:0]` to the scratch virtual register and leaves Sail unchanged. -/
-theorem execInstr_virtualPow2_xreg_vreg_run (vd : VReg) (rs : regidx)
+theorem virtual_pow2_run_vreg_xreg (vd : VReg) (rs : regidx)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     (execInstr (.VirtualPow2 (.vreg vd) (.xreg rs))).run js =

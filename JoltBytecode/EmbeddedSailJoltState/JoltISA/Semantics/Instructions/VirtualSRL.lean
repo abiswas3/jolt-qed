@@ -17,7 +17,7 @@ namespace JoltISA
 
 /-- `VirtualSRL` from a real value and a virtual bitmask to a real destination
 is the two-instruction `SRL` program's final write. -/
-theorem execInstr_virtualSRL_xreg_vreg_xreg_run (rd rs : regidx) (vbitmask : VReg)
+theorem virtual_srl_run_xreg_xreg_vreg (rd rs : regidx) (vbitmask : VReg)
     (js : SailJoltState) (x : BitVec 64) (s' : SailState)
     (h : rX_bits rs js.sail = .ok x js.sail)
     (hw : wX_bits rd (jolt_virtual_srl_value x (js.vregs vbitmask)) js.sail = .ok () s') :
@@ -29,7 +29,7 @@ theorem execInstr_virtualSRL_xreg_vreg_xreg_run (rd rs : regidx) (vbitmask : VRe
 
 /-- `VirtualSRL` from a real value and a virtual bitmask to a real destination,
 with the output state chosen by the instruction lemma. -/
-theorem execInstr_virtualSRL_xreg_vreg_xreg_run_of_read
+theorem exists_state_after_virtual_srl_run_xreg_xreg_vreg
     (rd rs : regidx) (vbitmask : VReg) (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     ∃ s',
@@ -37,11 +37,11 @@ theorem execInstr_virtualSRL_xreg_vreg_xreg_run_of_read
         .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } ∧
       wX_bits rd (jolt_virtual_srl_value x (js.vregs vbitmask)) js.sail = .ok () s' := by
   obtain ⟨s', hw⟩ := wX_shape rd (jolt_virtual_srl_value x (js.vregs vbitmask)) js.sail
-  exact ⟨s', execInstr_virtualSRL_xreg_vreg_xreg_run rd rs vbitmask js x s' h hw, hw⟩
+  exact ⟨s', virtual_srl_run_xreg_xreg_vreg rd rs vbitmask js x s' h hw, hw⟩
 
 /-- `VirtualSRL` can read both its value and its bitmask from virtual registers
 before writing the result to a real destination. -/
-theorem execInstr_virtualSRL_vreg_vreg_xreg_run (rd : regidx) (vvalue vbitmask : VReg)
+theorem virtual_srl_run_xreg_vreg_vreg (rd : regidx) (vvalue vbitmask : VReg)
     (js : SailJoltState) (s' : SailState)
     (hw : wX_bits rd (jolt_virtual_srl_value (js.vregs vvalue) (js.vregs vbitmask))
       js.sail = .ok () s') :
@@ -53,7 +53,7 @@ theorem execInstr_virtualSRL_vreg_vreg_xreg_run (rd : regidx) (vvalue vbitmask :
 
 /-- `VirtualSRL` from two virtual sources to a real destination, with the
 output state chosen by the instruction lemma. -/
-theorem execInstr_virtualSRL_vreg_vreg_xreg_run_of_vregs
+theorem exists_state_after_virtual_srl_run_xreg_vreg_vreg
     (rd : regidx) (vvalue vbitmask : VReg) (js : SailJoltState) :
     ∃ s',
       (execInstr (.VirtualSRL (.xreg rd) (.vreg vvalue) (.vreg vbitmask))).run js =
@@ -62,7 +62,7 @@ theorem execInstr_virtualSRL_vreg_vreg_xreg_run_of_vregs
         js.sail = .ok () s' := by
   obtain ⟨s', hw⟩ :=
     wX_shape rd (jolt_virtual_srl_value (js.vregs vvalue) (js.vregs vbitmask)) js.sail
-  exact ⟨s', execInstr_virtualSRL_vreg_vreg_xreg_run rd vvalue vbitmask js s' hw, hw⟩
+  exact ⟨s', virtual_srl_run_xreg_vreg_vreg rd vvalue vbitmask js s' hw, hw⟩
 
 end JoltISA
 

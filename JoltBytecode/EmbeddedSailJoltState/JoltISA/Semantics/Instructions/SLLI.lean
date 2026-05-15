@@ -15,7 +15,7 @@ noncomputable section
 namespace JoltISA
 
 /-- `SLLI` on virtual registers is a pure virtual-register update. -/
-theorem execInstr_slli_vreg_vreg_run (vd vs : VReg) (shamt : BitVec 6)
+theorem slli_run_vreg_vreg (vd vs : VReg) (shamt : BitVec 6)
     (js : SailJoltState) :
     (execInstr (.SLLI (.vreg vd) (.vreg vs) shamt)).run js =
       .ok RETIRE_SUCCESS
@@ -28,7 +28,7 @@ theorem execInstr_slli_vreg_vreg_run (vd vs : VReg) (shamt : BitVec 6)
 
 /-- `SLLI` from a real source to a virtual destination writes the shifted value
 to the scratch register and leaves Sail unchanged. -/
-theorem execInstr_slli_xreg_vreg_run (vd : VReg) (rs : regidx) (shamt : BitVec 6)
+theorem slli_run_vreg_xreg (vd : VReg) (rs : regidx) (shamt : BitVec 6)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     (execInstr (.SLLI (.vreg vd) (.xreg rs) shamt)).run js =

@@ -17,7 +17,7 @@ namespace JoltISA
 
 /-- `VirtualSRAI` from a real source to a real destination writes the arithmetic
 right shift selected by the encoded immediate bitmask. -/
-theorem execInstr_virtualSRAI_xreg_xreg_run (rd rs : regidx)
+theorem virtual_srai_run_xreg_xreg (rd rs : regidx)
     (bitmask : Nat) (js : SailJoltState) (x : BitVec 64) (s' : SailState)
     (h : rX_bits rs js.sail = .ok x js.sail)
     (hw : wX_bits rd (jolt_virtual_srai_value x bitmask) js.sail = .ok () s') :
@@ -28,7 +28,7 @@ theorem execInstr_virtualSRAI_xreg_xreg_run (rd rs : regidx)
 
 /-- `VirtualSRAI` from a real source to a real destination, with the output
 state chosen by the instruction lemma. -/
-theorem execInstr_virtualSRAI_xreg_xreg_run_of_read (rd rs : regidx)
+theorem exists_state_after_virtual_srai_run_xreg_xreg (rd rs : regidx)
     (bitmask : Nat) (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     ∃ s',
@@ -36,11 +36,11 @@ theorem execInstr_virtualSRAI_xreg_xreg_run_of_read (rd rs : regidx)
         .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } ∧
       wX_bits rd (jolt_virtual_srai_value x bitmask) js.sail = .ok () s' := by
   obtain ⟨s', hw⟩ := wX_shape rd (jolt_virtual_srai_value x bitmask) js.sail
-  exact ⟨s', execInstr_virtualSRAI_xreg_xreg_run rd rs bitmask js x s' h hw, hw⟩
+  exact ⟨s', virtual_srai_run_xreg_xreg rd rs bitmask js x s' h hw, hw⟩
 
 /-- `VirtualSRAI` can consume a value from a virtual register and write the
 arithmetic shift result to a real destination. -/
-theorem execInstr_virtualSRAI_vreg_xreg_run (rd : regidx) (vs : VReg)
+theorem virtual_srai_run_xreg_vreg (rd : regidx) (vs : VReg)
     (bitmask : Nat) (js : SailJoltState) (s' : SailState)
     (hw : wX_bits rd (jolt_virtual_srai_value (js.vregs vs) bitmask) js.sail = .ok () s') :
     (execInstr (.VirtualSRAI (.xreg rd) (.vreg vs) bitmask)).run js =
@@ -51,14 +51,14 @@ theorem execInstr_virtualSRAI_vreg_xreg_run (rd : regidx) (vs : VReg)
 
 /-- `VirtualSRAI` from a virtual source to a real destination, with the output
 state chosen by the instruction lemma. -/
-theorem execInstr_virtualSRAI_vreg_xreg_run_of_vreg (rd : regidx) (vs : VReg)
+theorem exists_state_after_virtual_srai_run_xreg_vreg (rd : regidx) (vs : VReg)
     (bitmask : Nat) (js : SailJoltState) :
     ∃ s',
       (execInstr (.VirtualSRAI (.xreg rd) (.vreg vs) bitmask)).run js =
         .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } ∧
       wX_bits rd (jolt_virtual_srai_value (js.vregs vs) bitmask) js.sail = .ok () s' := by
   obtain ⟨s', hw⟩ := wX_shape rd (jolt_virtual_srai_value (js.vregs vs) bitmask) js.sail
-  exact ⟨s', execInstr_virtualSRAI_vreg_xreg_run rd vs bitmask js s' hw, hw⟩
+  exact ⟨s', virtual_srai_run_xreg_vreg rd vs bitmask js s' hw, hw⟩
 
 end JoltISA
 

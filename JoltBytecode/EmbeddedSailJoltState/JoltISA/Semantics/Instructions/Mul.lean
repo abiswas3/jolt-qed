@@ -18,7 +18,7 @@ namespace JoltISA
 /-- `MUL` from a virtual source and a real source to a virtual destination reads
 the real source through Sail, writes the low product to the virtual destination,
 and leaves the Sail state unchanged when the real read is state-preserving. -/
-theorem execInstr_mul_vreg_xreg_vreg_run (vd lhs : VReg) (rhs : regidx)
+theorem mul_run_vreg_vreg_xreg (vd lhs : VReg) (rhs : regidx)
     (js : SailJoltState) (y : BitVec 64)
     (h : rX_bits rhs js.sail = .ok y js.sail) :
     (execInstr (.MUL (.vreg vd) (.vreg lhs) (.xreg rhs))).run js =
@@ -32,7 +32,7 @@ theorem execInstr_mul_vreg_xreg_vreg_run (vd lhs : VReg) (rhs : regidx)
 
 /-- `MUL` from a real source and a virtual source to a real destination
 consumes a scratch virtual register and writes the product through Sail. -/
-theorem execInstr_mul_xreg_xreg_vreg_run (rd rs1 : regidx) (vs2 : VReg)
+theorem mul_run_xreg_xreg_vreg (rd rs1 : regidx) (vs2 : VReg)
     (js : SailJoltState) (x : BitVec 64) (s' : SailState)
     (h : rX_bits rs1 js.sail = .ok x js.sail)
     (hw : wX_bits rd (x * js.vregs vs2) js.sail = .ok () s') :
@@ -44,7 +44,7 @@ theorem execInstr_mul_xreg_xreg_vreg_run (rd rs1 : regidx) (vs2 : VReg)
 
 /-- `MUL` from a real source and a virtual source to a real destination, with
 the output state chosen by the instruction lemma. -/
-theorem execInstr_mul_xreg_xreg_vreg_run_of_read (rd rs1 : regidx) (vs2 : VReg)
+theorem exists_state_after_mul_run_xreg_xreg_vreg (rd rs1 : regidx) (vs2 : VReg)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs1 js.sail = .ok x js.sail) :
     ∃ s',
@@ -52,11 +52,11 @@ theorem execInstr_mul_xreg_xreg_vreg_run_of_read (rd rs1 : regidx) (vs2 : VReg)
         .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } ∧
       wX_bits rd (x * js.vregs vs2) js.sail = .ok () s' := by
   obtain ⟨s', hw⟩ := wX_shape rd (x * js.vregs vs2) js.sail
-  exact ⟨s', execInstr_mul_xreg_xreg_vreg_run rd rs1 vs2 js x s' h hw, hw⟩
+  exact ⟨s', mul_run_xreg_xreg_vreg rd rs1 vs2 js x s' h hw, hw⟩
 
 /-- `MUL` from two real sources to a real destination reads both architectural
 sources and writes the low product through Sail. -/
-theorem execInstr_mul_xreg_xreg_xreg_run (rd rs1 rs2 : regidx)
+theorem mul_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
     (js : SailJoltState) (x y : BitVec 64) (s' : SailState)
     (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
     (h₂ : rX_bits rs2 js.sail = .ok y js.sail)
@@ -68,7 +68,7 @@ theorem execInstr_mul_xreg_xreg_xreg_run (rd rs1 rs2 : regidx)
 
 /-- `MUL` from two real sources to a real destination, with the output state
 chosen by the instruction lemma. -/
-theorem execInstr_mul_xreg_xreg_xreg_run_of_reads (rd rs1 rs2 : regidx)
+theorem exists_state_after_mul_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
     (js : SailJoltState) (x y : BitVec 64)
     (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
     (h₂ : rX_bits rs2 js.sail = .ok y js.sail) :
@@ -77,7 +77,7 @@ theorem execInstr_mul_xreg_xreg_xreg_run_of_reads (rd rs1 rs2 : regidx)
         .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } ∧
       wX_bits rd (x * y) js.sail = .ok () s' := by
   obtain ⟨s', hw⟩ := wX_shape rd (x * y) js.sail
-  exact ⟨s', execInstr_mul_xreg_xreg_xreg_run rd rs1 rs2 js x y s' h₁ h₂ hw, hw⟩
+  exact ⟨s', mul_run_xreg_xreg_xreg rd rs1 rs2 js x y s' h₁ h₂ hw, hw⟩
 
 end JoltISA
 

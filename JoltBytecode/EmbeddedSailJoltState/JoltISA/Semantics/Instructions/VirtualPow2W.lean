@@ -16,7 +16,7 @@ namespace JoltISA
 
 /-- `VirtualPow2W` is the word-sized power-of-two helper.  It writes
 `2 ^ rs[4:0]` to a virtual destination and leaves Sail unchanged. -/
-theorem execInstr_virtualPow2W_xreg_vreg_run (vd : VReg) (rs : regidx)
+theorem virtual_pow2w_run_vreg_xreg (vd : VReg) (rs : regidx)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     (execInstr (.VirtualPow2W (.vreg vd) (.xreg rs))).run js =

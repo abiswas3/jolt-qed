@@ -77,32 +77,43 @@ theorem sraiProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
         (shift_bits_right_arith v (Sail.BitVec.extractLsb shamt 5 0)) := by
   obtain ⟨v, hok⟩ := hwf rs1
 
-  -- Instruction 1: `VirtualSRAI rd, rs1, sraiBitmask shamt` writes `raw` to `rd`.
+  -- Instruction 1: `VirtualSRAI rd, rs1, sraiBitmask shamt` writes the shifted result to `rd`.
   let bitmask := JoltISA.sraiBitmask shamt
-  let raw := jolt_virtual_srai_value v bitmask
-  obtain ⟨s', hrun_VirtualSRAI, hw_raw⟩ :=
-    JoltISA.execInstr_virtualSRAI_xreg_xreg_run_of_read rd rs1 bitmask js v hok
-  let js' : SailJoltState := { sail := s', vregs := js.vregs }
-  have instr1_VirtualSRAI_writes_raw :
+  let shiftedResult := jolt_virtual_srai_value v bitmask
+  obtain ⟨s_afterSrai, h_virtual_srai_run, h_virtual_srai_write⟩ :=
+    JoltISA.exists_state_after_virtual_srai_run_xreg_xreg rd rs1 bitmask js v hok
+  let js' : SailJoltState := { sail := s_afterSrai, vregs := js.vregs }
+  have h_virtual_srai_succeeds :
       (JoltISA.execInstr (.VirtualSRAI (.xreg rd) (.xreg rs1) bitmask)).run js =
         .ok RETIRE_SUCCESS js' := by
-    simpa [js'] using hrun_VirtualSRAI
-  refine ⟨js', v, hok, ?_, ?_⟩
-  · unfold JoltISA.sraiProgram
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js' instr1_VirtualSRAI_writes_raw]
+    simpa only [js'] using h_virtual_srai_run
+
+  -- Math bridge: the immediate bitmask decodes to Sail SRAI.
+  have h_shifted_result_eq_sail :
+      shiftedResult = shift_bits_right_arith v (Sail.BitVec.extractLsb shamt 5 0) := by
+    simpa only [shiftedResult, bitmask, jolt_virtual_srai_value, sraiProgram_bitmask_eq] using
+      srai_bitmask_eq_arith_shift v shamt
+
+  have h_program_succeeds :
+      (JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js =
+        .ok RETIRE_SUCCESS js' := by
+    unfold JoltISA.sraiProgram
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js' h_virtual_srai_succeeds]
     rfl
-  · dsimp [js']
-    -- NOTE: Math theorem: `srai_bitmask_eq_arith_shift` decodes the immediate bitmask.
-    have math_raw_shift :
-        raw = shift_bits_right_arith v (Sail.BitVec.extractLsb shamt 5 0) := by
-      simpa [raw, bitmask, jolt_virtual_srai_value, sraiProgram_bitmask_eq] using
-        srai_bitmask_eq_arith_shift v shamt
-    have final_write_from_initial :
-        wX_bits rd (shift_bits_right_arith v (Sail.BitVec.extractLsb shamt 5 0))
-          js.sail = .ok () s' := by
-      rw [← math_raw_shift]
-      exact hw_raw
-    exact wX_bits_eq_stateAfterWrite rd _ js.sail s' final_write_from_initial
+
+  have h_sail_final :
+      js'.sail = stateAfterWrite js.sail rd
+        (shift_bits_right_arith v (Sail.BitVec.extractLsb shamt 5 0)) := by
+    calc
+      js'.sail = stateAfterWrite js.sail rd shiftedResult := by
+        simpa only [js'] using
+          wX_bits_eq_stateAfterWrite rd shiftedResult js.sail s_afterSrai
+            h_virtual_srai_write
+      _ = stateAfterWrite js.sail rd
+            (shift_bits_right_arith v (Sail.BitVec.extractLsb shamt 5 0)) := by
+        rw [h_shifted_result_eq_sail]
+
+  exact ⟨js', v, hok, h_program_succeeds, h_sail_final⟩
 
 /-- Main program-level equivalence for `SRAI`. -/
 theorem sraiProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)

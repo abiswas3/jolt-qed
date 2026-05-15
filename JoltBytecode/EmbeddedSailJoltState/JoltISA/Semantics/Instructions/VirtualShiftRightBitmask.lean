@@ -16,7 +16,7 @@ namespace JoltISA
 
 /-- `VirtualShiftRightBitmask` from a real source to a virtual destination
 materializes the bitmask consumed by `VirtualSRL` and `VirtualSRA`. -/
-theorem execInstr_virtualShiftRightBitmask_xreg_vreg_run (vd : VReg) (rs : regidx)
+theorem virtual_shift_right_bitmask_run_vreg_xreg (vd : VReg) (rs : regidx)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     (execInstr (.VirtualShiftRightBitmask (.vreg vd) (.xreg rs))).run js =
@@ -31,7 +31,7 @@ theorem execInstr_virtualShiftRightBitmask_xreg_vreg_run (vd : VReg) (rs : regid
 /-- `VirtualShiftRightBitmask` can also read the shift amount from a virtual
 register, which is how the word-shift expansions feed masked shift amounts
 into `VirtualSRL`/`VirtualSRA`. -/
-theorem execInstr_virtualShiftRightBitmask_vreg_vreg_run (vd vs : VReg)
+theorem virtual_shift_right_bitmask_run_vreg_vreg (vd vs : VReg)
     (js : SailJoltState) :
     (execInstr (.VirtualShiftRightBitmask (.vreg vd) (.vreg vs))).run js =
       .ok RETIRE_SUCCESS

@@ -55,36 +55,47 @@ theorem slliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
         (shift_bits_left v (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
   obtain ⟨v, hok⟩ := hwf rs1
 
-  -- Instruction 1: `VirtualMULI rd, rs1, 2^shamt` writes `raw` to `rd`.
-  let imm := BitVec.ofNat 64 (2 ^ shamt.toNat)
-  let raw := jolt_virtual_muli_value v imm
-  obtain ⟨s', hrun_VirtualMULI, hw_raw⟩ :=
-    JoltISA.execInstr_virtualMULI_xreg_xreg_run_of_read rd rs1 imm js v hok
-  let js' : SailJoltState := { sail := s', vregs := js.vregs }
-  have instr1_VirtualMULI_writes_raw :
-      (JoltISA.execInstr (.VirtualMULI (.xreg rd) (.xreg rs1) imm)).run js =
+  -- Instruction 1: `VirtualMULI rd, rs1, 2^shamt` writes the shifted result to `rd`.
+  let multiplier := BitVec.ofNat 64 (2 ^ shamt.toNat)
+  let shiftedResult := jolt_virtual_muli_value v multiplier
+  obtain ⟨s_afterMuli, h_virtual_muli_run, h_virtual_muli_write⟩ :=
+    JoltISA.exists_state_after_virtual_muli_run_xreg_xreg rd rs1 multiplier js v hok
+  let js' : SailJoltState := { sail := s_afterMuli, vregs := js.vregs }
+  have h_virtual_muli_succeeds :
+      (JoltISA.execInstr (.VirtualMULI (.xreg rd) (.xreg rs1) multiplier)).run js =
         .ok RETIRE_SUCCESS js' := by
-    simpa [js'] using hrun_VirtualMULI
-  refine ⟨js', v, hok, ?_, ?_⟩
-  · unfold JoltISA.slliProgram
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js' instr1_VirtualMULI_writes_raw]
+    simpa only [js'] using h_virtual_muli_run
+
+  -- Math bridge: multiplying by `2^shamt` is Sail SLLI.
+  have h_shifted_result_eq_sail :
+      shiftedResult =
+        shift_bits_left v
+          (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
+    dsimp only [shiftedResult, multiplier, jolt_virtual_muli_value]
+    rw [slli_mul_eq_shift]
+
+  have h_program_succeeds :
+      (JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js =
+        .ok RETIRE_SUCCESS js' := by
+    unfold JoltISA.slliProgram
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js' h_virtual_muli_succeeds]
     rfl
-  · dsimp [js']
-    -- NOTE: Math theorem: `slli_mul_eq_shift` matches pow2 multiplication with Sail SLLI.
-    have math_raw_shift :
-        raw =
-          shift_bits_left v
-            (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
-      dsimp [raw, imm, jolt_virtual_muli_value]
-      rw [slli_mul_eq_shift]
-    have final_write_from_initial :
-        wX_bits rd
-          (shift_bits_left v
-            (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0))
-          js.sail = .ok () s' := by
-      rw [← math_raw_shift]
-      exact hw_raw
-    exact wX_bits_eq_stateAfterWrite rd _ js.sail s' final_write_from_initial
+
+  have h_sail_final :
+      js'.sail = stateAfterWrite js.sail rd
+        (shift_bits_left v
+          (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
+    calc
+      js'.sail = stateAfterWrite js.sail rd shiftedResult := by
+        simpa only [js'] using
+          wX_bits_eq_stateAfterWrite rd shiftedResult js.sail s_afterMuli
+            h_virtual_muli_write
+      _ = stateAfterWrite js.sail rd
+            (shift_bits_left v
+              (Sail.BitVec.extractLsb shamt (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
+        rw [h_shifted_result_eq_sail]
+
+  exact ⟨js', v, hok, h_program_succeeds, h_sail_final⟩
 
 /-- Main program-level equivalence for `SLLI`. -/
 theorem slliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)

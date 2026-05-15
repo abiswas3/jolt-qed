@@ -17,7 +17,7 @@ namespace JoltISA
 
 /-- `SUB` from two real sources to a real destination reads both architectural
 sources and writes their difference through Sail. -/
-theorem execInstr_sub_xreg_xreg_xreg_run (rd rs1 rs2 : regidx)
+theorem sub_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
     (js : SailJoltState) (x y : BitVec 64) (s' : SailState)
     (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
     (h₂ : rX_bits rs2 js.sail = .ok y js.sail)
@@ -29,7 +29,7 @@ theorem execInstr_sub_xreg_xreg_xreg_run (rd rs1 rs2 : regidx)
 
 /-- `SUB` from two real sources to a real destination, with the output state
 chosen by the instruction lemma. -/
-theorem execInstr_sub_xreg_xreg_xreg_run_of_reads (rd rs1 rs2 : regidx)
+theorem exists_state_after_sub_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
     (js : SailJoltState) (x y : BitVec 64)
     (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
     (h₂ : rX_bits rs2 js.sail = .ok y js.sail) :
@@ -38,7 +38,7 @@ theorem execInstr_sub_xreg_xreg_xreg_run_of_reads (rd rs1 rs2 : regidx)
         .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } ∧
       wX_bits rd (x - y) js.sail = .ok () s' := by
   obtain ⟨s', hw⟩ := wX_shape rd (x - y) js.sail
-  exact ⟨s', execInstr_sub_xreg_xreg_xreg_run rd rs1 rs2 js x y s' h₁ h₂ hw, hw⟩
+  exact ⟨s', sub_run_xreg_xreg_xreg rd rs1 rs2 js x y s' h₁ h₂ hw, hw⟩
 
 end JoltISA
 

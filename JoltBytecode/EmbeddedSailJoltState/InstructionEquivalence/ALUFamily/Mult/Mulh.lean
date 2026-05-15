@@ -194,16 +194,16 @@ one instruction at a time.  The conclusion is intentionally phrased in terms of
 expansion, but it does not know the arithmetic fact that the expansion equals
 the RISC-V signed-high multiply.
 
-The named `js1` through `js7` states are lecture-note checkpoints.  Each one is
-the state immediately after one instruction in `JoltISA.mulhProgram` retires:
+The named states are lecture-note checkpoints.  Each one is the state
+immediately after one instruction in `JoltISA.mulhProgram` retires:
 
-* `js1`: `v0 = sign(rs1)`
-* `js2`: `v1 = sign(rs2)`
-* `js3`: `v0 = sign(rs1) * rs2`
-* `js4`: `v1 = sign(rs2) * rs1`
-* `js5`: `v2 = unsigned_high(rs1 * rs2)`
-* `js6`: `v2 = unsigned_high(rs1 * rs2) + sign(rs1) * rs2`
-* `js7`: `rd = v2 + sign(rs2) * rs1`
+* `js_afterRs1SignMask`: `v0 = sign(rs1)`
+* `js_afterRs2SignMask`: `v1 = sign(rs2)`
+* `js_afterRs1CorrectionMul`: `v0 = sign(rs1) * rs2`
+* `js_afterRs2CorrectionMul`: `v1 = sign(rs2) * rs1`
+* `js_afterMulhu`: `v2 = unsigned_high(rs1 * rs2)`
+* `js_afterAddRs1Correction`: `v2 = unsigned_high(rs1 * rs2) + sign(rs1) * rs2`
+* `js_afterFinalAdd`: `rd = v2 + sign(rs2) * rs1`
 
 Keeping these states explicit is verbose, but it makes the proof audit-friendly:
 every virtual register write can be compared directly with the Rust sequence. -/
@@ -218,116 +218,152 @@ theorem mulhProgram_eval_jolt_value (rs2 rs1 rd : regidx)
   -- Pure names for the values the Rust expansion computes.  These are not
   -- additional definitions in the trusted story; they are local proof names
   -- that keep later state updates readable.
-  let sx := jolt_movsign_value v1
-  let sy := jolt_movsign_value v2
-  let p0 := sx * v2
-  let p1 := sy * v1
-  let hi := jolt_mulhu_value v1 v2
-  let out := jolt_mulh_value v1 v2
+  let rs1SignMask := jolt_movsign_value v1
+  let rs2SignMask := jolt_movsign_value v2
+  let rs1CorrectionProduct := rs1SignMask * v2
+  let rs2CorrectionProduct := rs2SignMask * v1
+  let unsignedHighProduct := jolt_mulhu_value v1 v2
+  let mulhJoltResult := jolt_mulh_value v1 v2
 
   -- After `VirtualMovsign v0, rs1`.
-  let js1 : SailJoltState :=
+  let js_afterRs1SignMask : SailJoltState :=
     { sail := js.sail
-      vregs := fun r => if r = (0 : JoltISA.VReg) then sx else js.vregs r }
+      vregs := fun r => if r = (0 : JoltISA.VReg) then rs1SignMask else js.vregs r }
   -- After `VirtualMovsign v1, rs2`.
-  let js2 : SailJoltState :=
+  let js_afterRs2SignMask : SailJoltState :=
     { sail := js.sail
-      vregs := fun r => if r = (1 : JoltISA.VReg) then sy else js1.vregs r }
+      vregs := fun r =>
+        if r = (1 : JoltISA.VReg) then rs2SignMask else js_afterRs1SignMask.vregs r }
   -- After `MUL v0, v0, rs2`.
-  let js3 : SailJoltState :=
+  let js_afterRs1CorrectionMul : SailJoltState :=
     { sail := js.sail
-      vregs := fun r => if r = (0 : JoltISA.VReg) then p0 else js2.vregs r }
+      vregs := fun r =>
+        if r = (0 : JoltISA.VReg) then rs1CorrectionProduct
+        else js_afterRs2SignMask.vregs r }
   -- After `MUL v1, v1, rs1`.
-  let js4 : SailJoltState :=
+  let js_afterRs2CorrectionMul : SailJoltState :=
     { sail := js.sail
-      vregs := fun r => if r = (1 : JoltISA.VReg) then p1 else js3.vregs r }
+      vregs := fun r =>
+        if r = (1 : JoltISA.VReg) then rs2CorrectionProduct
+        else js_afterRs1CorrectionMul.vregs r }
   -- After `MULHU v2, rs1, rs2`.
-  let js5 : SailJoltState :=
+  let js_afterMulhu : SailJoltState :=
     { sail := js.sail
-      vregs := fun r => if r = (2 : JoltISA.VReg) then hi else js4.vregs r }
+      vregs := fun r =>
+        if r = (2 : JoltISA.VReg) then unsignedHighProduct
+        else js_afterRs2CorrectionMul.vregs r }
   -- After `ADD v2, v2, v0`.
-  let js6 : SailJoltState :=
+  let js_afterAddRs1Correction : SailJoltState :=
     { sail := js.sail
-      vregs := fun r => if r = (2 : JoltISA.VReg) then hi + p0 else js5.vregs r }
+      vregs := fun r =>
+        if r = (2 : JoltISA.VReg) then unsignedHighProduct + rs1CorrectionProduct
+        else js_afterMulhu.vregs r }
   -- The final architectural write goes through Sail's `wX_bits`, so we use the
-  -- standard shape lemma to name the resulting Sail state `sf`.
-  obtain ⟨sf, hw⟩ := wX_shape rd out js.sail
+  -- standard shape lemma to name the resulting Sail state.
+  obtain ⟨s_afterFinalAdd, h_final_add_write⟩ := wX_shape rd mulhJoltResult js.sail
   -- After `ADD rd, v2, v1`.
-  let js7 : SailJoltState := { sail := sf, vregs := js6.vregs }
+  let js_afterFinalAdd : SailJoltState :=
+    { sail := s_afterFinalAdd, vregs := js_afterAddRs1Correction.vregs }
 
   -- The intermediate Jolt states above never change `sail`, so architectural
   -- reads that succeeded initially still succeed from those states.
-  have h1_js4 : rX_bits rs1 js4.sail = .ok v1 js4.sail := by
-    simpa [js4, js3, js2, js1] using h1
-  have h2_js2 : rX_bits rs2 js2.sail = .ok v2 js2.sail := by
-    simpa [js2, js1] using h2
-  have h2_js4 : rX_bits rs2 js4.sail = .ok v2 js4.sail := by
-    simpa [js4, js3, js2, js1] using h2
-  have hstep1 :
+  have h_rs1_reads_v1_after_rs2_correction_mul :
+      rX_bits rs1 js_afterRs2CorrectionMul.sail =
+        .ok v1 js_afterRs2CorrectionMul.sail := by
+    simpa (config := { decide := true }) only [js_afterRs2CorrectionMul, js_afterRs1CorrectionMul, js_afterRs2SignMask,
+      js_afterRs1SignMask] using h1
+  have h_rs2_reads_v2_after_rs2_sign_mask :
+      rX_bits rs2 js_afterRs2SignMask.sail = .ok v2 js_afterRs2SignMask.sail := by
+    simpa (config := { decide := true }) only [js_afterRs2SignMask, js_afterRs1SignMask] using h2
+  have h_rs2_reads_v2_after_rs2_correction_mul :
+      rX_bits rs2 js_afterRs2CorrectionMul.sail =
+        .ok v2 js_afterRs2CorrectionMul.sail := by
+    simpa (config := { decide := true }) only [js_afterRs2CorrectionMul, js_afterRs1CorrectionMul, js_afterRs2SignMask,
+      js_afterRs1SignMask] using h2
+  have h_rs1_sign_mask_succeeds :
       JoltISA.execInstr (.VirtualMovsign (.vreg (0 : JoltISA.VReg)) (.xreg rs1)) js =
-        .ok RETIRE_SUCCESS js1 := by
-    simpa [js1, sx] using
-      (JoltISA.execInstr_movsign_xreg_vreg_run (vd := (0 : JoltISA.VReg)) (rs := rs1) js v1 h1)
-  have hstep2 :
-      JoltISA.execInstr (.VirtualMovsign (.vreg (1 : JoltISA.VReg)) (.xreg rs2)) js1 =
-        .ok RETIRE_SUCCESS js2 := by
-    simpa [js2, sy] using
-      (JoltISA.execInstr_movsign_xreg_vreg_run (vd := (1 : JoltISA.VReg)) (rs := rs2) js1 v2
-        (by simpa [js1] using h2))
-  have hstep3 :
-      JoltISA.execInstr (.MUL (.vreg (0 : JoltISA.VReg)) (.vreg (0 : JoltISA.VReg)) (.xreg rs2)) js2 =
-        .ok RETIRE_SUCCESS js3 := by
-    simpa [js3, p0, sx, js2] using
-      (JoltISA.execInstr_mul_vreg_xreg_vreg_run (vd := (0 : JoltISA.VReg)) (lhs := (0 : JoltISA.VReg))
-        (rhs := rs2) js2 v2 h2_js2)
-  have hstep4 :
-      JoltISA.execInstr (.MUL (.vreg (1 : JoltISA.VReg)) (.vreg (1 : JoltISA.VReg)) (.xreg rs1)) js3 =
-        .ok RETIRE_SUCCESS js4 := by
-    simpa [js4, p1, sy, js3, js2, js1] using
-      (JoltISA.execInstr_mul_vreg_xreg_vreg_run (vd := (1 : JoltISA.VReg)) (lhs := (1 : JoltISA.VReg))
-        (rhs := rs1) js3 v1 (by simpa [js3, js2, js1] using h1))
-  have hstep5 :
-      JoltISA.execInstr (.MULHU (.vreg (2 : JoltISA.VReg)) (.xreg rs1) (.xreg rs2)) js4 =
-        .ok RETIRE_SUCCESS js5 := by
-    simpa [js5, hi] using
-      (JoltISA.execInstr_mulhu_xreg_xreg_vreg_run (vd := (2 : JoltISA.VReg)) (lhs := rs1)
-        (rhs := rs2) js4 v1 v2 h1_js4 h2_js4)
-  have hstep6 :
-      JoltISA.execInstr (.ADD (.vreg (2 : JoltISA.VReg)) (.vreg (2 : JoltISA.VReg)) (.vreg (0 : JoltISA.VReg))) js5 =
-        .ok RETIRE_SUCCESS js6 := by
-    simpa [js6, js5, js4, js3, js2, js1, hi, p0] using
-      (JoltISA.execInstr_add_vreg_vreg_vreg_run (vd := (2 : JoltISA.VReg)) (lhs := (2 : JoltISA.VReg))
-        (rhs := (0 : JoltISA.VReg)) js5)
-  have hw_js6 : wX_bits rd (js6.vregs (2 : JoltISA.VReg) + js6.vregs (1 : JoltISA.VReg)) js6.sail =
-      .ok () sf := by
-    simpa [js6, js5, js4, js3, js2, js1, out, hi, p0, p1] using hw
-  have hstep7 :
-      JoltISA.execInstr (.ADD (.xreg rd) (.vreg (2 : JoltISA.VReg)) (.vreg (1 : JoltISA.VReg))) js6 =
-        .ok RETIRE_SUCCESS js7 := by
-    simpa [js7] using
-      (JoltISA.execInstr_add_vreg_vreg_xreg_run (rd := rd) (lhs := (2 : JoltISA.VReg))
-        (rhs := (1 : JoltISA.VReg)) js6 sf hw_js6)
-  refine ⟨js7, ?_, ?_⟩
+        .ok RETIRE_SUCCESS js_afterRs1SignMask := by
+    simpa (config := { decide := true }) only [js_afterRs1SignMask, rs1SignMask] using
+      (JoltISA.movsign_run_vreg_xreg (vd := (0 : JoltISA.VReg)) (rs := rs1) js v1 h1)
+  have h_rs2_sign_mask_succeeds :
+      JoltISA.execInstr (.VirtualMovsign (.vreg (1 : JoltISA.VReg)) (.xreg rs2))
+        js_afterRs1SignMask =
+        .ok RETIRE_SUCCESS js_afterRs2SignMask := by
+    simpa (config := { decide := true }) only [js_afterRs2SignMask, rs2SignMask] using
+      (JoltISA.movsign_run_vreg_xreg (vd := (1 : JoltISA.VReg)) (rs := rs2)
+        js_afterRs1SignMask v2 (by simpa (config := { decide := true }) only [js_afterRs1SignMask] using h2))
+  have h_rs1_correction_mul_succeeds :
+      JoltISA.execInstr (.MUL (.vreg (0 : JoltISA.VReg)) (.vreg (0 : JoltISA.VReg))
+        (.xreg rs2)) js_afterRs2SignMask =
+        .ok RETIRE_SUCCESS js_afterRs1CorrectionMul := by
+    simpa (config := { decide := true }) only [js_afterRs1CorrectionMul, rs1CorrectionProduct, rs1SignMask,
+      js_afterRs2SignMask] using
+      (JoltISA.mul_run_vreg_vreg_xreg (vd := (0 : JoltISA.VReg)) (lhs := (0 : JoltISA.VReg))
+        (rhs := rs2) js_afterRs2SignMask v2 h_rs2_reads_v2_after_rs2_sign_mask)
+  have h_rs2_correction_mul_succeeds :
+      JoltISA.execInstr (.MUL (.vreg (1 : JoltISA.VReg)) (.vreg (1 : JoltISA.VReg))
+        (.xreg rs1)) js_afterRs1CorrectionMul =
+        .ok RETIRE_SUCCESS js_afterRs2CorrectionMul := by
+    simpa (config := { decide := true }) only [js_afterRs2CorrectionMul, rs2CorrectionProduct, rs2SignMask,
+      js_afterRs1CorrectionMul, js_afterRs2SignMask, js_afterRs1SignMask] using
+      (JoltISA.mul_run_vreg_vreg_xreg (vd := (1 : JoltISA.VReg)) (lhs := (1 : JoltISA.VReg))
+        (rhs := rs1) js_afterRs1CorrectionMul v1
+        (by simpa (config := { decide := true }) only [js_afterRs1CorrectionMul, js_afterRs2SignMask, js_afterRs1SignMask] using h1))
+  have h_mulhu_succeeds :
+      JoltISA.execInstr (.MULHU (.vreg (2 : JoltISA.VReg)) (.xreg rs1) (.xreg rs2))
+        js_afterRs2CorrectionMul =
+        .ok RETIRE_SUCCESS js_afterMulhu := by
+    simpa (config := { decide := true }) only [js_afterMulhu, unsignedHighProduct] using
+      (JoltISA.mulhu_run_vreg_xreg_xreg (vd := (2 : JoltISA.VReg)) (lhs := rs1)
+        (rhs := rs2) js_afterRs2CorrectionMul v1 v2
+        h_rs1_reads_v1_after_rs2_correction_mul h_rs2_reads_v2_after_rs2_correction_mul)
+  have h_add_rs1_correction_succeeds :
+      JoltISA.execInstr (.ADD (.vreg (2 : JoltISA.VReg)) (.vreg (2 : JoltISA.VReg))
+        (.vreg (0 : JoltISA.VReg))) js_afterMulhu =
+        .ok RETIRE_SUCCESS js_afterAddRs1Correction := by
+    simpa (config := { decide := true }) only [js_afterAddRs1Correction, js_afterMulhu, js_afterRs2CorrectionMul,
+      js_afterRs1CorrectionMul, js_afterRs2SignMask, js_afterRs1SignMask,
+      unsignedHighProduct, rs1CorrectionProduct] using
+      (JoltISA.add_run_vreg_vreg_vreg (vd := (2 : JoltISA.VReg)) (lhs := (2 : JoltISA.VReg))
+        (rhs := (0 : JoltISA.VReg)) js_afterMulhu)
+  have h_final_add_write_input :
+      wX_bits rd
+        (js_afterAddRs1Correction.vregs (2 : JoltISA.VReg) +
+          js_afterAddRs1Correction.vregs (1 : JoltISA.VReg))
+        js_afterAddRs1Correction.sail = .ok () s_afterFinalAdd := by
+    simpa (config := { decide := true }) only [js_afterAddRs1Correction, js_afterMulhu, js_afterRs2CorrectionMul,
+      js_afterRs1CorrectionMul, js_afterRs2SignMask, js_afterRs1SignMask,
+      mulhJoltResult, unsignedHighProduct, rs1CorrectionProduct, rs2CorrectionProduct] using
+      h_final_add_write
+  have h_final_add_succeeds :
+      JoltISA.execInstr (.ADD (.xreg rd) (.vreg (2 : JoltISA.VReg)) (.vreg (1 : JoltISA.VReg)))
+        js_afterAddRs1Correction =
+        .ok RETIRE_SUCCESS js_afterFinalAdd := by
+    simpa (config := { decide := true }) only [js_afterFinalAdd] using
+      (JoltISA.add_run_xreg_vreg_vreg (rd := rd) (lhs := (2 : JoltISA.VReg))
+        (rhs := (1 : JoltISA.VReg)) js_afterAddRs1Correction s_afterFinalAdd
+        h_final_add_write_input)
+  refine ⟨js_afterFinalAdd, ?_, ?_⟩
   · simp only [JoltISA.mulhProgram, JoltISA.execProgram_instr, EStateM.run,
       bind, EStateM.bind]
-    rw [hstep1]
+    rw [h_rs1_sign_mask_succeeds]
     simp only [RETIRE_SUCCESS, EStateM.bind]
-    rw [hstep2]
+    rw [h_rs2_sign_mask_succeeds]
     simp only [RETIRE_SUCCESS, EStateM.bind]
-    rw [hstep3]
+    rw [h_rs1_correction_mul_succeeds]
     simp only [RETIRE_SUCCESS, EStateM.bind]
-    rw [hstep4]
+    rw [h_rs2_correction_mul_succeeds]
     simp only [RETIRE_SUCCESS, EStateM.bind]
-    rw [hstep5]
+    rw [h_mulhu_succeeds]
     simp only [RETIRE_SUCCESS, EStateM.bind]
-    rw [hstep6]
+    rw [h_add_rs1_correction_succeeds]
     simp only [RETIRE_SUCCESS, EStateM.bind]
-    rw [hstep7]
-    simp [JoltISA.execProgram, RETIRE_SUCCESS, pure, EStateM.pure, js7]
+    rw [h_final_add_succeeds]
+    simp [JoltISA.execProgram, RETIRE_SUCCESS, pure, EStateM.pure, js_afterFinalAdd]
   -- The program has retired.  The last obligation is just to identify the Sail
   -- state produced by `wX_bits` with `stateAfterWrite` at the pure Jolt value.
-  change sf = stateAfterWrite js.sail rd (jolt_mulh_value v1 v2)
-  rw [wX_bits_eq_stateAfterWrite rd out js.sail sf hw]
+  change s_afterFinalAdd = stateAfterWrite js.sail rd (jolt_mulh_value v1 v2)
+  rw [wX_bits_eq_stateAfterWrite rd mulhJoltResult js.sail s_afterFinalAdd h_final_add_write]
 
 /-- Combine the Jolt-value evaluation theorem with the arithmetic correction
 lemma.  This is the theorem shape expected by the generic R-type equivalence
@@ -345,7 +381,7 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx)
   obtain ⟨v2, h2⟩ := hwf rs2
   obtain ⟨jsf, hrun, hsail⟩ := mulhProgram_eval_jolt_value rs2 rs1 rd js v1 v2 h1 h2
   refine ⟨jsf, v1, v2, h1, h2, hrun, ?_⟩
-  simpa [mulh_correction_eq_mulhs] using hsail
+  simpa only [mulh_correction_eq_mulhs] using hsail
 
 /-- Main program-level theorem: interpreting the Jolt ISA `MULH` expansion has
 the same projected architectural result as Sail's `MULH` semantics. -/

@@ -261,7 +261,7 @@ theorem vreg_AND_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
 -- hcfg and the pipeline-reduces lemma — clients must rewrite manually.
 -- Statement relies on `vmem_read_addr_dword_reduces` defined in Lb.lean
 -- (or wherever the pipeline collapse lives).
-theorem vreg_LD_run_of_read (vd vs1 : BitVec 7) (imm : BitVec 12)
+theorem vreg_LD_run_from_memory_read (vd vs1 : BitVec 7) (imm : BitVec 12)
     (js : SailJoltState) (value : BitVec 64)
     (h :
       vmem_read_addr (Virtaddr (js.vregs vs1 + sign_extend (m := 64) imm)) 0 8 (Load Data) false false false js.sail =

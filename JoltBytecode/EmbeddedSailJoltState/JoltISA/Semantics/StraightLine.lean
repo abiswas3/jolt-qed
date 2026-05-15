@@ -37,7 +37,7 @@ namespace JoltISA
 /-- `VirtualMovsign` from a real register to a virtual register reads the real source,
 writes the sign mask to the virtual destination, and leaves the Sail state
 unchanged. -/
-theorem execInstr_movsign_xreg_vreg_run (vd : VReg) (rs : regidx)
+theorem movsign_run_vreg_xreg (vd : VReg) (rs : regidx)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     (execInstr (.VirtualMovsign (.vreg vd) (.xreg rs))).run js =
@@ -176,7 +176,7 @@ theorem execInstr_srai_vreg_xreg_run (rd : regidx) (vs : VReg)
 /-- Successful `LD`: if Sail's dword read pipeline returns `value`, then the
 Jolt-ISA `LD` writes that dword to the destination virtual register and
 continues with `RETIRE_SUCCESS`. -/
-theorem execInstr_ld_vreg_run_of_read (vd base : VReg) (imm : BitVec 12)
+theorem ld_run_vreg_vreg_from_memory_read (vd base : VReg) (imm : BitVec 12)
     (js : SailJoltState) (value : BitVec 64)
     (h :
       vmem_read_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 0 8
@@ -271,7 +271,7 @@ theorem execInstr_sd_vreg_run_of_write (base value : VReg) (imm : BitVec 12)
 /-- `MULHU` from two real sources to a virtual destination reads both real
 sources, writes the unsigned high product, and leaves the Sail state unchanged
 when both reads are state-preserving. -/
-theorem execInstr_mulhu_xreg_xreg_vreg_run (vd : VReg) (lhs rhs : regidx)
+theorem mulhu_run_vreg_xreg_xreg (vd : VReg) (lhs rhs : regidx)
     (js : SailJoltState) (x y : BitVec 64)
     (h₁ : rX_bits lhs js.sail = .ok x js.sail)
     (h₂ : rX_bits rhs js.sail = .ok y js.sail) :
@@ -285,7 +285,7 @@ theorem execInstr_mulhu_xreg_xreg_vreg_run (vd : VReg) (lhs rhs : regidx)
 
 /-- `MULHU` from a virtual source and a real source to a virtual destination
 reads the real source through Sail and writes the unsigned high product. -/
-theorem execInstr_mulhu_vreg_xreg_vreg_run (vd lhs : VReg) (rhs : regidx)
+theorem mulhu_run_vreg_vreg_xreg (vd lhs : VReg) (rhs : regidx)
     (js : SailJoltState) (y : BitVec 64)
     (h : rX_bits rhs js.sail = .ok y js.sail) :
     (execInstr (.MULHU (.vreg vd) (.vreg lhs) (.xreg rhs))).run js =
@@ -299,7 +299,7 @@ theorem execInstr_mulhu_vreg_xreg_vreg_run (vd lhs : VReg) (rhs : regidx)
 
 /-- `XOR` from a real source and a virtual source to a virtual destination reads
 the real source through Sail and writes the xor result. -/
-theorem execInstr_xor_xreg_vreg_vreg_run (vd : VReg) (lhs : regidx) (rhs : VReg)
+theorem xor_run_vreg_xreg_vreg (vd : VReg) (lhs : regidx) (rhs : VReg)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits lhs js.sail = .ok x js.sail) :
     (execInstr (.XOR (.vreg vd) (.xreg lhs) (.vreg rhs))).run js =
@@ -313,7 +313,7 @@ theorem execInstr_xor_xreg_vreg_vreg_run (vd : VReg) (lhs : regidx) (rhs : VReg)
 
 /-- `XOR` on virtual sources and a virtual destination reads both virtual
 sources, writes their xor, and leaves the Sail state unchanged. -/
-theorem execInstr_xor_vreg_vreg_vreg_run (vd lhs rhs : VReg)
+theorem xor_run_vreg_vreg_vreg (vd lhs rhs : VReg)
     (js : SailJoltState) :
     (execInstr (.XOR (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
       .ok RETIRE_SUCCESS
@@ -326,7 +326,7 @@ theorem execInstr_xor_vreg_vreg_vreg_run (vd lhs rhs : VReg)
 
 /-- `SLTU` on virtual sources and a virtual destination reads both virtual
 sources and writes the unsigned less-than flag. -/
-theorem execInstr_sltu_vreg_vreg_vreg_run (vd lhs rhs : VReg)
+theorem sltu_run_vreg_vreg_vreg (vd lhs rhs : VReg)
     (js : SailJoltState) :
     (execInstr (.SLTU (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
       .ok RETIRE_SUCCESS

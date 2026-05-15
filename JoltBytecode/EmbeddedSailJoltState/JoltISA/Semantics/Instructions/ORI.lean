@@ -16,7 +16,7 @@ namespace JoltISA
 
 /-- `ORI` from a real source to a virtual destination sets the immediate bits
 in the source value and leaves Sail unchanged. -/
-theorem execInstr_ori_xreg_vreg_run (vd : VReg) (rs : regidx) (imm : BitVec 12)
+theorem ori_run_vreg_xreg (vd : VReg) (rs : regidx) (imm : BitVec 12)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     (execInstr (.ORI (.vreg vd) (.xreg rs) imm)).run js =

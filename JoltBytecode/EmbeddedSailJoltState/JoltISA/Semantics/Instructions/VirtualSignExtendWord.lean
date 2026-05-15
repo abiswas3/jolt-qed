@@ -17,7 +17,7 @@ namespace JoltISA
 
 /-- `VirtualSignExtendWord` from a real source to a real destination reads the
 source and writes `sext(source[31:0])`. -/
-theorem execInstr_sextw_xreg_xreg_run (rd rs : regidx)
+theorem virtual_sign_extend_word_run_xreg_xreg (rd rs : regidx)
     (js : SailJoltState) (x : BitVec 64) (s' : SailState)
     (hr : rX_bits rs js.sail = .ok x js.sail)
     (hw : wX_bits rd (sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0)) js.sail =
@@ -29,7 +29,7 @@ theorem execInstr_sextw_xreg_xreg_run (rd rs : regidx)
 
 /-- `VirtualSignExtendWord` from a real source to a real destination, with the
 output state chosen by the instruction lemma. -/
-theorem execInstr_sextw_xreg_xreg_run_of_read (rd rs : regidx)
+theorem exists_state_after_virtual_sign_extend_word_run_xreg_xreg (rd rs : regidx)
     (js : SailJoltState) (x : BitVec 64)
     (hr : rX_bits rs js.sail = .ok x js.sail) :
     ∃ s',
@@ -39,11 +39,11 @@ theorem execInstr_sextw_xreg_xreg_run_of_read (rd rs : regidx)
         .ok () s' := by
   obtain ⟨s', hw⟩ :=
     wX_shape rd (sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0)) js.sail
-  exact ⟨s', execInstr_sextw_xreg_xreg_run rd rs js x s' hr hw, hw⟩
+  exact ⟨s', virtual_sign_extend_word_run_xreg_xreg rd rs js x s' hr hw, hw⟩
 
 /-- `VirtualSignExtendWord` from a real source to a virtual destination computes
 the word-sign-extended scratch value used by word operations. -/
-theorem execInstr_sextw_xreg_vreg_run (vd : VReg) (rs : regidx)
+theorem virtual_sign_extend_word_run_vreg_xreg (vd : VReg) (rs : regidx)
     (js : SailJoltState) (x : BitVec 64)
     (h : rX_bits rs js.sail = .ok x js.sail) :
     (execInstr (.VirtualSignExtendWord (.vreg vd) (.xreg rs))).run js =
