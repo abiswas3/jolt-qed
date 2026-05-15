@@ -83,7 +83,7 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| ADVICE | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`VirtualInstructions.lean#L456`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/VirtualInstructions.lean#L456) |
+| ADVICE | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`JoltISA/Semantics/Instructions/VirtualAdvice.lean#L18`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/JoltISA/Semantics/Instructions/VirtualAdvice.lean#L18) |
 | ADVICELB | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`AdviceFamily/Advicelb.lean#L47`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AdviceFamily/Advicelb.lean#L47) |
 | ADVICELH | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`AdviceFamily/Advicelh.lean#L47`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AdviceFamily/Advicelh.lean#L47) |
 | ADVICELW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`AdviceFamily/Advicelw.lean#L47`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AdviceFamily/Advicelw.lean#L47) |
@@ -95,12 +95,12 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| LB | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LB_main.lean#L166`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LB_main.lean#L166) |
-| LBU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LBU_main.lean#L180`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LBU_main.lean#L180) |
-| LH | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LH_main.lean#L315`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LH_main.lean#L315) |
-| LHU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LHU_main.lean#L270`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LHU_main.lean#L270) |
-| LW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LW_main.lean#L355`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LW_main.lean#L355) |
-| LWU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LWU_main.lean#L268`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LWU_main.lean#L268) |
+| LB | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LB_main.lean#L168`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LB_main.lean#L168) |
+| LBU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LBU_main.lean#L181`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LBU_main.lean#L181) |
+| LH | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LH_main.lean#L293`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LH_main.lean#L293) |
+| LHU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LHU_main.lean#L272`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LHU_main.lean#L272) |
+| LW | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LW_main.lean#L566`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LW_main.lean#L566) |
+| LWU | ![closed](https://img.shields.io/badge/closed-brightgreen) | [`LoadFamily/LWU_main.lean#L282`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadFamily/LWU_main.lean#L282) |
 
 ## Load-reserved
 

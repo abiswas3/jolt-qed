@@ -38,6 +38,12 @@ For example, the `ADDW` proof is organized around the state after the `ADD`, the
 
 This naming and structure is now intended to be the baseline for future ALU bytecode-expansion proofs: names should describe the instruction boundary or value being established, not the mechanics of the tactic script.
 
+## Current proof surface
+
+As of 2026-05-15, the active bytecode-expansion proofs should use the structured `JoltISA.Program` surface where the expansion is a first-class program. Old proof-only do-chain wrappers and compatibility files should not be reintroduced as public theorem fronts. Load proofs now use `LoadFamily/*_main.lean` plus reusable program blocks; the old decomposed load files and `VirtualInstructions.lean` have been removed.
+
+Advice-load proofs are included in the root build through `AdviceFamily/Advicelb.lean`, `Adviceld.lean`, `Advicelh.lean`, and `Advicelw.lean`, all sharing helper lemmas from `AdviceFamily/Advice.lean`.
+
 ## Pages
 
 - [Status](status.md) — per-instruction snapshot: closed, in progress, todo.

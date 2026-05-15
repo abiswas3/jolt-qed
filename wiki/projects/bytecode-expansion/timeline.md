@@ -31,6 +31,9 @@ Goal: close every red-risk item that doesn't depend on a structural rewrite, and
 + [x] Close the load family in the new program-block proof style.
   ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) The load proofs now use the three-part reduction pattern: Jolt program blocks, Sail-side reduction, and a pure memory/bitvector bridge. This became the template used for the store-family rewrite.
 
++ [x] Remove stale load/advice compatibility surfaces from the root build.
+  ![Closed](https://img.shields.io/badge/closed-2026--05--15-brightgreen) The load family now exposes only the `JoltISA.*Program` theorem surface in the active files. The old `LoadFamily/*_decomposed.lean` files, `JoltISA/Semantics/Compatibility.lean`, and `VirtualInstructions.lean` were removed; load-alignment run lemmas now live with instruction semantics, and the advice-load proofs are imported through `AdviceFamily/Advice.lean`.
+
 + [x] Move the main non-advice ALU theorem fronts onto the new `JoltISA` program architecture.
   ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) The I-type shift, R-type shift, I-type word, and R-type word families now have passing theorem statements in the newer style. The older advice-ALU monadic files remain useful history, but they are stale as the main proof architecture.
 
