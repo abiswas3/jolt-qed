@@ -55,26 +55,95 @@ For Jolt/Sail equivalence proofs, separate semantic content from plumbing:
   normalize the monadic computation;
 - if the same `wX_shape` / `stateAfterWrite` bridge appears repeatedly, consider a helper lemma.
 
-For ALUFamily proof cleanup, treat
-`JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Mulw.lean`
-as the current gold-standard proof shape. When closing the remaining ALUFamily files one by one,
-preserve that structure unless the instruction genuinely needs extra facts:
+## ALUFamily Proof Standard
+
+As of 2026-05-15, the cleaned `ALUFamily` proofs use
+`JoltBytecode/InstructionEquivalence/ALUFamily/Rtype/Mulw.lean` as the
+gold-standard shape. Preserve that structure unless the instruction genuinely
+needs extra arithmetic facts.
+
+Current layout:
+
+- the old `EmbeddedSailJoltState` directory has been flattened into
+  `JoltBytecode`;
+- `ALUFamily/Rtype/W`, `ALUFamily/Rtype/Shift`, `ALUFamily/Itype/W`, and
+  `ALUFamily/Itype/Shift` have been flattened into `ALUFamily/Rtype` and
+  `ALUFamily/Itype`;
+- do not recreate `ALUFamily/*/Family.lean`;
+- do not recreate `ALUFamily/Bridges`; bridge lemmas live in the instruction
+  file that uses them.
+
+Each instruction file should read in this order:
+
+1. imports for the local instruction semantics and expansion definitions;
+2. `abbrev <instr>_sail_operation ...` for the Sail value;
+3. `abbrev <instr>_jolt_val ...` for the final Jolt value, when the expansion
+   has a nontrivial value chain;
+4. local arithmetic/bitvector bridge lemmas, ending in a named value theorem;
+5. Sail factoring theorem, if the top-level equivalence uses one;
+6. concrete program theorem;
+7. top-level `...Program_eq_sail` theorem.
+
+Concrete theorem shape:
 
 - obtain source-register values once from `WellFormed`;
-- place each local value definition immediately before the instruction block that uses it;
-- each instruction block should say: what it reads, what value/state it writes, and that it
-  succeeds;
-- instruction helper outputs should be named by role, for example `h_mul_reads_rs1`,
-  `h_mul_writes_product`, and `h_mul_succeeds`, rather than opaque names like `hrun`,
-  `hw`, or `s_raw`;
-- program success should be an explicit straight-line chain of
+- place each local value definition immediately before the instruction block
+  that uses it;
+- each instruction block states exactly what the instruction reads, what value
+  or state it writes, and that it succeeds;
+- instruction helper outputs must be named by semantic role, for example
+  `js_afterMul`, `h_mul_reads_rs1`, `h_mul_writes_product`,
+  `h_mul_succeeds`; avoid opaque names like `hrun`, `hw`, `s_raw`,
+  `hread_add`, or `_of_read`;
+- do not put nested local `by` blocks inside instruction plumbing if a helper
+  lemma can expose the read/write/success facts directly;
+- if proof plumbing starts to grow, move it into an instruction-local helper
+  under `JoltISA/Semantics/Instructions/<Instruction>.lean`, not into the
+  concrete theorem.
+
+Program success:
+
+- keep the emitted instruction sequence visible;
+- prove program success with an explicit straight-line chain of
   `JoltISA.execProgram_instr_run_retire` rewrites;
-- after the instruction trace, name the final Jolt value/state fact separately;
-- name the pure value bridge separately, prove it with `simp only [...]` plus `exact` when the
-  user is asking for explicit proof scripts, and make the comment about values, not state;
-- once the value bridge is established, the remaining final-state proof should be mechanical;
-- the top-level equivalence theorem may be proved directly from the concrete theorem and Sail
-  factoring theorem when that reads better than calling a generic closer.
+- do not hide two-instruction programs and longer programs behind different
+  patterns; they should both look like the same straight-line proof shape.
+
+Value/state close:
+
+- after the instruction trace, name the fact that the final checkpoint contains
+  the final Jolt value, for example `h_final_jolt_value`;
+- name the pure value bridge separately, for example `h_mulw_value`;
+- comments must describe values, not state, around the value bridge;
+- when explicit proof style is requested, prove definitional cleanup by
+  `simp only [...]` followed by `exact ...`, rather than plain `simpa`;
+- after the value bridge, the final-state proof should be mechanical: rewrite
+  the goal to the Jolt value and exact the named final-state fact;
+- use `calc` only when it improves readability. For same-register repeated
+  writes, prefer a helper such as `stateAfterWrite_stateAfterWrite` plus one
+  final value rewrite over a long equality chain.
+
+Naming/API constraints:
+
+- prefer `sail_operation`/`<instr>_sail_operation` and
+  `jolt_val`/`<instr>_jolt_val` for meaningful values;
+- do not add wrapper definitions that merely rename a single existing function
+  without improving the proof narrative;
+- instruction semantics lemmas should be named by what instruction/state they
+  produce, e.g. `exists_state_after_mul_run_xreg_xreg_xreg`, not by vague
+  phrases like `_of_reads`;
+- theorem statements for instruction helpers should return the checkpoint
+  `SailJoltState`, source-read facts when useful, the write/update fact, and
+  the `execInstr` success equation.
+
+Top-level equivalence:
+
+- it is acceptable to prove the top-level theorem directly from the concrete
+  theorem and Sail factoring theorem when that is clearer than a generic
+  closer;
+- avoid generic closers if they obscure the human story: "instruction 1 writes
+  `f(v1, v2)`, instruction 2 writes `g(f(v1, v2))`, and the math theorem proves
+  that final Jolt value equals Sail's value."
 
 For Jolt ISA instruction-equivalence proofs, treat each Jolt program as the
 sequence of Jolt instructions described by the expansion semantics:
