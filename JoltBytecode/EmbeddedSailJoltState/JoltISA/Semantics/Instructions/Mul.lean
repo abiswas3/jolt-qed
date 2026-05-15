@@ -66,18 +66,27 @@ theorem mul_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
   unfold execInstr readSrc writeDst liftSail
   simp only [h₁, h₂, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
 
-/-- `MUL` from two real sources to a real destination, with the output state
-chosen by the instruction lemma. -/
+/-- `MUL` from two real sources to a real destination, with the output Sail
+state exposed as the architectural write performed by the instruction. -/
 theorem exists_state_after_mul_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
     (js : SailJoltState) (x y : BitVec 64)
     (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
     (h₂ : rX_bits rs2 js.sail = .ok y js.sail) :
-    ∃ s',
+    ∃ js',
+      rX_bits rs1 js.sail = .ok x js.sail ∧
+      rX_bits rs2 js.sail = .ok y js.sail ∧
+      js'.sail = stateAfterWrite js.sail rd (x * y) ∧
       (execInstr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
-        .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } ∧
-      wX_bits rd (x * y) js.sail = .ok () s' := by
+        .ok RETIRE_SUCCESS js' := by
   obtain ⟨s', hw⟩ := wX_shape rd (x * y) js.sail
-  exact ⟨s', mul_run_xreg_xreg_xreg rd rs1 rs2 js x y s' h₁ h₂ hw, hw⟩
+  have h_sail_after_mul :
+      s' = stateAfterWrite js.sail rd (x * y) :=
+    wX_bits_eq_stateAfterWrite rd (x * y) js.sail s' hw
+  exact ⟨{ sail := s', vregs := js.vregs },
+    h₁,
+    h₂,
+    h_sail_after_mul,
+    mul_run_xreg_xreg_xreg rd rs1 rs2 js x y s' h₁ h₂ hw⟩
 
 end JoltISA
 
