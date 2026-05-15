@@ -1,6 +1,5 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.InstructionEquivalence.Memory.Utils
-import JoltBytecode.VirtualInstructions
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.ProofSupport
 

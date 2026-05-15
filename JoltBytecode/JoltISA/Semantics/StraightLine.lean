@@ -219,64 +219,6 @@ theorem ld_run_vreg_vreg_from_memory_read (vd base : VReg) (imm : BitVec 12)
   simp only [EStateM.bind, EStateM.pure, modify, modifyGet,
     MonadStateOf.modifyGet, EStateM.modifyGet]
 
-/-- Successful load-alignment assertion: when the effective address masked by
-the instruction's alignment mask is zero, the assertion retires and does not
-change either Sail state or virtual registers. -/
-theorem execInstr_VirtualAssertLoadAlignment_run_aligned (base : regidx) (imm : BitVec 12)
-    (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
-    (hread : rX_bits base js.sail = .ok x js.sail)
-    (halign : (x + sign_extend (m := 64) imm) &&& mask = 0) :
-    (execInstr (.VirtualAssertLoadAlignment base imm mask)).run js =
-      .ok RETIRE_SUCCESS js := by
-  unfold execInstr liftSail
-  simp only [hread, bind, EStateM.bind, pure, EStateM.run]
-  rw [if_neg (by intro h; exact h halign)]
-  rfl
-
-/-- Failed load-alignment assertion: when the effective address has a masked
-low bit set, the assertion returns the same load-address-alignment exception
-that Sail will later produce for the corresponding `execute_LOAD`. -/
-theorem execInstr_VirtualAssertLoadAlignment_run_misaligned (base : regidx) (imm : BitVec 12)
-    (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
-    (hread : rX_bits base js.sail = .ok x js.sail)
-    (hmis : (x + sign_extend (m := 64) imm) &&& mask ≠ 0) :
-    (execInstr (.VirtualAssertLoadAlignment base imm mask)).run js =
-      .ok (ExecutionResult.Memory_Exception
-        (Virtaddr (x + sign_extend (m := 64) imm), ExceptionType.E_Load_Addr_Align ())) js := by
-  unfold execInstr liftSail
-  simp only [hread, bind, EStateM.bind, pure, EStateM.run]
-  rw [if_pos hmis]
-  rfl
-
-/-- Successful store-alignment assertion: when the effective address masked by
-the instruction's alignment mask is zero, the assertion retires without
-changing the combined Sail/Jolt state. -/
-theorem execInstr_VirtualAssertStoreAlignment_run_aligned (base : regidx) (imm : BitVec 12)
-    (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
-    (hread : rX_bits base js.sail = .ok x js.sail)
-    (halign : (x + sign_extend (m := 64) imm) &&& mask = 0) :
-    (execInstr (.VirtualAssertStoreAlignment base imm mask)).run js =
-      .ok RETIRE_SUCCESS js := by
-  unfold execInstr liftSail
-  simp only [hread, bind, EStateM.bind, pure, EStateM.run]
-  rw [if_neg (by intro h; exact h halign)]
-  rfl
-
-/-- Failed store-alignment assertion: the virtual assertion returns exactly
-the Sail store/AMO address-alignment exception and prevents the tail of the
-program from running. -/
-theorem execInstr_VirtualAssertStoreAlignment_run_misaligned (base : regidx) (imm : BitVec 12)
-    (mask : BitVec 64) (js : SailJoltState) (x : BitVec 64)
-    (hread : rX_bits base js.sail = .ok x js.sail)
-    (hmis : (x + sign_extend (m := 64) imm) &&& mask ≠ 0) :
-    (execInstr (.VirtualAssertStoreAlignment base imm mask)).run js =
-      .ok (ExecutionResult.Memory_Exception
-        (Virtaddr (x + sign_extend (m := 64) imm), ExceptionType.E_SAMO_Addr_Align ())) js := by
-  unfold execInstr liftSail
-  simp only [hread, bind, EStateM.bind, pure, EStateM.run]
-  rw [if_pos hmis]
-  rfl
-
 /-- Successful `SD`: if Sail's dword write pipeline returns success, then the
 Jolt-ISA `SD` retires with the produced Sail state and preserves virtual
 registers. -/

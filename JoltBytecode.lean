@@ -68,7 +68,7 @@ import JoltBytecode.InstructionEquivalence.LoadFamily.LWU_main    -- DONE: LWU  
 -- ============================================================================
 -- Instruction proofs — Atomic (AMO)
 -- ============================================================================
-import JoltBytecode.InstructionEquivalence.AtomicFamily.Statements
+/- import JoltBytecode.InstructionEquivalence.AtomicFamily.Statements -/
 
 -- Load Reserved
 -- LR/SC theorem statements are not yet stated.
@@ -77,10 +77,10 @@ import JoltBytecode.InstructionEquivalence.AtomicFamily.Statements
 -- Instruction proofs — Advice / System / CSR
 -- ============================================================================
 
--- import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelb  -- advice load byte   DONE:
--- import JoltBytecode.InstructionEquivalence.AdviceFamily.Adviceld  -- advice load dword   DONE:
--- import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelh  -- advice load halfword   DONE:
--- import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelw  -- advice load word   DONE:
+import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelb  -- advice load byte   DONE:
+import JoltBytecode.InstructionEquivalence.AdviceFamily.Adviceld  -- advice load dword   DONE:
+import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelh  -- advice load halfword   DONE:
+import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelw  -- advice load word   DONE:
 
 -- System : Shuld be easy, I'll close when we get to it.
 -- import JoltBytecode.InstructionEquivalence.Csrrs     -- TODO: CSR read-set

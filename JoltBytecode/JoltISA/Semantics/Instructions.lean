@@ -17,6 +17,8 @@ import JoltBytecode.JoltISA.Semantics.Instructions.SRL
 import JoltBytecode.JoltISA.Semantics.Instructions.SRLI
 import JoltBytecode.JoltISA.Semantics.Instructions.Sub
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualAdvice
+import JoltBytecode.JoltISA.Semantics.Instructions.VirtualAssertLoadAlignment
+import JoltBytecode.JoltISA.Semantics.Instructions.VirtualAssertStoreAlignment
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualAssertEQ
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualAssertEQReal
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualAssertLTE

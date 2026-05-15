@@ -12,4 +12,4 @@ import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Expansions.Mul
 import JoltBytecode.JoltISA.Expansions.Load
 import JoltBytecode.JoltISA.Expansions.Store
-import JoltBytecode.JoltISA.Expansions.Atomics
+/- import JoltBytecode.JoltISA.Expansions.Atomics -/
