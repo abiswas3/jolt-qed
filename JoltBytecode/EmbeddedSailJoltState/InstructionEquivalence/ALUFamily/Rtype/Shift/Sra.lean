@@ -31,6 +31,18 @@ private lemma virtual_sra_eq_shift
   unfold shift_bits_right_arith LeanRV64D.Functions.log2_xlen
   congr 1
 
+abbrev sra_sail_operation (v1 v2 : BitVec 64) : BitVec 64 :=
+  shift_bits_right_arith v1
+    (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0)
+
+abbrev sra_jolt_val (v1 v2 : BitVec 64) : BitVec 64 :=
+  jolt_virtual_sra_value v1 (jolt_virtual_shift_right_bitmask_value v2)
+
+private theorem sra_value_eq_sail (v1 v2 : BitVec 64) :
+    sra_jolt_val v1 v2 = sra_sail_operation v1 v2 := by
+  simp only [sra_jolt_val, sra_sail_operation]
+  exact virtual_sra_eq_shift v1 v2
+
 theorem execute_RTYPE_SRA_factored
     (rs2 : regidx)
     (rs1 : regidx)
@@ -38,13 +50,13 @@ theorem execute_RTYPE_SRA_factored
     execute_RTYPE rs2 rs1 rd rop.SRA = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
-      wX_bits rd (shift_bits_right_arith v1 (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
+      wX_bits rd (sra_sail_operation v1 v2)
       pure RETIRE_SUCCESS) := by
   simp only [execute_RTYPE]
   simp only [bind_pure_comp]
   simp only [map_eq_pure_bind]
   simp only [bind_assoc]
-  simp only [pure_bind]
+  simp only [pure_bind, sra_sail_operation]
 
 /-- Program-level concrete theorem for `SRA`.
 
@@ -59,12 +71,10 @@ theorem sraProgram_concrete
     (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
-      rX_bits rs2 js.sail = .ok v2 js.sail ∧
-      (JoltISA.execProgram (JoltISA.sraProgram rs2 rs1 rd)).run js =
-        .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd
-        (shift_bits_right_arith v1
-          (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
+        rX_bits rs2 js.sail = .ok v2 js.sail ∧
+        (JoltISA.execProgram (JoltISA.sraProgram rs2 rs1 rd)).run js =
+          .ok RETIRE_SUCCESS js' ∧
+        js'.sail = stateAfterWrite js.sail rd (sra_sail_operation v1 v2) := by
   obtain ⟨v1, hok1⟩ := hwf rs1
   obtain ⟨v2, hok2⟩ := hwf rs2
 
@@ -81,55 +91,44 @@ theorem sraProgram_concrete
         (0 : JoltISA.VReg) rs2 js v2 hok2)
 
   -- Instruction 2: `VirtualSRA rd, rs1, v0` writes the shifted result to `rd`.
-  let shiftedResult := jolt_virtual_sra_value v1 shiftBitmask
-  have h_rs1_reads_v1_after_bitmask :
+  let jolt_val := sra_jolt_val v1 v2
+  have h_virtual_sra_reads_rs1 :
       rX_bits rs1 js_afterBitmask.sail = .ok v1 js_afterBitmask.sail := by
     simpa only [js_afterBitmask] using hok1
-  obtain ⟨s_afterSra, h_virtual_sra_run, h_virtual_sra_write⟩ :=
-    JoltISA.exists_state_after_virtual_sra_run_xreg_xreg_vreg rd rs1
-      (0 : JoltISA.VReg) js_afterBitmask v1 h_rs1_reads_v1_after_bitmask
-  have h_sra_writes_shifted_result :
-      wX_bits rd shiftedResult js.sail = .ok () s_afterSra := by
-    simpa only [js_afterBitmask, shiftedResult, shiftBitmask] using h_virtual_sra_write
-  let js' : SailJoltState := { sail := s_afterSra, vregs := js_afterBitmask.vregs }
-  have h_virtual_sra_succeeds :
-      (JoltISA.execInstr (.VirtualSRA (.xreg rd) (.xreg rs1) (.vreg 0))).run
-        js_afterBitmask =
-        .ok RETIRE_SUCCESS js' := by
-    simpa only [js'] using h_virtual_sra_run
-
-  -- Math bridge: the virtual bitmask SRA value is Sail SRA.
-  have h_shifted_result_eq_sail :
-      shiftedResult =
-        shift_bits_right_arith v1
-          (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0) := by
-    dsimp only [shiftedResult, shiftBitmask]
-    rw [virtual_sra_eq_shift]
+  obtain ⟨js_afterSra, h_virtual_sra_reads_rs1_again,
+      h_virtual_sra_writes_jolt_val, h_virtual_sra_succeeds⟩ :=
+    JoltISA.exists_jolt_state_after_virtual_sra_run_xreg_xreg_vreg rd rs1
+      (0 : JoltISA.VReg) js_afterBitmask v1 h_virtual_sra_reads_rs1
 
   have h_program_succeeds :
       (JoltISA.execProgram (JoltISA.sraProgram rs2 rs1 rd)).run js =
-        .ok RETIRE_SUCCESS js' := by
+        .ok RETIRE_SUCCESS js_afterSra := by
     unfold JoltISA.sraProgram
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterBitmask h_bitmask_succeeds]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterBitmask js'
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterBitmask js_afterSra
       h_virtual_sra_succeeds]
     rfl
 
-  have h_sail_final :
-      js'.sail = stateAfterWrite js.sail rd
-        (shift_bits_right_arith v1
-          (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
-    calc
-      js'.sail = stateAfterWrite js.sail rd shiftedResult := by
-        simpa only [js'] using
-          wX_bits_eq_stateAfterWrite rd shiftedResult js.sail s_afterSra
-            h_sra_writes_shifted_result
-      _ = stateAfterWrite js.sail rd
-            (shift_bits_right_arith v1
-              (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0)) := by
-        rw [h_shifted_result_eq_sail]
+  refine ⟨js_afterSra, v1, v2, hok1, hok2, h_program_succeeds, ?_⟩
 
-  exact ⟨js', v1, v2, hok1, hok2, h_program_succeeds, h_sail_final⟩
+  -- The instruction trace leaves `rd` containing the Jolt SRA value.
+  have h_final_jolt_value :
+      js_afterSra.sail = stateAfterWrite js.sail rd jolt_val := by
+    change js_afterSra.sail = stateAfterWrite js.sail rd jolt_val
+    exact h_virtual_sra_writes_jolt_val
+
+  -- No more execution reasoning remains.
+  -- The only real content left is the pure value equality:
+  -- Jolt's two-instruction value is Sail's SRA value.
+  have h_sra_value :
+      jolt_val = sra_sail_operation v1 v2 := by
+    simp only [jolt_val]
+    -- NOTE: The core math theorem.
+    exact sra_value_eq_sail v1 v2
+
+  -- After the value theorem, the final state claim is mechanical.
+  rw [← h_sra_value]
+  exact h_final_jolt_value
 
 /-- Main program-level equivalence for `SRA`. -/
 theorem sraProgram_eq_sail
@@ -139,11 +138,22 @@ theorem sraProgram_eq_sail
     (js : SailJoltState)
     (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.sraProgram rs2 rs1 rd)).run js) =
-    (execute_RTYPE rs2 rs1 rd rop.SRA).run js.sail :=
-  rtype_eq_sail_uniform
-    (f := fun v1 v2 => shift_bits_right_arith v1
-      (Sail.BitVec.extractLsb v2 (LeanRV64D.Functions.log2_xlen -i 1) 0))
-    (execute_RTYPE_SRA_factored rs2 rs1 rd)
-    (sraProgram_concrete rs2 rs1 rd js hwf)
+    (execute_RTYPE rs2 rs1 rd rop.SRA).run js.sail := by
+  obtain ⟨js_afterSra, v1, v2, h_read_rs1, h_read_rs2,
+      h_program_succeeds, h_final_sail⟩ :=
+    sraProgram_concrete rs2 rs1 rd js hwf
+
+  rw [h_program_succeeds]
+  simp only [projectResult, project]
+  rw [h_final_sail]
+
+  rw [execute_RTYPE_SRA_factored rs2 rs1 rd]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+  simp only [h_read_rs1, h_read_rs2]
+
+  obtain ⟨s', h_write⟩ := wX_shape rd (sra_sail_operation v1 v2) js.sail
+  simp only [h_write]
+  congr 1
+  exact (wX_bits_eq_stateAfterWrite rd (sra_sail_operation v1 v2) js.sail s' h_write).symm
 
 end

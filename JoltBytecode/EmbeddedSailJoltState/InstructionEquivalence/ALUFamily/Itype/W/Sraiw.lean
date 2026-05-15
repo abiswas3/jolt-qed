@@ -56,15 +56,21 @@ private theorem sraiwProgram_bitmask_eq (shamt : BitVec 5) :
   unfold JoltISA.sraiwBitmask sraiw_bitmask
   rw [setWidth_5_roundtrip]
 
+abbrev sraiw_sail_operation (shamt : BitVec 5) (v : BitVec 64) : BitVec 64 :=
+  sign_extend (m := 64)
+    (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt)
+
+abbrev sraiw_jolt_val (shamt : BitVec 5) (v : BitVec 64) : BitVec 64 :=
+  sign_extend (m := 64)
+    (Sail.BitVec.extractLsb
+      (jolt_virtual_srai_value
+        (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0))
+        (JoltISA.sraiwBitmask shamt)) 31 0)
+
 -- NOTE: Math theorem: the Jolt bitmask SRAIW sequence computes Sail SRAIW.
 private theorem virtual_sraiw_value_eq (v : BitVec 64) (shamt : BitVec 5) :
-    sign_extend (m := 64)
-      (Sail.BitVec.extractLsb
-        (jolt_virtual_srai_value
-          (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0))
-          (JoltISA.sraiwBitmask shamt)) 31 0) =
-    sign_extend (m := 64)
-      (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt) := by
+    sraiw_jolt_val shamt v = sraiw_sail_operation shamt v := by
+  simp only [sraiw_jolt_val, sraiw_sail_operation]
   unfold jolt_virtual_srai_value
   rw [sraiwProgram_bitmask_eq, ctz_sraiw_bitmask, setWidth_5_roundtrip]
   simpa only [setWidth_5_roundtrip, extract_shamt64_low5] using
@@ -73,10 +79,9 @@ private theorem virtual_sraiw_value_eq (v : BitVec 64) (shamt : BitVec 5) :
 theorem execute_SHIFTIWOP_SRAIW_factored (shamt : BitVec 5) (rs1 rd : regidx) :
     execute_SHIFTIWOP shamt rs1 rd sopw.SRAIW = (do
       let v ← rX_bits rs1
-      wX_bits rd (sign_extend (m := 64)
-        (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt))
+      wX_bits rd (sraiw_sail_operation shamt v)
       pure RETIRE_SUCCESS) := by
-  simp [execute_SHIFTIWOP]
+  simp [execute_SHIFTIWOP, sraiw_sail_operation]
 
 /-- Program-level concrete theorem for `SRAIW`.
 
@@ -88,9 +93,7 @@ theorem sraiwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx)
       rX_bits rs1 js.sail = .ok v js.sail ∧
       (JoltISA.execProgram (JoltISA.sraiwProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd
-        (sign_extend (m := 64)
-          (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt)) := by
+      js'.sail = stateAfterWrite js.sail rd (sraiw_sail_operation shamt v) := by
   obtain ⟨v, hok⟩ := hwf rs1
 
   -- Instruction 1: `VirtualSignExtendWord v1, rs1` writes the signed source word to `v1`.
@@ -107,96 +110,80 @@ theorem sraiwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx)
   -- Instruction 2: `VirtualSRAI rd, v1, sraiwBitmask shamt` writes the shifted result.
   let bitmask := JoltISA.sraiwBitmask shamt
   let shiftedResult := jolt_virtual_srai_value signedSource bitmask
-  obtain ⟨s_afterSrai, h_virtual_srai_run, h_virtual_srai_write⟩ :=
-    JoltISA.exists_state_after_virtual_srai_run_xreg_vreg rd (1 : JoltISA.VReg)
+  obtain ⟨js_afterSrai, h_srai_writes_shifted_result, h_srai_succeeds⟩ :=
+    JoltISA.exists_jolt_state_after_virtual_srai_run_xreg_vreg rd (1 : JoltISA.VReg)
       bitmask js_afterSourceSignExtend
-  have h_srai_writes_shifted_result :
-      wX_bits rd shiftedResult js.sail = .ok () s_afterSrai := by
-    simpa only [js_afterSourceSignExtend, shiftedResult, signedSource, bitmask] using
-      h_virtual_srai_write
-  let js_afterSrai : SailJoltState :=
-    { sail := s_afterSrai, vregs := js_afterSourceSignExtend.vregs }
-  have h_sail_after_srai :
+  have h_srai_writes_shifted_result' :
       js_afterSrai.sail = stateAfterWrite js.sail rd shiftedResult := by
-    simpa only [js_afterSrai, shiftedResult] using
-      wX_bits_eq_stateAfterWrite rd shiftedResult js.sail s_afterSrai
-        h_srai_writes_shifted_result
+    change js_afterSrai.sail = stateAfterWrite js.sail rd shiftedResult
+    exact h_srai_writes_shifted_result
   have h_virtual_srai_succeeds :
       (JoltISA.execInstr (.VirtualSRAI (.xreg rd) (.vreg 1) bitmask)).run
         js_afterSourceSignExtend =
-        .ok RETIRE_SUCCESS js_afterSrai := by
-    simpa only [js_afterSrai] using h_virtual_srai_run
-
-  have h_rd_reads_shifted_result :
-      rX_bits rd s_afterSrai = .ok shiftedResult s_afterSrai := by
-    exact wX_rX_roundtrip rd shiftedResult js.sail s_afterSrai hrd
-      h_srai_writes_shifted_result
+        .ok RETIRE_SUCCESS js_afterSrai :=
+    h_srai_succeeds
 
   -- Instruction 3: `VirtualSignExtendWord rd, rd` writes the SRAIW result.
-  let sraiwResult := sign_extend (m := 64) (Sail.BitVec.extractLsb shiftedResult 31 0)
-  have h_sraiw_result_eq_sail :
-      sraiwResult =
-        sign_extend (m := 64)
-          (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt) := by
-    simpa only [sraiwResult, shiftedResult, signedSource, bitmask] using
-      virtual_sraiw_value_eq v shamt
-  obtain ⟨s_afterSignExtend, h_sign_extend_run, h_sign_extend_write⟩ :=
-    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg rd rd js_afterSrai
-      shiftedResult (by simpa only [js_afterSrai] using h_rd_reads_shifted_result)
-  have h_sign_extend_writes_result :
-      wX_bits rd sraiwResult s_afterSrai = .ok () s_afterSignExtend := by
-    simpa only [js_afterSrai, sraiwResult] using h_sign_extend_write
-
-  let js' : SailJoltState :=
-    { sail := s_afterSignExtend, vregs := js_afterSourceSignExtend.vregs }
-  have h_sail_after_sign_extend :
-      js'.sail = stateAfterWrite js_afterSrai.sail rd sraiwResult := by
-    simpa only [js', js_afterSrai, sraiwResult] using
-      wX_bits_eq_stateAfterWrite rd sraiwResult s_afterSrai s_afterSignExtend
-        h_sign_extend_writes_result
-  have h_sign_extend_succeeds :
-      (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_afterSrai =
-        .ok RETIRE_SUCCESS js' := by
-    simpa only [js'] using h_sign_extend_run
+  let jolt_val := sraiw_jolt_val shamt v
+  obtain ⟨js_afterSignExtend, h_sign_extend_reads_shifted_result,
+      h_sign_extend_writes_jolt_val, h_sign_extend_succeeds⟩ :=
+    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_source_write
+      rd rd js_afterSrai js.sail shiftedResult hrd h_srai_writes_shifted_result'
 
   have h_program_succeeds :
       (JoltISA.execProgram (JoltISA.sraiwProgram shamt rs1 rd)).run js =
-        .ok RETIRE_SUCCESS js' := by
+        .ok RETIRE_SUCCESS js_afterSignExtend := by
     unfold JoltISA.sraiwProgram
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSourceSignExtend
       h_source_sign_extend_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterSourceSignExtend js_afterSrai
       h_virtual_srai_succeeds]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterSrai js' h_sign_extend_succeeds]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterSrai js_afterSignExtend
+      h_sign_extend_succeeds]
     rfl
 
-  have h_sail_final :
-      js'.sail = stateAfterWrite js.sail rd
-        (sign_extend (m := 64)
-          (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt)) := by
-    calc
-      js'.sail = stateAfterWrite js_afterSrai.sail rd sraiwResult :=
-        h_sail_after_sign_extend
-      _ = stateAfterWrite (stateAfterWrite js.sail rd shiftedResult) rd sraiwResult := by
-        rw [h_sail_after_srai]
-      _ = stateAfterWrite js.sail rd sraiwResult := by
-        exact stateAfterWrite_stateAfterWrite rd shiftedResult sraiwResult js.sail
-      _ = stateAfterWrite js.sail rd
-            (sign_extend (m := 64)
-              (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt)) := by
-        rw [h_sraiw_result_eq_sail]
+  refine ⟨js_afterSignExtend, v, hok, h_program_succeeds, ?_⟩
 
-  exact ⟨js', v, hok, h_program_succeeds, h_sail_final⟩
+  -- The instruction trace leaves `rd` containing the Jolt SRAIW value.
+  have h_final_jolt_value :
+      js_afterSignExtend.sail = stateAfterWrite js.sail rd jolt_val := by
+    rw [h_sign_extend_writes_jolt_val, h_srai_writes_shifted_result']
+    change stateAfterWrite (stateAfterWrite js.sail rd shiftedResult) rd jolt_val =
+      stateAfterWrite js.sail rd jolt_val
+    exact stateAfterWrite_stateAfterWrite rd shiftedResult jolt_val js.sail
+
+  -- No more execution reasoning remains.
+  -- The only real content left is the pure value equality:
+  -- Jolt's three-instruction value is Sail's SRAIW value.
+  have h_sraiw_value :
+      jolt_val = sraiw_sail_operation shamt v := by
+    simp only [jolt_val]
+    -- NOTE: The core math theorem.
+    exact virtual_sraiw_value_eq v shamt
+
+  -- After the value theorem, the final state claim is mechanical.
+  rw [← h_sraiw_value]
+  exact h_final_jolt_value
 
 /-- Main program-level equivalence for `SRAIW`. -/
 theorem sraiwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx)
     (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.sraiwProgram shamt rs1 rd)).run js) =
-    (execute_SHIFTIWOP shamt rs1 rd sopw.SRAIW).run js.sail :=
-  itype_eq_sail_uniform
-    (f := fun v => sign_extend (m := 64)
-      (shift_bits_right_arith (Sail.BitVec.extractLsb v 31 0) shamt))
-    (execute_SHIFTIWOP_SRAIW_factored shamt rs1 rd)
-    (sraiwProgram_concrete shamt rs1 rd hrd js hwf)
+    (execute_SHIFTIWOP shamt rs1 rd sopw.SRAIW).run js.sail := by
+  obtain ⟨js_afterSignExtend, v, h_read_rs1, h_program_succeeds, h_final_sail⟩ :=
+    sraiwProgram_concrete shamt rs1 rd hrd js hwf
+
+  rw [h_program_succeeds]
+  simp only [projectResult, project]
+  rw [h_final_sail]
+
+  rw [execute_SHIFTIWOP_SRAIW_factored shamt rs1 rd]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+  simp only [h_read_rs1]
+
+  obtain ⟨s', h_write⟩ := wX_shape rd (sraiw_sail_operation shamt v) js.sail
+  simp only [h_write]
+  congr 1
+  exact (wX_bits_eq_stateAfterWrite rd (sraiw_sail_operation shamt v) js.sail s' h_write).symm
 
 end

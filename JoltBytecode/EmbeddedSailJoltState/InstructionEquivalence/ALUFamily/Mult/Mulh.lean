@@ -381,17 +381,45 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx)
   obtain ⟨v2, h2⟩ := hwf rs2
   obtain ⟨jsf, hrun, hsail⟩ := mulhProgram_eval_jolt_value rs2 rs1 rd js v1 v2 h1 h2
   refine ⟨jsf, v1, v2, h1, h2, hrun, ?_⟩
-  simpa only [mulh_correction_eq_mulhs] using hsail
+
+  -- The execution theorem leaves `rd` containing the literal Jolt MULH value.
+  have h_final_jolt_value :
+      jsf.sail = stateAfterWrite js.sail rd (jolt_mulh_value v1 v2) :=
+    hsail
+
+  -- No more execution reasoning remains.
+  -- The only real content left is the pure value equality:
+  -- Jolt's correction sequence is Sail's MULH value.
+  have h_mulh_value :
+      jolt_mulh_value v1 v2 = mulhs v1 v2 := by
+    -- NOTE: The core math theorem.
+    exact mulh_correction_eq_mulhs v1 v2
+
+  -- After the value theorem, the final state claim is mechanical.
+  rw [← h_mulh_value]
+  exact h_final_jolt_value
 
 /-- Main program-level theorem: interpreting the Jolt ISA `MULH` expansion has
 the same projected architectural result as Sail's `MULH` semantics. -/
 theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js) =
-    (execute_MUL rs2 rs1 rd mulhOp).run js.sail :=
-  rtype_eq_sail_uniform
-    (f := mulhs)
-    (execute_MULH_factored rs2 rs1 rd)
-    (mulhProgram_concrete rs2 rs1 rd hrd js hwf)
+    (execute_MUL rs2 rs1 rd mulhOp).run js.sail := by
+  obtain ⟨js_afterFinalAdd, v1, v2, h_read_rs1, h_read_rs2,
+      h_program_succeeds, h_final_sail⟩ :=
+    mulhProgram_concrete rs2 rs1 rd hrd js hwf
+
+  rw [h_program_succeeds]
+  simp only [projectResult, project]
+  rw [h_final_sail]
+
+  rw [execute_MULH_factored rs2 rs1 rd]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+  simp only [h_read_rs1, h_read_rs2]
+
+  obtain ⟨s', h_write⟩ := wX_shape rd (mulhs v1 v2) js.sail
+  simp only [h_write]
+  congr 1
+  exact (wX_bits_eq_stateAfterWrite rd (mulhs v1 v2) js.sail s' h_write).symm
 
 end

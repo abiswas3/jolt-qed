@@ -54,6 +54,24 @@ theorem exists_state_after_mul_run_xreg_xreg_vreg (rd rs1 : regidx) (vs2 : VReg)
   obtain ⟨s', hw⟩ := wX_shape rd (x * js.vregs vs2) js.sail
   exact ⟨s', mul_run_xreg_xreg_vreg rd rs1 vs2 js x s' h hw, hw⟩
 
+/-- `MUL` from a real source and a virtual source to a real destination, with
+the output Sail state exposed as the architectural write performed by the
+instruction. -/
+theorem exists_jolt_state_after_mul_run_xreg_xreg_vreg (rd rs1 : regidx) (vs2 : VReg)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits rs1 js.sail = .ok x js.sail) :
+    ∃ js',
+      rX_bits rs1 js.sail = .ok x js.sail ∧
+      js'.sail = stateAfterWrite js.sail rd (x * js.vregs vs2) ∧
+      (execInstr (.MUL (.xreg rd) (.xreg rs1) (.vreg vs2))).run js =
+        .ok RETIRE_SUCCESS js' := by
+  obtain ⟨s', h_run, h_write⟩ :=
+    exists_state_after_mul_run_xreg_xreg_vreg rd rs1 vs2 js x h
+  have h_sail_after_mul :
+      s' = stateAfterWrite js.sail rd (x * js.vregs vs2) :=
+    wX_bits_eq_stateAfterWrite rd (x * js.vregs vs2) js.sail s' h_write
+  exact ⟨{ sail := s', vregs := js.vregs }, h, h_sail_after_mul, h_run⟩
+
 /-- `MUL` from two real sources to a real destination reads both architectural
 sources and writes the low product through Sail. -/
 theorem mul_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)

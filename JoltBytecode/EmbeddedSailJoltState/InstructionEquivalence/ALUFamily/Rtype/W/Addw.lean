@@ -24,25 +24,15 @@ from `ALUFamily/Bridges/Add.lean`) says truncation distributes over
 addition, so both sides produce the same result.
 -/
 
-/-- Factoring: `execute_RTYPE rs2 rs1 rd rop.ADD` reads `rs1`, reads
-`rs2`, writes `v1 + v2` to `rd`, returns `RETIRE_SUCCESS`. -/
-theorem execute_RTYPE_ADD_factored
-    (rs2 : regidx)
-    (rs1 : regidx)
-    (rd : regidx) :
-    execute_RTYPE rs2 rs1 rd rop.ADD = (do
-      let v1 ← rX_bits rs1
-      let v2 ← rX_bits rs2
-      wX_bits rd (v1 + v2)
-      pure RETIRE_SUCCESS) := by
-  simp only [execute_RTYPE]
-  simp only [bind_pure_comp]
-  simp only [map_eq_pure_bind]
-  simp only [bind_assoc]
-  simp only [pure_bind]
+abbrev addw_sail_operation (v1 v2 : BitVec 64) : BitVec 64 :=
+  sign_extend (m := 64)
+    (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0)
+
+abbrev addw_jolt_val (v1 v2 : BitVec 64) : BitVec 64 :=
+  sign_extend (m := 64) (Sail.BitVec.extractLsb (v1 + v2) 31 0)
 
 /-- Factoring: `execute_RTYPEW rs2 rs1 rd ropw.ADDW` reads `rs1`, reads
-`rs2`, writes `sext₆₄(v1[31:0] +₃₂ v2[31:0])` to `rd`, returns
+`rs2`, writes `addw_sail_operation v1 v2` to `rd`, returns
 `RETIRE_SUCCESS`. -/
 theorem execute_RTYPEW_ADDW_factored
     (rs2 : regidx)
@@ -51,39 +41,17 @@ theorem execute_RTYPEW_ADDW_factored
     execute_RTYPEW rs2 rs1 rd ropw.ADDW = (do
       let v1 ← rX_bits rs1
       let v2 ← rX_bits rs2
-      wX_bits rd (sign_extend (m := 64)
-        (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0))
+      wX_bits rd (addw_sail_operation v1 v2)
       pure RETIRE_SUCCESS) := by
   simp only [execute_RTYPEW]
-  simp only [bind_pure_comp, pure_bind]
+  simp only [bind_pure_comp, pure_bind, addw_sail_operation]
 
 /-- Math bridge: the Jolt value `g(f(v1, v2))` equals the Sail ADDW value
 `h(v1, v2)`. -/
 private theorem addw_value_eq_sail (v1 v2 : BitVec 64) :
-    sign_extend (m := 64) (Sail.BitVec.extractLsb (v1 + v2) 31 0) =
-      sign_extend (m := 64)
-        (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0) := by
+    addw_jolt_val v1 v2 = addw_sail_operation v1 v2 := by
+  simp only [addw_jolt_val, addw_sail_operation]
   rw [extractLsb_add]
-
-/-- State plumbing for two writes to the same architectural register. If the
-first instruction writes `first`, the second writes `second`, and `second` is
-the desired `final` value, then the net Sail state is just the final write. -/
-private theorem sail_state_after_two_writes_eq_final
-    (rd : regidx)
-    (s0 s1 s2 : SailState)
-    (first second final : BitVec 64)
-    (h_sail_after_first : s1 = stateAfterWrite s0 rd first)
-    (h_sail_after_second : s2 = stateAfterWrite s1 rd second)
-    (h_second_eq_final : second = final) :
-    s2 = stateAfterWrite s0 rd final := by
-  calc
-    s2 = stateAfterWrite s1 rd second := h_sail_after_second
-    _ = stateAfterWrite (stateAfterWrite s0 rd first) rd second := by
-          rw [h_sail_after_first]
-    _ = stateAfterWrite s0 rd second := by
-          exact stateAfterWrite_stateAfterWrite rd first second s0
-    _ = stateAfterWrite s0 rd final := by
-          rw [h_second_eq_final]
 
 /-- Program-level concrete theorem for `ADDW`.
 
@@ -100,82 +68,59 @@ theorem addwProgram_concrete
     (hwf : WellFormed js) :
     ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
       rX_bits rs1 js.sail = .ok v1 js.sail ∧
-      rX_bits rs2 js.sail = .ok v2 js.sail ∧
-      (JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js =
-        .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd
-        (sign_extend (m := 64)
-          (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0)) := by
-  obtain ⟨v1, hok1⟩ := hwf rs1
-  obtain ⟨v2, hok2⟩ := hwf rs2
+        rX_bits rs2 js.sail = .ok v2 js.sail ∧
+        (JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js =
+          .ok RETIRE_SUCCESS js' ∧
+        js'.sail = stateAfterWrite js.sail rd (addw_sail_operation v1 v2) := by
+    obtain ⟨v1, hok1⟩ := hwf rs1
+    obtain ⟨v2, hok2⟩ := hwf rs2
 
-  -- Instruction 1: `ADD rd, rs1, rs2` writes the 64-bit sum to `rd`.
-  let addResult := v1 + v2
-  obtain ⟨s_afterAdd, h_add_run, h_add_write⟩ :=
-    JoltISA.exists_state_after_add_run_xreg_xreg_xreg rd rs1 rs2 js v1 v2 hok1 hok2
-  have h_add_writes_result : wX_bits rd addResult js.sail = .ok () s_afterAdd := by
-    simpa only [addResult] using h_add_write
-  let js_afterAdd : SailJoltState := { sail := s_afterAdd, vregs := js.vregs }
-  have h_sail_after_add :
-      js_afterAdd.sail = stateAfterWrite js.sail rd addResult := by
-    simpa only [js_afterAdd, addResult] using
-      wX_bits_eq_stateAfterWrite rd addResult js.sail s_afterAdd h_add_writes_result
-  have h_add_succeeds :
-      (JoltISA.execInstr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
-        .ok RETIRE_SUCCESS js_afterAdd := by
-    simpa only [js_afterAdd] using h_add_run
+    -- Instruction 1: `ADD rd, rs1, rs2` writes the 64-bit sum to `rd`.
+    let sum := v1 + v2
+    obtain ⟨js_afterAdd, h_add_reads_rs1, h_add_reads_rs2,
+        h_add_writes_sum, h_add_succeeds⟩ :=
+      JoltISA.exists_state_after_add_run_xreg_xreg_xreg rd rs1 rs2 js v1 v2 hok1 hok2
 
-  have h_rd_reads_add_result : rX_bits rd s_afterAdd = .ok addResult s_afterAdd := by
-    exact wX_rX_roundtrip rd addResult js.sail s_afterAdd hrd h_add_writes_result
+    -- Instruction 2: `VirtualSignExtendWord rd, rd` writes the ADDW result.
+    let jolt_val := addw_jolt_val v1 v2
+    obtain ⟨js_afterSignExtend, h_sign_extend_reads_sum, h_sign_extend_writes_jolt_val,
+        h_sign_extend_succeeds⟩ :=
+      JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_source_write
+        rd rd js_afterAdd js.sail sum hrd h_add_writes_sum
 
-  -- Instruction 2: `VirtualSignExtendWord rd, rd` writes the ADDW result.
-  let addwResult := sign_extend (m := 64) (Sail.BitVec.extractLsb addResult 31 0)
-  -- Math bridge for the completed Jolt value: the final Jolt value is Sail ADDW.
-  have h_addw_result_eq_sail :
-      addwResult =
-        sign_extend (m := 64)
-          (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0) := by
-    simpa only [addwResult, addResult] using addw_value_eq_sail v1 v2
-  obtain ⟨s_afterSignExtend, h_sign_extend_run, h_sign_extend_write⟩ :=
-    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg rd rd js_afterAdd
-      addResult (by simpa only [js_afterAdd] using h_rd_reads_add_result)
-  have h_sign_extend_writes_result :
-      wX_bits rd addwResult s_afterAdd = .ok () s_afterSignExtend := by
-    simpa only [js_afterAdd, addwResult] using h_sign_extend_write
+    -- Full program succeeds by stepping through the two instruction runs.
+    have h_program_succeeds :
+        (JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js =
+          .ok RETIRE_SUCCESS js_afterSignExtend := by
+      unfold JoltISA.addwProgram
+      rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterAdd h_add_succeeds]
+      rw [JoltISA.execProgram_instr_run_retire _ _ js_afterAdd js_afterSignExtend
+        h_sign_extend_succeeds]
+      rfl
 
-  let js' : SailJoltState := { sail := s_afterSignExtend, vregs := js.vregs }
-  have h_sail_after_sign_extend :
-      js'.sail = stateAfterWrite js_afterAdd.sail rd addwResult := by
-    simpa only [js', js_afterAdd, addwResult] using
-      wX_bits_eq_stateAfterWrite rd addwResult s_afterAdd s_afterSignExtend
-        h_sign_extend_writes_result
-  have h_sign_extend_succeeds :
-      (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_afterAdd =
-        .ok RETIRE_SUCCESS js' := by
-    simpa only [js'] using h_sign_extend_run
+    refine ⟨js_afterSignExtend, v1, v2, h_add_reads_rs1, h_add_reads_rs2,
+      h_program_succeeds, ?_⟩
 
-  -- Full program succeeds by stepping through the two instruction runs.
-  have h_program_succeeds :
-      (JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js =
-        .ok RETIRE_SUCCESS js' := by
-    unfold JoltISA.addwProgram
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterAdd h_add_succeeds]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterAdd js' h_sign_extend_succeeds]
-    rfl
+    -- The instruction trace leaves `rd` containing the Jolt ADDW value.
+    have h_final_jolt_value :
+        js_afterSignExtend.sail = stateAfterWrite js.sail rd jolt_val := by
+      rw [h_sign_extend_writes_jolt_val, h_add_writes_sum]
+      change stateAfterWrite (stateAfterWrite js.sail rd sum) rd jolt_val =
+        stateAfterWrite js.sail rd jolt_val
+      exact stateAfterWrite_stateAfterWrite rd sum jolt_val js.sail
 
-  -- Final Sail state: the second architectural write overwrites the first.
-  have h_sail_final :
-      js'.sail = stateAfterWrite js.sail rd
-        (sign_extend (m := 64)
-          (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0)) :=
-    sail_state_after_two_writes_eq_final rd
-      js.sail js_afterAdd.sail js'.sail
-      addResult addwResult
-      (sign_extend (m := 64)
-        (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0))
-      h_sail_after_add h_sail_after_sign_extend h_addw_result_eq_sail
+    -- No more execution reasoning remains.
+    -- The only real content left is the pure value equality:
+    -- Jolt's two-instruction value is Sail's ADDW value.
+    have h_addw_value :
+        jolt_val = addw_sail_operation v1 v2 := by
+      simp only [jolt_val]
+      -- NOTE: The core math theorem.
+      exact addw_value_eq_sail v1 v2
 
-  exact ⟨js', v1, v2, hok1, hok2, h_program_succeeds, h_sail_final⟩
+    -- After the value theorem, the final state claim is mechanical.
+    rw [← h_addw_value]
+    exact h_final_jolt_value
 
 /-- Main program-level equivalence for `ADDW`. -/
 theorem addwProgram_eq_sail
@@ -186,12 +131,27 @@ theorem addwProgram_eq_sail
     (js : SailJoltState)
     (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js) =
-    (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run js.sail :=
-  rtype_eq_sail_uniform
-    (f := fun v1 v2 => sign_extend (m := 64)
-      (Sail.BitVec.extractLsb v1 31 0 + Sail.BitVec.extractLsb v2 31 0)
-    )
-    (execute_RTYPEW_ADDW_factored rs2 rs1 rd)
-    (addwProgram_concrete rs2 rs1 rd hrd js hwf)
+    (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run js.sail := by
+  obtain ⟨js_afterSignExtend, v1, v2, h_read_rs1, h_read_rs2,
+      h_program_succeeds, h_final_sail⟩ :=
+    addwProgram_concrete rs2 rs1 rd hrd js hwf
+
+  -- Use the concrete proof to collapse the Jolt side to its final Sail state.
+  rw [h_program_succeeds]
+  simp only [projectResult, project]
+  rw [h_final_sail]
+
+  -- Expand the Sail-side `ADDW`: it reads the same inputs and writes the same
+  -- already-proved final value.
+  rw [execute_RTYPEW_ADDW_factored rs2 rs1 rd]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+  simp only [h_read_rs1, h_read_rs2]
+
+  -- The only remaining mismatch is the concrete state chosen by `wX_bits`
+  -- versus our `stateAfterWrite` spelling of that same register update.
+  obtain ⟨s', h_write⟩ := wX_shape rd (addw_sail_operation v1 v2) js.sail
+  simp only [h_write]
+  congr 1
+  exact (wX_bits_eq_stateAfterWrite rd (addw_sail_operation v1 v2) js.sail s' h_write).symm
 
 end

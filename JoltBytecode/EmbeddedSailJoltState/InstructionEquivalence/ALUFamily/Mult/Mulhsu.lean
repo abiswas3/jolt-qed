@@ -641,17 +641,45 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx)
   obtain ⟨v2, h2⟩ := hwf rs2
   obtain ⟨jsf, hrun, hsail⟩ := mulhsuProgram_eval_jolt_value rs2 rs1 rd js v1 v2 h1 h2
   refine ⟨jsf, v1, v2, h1, h2, hrun, ?_⟩
-  simpa only [jolt_mulhsu_value_eq_mulhsu] using hsail
+
+  -- The execution theorem leaves `rd` containing the literal Jolt MULHSU value.
+  have h_final_jolt_value :
+      jsf.sail = stateAfterWrite js.sail rd (jolt_mulhsu_value v1 v2) :=
+    hsail
+
+  -- No more execution reasoning remains.
+  -- The only real content left is the pure value equality:
+  -- Jolt's correction sequence is Sail's MULHSU value.
+  have h_mulhsu_value :
+      jolt_mulhsu_value v1 v2 = mulhsu v1 v2 := by
+    -- NOTE: The core math theorem.
+    exact jolt_mulhsu_value_eq_mulhsu v1 v2
+
+  -- After the value theorem, the final state claim is mechanical.
+  rw [← h_mulhsu_value]
+  exact h_final_jolt_value
 
 /-- Main program-level theorem: interpreting the Jolt ISA `MULHSU` expansion
 has the same projected architectural result as Sail's `MULHSU` semantics. -/
 theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hwf : WellFormed js) :
     projectResult ((JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js) =
-    (execute_MUL rs2 rs1 rd mulhsuOp).run js.sail :=
-  rtype_eq_sail_uniform
-    (f := mulhsu)
-    (execute_MULHSU_factored rs2 rs1 rd)
-    (mulhsuProgram_concrete rs2 rs1 rd hrd js hwf)
+    (execute_MUL rs2 rs1 rd mulhsuOp).run js.sail := by
+  obtain ⟨js_afterFinalAdd, v1, v2, h_read_rs1, h_read_rs2,
+      h_program_succeeds, h_final_sail⟩ :=
+    mulhsuProgram_concrete rs2 rs1 rd hrd js hwf
+
+  rw [h_program_succeeds]
+  simp only [projectResult, project]
+  rw [h_final_sail]
+
+  rw [execute_MULHSU_factored rs2 rs1 rd]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+  simp only [h_read_rs1, h_read_rs2]
+
+  obtain ⟨s', h_write⟩ := wX_shape rd (mulhsu v1 v2) js.sail
+  simp only [h_write]
+  congr 1
+  exact (wX_bits_eq_stateAfterWrite rd (mulhsu v1 v2) js.sail s' h_write).symm
 
 end

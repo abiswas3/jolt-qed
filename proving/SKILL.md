@@ -55,6 +55,27 @@ For Jolt/Sail equivalence proofs, separate semantic content from plumbing:
   normalize the monadic computation;
 - if the same `wX_shape` / `stateAfterWrite` bridge appears repeatedly, consider a helper lemma.
 
+For ALUFamily proof cleanup, treat
+`JoltBytecode/EmbeddedSailJoltState/InstructionEquivalence/ALUFamily/Rtype/W/Mulw.lean`
+as the current gold-standard proof shape. When closing the remaining ALUFamily files one by one,
+preserve that structure unless the instruction genuinely needs extra facts:
+
+- obtain source-register values once from `WellFormed`;
+- place each local value definition immediately before the instruction block that uses it;
+- each instruction block should say: what it reads, what value/state it writes, and that it
+  succeeds;
+- instruction helper outputs should be named by role, for example `h_mul_reads_rs1`,
+  `h_mul_writes_product`, and `h_mul_succeeds`, rather than opaque names like `hrun`,
+  `hw`, or `s_raw`;
+- program success should be an explicit straight-line chain of
+  `JoltISA.execProgram_instr_run_retire` rewrites;
+- after the instruction trace, name the final Jolt value/state fact separately;
+- name the pure value bridge separately, prove it with `simp only [...]` plus `exact` when the
+  user is asking for explicit proof scripts, and make the comment about values, not state;
+- once the value bridge is established, the remaining final-state proof should be mechanical;
+- the top-level equivalence theorem may be proved directly from the concrete theorem and Sail
+  factoring theorem when that reads better than calling a generic closer.
+
 For Jolt ISA instruction-equivalence proofs, treat each Jolt program as the
 sequence of Jolt instructions described by the expansion semantics:
 
@@ -62,9 +83,10 @@ sequence of Jolt instructions described by the expansion semantics:
   `JoltISA/Semantics/Instructions/<Instruction>.lean`;
 - each instruction should have run lemmas that state its source reads, state or
   virtual-register update, and return status;
-- for real-register writes, prefer an `_of_read` or `_of_reads` wrapper that
-  chooses the output `SailState` via `wX_shape` and returns both the `execInstr`
-  run equation and the `wX_bits` write fact;
+- for real-register writes, prefer helpers that return a checkpoint `SailJoltState`, explicit
+  source-read facts, a `stateAfterWrite` fact for the written value, and the `execInstr` success
+  equation. Avoid vague names such as `_of_read` or `_of_reads`; name helpers and hypotheses by
+  the instruction and semantic role;
 - concrete program proofs should read as: instruction 1 lemma, instruction 2
   lemma, ..., named math bridge, final state-write collapse;
 - each instruction-equivalence file should have a module-level comment listing
