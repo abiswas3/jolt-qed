@@ -8,6 +8,7 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 **Overall:** ![closed](https://img.shields.io/badge/closed-40-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-18-yellow) ![todo](https://img.shields.io/badge/todo-9-lightgrey) — **67 instructions total**
 
+
 ## ALU — I-type shifts
 
 ![closed](https://img.shields.io/badge/closed-3-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-0-lightgrey)

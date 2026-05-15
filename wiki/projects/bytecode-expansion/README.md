@@ -24,6 +24,20 @@ We discharge this as a single Lean theorem per instruction, named `jolt_<inst>_e
 > [!IMPORTANT]
 > If the Rust-to-Lean transcription of the Jolt ISA is faithful, and the Lean kernel is to be trusted, then the modified guest program written in Jolt assembly is equivalent to the original RISC-V guest program.
 
+## ALUFamily proof style
+
+As of 2026-05-15, the `ALUFamily` proofs have been restructured into a more human-readable form. The goal of the cleanup was not just to close theorems, but to make the proof scripts explain the bytecode expansion.
+
+The current style separates the proof into three layers:
+
+1. Instruction-local semantic lemmas: each emitted Jolt instruction gets a small lemma exposing the next checkpoint state, the fact that the instruction retires successfully, and the value written by that instruction.
+2. Pure value lemmas: the bitvector arithmetic is proved separately from the monadic execution plumbing.
+3. Concrete expansion proofs: the main theorem reads as a straight-line trace through named checkpoint states, followed by a final state equation using the pure value lemma.
+
+For example, the `ADDW` proof is organized around the state after the `ADD`, the state after the word sign-extension, the proof that each instruction succeeds, and the mathematical fact that the sign-extended Jolt result is the Sail `ADDW` result. Longer proofs such as `SRAW` follow the same shape with more named intermediate checkpoints rather than a different proof idiom.
+
+This naming and structure is now intended to be the baseline for future ALU bytecode-expansion proofs: names should describe the instruction boundary or value being established, not the mechanics of the tactic script.
+
 ## Pages
 
 - [Status](status.md) — per-instruction snapshot: closed, in progress, todo.
