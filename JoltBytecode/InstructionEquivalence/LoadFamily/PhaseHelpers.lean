@@ -1,7 +1,8 @@
+import JoltBytecode.JoltISA.Semantics.Instructions
+import JoltBytecode.JoltISA.Semantics.ProgramComposition
 import JoltBytecode.InstructionEquivalence.Common_Memory_helpers
 
 open Sail PreSail LeanRV64D.Functions
-open Std.Do
 open virtaddr MemoryAccessType mem_payload
 
 set_option autoImplicit true
@@ -11,179 +12,161 @@ noncomputable section
 namespace InstructionEquivalence
 
 /-!
-# Phase-composition helpers for the Jolt load family
+# Program phases for the Jolt load family
 
-This file provides the reusable monadic-run lemmas that reason about how a
-Jolt load sequence's pieces (setup, `vreg_LD`, …) compose. Every load
-instruction's `decomposed` file uses these to thread through the load phase.
+The shared load prefix is a Jolt ISA program, not a proof-only monadic
+reference:
 
-## What lives here (by role)
+1. `ADDI v0, rs1, imm` computes the effective address.
+2. `ANDI v1, v0, -8` computes the enclosing dword base address.
+3. `LD v1, v1, 0` loads that dword.
 
-* `vreg_LD_step_concrete` — given an intermediate state in which `v1` holds
-  a (naturally-aligned) dword address, running `vreg_LD 1 1 0` loads that
-  dword into `v1`. The "end of the load phase" lemma.
-
-* Setup lemmas (two forms, matching two bytecode styles):
-  * `load_phase_setup_concrete` — the `writeVReg 0 ea; readVReg 0;
-    writeVReg 1 (v0 &&& -8)` setup used by LW.
-  * `load_phase_setup_concrete_andi` — the `writeVReg 0 ea;
-    vreg_ANDI 1 0 (-8)` setup used by byte/halfword loads.
-  Both prove the setup succeeds with `v0 = ea`, `v1 = ea &&& -8`, and Sail
-  state unchanged.
-
-* Composition lemmas: glue a setup to `vreg_LD`.
-  * `vreg_LD_phase_from_setup` — for `Unit`-typed setups (LW).
-  * `vreg_LD_phase_from_setup_er` — for `ExecutionResult`-typed setups
-    (byte/halfword).
+The lemmas below expose these as small `JoltISA.Program` phases, matching the
+proof style used by the advice-family proofs.
 -/
 
-/-- If `js1` is a state in which `v1` holds an `AlignedDwordAccess`ible
-    address satisfying the standard translate / phys assumptions, then
-    `vreg_LD 1 1 0` runs from `js1` to a state that leaves Sail untouched,
-    preserves `v0`, and loads the dword into `v1`. The "end of the load
-    phase" lemma. -/
-theorem vreg_LD_step_concrete (js : SailJoltState) (js1 : SailJoltState) (addr : BitVec 64)
+/-- Common setup phase for load expansions:
+`ADDI v0, rs1, imm; ANDI v1, v0, -8`. -/
+def loadSetupPhase (imm : BitVec 12) (rs1 : regidx) : JoltISA.Program :=
+  .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
+  .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
+  .done RETIRE_SUCCESS
+
+/-- Common dword-load phase for load expansions: `LD v1, v1, 0`. -/
+def loadDwordPhase : JoltISA.Program :=
+  .instr (.LD 1 1 0) <|
+  .done RETIRE_SUCCESS
+
+/-- Common setup-plus-dword-load phase. -/
+def loadPhase (imm : BitVec 12) (rs1 : regidx) : JoltISA.Program :=
+  (loadSetupPhase imm rs1).append loadDwordPhase
+
+/-- Running the setup phase computes `ea` in `v0` and the aligned dword base
+in `v1`, without changing Sail state. -/
+theorem loadSetupPhase_run (imm : BitVec 12) (rs1 : regidx)
+    (js : SailJoltState) (val : BitVec 64)
+    (hrx : rX_bits rs1 js.sail = .ok val js.sail) :
+    ∃ js_setup,
+      JoltISA.Program.Run (loadSetupPhase imm rs1) js js_setup ∧
+      js_setup.sail = js.sail ∧
+      js_setup.vregs 0 = load_effective_address val imm ∧
+      js_setup.vregs 1 = compute_aligned_dword_base_address val imm := by
+  let ea := load_effective_address val imm
+  let daddr := compute_aligned_dword_base_address val imm
+  let js_afterAddi : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = (0 : JoltISA.VReg) then ea else js.vregs r }
+  let js_setup : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r =>
+        if r = (1 : JoltISA.VReg) then daddr else js_afterAddi.vregs r }
+  have h_addi_succeeds :
+      (JoltISA.execInstr (.ADDI (.vreg 0) (.xreg rs1) imm)).run js =
+        .ok RETIRE_SUCCESS js_afterAddi := by
+    simpa only [js_afterAddi, ea, load_effective_address] using
+      (JoltISA.addi_run_vreg_xreg (0 : JoltISA.VReg) rs1 imm js val hrx)
+  have h_signExtend_neg8 :
+      sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by
+    decide
+  have h_andi_succeeds :
+      (JoltISA.execInstr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12))).run
+        js_afterAddi =
+        .ok RETIRE_SUCCESS js_setup := by
+    simpa only [js_afterAddi, js_setup, ea, daddr, compute_aligned_dword_base_address,
+      load_effective_address, h_signExtend_neg8] using
+      (JoltISA.andi_run_vreg_vreg (1 : JoltISA.VReg) (0 : JoltISA.VReg)
+        (-8 : BitVec 12) js_afterAddi)
+  have h_setup_succeeds :
+      JoltISA.Program.Run (loadSetupPhase imm rs1) js js_setup := by
+    change (JoltISA.execProgram (loadSetupPhase imm rs1)).run js =
+      .ok RETIRE_SUCCESS js_setup
+    unfold loadSetupPhase
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterAddi h_addi_succeeds]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterAddi js_setup h_andi_succeeds]
+    rfl
+  refine ⟨js_setup, h_setup_succeeds, rfl, ?_, ?_⟩
+  · simp [js_setup, js_afterAddi, ea]
+  · simp [js_setup, daddr]
+
+/-- Running the `LD` phase from a setup state loads the enclosing dword into
+`v1`, without changing Sail state or `v0`. -/
+theorem loadDwordPhase_run (js : SailJoltState) (js_setup : SailJoltState)
+    (addr : BitVec 64)
     (hcfg : JoltConfig js.sail)
-    (hsetup_sail : js1.sail = js.sail)
-    (hsetup_v1 : js1.vregs 1 = addr)
+    (hsetup_sail : js_setup.sail = js.sail)
+    (hsetup_v1 : js_setup.vregs 1 = addr)
     (haligned : AlignedDwordAccess addr)
     (htranslate : BareTranslation addr js.sail)
-    (hphys : FlatPhysMem addr 8 js.sail)
-    :
+    (hphys : FlatPhysMem addr 8 js.sail) :
     ∃ js_load,
-      vreg_LD 1 1 0 js1 = .ok RETIRE_SUCCESS js_load ∧
+      JoltISA.Program.Run loadDwordPhase js_setup js_load ∧
       js_load.sail = js.sail ∧
-      js_load.vregs 0 = js1.vregs 0 ∧
+      js_load.vregs 0 = js_setup.vregs 0 ∧
       js_load.vregs 1 = loaded_dword_at js.sail addr := by
+  let dword := loaded_dword_at js.sail addr
   let js_load : SailJoltState :=
     { sail := js.sail
-      vregs := fun r => if r = 1 then loaded_dword_at js.sail addr else js1.vregs r }
-  have hcfg1 : JoltConfig js1.sail := by simpa [hsetup_sail] using hcfg
-  have htranslate1 : BareTranslation addr js1.sail := by
-    simpa [hsetup_sail] using htranslate
-  have hphys1 : FlatPhysMem addr 8 js1.sail := by
-    simpa [hsetup_sail] using hphys
-  have hdw : DwordLoadAssumptions addr js1.sail :=
-    dword_load_assumptions_of_aligned_translate_phys addr js1.sail haligned htranslate1 hphys1
-  refine ⟨js_load, ?_, rfl, ?_, ?_⟩
-  · have hld := vreg_LD_run_of_dword_assumptions 1 1 js1 addr hsetup_v1 hcfg1 hdw
-    simpa [js_load, hsetup_sail] using hld
+      vregs := fun r => if r = (1 : JoltISA.VReg) then dword else js_setup.vregs r }
+  have hcfg_setup : JoltConfig js_setup.sail := by
+    simpa only [hsetup_sail] using hcfg
+  have htranslate_setup : BareTranslation addr js_setup.sail := by
+    simpa only [hsetup_sail] using htranslate
+  have hphys_setup : FlatPhysMem addr 8 js_setup.sail := by
+    simpa only [hsetup_sail] using hphys
+  have hdword : DwordLoadAssumptions addr js_setup.sail :=
+    dword_load_assumptions_of_aligned_translate_phys
+      addr js_setup.sail haligned htranslate_setup hphys_setup
+  have h_ld_succeeds :
+      (JoltISA.execInstr (.LD 1 1 0)).run js_setup =
+        .ok RETIRE_SUCCESS js_load := by
+    have hld :=
+      vreg_LD_run_of_dword_assumptions 1 1 js_setup addr hsetup_v1 hcfg_setup hdword
+    simpa only [js_load, dword, hsetup_sail] using hld
+  have h_phase_succeeds :
+      JoltISA.Program.Run loadDwordPhase js_setup js_load := by
+    change (JoltISA.execProgram loadDwordPhase).run js_setup =
+      .ok RETIRE_SUCCESS js_load
+    unfold loadDwordPhase
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_setup js_load h_ld_succeeds]
+    rfl
+  refine ⟨js_load, h_phase_succeeds, rfl, ?_, ?_⟩
   · simp [js_load]
-  · simp [js_load]
+  · simp [js_load, dword]
 
-/-- LW-style setup: run `writeVReg 0 ea; let v0 ← readVReg 0;
-    writeVReg 1 (v0 &&& -8)` at `js`. Succeeds with Sail state unchanged,
-    `v0 = ea`, and `v1 = aligned-down base address`. -/
-theorem load_phase_setup_concrete (imm : BitVec 12) (js : SailJoltState) (val : BitVec 64) :
-    ∃ js1,
-      (do
-        writeVReg 0 (load_effective_address val imm)
-        let v0 ← readVReg 0
-        writeVReg 1 (v0 &&& (-8 : BitVec 64))).run js = .ok () js1 ∧
-      js1.sail = js.sail ∧
-      js1.vregs 0 = load_effective_address val imm ∧
-      js1.vregs 1 = compute_aligned_dword_base_address val imm := by
-  let ea := load_effective_address val imm
-  let daddr := compute_aligned_dword_base_address val imm
-  let js0 : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = 0 then ea else js.vregs r }
-  let js1 : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = 1 then daddr else if r = 0 then ea else js.vregs r }
-  have hw0 : writeVReg 0 ea js = .ok () js0 := by
-    unfold writeVReg js0 ea
-    simp [modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
-  have hread_v0 : readVReg 0 js0 = .ok ea js0 := by
-    rw [readVReg_run]
-    simp [js0]
-  have hw1 : writeVReg 1 daddr js0 = .ok () js1 := by
-    unfold writeVReg js0 js1 ea daddr
-    simp [modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
-  refine ⟨js1, ?_, rfl, ?_, ?_⟩
-  · simp only [bind, EStateM.bind, EStateM.run]
-    rw [hw0]
-    simp only []
-    rw [hread_v0]
-    simp only []
-    exact hw1
-  · simp [js1, daddr, ea]
-  · simp [js1, daddr]
-
-/-- Byte/halfword-style setup: run `writeVReg 0 ea; vreg_ANDI 1 0 (-8)` at
-    `js`. Same postcondition as `load_phase_setup_concrete` (v0 = ea, v1 =
-    aligned-down base, Sail untouched). Returns `ExecutionResult` (because
-    `vreg_ANDI` does) so it composes cleanly with `vreg_LD` via
-    `vreg_LD_phase_from_setup_er`, with no intervening `pure ()` to
-    collapse. -/
-theorem load_phase_setup_concrete_andi (imm : BitVec 12) (js : SailJoltState) (val : BitVec 64) :
-    ∃ js1,
-      ((do
-        writeVReg 0 (load_effective_address val imm)
-        vreg_ANDI 1 0 (-8 : BitVec 12)) : JoltMonad ExecutionResult).run js =
-          .ok RETIRE_SUCCESS js1 ∧
-      js1.sail = js.sail ∧
-      js1.vregs 0 = load_effective_address val imm ∧
-      js1.vregs 1 = compute_aligned_dword_base_address val imm := by
-  let ea := load_effective_address val imm
-  let daddr := compute_aligned_dword_base_address val imm
-  let js0 : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = 0 then ea else js.vregs r }
-  let js1 : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = 1 then daddr else if r = 0 then ea else js.vregs r }
-  have hw0 : writeVReg 0 ea js = .ok () js0 := by
-    unfold writeVReg js0 ea
-    simp [modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
-  have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
-  have hv_andi : vreg_ANDI 1 0 (-8 : BitVec 12) js0 = .ok RETIRE_SUCCESS js1 := by
-    change vreg_ANDI 1 0 (-8 : BitVec 12) js0 = .ok RETIRE_SUCCESS
-      { sail := js0.sail
-        vregs := fun r =>
-          if r = 1 then js0.vregs 0 &&& sign_extend (m := 64) (-8 : BitVec 12)
-          else js0.vregs r }
-    simp [js0, js1, ea, daddr, h8, compute_aligned_dword_base_address,
-          load_effective_address]
-  refine ⟨js1, ?_, rfl, ?_, ?_⟩
-  · simp only [bind, EStateM.bind, EStateM.run]
-    rw [hw0]
-    simp only []
-    exact hv_andi
-  · simp [js1, daddr, ea]
-  · simp [js1, daddr]
-
-/-- Composition: if a `Unit`-typed setup runs from `js` to `js1` and
-    `vreg_LD 1 1 0` runs from `js1` to `js_load`, then
-    `do let _ ← setup; vreg_LD 1 1 0` runs from `js` to `js_load`. -/
-theorem vreg_LD_phase_from_setup (setup : JoltMonad Unit) (js js1 js_load : SailJoltState)
-    (hsetup_run : setup.run js = .ok () js1)
-    (hld : vreg_LD 1 1 0 js1 = .ok RETIRE_SUCCESS js_load) :
-    (do
-      let _ ← setup
-      vreg_LD 1 1 0).run js = .ok RETIRE_SUCCESS js_load := by
-  have hsetup_run' : setup js = .ok () js1 := by
-    simpa [EStateM.run] using hsetup_run
-  simp only [bind, EStateM.bind, EStateM.run]
-  rw [hsetup_run']
-  simpa using hld
-
-/-- `ExecutionResult`-typed variant of `vreg_LD_phase_from_setup`. Used when
-    the setup ends in a virtual instruction (e.g. `vreg_ANDI`) whose result
-    type is `ExecutionResult` and whose successful return is
-    `RETIRE_SUCCESS`. Avoids wrapping the setup with a trailing `pure ()` to
-    force Unit type. -/
-theorem vreg_LD_phase_from_setup_er (setup : JoltMonad ExecutionResult)
-    (js js1 js_load : SailJoltState)
-    (hsetup_run : setup.run js = .ok RETIRE_SUCCESS js1)
-    (hld : vreg_LD 1 1 0 js1 = .ok RETIRE_SUCCESS js_load) :
-    (do
-      let _ ← setup
-      vreg_LD 1 1 0).run js = .ok RETIRE_SUCCESS js_load := by
-  have hsetup_run' : setup js = .ok RETIRE_SUCCESS js1 := by
-    simpa [EStateM.run] using hsetup_run
-  simp only [bind, EStateM.bind, EStateM.run]
-  rw [hsetup_run']
-  simpa using hld
+/-- Running the common load phase computes the effective address in `v0` and
+loads the enclosing dword into `v1`. -/
+theorem loadPhase_run (imm : BitVec 12) (rs1 : regidx)
+    (js : SailJoltState) (val : BitVec 64)
+    (hcfg : JoltConfig js.sail)
+    (hrx : rX_bits rs1 js.sail = .ok val js.sail)
+    (h_dword_translate :
+      BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
+    (h_dword_phys :
+      FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
+    ∃ js_load,
+      JoltISA.Program.Run (loadPhase imm rs1) js js_load ∧
+      js_load.sail = js.sail ∧
+      js_load.vregs 0 = load_effective_address val imm ∧
+      js_load.vregs 1 =
+        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
+  obtain ⟨js_setup, h_setup_succeeds, h_setup_sail, h_setup_v0, h_setup_v1⟩ :=
+    loadSetupPhase_run imm rs1 js val hrx
+  have h_daddr_aligned :
+      AlignedDwordAccess (compute_aligned_dword_base_address val imm) := by
+    simpa only [compute_aligned_dword_base_address, load_effective_address,
+      aligned_dword_addr_eq] using
+      (aligned_dword_addr_is_aligned_dword_access val imm)
+  obtain ⟨js_load, h_load_succeeds, h_load_sail, h_load_v0_raw, h_load_v1⟩ :=
+    loadDwordPhase_run js js_setup (compute_aligned_dword_base_address val imm)
+      hcfg h_setup_sail h_setup_v1 h_daddr_aligned h_dword_translate h_dword_phys
+  have h_phase_succeeds :
+      JoltISA.Program.Run (loadPhase imm rs1) js js_load := by
+    unfold loadPhase
+    exact JoltISA.Program.Run.append h_setup_succeeds h_load_succeeds
+  have h_load_v0 : js_load.vregs 0 = load_effective_address val imm := by
+    rw [h_load_v0_raw, h_setup_v0]
+  exact ⟨js_load, h_phase_succeeds, h_load_sail, h_load_v0, h_load_v1⟩
 
 end InstructionEquivalence
+
+end
