@@ -1,13 +1,10 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Expansions.Load
 import JoltBytecode.InstructionEquivalence.Memory.Utils
-import JoltBytecode.VirtualInstructions
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
-import JoltBytecode.InstructionEquivalence.LoadFamily.LB_decomposed
-import JoltBytecode.InstructionEquivalence.LoadFamily.LWU_decomposed
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib.Tactic.IntervalCases
 
@@ -48,25 +45,6 @@ Alignment guard structurally matches `jolt_lw`: the initial
 `VirtualAssertWordAlignment` is fused with the first real-register read.
 -/
 
-/-- The Jolt LWU program. -/
-def jolt_lwu (imm : BitVec 12) (rs1 rd : regidx) : JoltMonad ExecutionResult := do
-  -- VirtualAssertWordAlignment rs1, imm + ADDI v0, rs1, imm (fused)
-  let base ← liftSail (rX_bits rs1)
-  let ea := base + sign_extend (m := 64) imm
-  if ea &&& 3 ≠ 0 then
-    pure (ExecutionResult.Memory_Exception
-      (Virtaddr ea, ExceptionType.E_Load_Addr_Align ()))
-  else do
-    writeVReg 0 ea                                        -- (ADDI v0, rs1, imm writes ea)
-    let _ ← vreg_ANDI 1 0 (-8 : BitVec 12)                -- ANDI v1, v0, -8
-    match ← vreg_LD 1 1 0 with                             -- LD   v1, v1, 0
-    | .Retire_Success () =>
-        let _ ← vreg_XORI 0 0 4                            -- XORI v0, v0, 4
-        let _ ← vreg_SLLI 0 0 3                            -- SLLI v0, v0, 3
-        let _ ← vreg_SLL 1 1 0                             -- SLL  v1, v1, v0
-        vreg_SRLI_to_real rd 1 (32 : BitVec 6)             -- SRLI rd, v1, 32
-    | other => pure other
-
 /-- **Bridge lemma for LWU.** The Jolt logic-phase computation (XOR 4,
     SLL 3, SLL the dword, SRLI 32) equals the Sail-side direct word
     load zero-extended to 64 bits. Requires word alignment. -/
@@ -80,66 +58,6 @@ theorem jolt_lwu_bridge (s : SailState) (addr : BitVec 64)
      shift_bits_right shifted (32 : BitVec 6))
     = zero_extend (m := 64) (loaded_word_at s addr) := by
   simp only [sll_srli_extracts_word _ _ halign, ← loaded_word_in_dword _ _ halign]
-
-/-- `jolt_lwu` and `jolt_lwu_decomposed` produce the same state on an
-    aligned input. -/
-theorem jolt_lwu_run_eq_decomposed (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState) (val : BitVec 64)
-    (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (halign : (val + sign_extend (m := 64) imm) &&& 3 = 0)
-    :
-    (jolt_lwu imm rs1 rd).run js = (jolt_lwu_decomposed imm rs1 rd).run js := by
-  have h8 : sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by decide
-  unfold jolt_lwu jolt_lwu_decomposed vreg_SRLI_to_real
-    LB_main.jolt_lb_load_phase jolt_lwu_logic_phase jolt_lwu_write_phase vreg_ANDI
-  simp only [liftSail, bind, EStateM.bind, pure, EStateM.pure, EStateM.run, h8]
-  rw [hrx]
-  simp only []
-  rw [if_neg (by simpa using halign)]
-  rfl
-
-/-- Aligned case. -/
-theorem jolt_lwu_concrete (imm : BitVec 12) (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (halign : load_effective_address val imm &&& 3 = 0)
-    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
-    ∃ js' : SailJoltState,
-      (jolt_lwu imm rs1 rd).run js = .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd
-        (zero_extend (m := 64)
-          (loaded_word_at js.sail (load_effective_address val imm))) := by
-  have hrun_eq :
-      (jolt_lwu imm rs1 rd).run js = (jolt_lwu_decomposed imm rs1 rd).run js := by
-    simpa using jolt_lwu_run_eq_decomposed imm rs1 rd js val hrx
-      (by simpa [load_effective_address] using halign)
-  rcases jolt_lwu_decomposed_writes_logic_value imm rs1 rd js val
-      hrd hcfg hrx h_dword_translate h_dword_phys with
-    ⟨js', logic_val, hdecomp_run, hlogic_val, hwrite_sail⟩
-  refine ⟨js', ?_, ?_⟩
-  · rw [hrun_eq]
-    exact hdecomp_run
-  · rw [hwrite_sail, hlogic_val]
-    exact congrArg (stateAfterWrite js.sail rd)
-      (jolt_lwu_bridge js.sail (load_effective_address val imm) halign)
-
-/-- Misaligned case. -/
-theorem jolt_lwu_concrete_misaligned (imm : BitVec 12) (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_align : load_effective_address val imm &&& 3 ≠ 0)
-    :
-    (jolt_lwu imm rs1 rd).run js =
-      .ok (ExecutionResult.Memory_Exception
-        (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())) js := by
-  unfold jolt_lwu
-  simp only [liftSail, bind, EStateM.bind, pure, EStateM.run]
-  rw [hrx]
-  simp only []
-  rw [if_pos h_align]
-  rfl
 
 /-- Sail-side `execute_LOAD … true 4` reduces to `stateAfterWrite rd
     (zero_extend (loaded_word_at ea))`. -/
@@ -169,39 +87,6 @@ theorem execute_LWU_reduces (imm : BitVec 12) (rs1 rd : regidx)
   simp only [RETIRE_SUCCESS]
   congr 1
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
-
-/-- Aligned equivalence. -/
-theorem jolt_lwu_eq_sail_aligned (imm : BitVec 12)
-    (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (htranslate : BareTranslation (load_effective_address val imm) js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 4 js.sail)
-    (h_word_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64)
-    (h_align : load_effective_address val imm &&& 3 = 0)
-    :
-    projectResult ((jolt_lwu imm rs1 rd).run js) =
-    (execute_LOAD imm rs1 rd true 4).run js.sail := by
-  let ea := load_effective_address val imm
-  have hload : LoadReadAssumptions (load_effective_address val imm) 4 js.sail := by
-    refine
-      { aligned := ?_
-        translate := htranslate
-        phys := hphys }
-    refine
-      { misalign := ?_
-        split := ?_ }
-    · simpa [ea] using access_misaligned_4_aligned_false ea h_align
-    · simpa [ea] using split_misaligned_aligned_4 ea h_align
-  have hjolt_aligned := jolt_lwu_concrete imm rs1 rd hrd js hcfg val hrx h_align h_dword_translate h_dword_phys
-  have hsail_aligned := execute_LWU_reduces imm rs1 rd js hcfg val hrx hload h_word_no_ovf
-  rcases hjolt_aligned with ⟨js', hjolt, hjolt_sail⟩
-  rw [hjolt]
-  simp only [projectResult, project]
-  rw [hjolt_sail, hsail_aligned]
 
 /-- Sail-side misaligned. -/
 theorem execute_LWU_misaligned (imm : BitVec 12) (rs1 rd : regidx)
@@ -235,62 +120,11 @@ theorem execute_LWU_misaligned (imm : BitVec 12) (rs1 rd : regidx)
         vmem_read_addr, hmis, ea]
   rfl
 
-/-- Misaligned equivalence. -/
-theorem jolt_lwu_eq_sail_misaligned (imm : BitVec 12)
-    (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (htranslate : BareTranslation (load_effective_address val imm) js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 4 js.sail)
-    (h_word_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64)
-    (h_align : load_effective_address val imm &&& 3 ≠ 0)
-    :
-    projectResult ((jolt_lwu imm rs1 rd).run js) =
-    (execute_LOAD imm rs1 rd true 4).run js.sail := by
-  let ea := load_effective_address val imm
-  have hjolt_misaligned :
-      (jolt_lwu imm rs1 rd).run js =
-        .ok (ExecutionResult.Memory_Exception (Virtaddr ea, ExceptionType.E_Load_Addr_Align ())) js := by
-    simpa [ea] using
-      (jolt_lwu_concrete_misaligned imm rs1 rd hrd js hcfg val hrx h_align)
-  have hsail_misaligned :
-      (execute_LOAD imm rs1 rd true 4).run js.sail =
-        .ok (ExecutionResult.Memory_Exception (Virtaddr ea, ExceptionType.E_Load_Addr_Align ())) js.sail := by
-    simpa [ea] using
-      (execute_LWU_misaligned imm rs1 rd js hcfg val hrx htranslate hphys h_word_no_ovf h_align)
-  rw [hjolt_misaligned]
-  simp only [projectResult, project]
-  symm
-  exact hsail_misaligned
-
-/-- **Main theorem.** `jolt_lwu = execute_LOAD … true 4` on every input. -/
-theorem jolt_lwu_eq_sail (imm : BitVec 12)
-    (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (htranslate : BareTranslation (load_effective_address val imm) js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 4 js.sail)
-    (h_word_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64)
-    :
-    projectResult ((jolt_lwu imm rs1 rd).run js) =
-    (execute_LOAD imm rs1 rd true 4).run js.sail := by
-  let ea := load_effective_address val imm
-  by_cases h_align : ea &&& 3 = 0
-  · exact jolt_lwu_eq_sail_aligned imm rs1 rd hrd js hcfg val hrx h_dword_translate h_dword_phys htranslate hphys h_word_no_ovf h_align
-  · exact jolt_lwu_eq_sail_misaligned imm rs1 rd hrd js hcfg val hrx h_dword_translate h_dword_phys htranslate hphys h_word_no_ovf h_align
-
 /-!
 ## Program-level LWU theorem
 
-The theorems below are the new public shape: the Jolt side is not the
-proof-oriented `jolt_lwu` do-block, but the structured `JoltISA.lwuProgram`.
-The proof is still Ari's three-block decomposition:
+The Jolt side is the structured `JoltISA.lwuProgram`. The proof is Ari's
+three-block decomposition:
 
 * `assertSetupBlockAligned` handles the alignment assertion and dword load;
 * `xoriSlliSllBlock` handles the lane-to-top virtual-register work; and
