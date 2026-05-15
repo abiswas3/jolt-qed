@@ -3,7 +3,7 @@ import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.SLLI
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSRLI
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSignExtendWord
-import JoltBytecode.JoltISA.Semantics.StraightLine
+import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.JoltISA.Values.Shift
 
 set_option linter.unusedVariables false

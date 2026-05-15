@@ -1,7 +1,7 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualMULI
-import JoltBytecode.JoltISA.Semantics.StraightLine
+import JoltBytecode.JoltISA.Semantics.Instructions
 
 set_option linter.unusedVariables false
 

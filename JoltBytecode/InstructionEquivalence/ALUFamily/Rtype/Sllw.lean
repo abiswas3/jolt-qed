@@ -3,7 +3,7 @@ import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.Mul
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualPow2W
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSignExtendWord
-import JoltBytecode.JoltISA.Semantics.StraightLine
+import JoltBytecode.JoltISA.Semantics.Instructions
 import Mathlib.Data.Nat.Bitwise
 
 set_option linter.unusedVariables false

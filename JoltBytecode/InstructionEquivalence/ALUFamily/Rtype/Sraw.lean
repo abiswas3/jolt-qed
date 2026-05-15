@@ -4,7 +4,7 @@ import JoltBytecode.JoltISA.Semantics.Instructions.ANDI
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSRA
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualShiftRightBitmask
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSignExtendWord
-import JoltBytecode.JoltISA.Semantics.StraightLine
+import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.JoltISA.Values.Shift
 import Mathlib.Data.Nat.Bitwise
 

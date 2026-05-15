@@ -1,9 +1,8 @@
 import JoltBytecode.JoltISA.Expansions.Mul
-import JoltBytecode.JoltISA.Semantics.StraightLine
+import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions

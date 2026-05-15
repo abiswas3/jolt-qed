@@ -2,7 +2,7 @@ import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSRAI
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSignExtendWord
-import JoltBytecode.JoltISA.Semantics.StraightLine
+import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.JoltISA.Values.Shift
 import Mathlib.Data.Nat.Bitwise
 
