@@ -1,0 +1,215 @@
+import JoltBytecode.JoltISA.Environment
+import JoltBytecode.JoltISA.Semantics.RegisterOps
+import JoltBytecode.InstructionEquivalence.ProofSupport
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divuw_math
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remuw_math
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remuw_phase_helpers
+
+set_option linter.unusedVariables false
+set_option linter.unusedSimpArgs false
+
+open Sail PreSail LeanRV64D.Functions
+
+noncomputable section
+
+/-!
+# REMUW: Jolt inline sequence with oracle advice
+
+The canonical bytecode object in this file is `remuwProgram`. It is the
+literal 9-instruction `REMUW` expansion. `remuwProgramPhases` is only the
+proof-facing decomposition used to compose the phase lemmas.
+-/
+
+namespace JoltISA
+
+/-- Jolt ISA program for RV64 `REMUW`. The quotient advice is explicit. -/
+def remuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
+  .instr (.VirtualZeroExtendWord (.vreg 0) (.xreg rs1)) <|
+  .instr (.VirtualZeroExtendWord (.vreg 1) (.xreg rs2)) <|
+  .instr (.VirtualAdvice 2 quotient) <|
+  .instr (.VirtualAssertMulUNoOverflowV 2 1) <|
+  .instr (.MUL (.vreg 3) (.vreg 2) (.vreg 1)) <|
+  .instr (.VirtualAssertLTE 3 0) <|
+  .instr (.SUB (.vreg 3) (.vreg 0) (.vreg 3)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder 3 1) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 3)) <|
+  .done RETIRE_SUCCESS
+
+/-- Proof-facing phase decomposition of `remuwProgram`. -/
+def remuwProgramPhases (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
+  (Remuw.phase_setup rs1 rs2 quotient).append <|
+  Remuw.phase_quotient_product.append <|
+  Remuw.phase_remainder_bound.append <|
+  Remuw.phase_writeback rd
+
+/-- The phase decomposition is definitionally the same bytecode as `remuwProgram`. -/
+theorem remuwProgram_eq_phases (rs2 rs1 rd : regidx) (quotient : BitVec 64) :
+    remuwProgram rs2 rs1 rd quotient =
+      remuwProgramPhases rs2 rs1 rd quotient := by
+  rfl
+
+/-- Running `remuwProgram` with honest quotient advice succeeds and writes
+Sail's unsigned 32-bit REM value to `rd`. -/
+theorem remuwProgram_concrete (rs2 rs1 rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    ∃ js',
+      (execProgram (remuwProgram rs2 rs1 rd
+          (sail_divuw_advice dividend divisor))).run js =
+        .ok RETIRE_SUCCESS js' ∧
+      js'.sail = stateAfterWrite js.sail rd
+        (sail_remw_value dividend divisor true) := by
+  let q := sail_divuw_advice dividend divisor
+  let zd := zero_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0)
+  let zv := zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0)
+  let rem := zd - q * zv
+
+  have hguard_no_overflow : q.toNat * zv.toNat < 2^64 :=
+    hguard_no_overflow_of_honest_uw dividend divisor
+  have hguard_lte : (q * zv).toNat ≤ zd.toNat :=
+    hguard_q_times_d_le_dividend_of_honest_uw dividend divisor
+  have hguard_rem_bound : zv = 0#64 ∨ (zd - q * zv).toNat < zv.toNat :=
+    hguard_rem_bound_of_honest_uw dividend divisor
+  have hrem :
+      sign_extend (m := 64) (Sail.BitVec.extractLsb rem 31 0) =
+        sail_remw_value dividend divisor true := by
+    unfold rem
+    exact signExtend_remainder_eq_sail_remw_of_guards_uw dividend divisor q
+      hguard_no_overflow hguard_lte hguard_rem_bound
+
+  obtain ⟨js₁, hrun1, h1_v0, h1_v1, h1_v2, h1_sail⟩ :=
+    Remuw.phase_setup_run rs1 rs2 q js dividend divisor
+      hrs1 hrs2 hguard_no_overflow
+
+  obtain ⟨js₂, hrun2, h2_v0, h2_v1, h2_v2, h2_v3, h2_sail⟩ :=
+    Remuw.phase_quotient_product_run js₁ q zd zv
+      h1_v0 h1_v1 h1_v2 hguard_lte
+
+  have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
+  obtain ⟨js₃, hrun3, h3_v3, h3_sail⟩ :=
+    Remuw.phase_remainder_bound_run js₂ q zd zv
+      h2_v0 h2_v1 h2_v2 h2_v3 hguard_rem_bound
+
+  have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
+  have h3_v3_rem : js₃.vregs 3 = rem := by
+    unfold rem
+    exact h3_v3
+  obtain ⟨js₄, hrun4, h4_sail⟩ :=
+    Remuw.phase_writeback_run rd js₃ js.sail rem h3_v3_rem h3_sail_orig
+
+  have h_phase_program_succeeds :
+      Program.Run (remuwProgramPhases rs2 rs1 rd q) js js₄ := by
+    unfold remuwProgramPhases
+    exact Program.Run.append hrun1
+      (Program.Run.append hrun2
+        (Program.Run.append hrun3 hrun4))
+  have h_program_succeeds :
+      Program.Run (remuwProgram rs2 rs1 rd q) js js₄ := by
+    rw [remuwProgram_eq_phases]
+    exact h_phase_program_succeeds
+  rw [hrem] at h4_sail
+  exact ⟨js₄, h_program_succeeds, h4_sail⟩
+
+/-- Factoring lemma: `execute_REMW` collapses to the pure `sail_remw_value`. -/
+theorem execute_REMUW_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
+    execute_REMW rs2 rs1 rd is_unsigned = (do
+      let v1 ← rX_bits rs1
+      let v2 ← rX_bits rs2
+      wX_bits rd (sail_remw_value v1 v2 is_unsigned)
+      pure RETIRE_SUCCESS) := by
+  simp [execute_REMW, sail_remw_value, bind_pure_comp]
+
+/-- Sail's `execute_REMW ... true` writes `sail_remw_value`. -/
+theorem execute_REMUW_reduces (rs2 rs1 rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    (execute_REMW rs2 rs1 rd true).run js.sail =
+      .ok RETIRE_SUCCESS
+        (stateAfterWrite js.sail rd (sail_remw_value dividend divisor true)) := by
+  rw [execute_REMUW_factored]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure, hrs1, hrs2]
+  obtain ⟨s', hw⟩ := wX_shape rd (sail_remw_value dividend divisor true) js.sail
+  rw [hw]
+  simp only []
+  congr 1
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
+
+/-- Honest quotient advice makes `remuwProgram` match Sail REMUW. -/
+theorem remuwProgram_complete (rs2 rs1 rd : regidx)
+    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    projectResult ((execProgram (remuwProgram rs2 rs1 rd
+                      (sail_divuw_advice dividend divisor))).run js) =
+    (execute_REMW rs2 rs1 rd true).run js.sail := by
+  obtain ⟨js', hjolt, hjolt_sail⟩ :=
+    remuwProgram_concrete rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2
+  rw [hjolt]
+  simp only [projectResult, project]
+  rw [hjolt_sail]
+  rw [execute_REMUW_reduces rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2]
+
+/-- Any successful REMUW run writes Sail's unsigned 32-bit remainder. -/
+theorem remuwProgram_sound (rs2 rs1 rd : regidx)
+    (q : BitVec 64)
+    (js : SailJoltState)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (js' : SailJoltState)
+    (hok : (execProgram (remuwProgram rs2 rs1 rd q)).run js =
+      .ok RETIRE_SUCCESS js') :
+    js'.sail =
+      stateAfterWrite js.sail rd (sail_remw_value dividend divisor true) := by
+  let zd := zero_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0)
+  let zv := zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0)
+  let rem := zd - q * zv
+  have h_program_succeeds : Program.Run (remuwProgramPhases rs2 rs1 rd q) js js' := by
+    rw [← remuwProgram_eq_phases]
+    exact hok
+  unfold remuwProgramPhases at h_program_succeeds
+  obtain ⟨js₁, hp1, h_program_succeeds⟩ :=
+    Program.Run.append_inv h_program_succeeds
+  obtain ⟨js₂, hp2, h_program_succeeds⟩ :=
+    Program.Run.append_inv h_program_succeeds
+  obtain ⟨js₃, hp3, hp4⟩ :=
+    Program.Run.append_inv h_program_succeeds
+
+  obtain ⟨hguard1, h1_v0, h1_v1, h1_v2, h1_sail⟩ :=
+    Remuw.phase_setup_run_sound rs1 rs2 q js js₁ dividend divisor
+      hrs1 hrs2 hp1
+
+  obtain ⟨hguard2, h2_v0, h2_v1, h2_v2, h2_v3, h2_sail⟩ :=
+    Remuw.phase_quotient_product_run_sound js₁ js₂ q zd zv
+      h1_v0 h1_v1 h1_v2 hp2
+
+  obtain ⟨hguard3, h3_v3, h3_sail⟩ :=
+    Remuw.phase_remainder_bound_run_sound js₂ js₃ q zd zv
+      h2_v0 h2_v1 h2_v2 h2_v3 hp3
+
+  have h3_sail_orig : js₃.sail = js.sail :=
+    h3_sail.trans (h2_sail.trans h1_sail)
+  have hrem :
+      sign_extend (m := 64) (Sail.BitVec.extractLsb rem 31 0) =
+        sail_remw_value dividend divisor true := by
+    unfold rem
+    exact signExtend_remainder_eq_sail_remw_of_guards_uw dividend divisor q
+      hguard1 hguard2 hguard3
+  have h3_v3_rem : js₃.vregs 3 = rem := by
+    unfold rem
+    exact h3_v3
+  have hwrite :=
+    Remuw.phase_writeback_run_sound rd js₃ js' js.sail
+      rem h3_v3_rem h3_sail_orig hp4
+  rw [hrem] at hwrite
+  exact hwrite
+
+end JoltISA
+
+end

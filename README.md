@@ -5,7 +5,7 @@ Formal verification of [Jolt](https://github.com/a16z/jolt)'s RISC-V bytecode ex
 > [!WARNING]
 > This project uses `leanprover/lean4:v4.29.0-rc4` to be compatible with both Mathlib and [lean-sail](https://github.com/rems-project/lean-sail) (v3). The lean-sail dependency targets `nightly-2026-03-05`, but that nightly has no cached Mathlib build. We use `v4.29.0-rc4` as the closest stable toolchain with Mathlib cache available. Lean-sail compiles cleanly under this toolchain despite the minor version mismatch.
 
-## Sail ↔ Jolt Instruction Equivalences (EmbeddedSailJoltState/)
+## Sail ↔ Jolt Instruction Equivalences ()
 
 Each theorem proves: `projectResult (jolt_X.run js) = sail_X.run js.sail` — running Jolt's bytecode decomposition and projecting onto Sail state equals running the native Sail RISC-V instruction directly.
 
@@ -67,4 +67,4 @@ That `Err` is then propagated back up unchanged:
 
 So after this platform change, Sail returns the same immediate alignment exception that Jolt returns on the misaligned branch, instead of silently continuing via split accesses.
 
- instructions proved with manual monadic plumbing (field-duplication architecture, no `WellFormed` assumption). These are the original proofs before the mvcgen framework was developed. Independent from EmbeddedSailJoltState/ — zero cross-imports.
+ instructions proved with manual monadic plumbing (field-duplication architecture, no `WellFormed` assumption). These are the original proofs before the mvcgen framework was developed. Independent from  — zero cross-imports.

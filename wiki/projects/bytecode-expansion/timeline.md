@@ -23,13 +23,14 @@ Goal: close every red-risk item that doesn't depend on a structural rewrite, and
 + [x] State and prove `MULH` and `MULHSU` via the unsigned-high-multiply + sign-correction decompositions outlined in `Mulh.lean` and `Mulhsu.lean`.
   ![Closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) Proved `mulhProgram_eq_sail` and `mulhsuProgram_eq_sail` for the `JoltISA.mulhProgram` and `JoltISA.mulhsuProgram` interpreters, with the legacy `jolt_*` theorem names retained as wrappers.
 
-+ [ ] ![Target](https://img.shields.io/badge/target-2026--05--10-yellow) Fix the recursive virtual-extension issue — prove compositional lowering theorems and use them in caller proofs. See [Risks: recursive_expansion](risks.md).
-
 + [x] Close the two `Bridges/Shift.lean` sorries (`sll_32_eq_mul_trunc`, `ctz_srlw_bitmask`) so `SLLW` and `SRLW` become sorry-free.
   ![Closed](https://img.shields.io/badge/closed-2026--05--05-brightgreen) Proved the SLLW/SRLW bridge lemmas in `ALUFamily/Bridges/Shift.lean`, closing the main `SLLW` and `SRLW` equivalence theorems.
 
 + [x] Close the load family in the new program-block proof style.
   ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) The load proofs now use the three-part reduction pattern: Jolt program blocks, Sail-side reduction, and a pure memory/bitvector bridge. This became the template used for the store-family rewrite.
+
++ [x] Remove stale load/advice compatibility surfaces from the root build.
+  ![Closed](https://img.shields.io/badge/closed-2026--05--15-brightgreen) The load family now exposes only the `JoltISA.*Program` theorem surface in the active files. The old `LoadFamily/*_decomposed.lean` files, `JoltISA/Semantics/Compatibility.lean`, and `VirtualInstructions.lean` were removed; load-alignment run lemmas now live with instruction semantics, and the advice-load proofs are imported through `AdviceFamily/Advice.lean`.
 
 + [x] Move the main non-advice ALU theorem fronts onto the new `JoltISA` program architecture.
   ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) The I-type shift, R-type shift, I-type word, and R-type word families now have passing theorem statements in the newer style. The older advice-ALU monadic files remain useful history, but they are stale as the main proof architecture.
