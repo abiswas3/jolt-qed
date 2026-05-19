@@ -42,8 +42,13 @@ Goal: close every red-risk item that doesn't depend on a structural rewrite, and
 
 + [x] Close the store family (`SB`, `SH`, `SW`) in the new `JoltISA` architecture.
   ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) Added Rust-faithful store expansion programs plus shared store program blocks and splice bridges. The public `SB`, `SH`, and `SW` equivalence theorems now pass in `StoreFamily/{Sb,Sh,Sw}_main.lean`.
+  ![Artifact](https://img.shields.io/badge/artifact-2026--05--19-blue) Repaired the Store family after enforcing the Jolt-ISA boundary: Store expansions now use final trace rows plus `slliBlock`, `sllBlock`, and `srliBlock`; the Store proof files no longer mention source rows such as `.SLL`, `.SLLI`, `.SRLI`, or the old store-alignment pseudo-instruction.
 
-+ [ ] ![Stalled](https://img.shields.io/badge/stalled-2026--05--11-lightgrey) Add `rd = x0` wrapper theorems where Rust handles the case explicitly. We are keeping the current `rd ≠ x0` theorem assumptions for now and will revisit wrapper coverage after the remaining instruction families settle. See [Risks: rd_x0](risks.md).
++ [x] Remove recursive inline expansion from the Jolt-ISA layer.
+  ![Closed](https://img.shields.io/badge/closed-2026--05--19-brightgreen) Restricted `JoltISA.Instr` to final trace-row instructions and represented source instructions that inline through named expansion blocks. The recursive issue is now handled compositionally: expansions call block programs, and block lemmas relate those programs to the old proof phases.
+
++ [x] Handle Rust's `rd = x0` dispatch for pure writeback instructions.
+  ![Partially closed](https://img.shields.io/badge/partial-2026--05--19-orange) Pure non-side-effecting writebacks now use Rust's no-op replacement path, `ADDI x0, x0, 0`, instead of needing an `rd ≠ x0` theorem shape. Side-effecting instructions are still open because Rust handles them by virtual-register remapping rather than by the pure no-op rule. See [Risks: rd_x0](risks.md).
 
 ## June
 

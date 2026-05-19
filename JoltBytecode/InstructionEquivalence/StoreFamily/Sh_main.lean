@@ -76,12 +76,12 @@ theorem shProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
           (compute_aligned_dword_base_address rs1_val imm)
           (shSplicedDword imm rs1_val rs2_val js.sail) := by
   let writeTail : JoltISA.Program :=
-    .instr (.SD 1 2 0) <| .done RETIRE_SUCCESS
+    .instr (.SD (.vreg 1) (.vreg 2) 0) <| .done RETIRE_SUCCESS
   let spliceTail : JoltISA.Program :=
-    .instr (.SLLI (.vreg 3) (.vreg 0) (3 : BitVec 6)) <|
+    JoltISA.slliBlock (.vreg 3) (.vreg 0) (3 : BitVec 6) <|
     .instr (.LUI (.vreg 0) (0xffff : BitVec 64)) <|
-    .instr (.SLL (.vreg 0) (.vreg 0) (.vreg 3)) <|
-    .instr (.SLL (.vreg 3) (.xreg rs2) (.vreg 3)) <|
+    JoltISA.sllBlock (.vreg 0) (.vreg 0) (.vreg 3) (4 : JoltISA.VReg) <|
+    JoltISA.sllBlock (.vreg 3) (.xreg rs2) (.vreg 3) (4 : JoltISA.VReg) <|
     .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 3)) <|
     .instr (.AND (.vreg 3) (.vreg 3) (.vreg 0)) <|
     .instr (.XOR (.vreg 2) (.vreg 2) (.vreg 3)) <|
@@ -89,8 +89,8 @@ theorem shProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   let base := compute_aligned_dword_base_address rs1_val imm
   let dword_new := shSplicedDword imm rs1_val rs2_val js.sail
   let finalSail := state_after_dword_store js.sail base dword_new
-  rcases StoreProgramBlocks.assertSetupBlockAligned spliceTail
-      (1 : BitVec 64) imm rs1 js hcfg rs1_val hrs1 hsetup.halfword_aligned
+  rcases StoreProgramBlocks.assertHalfwordSetupBlockAligned spliceTail
+      imm rs1 js hcfg rs1_val hrs1 hsetup.halfword_aligned
       h_dword_translate h_dword_phys with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
   rcases StoreProgramBlocks.halfwordSpliceBlock writeTail imm rs2 js js_load
@@ -272,8 +272,8 @@ theorem shProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
 
 /-- **Jolt-side misaligned SH reduction.**
 
-The leading `VirtualAssertStoreAlignment` is the whole proof: it returns the Sail
-store/AMO alignment exception and does not run the setup block. -/
+The leading `VirtualAssertHalfwordAlignment` is the whole proof: it returns the
+Sail store/AMO alignment exception and does not run the setup block. -/
 theorem shProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState) (rs1_val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
@@ -285,18 +285,18 @@ theorem shProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
   let tail : JoltISA.Program :=
     .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
     .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-    .instr (.LD 2 1 0) <|
-    .instr (.SLLI (.vreg 3) (.vreg 0) (3 : BitVec 6)) <|
+    .instr (.LD (.vreg 2) (.vreg 1) 0) <|
+    JoltISA.slliBlock (.vreg 3) (.vreg 0) (3 : BitVec 6) <|
     .instr (.LUI (.vreg 0) (0xffff : BitVec 64)) <|
-    .instr (.SLL (.vreg 0) (.vreg 0) (.vreg 3)) <|
-    .instr (.SLL (.vreg 3) (.xreg rs2) (.vreg 3)) <|
+    JoltISA.sllBlock (.vreg 0) (.vreg 0) (.vreg 3) (4 : JoltISA.VReg) <|
+    JoltISA.sllBlock (.vreg 3) (.xreg rs2) (.vreg 3) (4 : JoltISA.VReg) <|
     .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 3)) <|
     .instr (.AND (.vreg 3) (.vreg 3) (.vreg 0)) <|
     .instr (.XOR (.vreg 2) (.vreg 2) (.vreg 3)) <|
-    .instr (.SD 1 2 0) <|
+    .instr (.SD (.vreg 1) (.vreg 2) 0) <|
     .done RETIRE_SUCCESS
-  have h := StoreProgramBlocks.assertBlockMisaligned tail
-    (1 : BitVec 64) imm rs1 js rs1_val hrs1 hmis
+  have h := StoreProgramBlocks.assertHalfwordBlockMisaligned tail
+    imm rs1 js rs1_val hrs1 hmis
   simpa [JoltISA.shProgram, tail] using h
 
 /-- **Sail-side misaligned SH reduction.**

@@ -143,7 +143,7 @@ theorem vreg_LD_run_of_dword_assumptions
     (vd vs1 : BitVec 7) (js : SailJoltState) (addr : BitVec 64)
     (hvs1 : js.vregs vs1 = addr) (hcfg : JoltConfig js.sail)
     (hd : DwordLoadAssumptions addr js.sail) :
-    (JoltISA.execInstr (.LD vd vs1 0)).run js = .ok RETIRE_SUCCESS
+    (JoltISA.execInstr (.LD (.vreg vd) (.vreg vs1) 0)).run js = .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
           if r = vd then loaded_dword_at js.sail addr else js.vregs r } := by

@@ -51,9 +51,27 @@ def slliMultiplier (shamt : BitVec 6) : BitVec 64 :=
 def slliBlock (dst : Dst) (src : Src) (shamt : BitVec 6) (tail : Program) : Program :=
   .instr (.VirtualMULI dst src (slliMultiplier shamt)) tail
 
+/-- Rust `SLL::inline_sequence`: compute `2 ^ shift[5:0]` in a scratch
+virtual register, then multiply the value by that power of two. -/
+def sllBlock (dst : Dst) (value shift : Src) (scratch : VReg)
+    (tail : Program) : Program :=
+  .instr (.VirtualPow2 (.vreg scratch) shift) <|
+  .instr (.MUL dst value (.vreg scratch)) tail
+
 /-- Rust `SRAI::inline_sequence`: run `VirtualSRAI` with the encoded bitmask. -/
 def sraiBlock (dst : Dst) (src : Src) (shamt : BitVec 6) (tail : Program) : Program :=
   .instr (.VirtualSRAI dst src (sraiBitmask shamt)) tail
+
+/-- Rust `SRLI::inline_sequence`: run `VirtualSRLI` with the encoded bitmask. -/
+def srliBlock (dst : Dst) (src : Src) (shamt : BitVec 6) (tail : Program) : Program :=
+  .instr (.VirtualSRLI dst src (srliBitmask shamt)) tail
+
+/-- Rust `SRL::inline_sequence`: compute the right-shift bitmask in a scratch
+virtual register, then run `VirtualSRL` with that bitmask. -/
+def srlBlock (dst : Dst) (value shift : Src) (scratch : VReg)
+    (tail : Program) : Program :=
+  .instr (.VirtualShiftRightBitmask (.vreg scratch) shift) <|
+  .instr (.VirtualSRL dst value (.vreg scratch)) tail
 
 /-- `SLL`: compute `2 ^ rs2[5:0]` in `v0`, then multiply `rs1` by it. -/
 def sllProgram (rs2 rs1 rd : regidx) : Program :=

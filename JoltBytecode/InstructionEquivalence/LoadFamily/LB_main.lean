@@ -125,11 +125,12 @@ theorem lbProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
         (sign_extend (m := 64)
           (loaded_byte_at js.sail (load_effective_address val imm))) := by
   let writeTail : JoltISA.Program :=
-    .instr (.SRAI (.xreg rd) (.vreg 1) (56 : BitVec 6)) (.done RETIRE_SUCCESS)
+    .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (JoltISA.sraiBitmask (56 : BitVec 6)))
+      (.done RETIRE_SUCCESS)
   let logicTail : JoltISA.Program :=
     .instr (.XORI (.vreg 0) (.vreg 0) (7 : BitVec 12)) <|
-    .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
-    .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) writeTail
+    JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+    JoltISA.sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) writeTail
   rcases LoadProgramBlocks.setupBlock logicTail imm rs1 js hcfg val hrx
       h_dword_translate h_dword_phys with
     ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
@@ -153,7 +154,7 @@ theorem lbProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
     change (JoltISA.execProgram
       (.instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-       .instr (.LD 1 1 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
+       .instr (.LD (.vreg 1) (.vreg 1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
     rw [hload_run, hlogic_run, hwrite_run]
     rfl
   · rw [hwrite_sail]

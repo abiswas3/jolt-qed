@@ -29,7 +29,7 @@ def amoInlineTmpVReg : VReg := 6
 doubleword, then extract the addressed word into `old`. -/
 def amoPre64Program (rs1 : regidx) (old dword shift : VReg) (tail : Program) :
     Program :=
-  .instr (.VirtualAssertWordAlignment rs1 (0 : BitVec 12)) <|
+  .instr (.VirtualAssertWordAlignment rs1 (0 : BitVec 12) (ExceptionType.E_SAMO_Addr_Align ())) <|
   .instr (.ANDI (.vreg shift) (.xreg rs1) (-8 : BitVec 12)) <|
   .instr (.LD (.vreg dword) (.vreg shift) (0 : BitVec 12)) <|
   .instr (.VirtualMULI (.vreg shift) (.xreg rs1) (8 : BitVec 64)) <|

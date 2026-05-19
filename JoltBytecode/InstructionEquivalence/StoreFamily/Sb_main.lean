@@ -80,12 +80,12 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
           (compute_aligned_dword_base_address rs1_val imm)
           (sbSplicedDword imm rs1_val rs2_val js.sail) := by
   let writeTail : JoltISA.Program :=
-    .instr (.SD 1 2 0) <| .done RETIRE_SUCCESS
+    .instr (.SD (.vreg 1) (.vreg 2) 0) <| .done RETIRE_SUCCESS
   let spliceTail : JoltISA.Program :=
-    .instr (.SLLI (.vreg 3) (.vreg 0) (3 : BitVec 6)) <|
+    JoltISA.slliBlock (.vreg 3) (.vreg 0) (3 : BitVec 6) <|
     .instr (.LUI (.vreg 0) (0xff : BitVec 64)) <|
-    .instr (.SLL (.vreg 0) (.vreg 0) (.vreg 3)) <|
-    .instr (.SLL (.vreg 3) (.xreg rs2) (.vreg 3)) <|
+    JoltISA.sllBlock (.vreg 0) (.vreg 0) (.vreg 3) (4 : JoltISA.VReg) <|
+    JoltISA.sllBlock (.vreg 3) (.xreg rs2) (.vreg 3) (4 : JoltISA.VReg) <|
     .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 3)) <|
     .instr (.AND (.vreg 3) (.vreg 3) (.vreg 0)) <|
     .instr (.XOR (.vreg 2) (.vreg 2) (.vreg 3)) <|

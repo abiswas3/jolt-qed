@@ -64,6 +64,21 @@ theorem mul_run_vreg_vreg_xreg (vd lhs : VReg) (rhs : regidx)
     get, getThe, MonadStateOf.get, EStateM.get,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
+/-- `MUL` from a real source and a virtual source to a virtual destination
+reads the real source through Sail, writes the low product to the virtual
+destination, and leaves Sail unchanged when the real read is state-preserving. -/
+theorem mul_run_vreg_xreg_vreg (vd : VReg) (lhs : regidx) (rhs : VReg)
+    (js : SailJoltState) (x : BitVec 64)
+    (h : rX_bits lhs js.sail = .ok x js.sail) :
+    (execInstr (.MUL (.vreg vd) (.xreg lhs) (.vreg rhs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then x * js.vregs rhs else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg liftSail writeVReg
+  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
 /-- `MUL` from a virtual source and a real source to a virtual destination,
 packaged from a known virtual-source value and a known base Sail state. -/
 theorem exists_state_after_mul_run_vreg_vreg_xreg

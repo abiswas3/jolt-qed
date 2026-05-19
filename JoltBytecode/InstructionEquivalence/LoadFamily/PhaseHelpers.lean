@@ -34,7 +34,7 @@ def loadSetupPhase (imm : BitVec 12) (rs1 : regidx) : JoltISA.Program :=
 
 /-- Common dword-load phase for load expansions: `LD v1, v1, 0`. -/
 def loadDwordPhase : JoltISA.Program :=
-  .instr (.LD 1 1 0) <|
+  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .done RETIRE_SUCCESS
 
 /-- Common setup-plus-dword-load phase. -/
@@ -117,7 +117,7 @@ theorem loadDwordPhase_run (js : SailJoltState) (js_setup : SailJoltState)
     dword_load_assumptions_of_aligned_translate_phys
       addr js_setup.sail haligned htranslate_setup hphys_setup
   have h_ld_succeeds :
-      (JoltISA.execInstr (.LD 1 1 0)).run js_setup =
+      (JoltISA.execInstr (.LD (.vreg 1) (.vreg 1) 0)).run js_setup =
         .ok RETIRE_SUCCESS js_load := by
     have hld :=
       vreg_LD_run_of_dword_assumptions 1 1 js_setup addr hsetup_v1 hcfg_setup hdword

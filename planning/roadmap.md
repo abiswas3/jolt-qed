@@ -24,12 +24,11 @@ Bytecode expansion completeness means:
 
 ### 1. Compositional Lowering
 
-Status: planned.
+Status: closed.
 
-Goal: prove lowering theorems once for recursively expanding instructions, then
-reuse them in caller proofs instead of expanding every caller manually.
-
-See: `docs/JOLT_COMPOSITIONAL_LOWERING_PLAN.md`
+2026-05-19: Closed the recursive inline-expansion issue by restricting
+`JoltISA.Instr` to final trace-row instructions and using expansion blocks for
+source instructions that themselves inline.
 
 ### 2. Loads and Special Memory Regions
 
@@ -42,7 +41,7 @@ See: `docs/JOLT_SPECIAL_MEMORY_REGION_PLAN.md`
 
 ### 3. Stores
 
-Status: incomplete.
+Status: closed
 
 Goal: finish `SW`, `SH`, and `SB` expansion proofs, including read-modify-write
 splice lemmas and the relevant memory envelope.
@@ -56,11 +55,16 @@ instruction family used by the Rust tracer.
 
 ### 5. `rd = x0` Policy
 
-Status: planned.
+Status: partially closed.
 
 Goal: model Rust's dispatch policy for `rd = x0`: no-op replacement for pure
 writeback instructions, virtual-register remapping for side-effecting
 instructions, and special-case handling where needed.
+
+2026-05-19: Closed the `rd = x0` policy for pure writeback instructions with
+no side effects by using Rust's no-op `ADDI x0, x0, 0` replacement path. The
+side-effecting cases remain open because they need the Rust-style
+virtual-register remapping rather than the pure no-op rule.
 
 ### 6. Advice Tape
 
@@ -86,39 +90,3 @@ Goal: prove a renaming-invariance theorem connecting fixed Lean virtual-register
 templates to Rust allocator-chosen virtual registers.
 
 See: `docs/JOLT_VIRTUAL_REGISTER_RENAMING_PLAN.md`
-
-## Milestones
-
-### May 2026
-
-- Freeze and document theorem envelopes.
-- Add missing compositional lowering theorem variants for common virtual and
-  real/virtual boundary cases.
-- Start closing store proof gaps.
-
-### June 2026
-
-- Finish store-family proof obligations.
-- Add ordinary-RAM memory envelope consistently across load/store theorems.
-- Begin atomics coverage.
-
-### July 2026
-
-- Complete atomics.
-- Add device-region read plan or initial readable-region proofs.
-- Sweep recursive lowering coverage for instructions used inside loads, stores,
-  advice, and atomics.
-
-### August 2026
-
-- Close remaining bytecode-expansion coverage gaps.
-- Run a theorem/status audit against the Rust tracer instruction directory.
-- Produce a coverage table:
-
-```text
-Rust instruction
-  -> source inline sequence
-  -> recursively lowered sequence
-  -> Lean semantic model
-  -> theorem status
-```

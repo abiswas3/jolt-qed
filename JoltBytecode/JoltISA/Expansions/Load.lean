@@ -12,8 +12,9 @@ So `.instr A <| .instr B <| .done RETIRE_SUCCESS` means
 These definitions are the Jolt-ISA data representation of the Rust inline
 sequences for RV64 loads.  They intentionally expose both kinds of early exit:
 
-* `VirtualAssertLoadAlignment` returns the load-address-alignment exception before the
-  memory read when the effective address is misaligned.
+* `VirtualAssertHalfwordAlignment` and `VirtualAssertWordAlignment` return the
+  load-address-alignment exception before the memory read when the effective
+  address is misaligned.
 * `LD` may return a memory exception; `Program.instr` then prevents the
   extraction/writeback tail from running.
 -/
@@ -28,9 +29,8 @@ def lbProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
   .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 7) <|
-  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
-  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
-  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
   .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiBitmask (56 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
@@ -40,60 +40,55 @@ def lbuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
   .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 7) <|
-  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
-  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
-  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
   .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (srliBitmask (56 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LH::inline_sequence`. -/
 def lhProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertHalfwordAlignment rs1 imm) <|
+  .instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
   .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 6) <|
-  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
-  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
-  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
   .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiBitmask (48 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LHU::inline_sequence`. -/
 def lhuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertHalfwordAlignment rs1 imm) <|
+  .instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
   .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 6) <|
-  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
-  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
-  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
   .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (srliBitmask (48 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LW::inline_sequence`. -/
 def lwProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertWordAlignment rs1 imm) <|
+  .instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
   .instr (.LD (.vreg 1) (.vreg 1) 0) <|
-  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
-  .instr (.VirtualShiftRightBitmask (.vreg 2) (.vreg 0)) <|
-  .instr (.VirtualSRL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+  srlBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 1)) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LWU::inline_sequence`. -/
 def lwuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertWordAlignment rs1 imm) <|
+  .instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
   .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 4) <|
-  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
-  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
-  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
   .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (srliBitmask (32 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 

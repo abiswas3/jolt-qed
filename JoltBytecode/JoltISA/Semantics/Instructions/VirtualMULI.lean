@@ -55,6 +55,20 @@ theorem exists_state_after_virtual_muli_run_xreg_xreg (rd rs1 : regidx)
     wX_bits_eq_stateAfterWrite rd (jolt_virtual_muli_value x imm) js.sail s' h_write
   exact ⟨{ sail := s', vregs := js.vregs }, h, h_sail_after_muli, h_run⟩
 
+/-- `VirtualMULI` from a virtual source to a virtual destination writes the
+wrapped product with the encoded immediate and leaves Sail unchanged. -/
+theorem virtual_muli_run_vreg_vreg (vd vs : VReg)
+    (imm : BitVec 64) (js : SailJoltState) :
+    (execInstr (.VirtualMULI (.vreg vd) (.vreg vs) imm)).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r =>
+            if r = vd then jolt_virtual_muli_value (js.vregs vs) imm else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
 end JoltISA
 
 end

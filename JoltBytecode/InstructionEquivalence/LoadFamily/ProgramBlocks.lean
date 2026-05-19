@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Semantics.Instructions
+import JoltBytecode.JoltISA.Semantics.ExpansionBlocks.ALU
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.ProofSupport
 
@@ -61,7 +62,7 @@ theorem setupBlock (rest : JoltISA.Program)
       (JoltISA.execProgram
         (.instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
          .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-         .instr (.LD 1 1 0) rest)).run js =
+         .instr (.LD (.vreg 1) (.vreg 1) 0) rest)).run js =
         (JoltISA.execProgram rest).run js_load ∧
       js_load.sail = js.sail ∧
       js_load.vregs 0 = load_effective_address val imm ∧
@@ -115,7 +116,7 @@ theorem setupBlock (rest : JoltISA.Program)
     rw [hv1, haddr0]
     simpa [dword] using hread
   have hld :
-      (JoltISA.execInstr (.LD 1 1 0)).run js1 =
+      (JoltISA.execInstr (.LD (.vreg 1) (.vreg 1) 0)).run js1 =
         .ok RETIRE_SUCCESS js_load := by
     simpa [js_load, dword] using
       (JoltISA.ld_run_vreg_vreg_from_memory_read (1 : JoltISA.VReg) (1 : JoltISA.VReg)
@@ -127,71 +128,140 @@ theorem setupBlock (rest : JoltISA.Program)
   · simp [js_load, js1, js0, ea]
   · simp [js_load, dword, daddr]
 
-/-- The setup block with a successful leading load-alignment assertion.
+/-- The setup block with a successful leading halfword load-alignment assertion.
 
-Halfword and word loads have an explicit virtual assertion before the common
-dword setup block.  On the aligned path the assertion retires without changing
-state, so the proof immediately reuses `setupBlock`.  The `mask` parameter is
-`1` for halfword loads and `3` for word loads. -/
-theorem assertSetupBlockAligned (rest : JoltISA.Program)
-    (mask : BitVec 64) (imm : BitVec 12) (rs1 : regidx)
+Halfword loads have an explicit virtual assertion before the common dword setup
+block.  On the aligned path the assertion retires without changing state, so the
+proof immediately reuses `setupBlock`. -/
+theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
+    (imm : BitVec 12) (rs1 : regidx)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (halign : load_effective_address val imm &&& mask = 0)
+    (halign : load_effective_address val imm &&& (1 : BitVec 64) = 0)
     (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
-        (.instr (.VirtualAssertLoadAlignment rs1 imm mask) <|
+        (.instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
          .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
          .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-         .instr (.LD 1 1 0) rest)).run js =
+         .instr (.LD (.vreg 1) (.vreg 1) 0) rest)).run js =
         (JoltISA.execProgram rest).run js_load ∧
       js_load.sail = js.sail ∧
       js_load.vregs 0 = load_effective_address val imm ∧
       js_load.vregs 1 =
         loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
   have hassert :
-      (JoltISA.execInstr (.VirtualAssertLoadAlignment rs1 imm mask)).run js =
+      (JoltISA.execInstr
+        (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))).run js =
         .ok RETIRE_SUCCESS js := by
-    exact JoltISA.execInstr_VirtualAssertLoadAlignment_run_aligned rs1 imm mask
-      js val hrx (by simpa [load_effective_address] using halign)
+    exact JoltISA.virtual_assert_halfword_alignment_run_aligned rs1 imm
+      (ExceptionType.E_Load_Addr_Align ()) js val hrx
+      (by simpa [load_effective_address] using halign)
   rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_translate h_dword_phys with
     ⟨js_load, hrun, hsail, hv0, hv1⟩
   refine ⟨js_load, ?_, hsail, hv0, hv1⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
   exact hrun
 
-/-- A failed leading load-alignment assertion stops the structured program.
+/-- The setup block with a successful leading word load-alignment assertion.
+
+Word loads use the word-alignment variant of the virtual assertion.  On the
+aligned path it also retires without changing state, then control passes to the
+common dword setup block. -/
+theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
+    (imm : BitVec 12) (rs1 : regidx)
+    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
+    (halign : load_effective_address val imm &&& (3 : BitVec 64) = 0)
+    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
+    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
+    ∃ js_load : SailJoltState,
+      (JoltISA.execProgram
+        (.instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
+         .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
+         .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
+         .instr (.LD (.vreg 1) (.vreg 1) 0) rest)).run js =
+        (JoltISA.execProgram rest).run js_load ∧
+      js_load.sail = js.sail ∧
+      js_load.vregs 0 = load_effective_address val imm ∧
+      js_load.vregs 1 =
+        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
+  have hassert :
+      (JoltISA.execInstr
+        (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))).run js =
+        .ok RETIRE_SUCCESS js := by
+    exact JoltISA.virtual_assert_word_alignment_run_aligned rs1 imm
+      (ExceptionType.E_Load_Addr_Align ()) js val hrx
+      (by simpa [load_effective_address] using halign)
+  rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_translate h_dword_phys with
+    ⟨js_load, hrun, hsail, hv0, hv1⟩
+  refine ⟨js_load, ?_, hsail, hv0, hv1⟩
+  rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
+  exact hrun
+
+/-- A failed leading halfword load-alignment assertion stops the structured program.
 
 This is the generic early-exit fact for halfword/word program theorems.  When
-the masked low bits are nonzero, `VirtualAssertLoadAlignment` returns the Sail-compatible
-load-address-alignment exception, and `execProgram` does not run the tail. -/
-theorem assertBlockMisaligned (tail : JoltISA.Program)
-    (mask : BitVec 64) (imm : BitVec 12) (rs1 : regidx)
+the low bit is nonzero, the assertion returns Sail's load-address-alignment
+exception, and `execProgram` does not run the tail. -/
+theorem assertHalfwordBlockMisaligned (tail : JoltISA.Program)
+    (imm : BitVec 12) (rs1 : regidx)
     (js : SailJoltState)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hmis : load_effective_address val imm &&& mask ≠ 0) :
-    (JoltISA.execProgram (.instr (.VirtualAssertLoadAlignment rs1 imm mask) tail)).run js =
+    (hmis : load_effective_address val imm &&& (1 : BitVec 64) ≠ 0) :
+    (JoltISA.execProgram
+      (.instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))
+        tail)).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())) js := by
   let e :=
     (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())
   have hassert :
-      (JoltISA.execInstr (.VirtualAssertLoadAlignment rs1 imm mask)).run js =
+      (JoltISA.execInstr
+        (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))).run js =
         .ok (ExecutionResult.Memory_Exception e) js := by
     simpa [e, load_effective_address] using
-      (JoltISA.execInstr_VirtualAssertLoadAlignment_run_misaligned rs1 imm mask
-        js val hrx (by simpa [load_effective_address] using hmis))
+      (JoltISA.virtual_assert_halfword_alignment_run_misaligned rs1 imm
+        (ExceptionType.E_Load_Addr_Align ()) js val hrx
+        (by simpa [load_effective_address] using hmis))
   simpa [e] using
     (JoltISA.execProgram_instr_run_memory_exception
-      (.VirtualAssertLoadAlignment rs1 imm mask) tail js js e hassert)
+      (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))
+      tail js js e hassert)
+
+/-- A failed leading word load-alignment assertion stops the structured program
+with Sail's load-address-alignment exception. -/
+theorem assertWordBlockMisaligned (tail : JoltISA.Program)
+    (imm : BitVec 12) (rs1 : regidx)
+    (js : SailJoltState)
+    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
+    (hmis : load_effective_address val imm &&& (3 : BitVec 64) ≠ 0) :
+    (JoltISA.execProgram
+      (.instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))
+        tail)).run js =
+      .ok (ExecutionResult.Memory_Exception
+        (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())) js := by
+  let e :=
+    (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())
+  have hassert :
+      (JoltISA.execInstr
+        (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))).run js =
+        .ok (ExecutionResult.Memory_Exception e) js := by
+    simpa [e, load_effective_address] using
+      (JoltISA.virtual_assert_word_alignment_run_misaligned rs1 imm
+        (ExceptionType.E_Load_Addr_Align ()) js val hrx
+        (by simpa [load_effective_address] using hmis))
+  simpa [e] using
+    (JoltISA.execProgram_instr_run_memory_exception
+      (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))
+      tail js js e hassert)
 
 /-- Common virtual extraction block for `LB`, `LBU`, `LH`, `LHU`, and `LWU`.
 
 Starting from the setup boundary (`v0 = ea`, `v1 = dword`), the prefix
 
-`XORI v0, v0, xorImm; SLLI v0, v0, 3; SLL v1, v1, v0`
+`XORI v0, v0, xorImm; slliBlock v0, v0, 3; sllBlock v1, v1, v0 using v2`
 
 moves the requested byte/halfword/word lane to the top of the dword.  The
 signedness is not handled here; the final `SRAI` or `SRLI` block decides
@@ -207,8 +277,8 @@ theorem xoriSlliSllBlock (rest : JoltISA.Program)
     ∃ js_shift : SailJoltState,
       (JoltISA.execProgram
         (.instr (.XORI (.vreg 0) (.vreg 0) xorImm) <|
-         .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
-         .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) rest)).run js_load =
+         JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+         JoltISA.sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) rest)).run js_load =
         (JoltISA.execProgram rest).run js_shift ∧
       js_shift.sail = js.sail ∧
       js_shift.vregs 0 =
@@ -231,18 +301,6 @@ theorem xoriSlliSllBlock (rest : JoltISA.Program)
   let js_xor : SailJoltState :=
     { sail := js_load.sail
       vregs := fun r => if r = (0 : JoltISA.VReg) then js_load.vregs 0 ^^^ sign_extend (m := 64) xorImm else js_load.vregs r }
-  let js_slli : SailJoltState :=
-    { sail := js_xor.sail
-      vregs := fun r =>
-        if r = (0 : JoltISA.VReg) then
-          shift_bits_left (js_xor.vregs 0) (3 : BitVec 6)
-        else js_xor.vregs r }
-  let js_shift : SailJoltState :=
-    { sail := js_slli.sail
-      vregs := fun r =>
-        if r = (1 : JoltISA.VReg) then
-          shift_bits_left (js_slli.vregs 1) (Sail.BitVec.extractLsb (js_slli.vregs 0) 5 0)
-        else js_slli.vregs r }
   have hxori :
       (JoltISA.execInstr (.XORI (.vreg 0) (.vreg 0) xorImm)).run js_load =
         .ok RETIRE_SUCCESS js_xor := by
@@ -253,46 +311,37 @@ theorem xoriSlliSllBlock (rest : JoltISA.Program)
     change js_load.vregs (0 : JoltISA.VReg) ^^^ sign_extend (m := 64) xorImm =
       load_effective_address val imm ^^^ sign_extend (m := 64) xorImm
     rw [hload_v0]
-  have hslli :
-      (JoltISA.execInstr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6))).run js_xor =
-        .ok RETIRE_SUCCESS js_slli := by
-    simpa [js_slli] using
-      (JoltISA.slli_run_vreg_vreg (0 : JoltISA.VReg) (0 : JoltISA.VReg)
-        (3 : BitVec 6) js_xor)
-  have hsv0 : js_slli.vregs 0 = shiftValue := by
-    change shift_bits_left (js_xor.vregs (0 : JoltISA.VReg)) (3 : BitVec 6) =
-      shift_bits_left xorValue (3 : BitVec 6)
-    rw [hxv0]
-  have hsv1 :
+  obtain ⟨js_slli, hslli_sail, hslli_writes_v0, hslli_preserves, hslli_run⟩ :=
+    JoltISA.exists_state_after_slli_block_run_vreg_vreg
+      (0 : JoltISA.VReg) (0 : JoltISA.VReg) (3 : BitVec 6) js_xor
+  have hslli_v0_is_shiftValue : js_slli.vregs 0 = shiftValue := by
+    rw [hslli_writes_v0, hxv0]
+  have hslli_v1 :
       js_slli.vregs 1 =
         loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
-    change js_xor.vregs (1 : JoltISA.VReg) =
-      loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
+    rw [hslli_preserves (1 : JoltISA.VReg) (by decide)]
     change js_load.vregs (1 : JoltISA.VReg) =
       loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
     exact hload_v1
-  have hsll :
-      (JoltISA.execInstr (.SLL (.vreg 1) (.vreg 1) (.vreg 0))).run js_slli =
-        .ok RETIRE_SUCCESS js_shift := by
-    simpa [js_shift] using
-      (JoltISA.execInstr_sll_vreg_vreg_vreg_run (1 : JoltISA.VReg) (1 : JoltISA.VReg)
-        (0 : JoltISA.VReg) js_slli)
+  obtain ⟨js_shift, hsll_sail, hsll_v1, hsll_preserves, hsll_run⟩ :=
+    JoltISA.exists_state_after_sll_block_run_vreg_vreg_vreg
+      (1 : JoltISA.VReg) (1 : JoltISA.VReg) (0 : JoltISA.VReg)
+      (2 : JoltISA.VReg) js_slli (by decide)
   refine ⟨js_shift, ?_, ?_, ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js_load js_xor hxori]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_xor js_slli hslli]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_slli js_shift hsll]
-  · simp [js_shift, js_slli, js_xor, hload_sail]
-  · change js_slli.vregs (0 : JoltISA.VReg) = shiftValue
-    exact hsv0
-  · change shift_bits_left (js_slli.vregs (1 : JoltISA.VReg))
-      (Sail.BitVec.extractLsb (js_slli.vregs (0 : JoltISA.VReg)) 5 0) =
-      shiftedDword
-    rw [hsv1, hsv0]
+    rw [hslli_run
+      (JoltISA.sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) rest)]
+    rw [hsll_run rest]
+  · rw [hsll_sail, hslli_sail]
+    simp [js_xor, hload_sail]
+  · rw [hsll_preserves (0 : JoltISA.VReg) (by decide) (by decide)]
+    exact hslli_v0_is_shiftValue
+  · rw [hsll_v1, hslli_v1, hslli_v0_is_shiftValue]
 
 /-- Final signed extraction block for byte and halfword loads.
 
 Given a boundary state whose `v1` already contains the dword shifted left so
-the requested lane sits at the top, `SRAI rd, v1, shamt` writes the
+the requested lane sits at the top, `VirtualSRAI rd, v1, shamt` writes the
 sign-extended lane to the real destination and continues with `rest`. -/
 theorem sraiWriteBlock (rest : JoltISA.Program)
     (rd : regidx) (shamt : BitVec 6)
@@ -301,7 +350,8 @@ theorem sraiWriteBlock (rest : JoltISA.Program)
     (hshift_v1 : js_shift.vregs 1 = shiftedValue) :
     ∃ js_write : SailJoltState,
       (JoltISA.execProgram
-        (.instr (.SRAI (.xreg rd) (.vreg 1) shamt) rest)).run js_shift =
+        (.instr (.VirtualSRAI (.xreg rd) (.vreg 1) (JoltISA.sraiBitmask shamt))
+          rest)).run js_shift =
         (JoltISA.execProgram rest).run js_write ∧
       js_write.sail =
         stateAfterWrite js.sail rd (shift_bits_right_arith shiftedValue shamt) := by
@@ -309,15 +359,18 @@ theorem sraiWriteBlock (rest : JoltISA.Program)
   obtain ⟨s_write, hw_write⟩ := wX_shape rd finalValue js.sail
   let js_write : SailJoltState := { sail := s_write, vregs := js_shift.vregs }
   have hsrai :
-      (JoltISA.execInstr (.SRAI (.xreg rd) (.vreg 1) shamt)).run js_shift =
+      (JoltISA.execInstr
+        (.VirtualSRAI (.xreg rd) (.vreg 1) (JoltISA.sraiBitmask shamt))).run js_shift =
         .ok RETIRE_SUCCESS js_write := by
     have hw_write' :
-        wX_bits rd (shift_bits_right_arith (js_shift.vregs 1) shamt) js_shift.sail =
+        wX_bits rd
+          (jolt_virtual_srai_value (js_shift.vregs 1) (JoltISA.sraiBitmask shamt))
+          js_shift.sail =
           .ok () s_write := by
-      rw [hshift_sail, hshift_v1]
+      rw [hshift_sail, hshift_v1, JoltISA.srai_block_value_eq]
       exact hw_write
     simpa [js_write] using
-      (JoltISA.execInstr_srai_vreg_xreg_run rd (1 : JoltISA.VReg) shamt
+      (JoltISA.virtual_srai_run_xreg_vreg rd (1 : JoltISA.VReg) (JoltISA.sraiBitmask shamt)
         js_shift s_write hw_write')
   refine ⟨js_write, ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js_shift js_write hsrai]
@@ -336,7 +389,8 @@ theorem srliWriteBlock (rest : JoltISA.Program)
     (hshift_v1 : js_shift.vregs 1 = shiftedValue) :
     ∃ js_write : SailJoltState,
       (JoltISA.execProgram
-        (.instr (.SRLI (.xreg rd) (.vreg 1) shamt) rest)).run js_shift =
+        (.instr (.VirtualSRLI (.xreg rd) (.vreg 1) (JoltISA.srliBitmask shamt))
+          rest)).run js_shift =
         (JoltISA.execProgram rest).run js_write ∧
       js_write.sail =
         stateAfterWrite js.sail rd (shift_bits_right shiftedValue shamt) := by
@@ -344,15 +398,18 @@ theorem srliWriteBlock (rest : JoltISA.Program)
   obtain ⟨s_write, hw_write⟩ := wX_shape rd finalValue js.sail
   let js_write : SailJoltState := { sail := s_write, vregs := js_shift.vregs }
   have hsrli :
-      (JoltISA.execInstr (.SRLI (.xreg rd) (.vreg 1) shamt)).run js_shift =
+      (JoltISA.execInstr
+        (.VirtualSRLI (.xreg rd) (.vreg 1) (JoltISA.srliBitmask shamt))).run js_shift =
         .ok RETIRE_SUCCESS js_write := by
     have hw_write' :
-        wX_bits rd (shift_bits_right (js_shift.vregs 1) shamt) js_shift.sail =
+        wX_bits rd
+          (jolt_virtual_srli_value (js_shift.vregs 1) (JoltISA.srliBitmask shamt))
+          js_shift.sail =
           .ok () s_write := by
-      rw [hshift_sail, hshift_v1]
+      rw [hshift_sail, hshift_v1, JoltISA.srli_block_value_eq]
       exact hw_write
     simpa [js_write] using
-      (JoltISA.execInstr_srli_vreg_xreg_run rd (1 : JoltISA.VReg) shamt
+      (JoltISA.virtual_srli_run_xreg_vreg rd (1 : JoltISA.VReg) (JoltISA.srliBitmask shamt)
         js_shift s_write hw_write')
   refine ⟨js_write, ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js_shift js_write hsrli]
@@ -362,10 +419,11 @@ theorem srliWriteBlock (rest : JoltISA.Program)
 
 `LW` is the odd member of the load family: after the common dword setup it
 does not use the `XORI; SLL; SRAI/SRLI` lane-to-top shape.  Instead it shifts
-the loaded dword right by `(ea * 8) & 63`, writes that intermediate value to
-real `rd`, and leaves the final 32-to-64 sign extension to `VirtualSignExtendWord`. -/
+the loaded dword right by `(ea * 8) & 63`, leaves that intermediate value in
+`v1`, and lets the final `VirtualSignExtendWord` write the architectural
+destination. -/
 theorem lwSrlBlock (rest : JoltISA.Program)
-    (imm : BitVec 12) (rd : regidx)
+    (imm : BitVec 12)
     (js js_load : SailJoltState) (val : BitVec 64)
     (hload_sail : js_load.sail = js.sail)
     (hload_v0 : js_load.vregs 0 = load_effective_address val imm)
@@ -373,88 +431,81 @@ theorem lwSrlBlock (rest : JoltISA.Program)
       loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)) :
     ∃ (js_logic : SailJoltState) (logic_val : BitVec 64),
       (JoltISA.execProgram
-        (.instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
-         .instr (.SRL (.xreg rd) (.vreg 1) (.vreg 0)) rest)).run js_load =
+        (JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+         JoltISA.srlBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) rest)).run js_load =
         (JoltISA.execProgram rest).run js_logic ∧
       logic_val =
         shift_bits_right
           (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
           (Sail.BitVec.extractLsb
             (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0) ∧
-      js_logic.sail = stateAfterWrite js.sail rd logic_val := by
+      js_logic.sail = js.sail ∧
+      js_logic.vregs 1 = logic_val := by
   let logic_val :=
     shift_bits_right
       (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
       (Sail.BitVec.extractLsb
         (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0)
-  let js_shift : SailJoltState :=
-    { sail := js_load.sail
-      vregs := fun r =>
-        if r = (0 : JoltISA.VReg) then shift_bits_left (js_load.vregs 0) (3 : BitVec 6)
-        else js_load.vregs r }
-  have hslli :
-      (JoltISA.execInstr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6))).run js_load =
-        .ok RETIRE_SUCCESS js_shift := by
-    simpa [js_shift] using
-      (JoltISA.slli_run_vreg_vreg (0 : JoltISA.VReg) (0 : JoltISA.VReg)
-        (3 : BitVec 6) js_load)
-  obtain ⟨s_shift, hw_shift⟩ := wX_shape rd logic_val js.sail
-  let js_logic : SailJoltState := { sail := s_shift, vregs := js_shift.vregs }
-  have hshift_sail : js_shift.sail = js.sail := by
-    simp [js_shift, hload_sail]
-  have hshift_v0 :
-      js_shift.vregs 0 =
+  obtain ⟨js_slli, hslli_sail, hslli_writes_v0, hslli_preserves, hslli_run⟩ :=
+    JoltISA.exists_state_after_slli_block_run_vreg_vreg
+      (0 : JoltISA.VReg) (0 : JoltISA.VReg) (3 : BitVec 6) js_load
+  have hslli_v0 :
+      js_slli.vregs 0 =
         shift_bits_left (load_effective_address val imm) (3 : BitVec 6) := by
-    change shift_bits_left (js_load.vregs (0 : JoltISA.VReg)) (3 : BitVec 6) =
-      shift_bits_left (load_effective_address val imm) (3 : BitVec 6)
-    rw [hload_v0]
-  have hshift_v1 :
-      js_shift.vregs 1 =
+    rw [hslli_writes_v0, hload_v0]
+  have hslli_v1 :
+      js_slli.vregs 1 =
         loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
-    change js_load.vregs (1 : JoltISA.VReg) =
-      loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
+    rw [hslli_preserves (1 : JoltISA.VReg) (by decide)]
     exact hload_v1
-  have hsrl :
-      (JoltISA.execInstr (.SRL (.xreg rd) (.vreg 1) (.vreg 0))).run js_shift =
-        .ok RETIRE_SUCCESS js_logic := by
-    have hw_shift' :
-        wX_bits rd
-          (shift_bits_right (js_shift.vregs 1)
-            (Sail.BitVec.extractLsb (js_shift.vregs 0) 5 0))
-          js_shift.sail = .ok () s_shift := by
-      rw [hshift_sail, hshift_v1, hshift_v0]
-      exact hw_shift
-    simpa [js_logic] using
-      (JoltISA.execInstr_srl_vreg_vreg_xreg_run rd (1 : JoltISA.VReg)
-        (0 : JoltISA.VReg) js_shift s_shift hw_shift')
-  have hs_logic : js_logic.sail = stateAfterWrite js.sail rd logic_val := by
-    exact wX_bits_eq_stateAfterWrite rd logic_val js.sail s_shift hw_shift
-  refine ⟨js_logic, logic_val, ?_, rfl, hs_logic⟩
-  rw [JoltISA.execProgram_instr_run_retire _ _ js_load js_shift hslli]
-  rw [JoltISA.execProgram_instr_run_retire _ _ js_shift js_logic hsrl]
+  obtain ⟨js_logic, hsrl_sail, hsrl_v1, _hsrl_preserves, hsrl_run⟩ :=
+    JoltISA.exists_state_after_srl_block_run_vreg_vreg_vreg
+      (1 : JoltISA.VReg) (1 : JoltISA.VReg) (0 : JoltISA.VReg)
+      (2 : JoltISA.VReg) js_slli (by decide)
+  refine ⟨js_logic, logic_val, ?_, rfl, ?_, ?_⟩
+  · rw [hslli_run
+      (JoltISA.srlBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) rest)]
+    rw [hsrl_run rest]
+  · rw [hsrl_sail, hslli_sail, hload_sail]
+  · rw [hsrl_v1, hslli_v1, hslli_v0]
 
 /-- Final `LW` sign-extension block.
 
-At this boundary, the preceding `SRL` has already written the shifted word to
-real `rd`.  `VirtualSignExtendWord rd, rd` reads it back, sign-extends the low 32 bits, and
-writes the final architectural value. -/
+At this boundary, the preceding virtual `SRL` has left the shifted word in
+`v1`.  `VirtualSignExtendWord rd, v1` sign-extends the low 32 bits and writes
+the final architectural value. -/
 theorem sextwWriteBlock
     (rd : regidx) (js js_logic : SailJoltState) (logic_val : BitVec 64)
-    (hlogic_sail : js_logic.sail = stateAfterWrite js.sail rd logic_val) :
+    (hlogic_sail : js_logic.sail = js.sail)
+    (hlogic_v1 : js_logic.vregs 1 = logic_val) :
     ∃ js' : SailJoltState,
       (JoltISA.execProgram
-        (.instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) (.done RETIRE_SUCCESS))).run js_logic =
+        (.instr (.VirtualSignExtendWord (.xreg rd) (.vreg 1)) (.done RETIRE_SUCCESS))).run js_logic =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail =
         stateAfterWrite js.sail rd
           (sign_extend (m := 64) ((Sail.BitVec.extractLsb logic_val 31 0) : BitVec 32)) := by
-  obtain ⟨js', hwrite_sail, hsextw⟩ :=
-    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_same_register_write
-      rd js_logic js.sail logic_val hlogic_sail
+  let finalValue :=
+    sign_extend (m := 64) ((Sail.BitVec.extractLsb logic_val 31 0) : BitVec 32)
+  obtain ⟨s_write, hw_write⟩ := wX_shape rd finalValue js.sail
+  let js' : SailJoltState := { sail := s_write, vregs := js_logic.vregs }
+  have hsextw :
+      (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.vreg 1))).run js_logic =
+        .ok RETIRE_SUCCESS js' := by
+    have hw_write' :
+        wX_bits rd
+          (sign_extend (m := 64)
+            ((Sail.BitVec.extractLsb (js_logic.vregs (1 : JoltISA.VReg)) 31 0) : BitVec 32))
+          js_logic.sail = .ok () s_write := by
+      rw [hlogic_sail, hlogic_v1]
+      exact hw_write
+    simpa [js'] using
+      (JoltISA.virtual_sign_extend_word_run_xreg_vreg rd (1 : JoltISA.VReg)
+        js_logic s_write hw_write')
   refine ⟨js', ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js_logic js' hsextw]
     rfl
-  · exact hwrite_sail
+  · exact wX_bits_eq_stateAfterWrite rd finalValue js.sail s_write hw_write
 
 end LoadProgramBlocks
 

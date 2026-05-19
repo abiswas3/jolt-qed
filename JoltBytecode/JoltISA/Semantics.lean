@@ -283,20 +283,20 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc src
       writeDst dst (jolt_movsign_value x)
       pure RETIRE_SUCCESS
-  | .VirtualAssertHalfwordAlignment base imm => do
+  | .VirtualAssertHalfwordAlignment base imm fault => do
       let baseValue ← liftSail (rX_bits base)
       let addr := baseValue + sign_extend (m := 64) imm
       if addr &&& (1 : BitVec 64) = 0 then
         pure RETIRE_SUCCESS
       else
-        throw (Error.Assertion "VirtualAssertHalfwordAlignment")
-  | .VirtualAssertWordAlignment base imm => do
+        pure (ExecutionResult.Memory_Exception (Virtaddr addr, fault))
+  | .VirtualAssertWordAlignment base imm fault => do
       let baseValue ← liftSail (rX_bits base)
       let addr := baseValue + sign_extend (m := 64) imm
       if addr &&& (3 : BitVec 64) = 0 then
         pure RETIRE_SUCCESS
       else
-        throw (Error.Assertion "VirtualAssertWordAlignment")
+        pure (ExecutionResult.Memory_Exception (Virtaddr addr, fault))
   | .LD dst base imm => do
       let baseValue ← readSrc base
       let addr := baseValue + sign_extend (m := 64) imm

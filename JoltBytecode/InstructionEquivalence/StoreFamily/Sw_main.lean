@@ -69,7 +69,7 @@ that the structured Jolt-ISA program follows the Rust bytecode sequence and
 ends by writing the spliced enclosing dword with `SD`.
 
 Intended proof phases:
-1. `VirtualAssertStoreAlignment; ADDI; ANDI; LD` establishes `ea`, `base`, and original
+1. `VirtualAssertWordAlignment; ADDI; ANDI; LD` establishes `ea`, `base`, and original
    dword.
 2. The SW mask/value logic computes `swSplicedDword`.
 3. `SD v1, v2, 0` writes that dword through Sail's store pipeline. -/
@@ -102,24 +102,24 @@ theorem swProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
           (compute_aligned_dword_base_address rs1_val imm)
           (swSplicedDword imm rs1_val rs2_val js.sail) := by
   let writeTail : JoltISA.Program :=
-    .instr (.SD 1 2 0) <| .done RETIRE_SUCCESS
+    .instr (.SD (.vreg 1) (.vreg 2) 0) <| .done RETIRE_SUCCESS
   let spliceTail : JoltISA.Program :=
-    .instr (.SLL (.vreg 0) (.xreg rs2) (.vreg 0)) <|
+    JoltISA.sllBlock (.vreg 0) (.xreg rs2) (.vreg 0) (4 : JoltISA.VReg) <|
     .instr (.XOR (.vreg 0) (.vreg 2) (.vreg 0)) <|
     .instr (.AND (.vreg 0) (.vreg 0) (.vreg 3)) <|
     .instr (.XOR (.vreg 2) (.vreg 2) (.vreg 0)) <|
     writeTail
   let maskTail : JoltISA.Program :=
-    .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
+    JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
     .instr (.ORI (.vreg 3) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
-    .instr (.SRLI (.vreg 3) (.vreg 3) (32 : BitVec 6)) <|
-    .instr (.SLL (.vreg 3) (.vreg 3) (.vreg 0)) <|
+    JoltISA.srliBlock (.vreg 3) (.vreg 3) (32 : BitVec 6) <|
+    JoltISA.sllBlock (.vreg 3) (.vreg 3) (.vreg 0) (4 : JoltISA.VReg) <|
     spliceTail
   let base := compute_aligned_dword_base_address rs1_val imm
   let dword_new := swSplicedDword imm rs1_val rs2_val js.sail
   let finalSail := state_after_dword_store js.sail base dword_new
-  rcases StoreProgramBlocks.assertSetupBlockAligned maskTail
-      (3 : BitVec 64) imm rs1 js hcfg rs1_val hrs1 hsetup.word_aligned
+  rcases StoreProgramBlocks.assertWordSetupBlockAligned maskTail
+      imm rs1 js hcfg rs1_val hrs1 hsetup.word_aligned
       h_dword_translate h_dword_phys with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
   have hx0 : rX_bits (regidx.Regidx 0) js_load.sail = .ok 0#64 js_load.sail :=
@@ -335,7 +335,7 @@ theorem swProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
 
 /-- **Jolt-side misaligned SW skeleton.**
 
-The leading `VirtualAssertStoreAlignment` should stop the Jolt program before setup,
+The leading `VirtualAssertWordAlignment` stops the Jolt program before setup,
 returning Sail's store/AMO alignment exception. -/
 theorem swProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState) (rs1_val : BitVec 64)
@@ -345,33 +345,23 @@ theorem swProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr (load_effective_address rs1_val imm),
           ExceptionType.E_SAMO_Addr_Align ())) js := by
-  let e :=
-    (Virtaddr (load_effective_address rs1_val imm),
-      ExceptionType.E_SAMO_Addr_Align ())
-  have hassert :
-      (JoltISA.execInstr (.VirtualAssertStoreAlignment rs1 imm (3 : BitVec 64))).run js =
-        .ok (ExecutionResult.Memory_Exception e) js := by
-    simpa [e, load_effective_address] using
-      (JoltISA.execInstr_VirtualAssertStoreAlignment_run_misaligned rs1 imm (3 : BitVec 64)
-        js rs1_val hrs1 (by simpa [load_effective_address] using hmis))
-  unfold JoltISA.swProgram
-  simpa [e] using
-    (JoltISA.execProgram_instr_run_memory_exception
-      (.VirtualAssertStoreAlignment rs1 imm (3 : BitVec 64))
-      (.instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-       .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-       .instr (.LD 2 1 0) <|
-       .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
-       .instr (.ORI (.vreg 3) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
-       .instr (.SRLI (.vreg 3) (.vreg 3) (32 : BitVec 6)) <|
-       .instr (.SLL (.vreg 3) (.vreg 3) (.vreg 0)) <|
-       .instr (.SLL (.vreg 0) (.xreg rs2) (.vreg 0)) <|
-       .instr (.XOR (.vreg 0) (.vreg 2) (.vreg 0)) <|
-       .instr (.AND (.vreg 0) (.vreg 0) (.vreg 3)) <|
-       .instr (.XOR (.vreg 2) (.vreg 2) (.vreg 0)) <|
-       .instr (.SD 1 2 0) <|
-       .done RETIRE_SUCCESS)
-      js js e hassert)
+  let tail : JoltISA.Program :=
+    .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
+    .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
+    .instr (.LD (.vreg 2) (.vreg 1) 0) <|
+    JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+    .instr (.ORI (.vreg 3) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
+    JoltISA.srliBlock (.vreg 3) (.vreg 3) (32 : BitVec 6) <|
+    JoltISA.sllBlock (.vreg 3) (.vreg 3) (.vreg 0) (4 : JoltISA.VReg) <|
+    JoltISA.sllBlock (.vreg 0) (.xreg rs2) (.vreg 0) (4 : JoltISA.VReg) <|
+    .instr (.XOR (.vreg 0) (.vreg 2) (.vreg 0)) <|
+    .instr (.AND (.vreg 0) (.vreg 0) (.vreg 3)) <|
+    .instr (.XOR (.vreg 2) (.vreg 2) (.vreg 0)) <|
+    .instr (.SD (.vreg 1) (.vreg 2) 0) <|
+    .done RETIRE_SUCCESS
+  have h := StoreProgramBlocks.assertWordBlockMisaligned tail
+    imm rs1 js rs1_val hrs1 hmis
+  simpa [JoltISA.swProgram, tail] using h
 
 /-- **Sail-side misaligned SW skeleton.**
 

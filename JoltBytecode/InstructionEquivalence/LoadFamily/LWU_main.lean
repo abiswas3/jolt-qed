@@ -149,12 +149,13 @@ theorem lwuProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
         (zero_extend (m := 64)
           (loaded_word_at js.sail (load_effective_address val imm))) := by
   let writeTail : JoltISA.Program :=
-    .instr (.SRLI (.xreg rd) (.vreg 1) (32 : BitVec 6)) (.done RETIRE_SUCCESS)
+    .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (JoltISA.srliBitmask (32 : BitVec 6)))
+      (.done RETIRE_SUCCESS)
   let logicTail : JoltISA.Program :=
     .instr (.XORI (.vreg 0) (.vreg 0) (4 : BitVec 12)) <|
-    .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
-    .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) writeTail
-  rcases LoadProgramBlocks.assertSetupBlockAligned logicTail (3 : BitVec 64)
+    JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+    JoltISA.sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) writeTail
+  rcases LoadProgramBlocks.assertWordSetupBlockAligned logicTail
       imm rs1 js hcfg val hrx halign h_dword_translate h_dword_phys with
     ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
   rcases LoadProgramBlocks.xoriSlliSllBlock writeTail imm (4 : BitVec 12)
@@ -175,10 +176,10 @@ theorem lwuProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
   refine ⟨js', ?_, ?_⟩
   · unfold JoltISA.lwuProgram
     change (JoltISA.execProgram
-      (.instr (.VirtualAssertLoadAlignment rs1 imm (3 : BitVec 64)) <|
+      (.instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
        .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-       .instr (.LD 1 1 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
+       .instr (.LD (.vreg 1) (.vreg 1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
     rw [hload_run, hlogic_run, hwrite_run]
     rfl
   · rw [hwrite_sail]
@@ -189,7 +190,7 @@ theorem lwuProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
 
 /-- Program-level misaligned execution for LWU.
 
-The leading `VirtualAssertLoadAlignment` returns the load-address-alignment exception and
+The leading word alignment assertion returns the load-address-alignment exception and
 the structured interpreter does not execute the dword load or writeback tail. -/
 theorem lwuProgram_concrete_misaligned (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
@@ -202,16 +203,16 @@ theorem lwuProgram_concrete_misaligned (imm : BitVec 12) (rs1 rd : regidx)
     (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())
   unfold JoltISA.lwuProgram
   simpa [e] using
-    (LoadProgramBlocks.assertBlockMisaligned
+    (LoadProgramBlocks.assertWordBlockMisaligned
       (.instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-       .instr (.LD 1 1 0) <|
+       .instr (.LD (.vreg 1) (.vreg 1) 0) <|
        .instr (.XORI (.vreg 0) (.vreg 0) (4 : BitVec 12)) <|
-       .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
-       .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) <|
-       .instr (.SRLI (.xreg rd) (.vreg 1) (32 : BitVec 6)) <|
+       JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+       JoltISA.sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) <|
+       .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (JoltISA.srliBitmask (32 : BitVec 6))) <|
        .done RETIRE_SUCCESS)
-      (3 : BitVec 64) imm rs1 js val hrx h_align)
+      imm rs1 js val hrx h_align)
 
 /-- Aligned public program theorem for LWU. -/
 theorem lwuProgram_eq_sail_aligned (imm : BitVec 12)
