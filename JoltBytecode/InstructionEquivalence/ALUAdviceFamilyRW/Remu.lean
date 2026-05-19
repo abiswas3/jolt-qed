@@ -49,8 +49,7 @@ theorem remuProgram_eq_phases (rs2 rs1 rd : regidx) (quotient : BitVec 64) :
 
 /-- Running `remuProgram` with honest quotient advice succeeds and writes Sail's
 unsigned REM value to `rd`. -/
-theorem remuProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem remuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -132,8 +131,7 @@ theorem execute_REMU_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
   simp [execute_REM, sail_rem_value, bind_pure_comp]
 
 /-- Sail's `execute_REM ... true` writes `sail_rem_value`. -/
-theorem execute_REMU_reduces (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem execute_REMU_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -149,8 +147,7 @@ theorem execute_REMU_reduces (rs2 rs1 rd : regidx)
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 /-- Honest quotient advice makes `remuProgram` match Sail REMU. -/
-theorem remuProgram_complete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem remuProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -158,11 +155,11 @@ theorem remuProgram_complete (rs2 rs1 rd : regidx)
                       (sail_div_value dividend divisor true))).run js) =
     (execute_REM rs2 rs1 rd true).run js.sail := by
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-    remuProgram_concrete rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2
+   remuProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail]
-  rw [execute_REMU_reduces rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2]
+  rw [execute_REMU_reduces rs2 rs1 rd js dividend divisor hrs1 hrs2]
 
 /-- Any successful REMU run writes Sail's unsigned remainder. -/
 theorem remuProgram_sound (rs2 rs1 rd : regidx)

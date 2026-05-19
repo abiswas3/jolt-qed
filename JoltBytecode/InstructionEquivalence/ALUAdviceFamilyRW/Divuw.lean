@@ -55,8 +55,7 @@ theorem divuwProgram_eq_phases (rs2 rs1 rd : regidx) (quotient : BitVec 64) :
 
 /-- Running `divuwProgram` with honest quotient advice succeeds and writes
 Sail's unsigned 32-bit DIV value to `rd`. -/
-theorem divuwProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem divuwProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -132,8 +131,7 @@ theorem execute_DIVUW_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
   simp [execute_DIVW, sail_divw_value, bind_pure_comp]
 
 /-- Sail's `execute_DIVW ... true` writes `sail_divw_value`. -/
-theorem execute_DIVUW_reduces (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem execute_DIVUW_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -149,8 +147,7 @@ theorem execute_DIVUW_reduces (rs2 rs1 rd : regidx)
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 /-- Honest quotient advice makes `divuwProgram` match Sail DIVUW. -/
-theorem divuwProgram_complete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem divuwProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -158,11 +155,11 @@ theorem divuwProgram_complete (rs2 rs1 rd : regidx)
                       (sail_divuw_advice dividend divisor))).run js) =
     (execute_DIVW rs2 rs1 rd true).run js.sail := by
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-    divuwProgram_concrete rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2
+   divuwProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail]
-  rw [execute_DIVUW_reduces rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2]
+  rw [execute_DIVUW_reduces rs2 rs1 rd js dividend divisor hrs1 hrs2]
 
 /-- Any successful DIVUW run writes Sail's unsigned 32-bit quotient. -/
 theorem divuwProgram_sound (rs2 rs1 rd : regidx)

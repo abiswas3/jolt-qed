@@ -73,8 +73,7 @@ theorem remwProgram_eq_phases (rs2 rs1 rd : regidx)
 
 /-- Running `remwProgram` with honest DIVW/REMW advice succeeds and writes
 Sail's signed REMW value to `rd`. -/
-theorem remwProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem remwProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -172,8 +171,7 @@ theorem execute_REMW_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
   simp [execute_REMW, sail_remw_value, bind_pure_comp]
 
 /-- Sail's `execute_REMW ... false` writes `sail_remw_value`. -/
-theorem execute_REMW_reduces (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem execute_REMW_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -189,8 +187,7 @@ theorem execute_REMW_reduces (rs2 rs1 rd : regidx)
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 /-- Honest advice makes `remwProgram` match Sail REMW. -/
-theorem remwProgram_complete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem remwProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -199,11 +196,11 @@ theorem remwProgram_complete (rs2 rs1 rd : regidx)
                       (bv_abs (sail_remw_value dividend divisor false)))).run js) =
     (execute_REMW rs2 rs1 rd false).run js.sail := by
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-    remwProgram_concrete rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2
+   remwProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail]
-  rw [execute_REMW_reduces rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2]
+  rw [execute_REMW_reduces rs2 rs1 rd js dividend divisor hrs1 hrs2]
 
 /-- Any successful REMW run writes the same Sail state as architectural
 `execute_REMW ... false`. -/

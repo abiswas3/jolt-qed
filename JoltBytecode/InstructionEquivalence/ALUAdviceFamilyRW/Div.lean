@@ -75,8 +75,7 @@ theorem divProgram_eq_phases (rs2 rs1 rd : regidx)
 
 /-- Running `divProgram` with honest DIV/REM advice succeeds and writes Sail's
 signed DIV value to `rd`. -/
-theorem divProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem divProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -146,8 +145,7 @@ theorem execute_DIV_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
   simp [execute_DIV, sail_div_value, bind_pure_comp]
 
 /-- Sail's `execute_DIV ... false` writes `sail_div_value`. -/
-theorem execute_DIV_reduces (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem execute_DIV_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -164,8 +162,7 @@ theorem execute_DIV_reduces (rs2 rs1 rd : regidx)
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 /-- Honest advice makes `divProgram` match Sail DIV. -/
-theorem divProgram_complete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem divProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -174,11 +171,11 @@ theorem divProgram_complete (rs2 rs1 rd : regidx)
                       (bv_abs (sail_rem_value dividend divisor false)))).run js) =
     (execute_DIV rs2 rs1 rd false).run js.sail := by
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-    divProgram_concrete rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2
+   divProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail]
-  rw [execute_DIV_reduces rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2]
+  rw [execute_DIV_reduces rs2 rs1 rd js dividend divisor hrs1 hrs2]
 
 /-- Any successful DIV run pins the advice to Sail's quotient and absolute
 remainder values. -/
