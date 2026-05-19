@@ -76,11 +76,27 @@ def sraiProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
   .instr (.VirtualSRAI (.xreg rd) (.xreg rs1) (sraiBitmask shamt)) <|
   .done RETIRE_SUCCESS
 
-/-- `ADDW`: ordinary 64-bit `ADD`, then virtual sign-extend-word. -/
+/-- Boolean test for architectural register `x0`.
+
+This avoids requiring a `DecidableEq regidx` instance in Rust trace-dispatch
+program definitions. -/
+def isX0 (rd : regidx) : Bool :=
+  match rd with
+  | regidx.Regidx bits => decide (bits.toNat = 0)
+
+/-- `ADDW` as reached through Rust `Instruction::trace`.
+
+If the destination is architectural register `x0`, Rust emits the pure
+writeback no-op replacement `ADDI x0, x0, 0`; otherwise it uses ADDW's
+ordinary instruction-specific `inline_sequence`. -/
 def addwProgram (rs2 rs1 rd : regidx) : Program :=
-  .instr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
-  .done RETIRE_SUCCESS
+  if isX0 rd then
+    .instr (.ADDI (.xreg (regidx.Regidx 0)) (.xreg (regidx.Regidx 0)) (0 : BitVec 12)) <|
+    .done RETIRE_SUCCESS
+  else
+    .instr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
+    .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
+    .done RETIRE_SUCCESS
 
 /-- `SUBW`: ordinary 64-bit `SUB`, then virtual sign-extend-word. -/
 def subwProgram (rs2 rs1 rd : regidx) : Program :=
