@@ -61,20 +61,20 @@ This is the theorem that the new architecture wants proofs to consume: the
 left-hand side is the explicit Jolt-ISA program, not the older hand-written
 monadic expansion. The instruction sequence is visible in the statement. -/
 theorem slliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
-    ∃ (js' : SailJoltState) (v : BitVec 64),
-      rX_bits rs1 js.sail = .ok v js.sail ∧
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
+    ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd (slli_sail_operation shamt v) := by
-  obtain ⟨v, hok⟩ := hwf rs1
 
   -- Instruction 1: `VirtualMULI rd, rs1, 2^shamt` writes the shifted result to `rd`.
   let multiplier := BitVec.ofNat 64 (2 ^ shamt.toNat)
   let jolt_val := slli_jolt_val shamt v
   obtain ⟨js_afterMuli, h_muli_reads_rs1, h_muli_writes_jolt_val,
       h_muli_succeeds⟩ :=
-    JoltISA.exists_state_after_virtual_muli_run_xreg_xreg rd rs1 multiplier js v hok
+    JoltISA.exists_state_after_virtual_muli_run_xreg_xreg rd rs1 multiplier js v h_read_rs1
 
   have h_program_succeeds :
       (JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js =
@@ -83,7 +83,7 @@ theorem slliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterMuli h_muli_succeeds]
     rfl
 
-  refine ⟨js_afterMuli, v, h_muli_reads_rs1, h_program_succeeds, ?_⟩
+  refine ⟨js_afterMuli, h_program_succeeds, ?_⟩
 
   -- The instruction trace leaves `rd` containing the Jolt SLLI value.
   have h_final_jolt_value :
@@ -106,11 +106,13 @@ theorem slliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
 
 /-- Main program-level equivalence for `SLLI`. -/
 theorem slliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIOP shamt rs1 rd sop.SLLI).run js.sail := by
-  obtain ⟨js_afterMuli, v, h_read_rs1, h_program_succeeds, h_final_sail⟩ :=
-    slliProgram_concrete shamt rs1 rd js hwf
+  obtain ⟨js_afterMuli, h_program_succeeds, h_final_sail⟩ :=
+    slliProgram_concrete shamt rs1 rd js v h_read_rs1
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

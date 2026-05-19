@@ -80,20 +80,20 @@ The Jolt-ISA program contains `VirtualSRAI` with the encoded bitmask
 immediate.  The local bridge lemma turns that encoding back into Sail's
 ordinary arithmetic shift. -/
 theorem sraiProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
-    ∃ (js' : SailJoltState) (v : BitVec 64),
-      rX_bits rs1 js.sail = .ok v js.sail ∧
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
+    ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd (srai_sail_operation shamt v) := by
-  obtain ⟨v, hok⟩ := hwf rs1
 
   -- Instruction 1: `VirtualSRAI rd, rs1, sraiBitmask shamt` writes the shifted result to `rd`.
   let bitmask := JoltISA.sraiBitmask shamt
   let jolt_val := srai_jolt_val shamt v
   obtain ⟨js_afterSrai, h_srai_reads_rs1, h_srai_writes_jolt_val,
       h_srai_succeeds⟩ :=
-    JoltISA.exists_state_after_virtual_srai_run_xreg_xreg rd rs1 bitmask js v hok
+    JoltISA.exists_state_after_virtual_srai_run_xreg_xreg rd rs1 bitmask js v h_read_rs1
 
   have h_program_succeeds :
       (JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js =
@@ -102,7 +102,7 @@ theorem sraiProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSrai h_srai_succeeds]
     rfl
 
-  refine ⟨js_afterSrai, v, h_srai_reads_rs1, h_program_succeeds, ?_⟩
+  refine ⟨js_afterSrai, h_program_succeeds, ?_⟩
 
   -- The instruction trace leaves `rd` containing the Jolt SRAI value.
   have h_final_jolt_value :
@@ -125,11 +125,13 @@ theorem sraiProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
 
 /-- Main program-level equivalence for `SRAI`. -/
 theorem sraiProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIOP shamt rs1 rd sop.SRAI).run js.sail := by
-  obtain ⟨js_afterSrai, v, h_read_rs1, h_program_succeeds, h_final_sail⟩ :=
-    sraiProgram_concrete shamt rs1 rd js hwf
+  obtain ⟨js_afterSrai, h_program_succeeds, h_final_sail⟩ :=
+    sraiProgram_concrete shamt rs1 rd js v h_read_rs1
 
   rw [h_program_succeeds]
   simp only [projectResult, project]
