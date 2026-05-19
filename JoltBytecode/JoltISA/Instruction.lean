@@ -3,9 +3,9 @@ import JoltBytecode.JoltISA.Values
 /-!
 # Jolt ISA syntax
 
-This is the data layer that Rust extraction should eventually target.  The
-constructors intentionally stay close to the inline bytecode instructions
-rather than baking in proof-specific factoring.
+This is the data layer for final Jolt trace-row instructions.  Source
+instructions that Rust lowers through `inline_sequence` belong in the expansion
+layer, not as constructors here.
 -/
 
 open Sail PreSail LeanRV64D.Functions
@@ -29,12 +29,10 @@ inductive Instr where
   | BGE (lhs rhs : Src) (imm : BitVec 13)
   | BLTU (lhs rhs : Src) (imm : BitVec 13)
   | BGEU (lhs rhs : Src) (imm : BitVec 13)
-  | EBREAK (address : BitVec 64)
   | FENCE
   | ADD  (dst : Dst) (lhs rhs : Src)
   | SUB  (dst : Dst) (lhs rhs : Src)
   | MUL  (dst : Dst) (lhs rhs : Src)
-  | MULH (dst : Dst) (lhs rhs : Src)
   | MULHU (dst : Dst) (lhs rhs : Src)
   | ANDN (dst : Dst) (lhs rhs : Src)
   | VirtualMULI (dst : Dst) (src : Src) (imm : BitVec 64)
@@ -64,22 +62,13 @@ inductive Instr where
   | AND  (dst : Dst) (lhs rhs : Src)
   | SLT  (dst : Dst) (lhs rhs : Src)
   | SLTU (dst : Dst) (lhs rhs : Src)
-  | SLLI (dst : Dst) (src : Src) (shamt : BitVec 6)
-  | SRLI (dst : Dst) (src : Src) (shamt : BitVec 6)
-  | SRAI (dst : Dst) (src : Src) (shamt : BitVec 6)
-  | SLL  (dst : Dst) (value shamt : Src)
-  | SRL  (dst : Dst) (value shamt : Src)
   | VirtualSignExtendWord (dst : Dst) (src : Src)
   | VirtualZeroExtendWord (dst : Dst) (src : Src)
   | VirtualMovsign (dst : Dst) (src : Src)
   | VirtualAssertHalfwordAlignment (base : regidx) (imm : BitVec 12)
   | VirtualAssertWordAlignment (base : regidx) (imm : BitVec 12)
-  | VirtualAssertLoadAlignment (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
-  | VirtualAssertStoreAlignment (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
-  | LD (vd base : VReg) (imm : BitVec 12)
-  | LDFrom (vd : VReg) (base : Src) (imm : BitVec 12)
-  | SD (base value : VReg) (imm : BitVec 12)
-  | SDFrom (base value : Src) (imm : BitVec 12)
+  | LD (dst : Dst) (base : Src) (imm : BitVec 12)
+  | SD (base value : Src) (imm : BitVec 12)
   | VirtualLW (dst : Dst) (base : Src) (imm : BitVec 12)
   | VirtualSW (base value : Src) (imm : BitVec 12)
   | VirtualAdvice (vd : VReg) (value : BitVec 64)
@@ -113,9 +102,9 @@ inductive Program where
   deriving Repr
 
 /-- Build the common straight-line "run every instruction, then retire"
-program.  This is useful for expansions such as `MULH`, which have no explicit
-early-return instruction apart from the generic non-retire short-circuiting
-handled by `Program.instr`. -/
+program.  This is useful for expansions with no explicit early-return
+instruction apart from the generic non-retire short-circuiting handled by
+`Program.instr`. -/
 def Program.seq (instrs : List Instr) : Program :=
   instrs.foldr Program.instr (.done RETIRE_SUCCESS)
 

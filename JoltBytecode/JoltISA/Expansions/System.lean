@@ -34,7 +34,7 @@ def ecallProgram : Program :=
   .instr (.ADDI (.vreg mcauseVReg) (.xreg (regidx.Regidx 0)) (11 : BitVec 12)) <|
   .instr (.ADDI (.vreg mtvalVReg) (.xreg (regidx.Regidx 0)) (0 : BitVec 12)) <|
   .instr (.ADDI (.vreg systemScratchVReg) (.xreg (regidx.Regidx 0)) (3 : BitVec 12)) <|
-  .instr (.SLLI (.vreg mstatusVReg) (.vreg systemScratchVReg) (11 : BitVec 6)) <|
+  .instr (.VirtualMULI (.vreg mstatusVReg) (.vreg systemScratchVReg) (2048 : BitVec 64)) <|
   .instr (.JALR (.vreg systemScratchVReg) (.vreg trapHandlerVReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 

@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Semantics
+import JoltBytecode.JoltISA.Expansions.ALU
 
 /-!
 # Load-family Jolt expansion programs
@@ -25,69 +26,75 @@ namespace JoltISA
 def lbProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD 1 1 0) <|
+  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 7) <|
-  .instr (.SLLI (.vreg 0) (.vreg 0) 3) <|
-  .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) <|
-  .instr (.SRAI (.xreg rd) (.vreg 1) (56 : BitVec 6)) <|
+  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
+  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
+  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiBitmask (56 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LBU::inline_sequence`. -/
 def lbuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD 1 1 0) <|
+  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 7) <|
-  .instr (.SLLI (.vreg 0) (.vreg 0) 3) <|
-  .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) <|
-  .instr (.SRLI (.xreg rd) (.vreg 1) (56 : BitVec 6)) <|
+  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
+  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
+  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (srliBitmask (56 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LH::inline_sequence`. -/
 def lhProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertLoadAlignment rs1 imm (1 : BitVec 64)) <|
+  .instr (.VirtualAssertHalfwordAlignment rs1 imm) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD 1 1 0) <|
+  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 6) <|
-  .instr (.SLLI (.vreg 0) (.vreg 0) 3) <|
-  .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) <|
-  .instr (.SRAI (.xreg rd) (.vreg 1) (48 : BitVec 6)) <|
+  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
+  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
+  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiBitmask (48 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LHU::inline_sequence`. -/
 def lhuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertLoadAlignment rs1 imm (1 : BitVec 64)) <|
+  .instr (.VirtualAssertHalfwordAlignment rs1 imm) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD 1 1 0) <|
+  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 6) <|
-  .instr (.SLLI (.vreg 0) (.vreg 0) 3) <|
-  .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) <|
-  .instr (.SRLI (.xreg rd) (.vreg 1) (48 : BitVec 6)) <|
+  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
+  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
+  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (srliBitmask (48 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LW::inline_sequence`. -/
 def lwProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertLoadAlignment rs1 imm (3 : BitVec 64)) <|
+  .instr (.VirtualAssertWordAlignment rs1 imm) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD 1 1 0) <|
-  .instr (.SLLI (.vreg 0) (.vreg 0) 3) <|
-  .instr (.SRL (.xreg rd) (.vreg 1) (.vreg 0)) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
+  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
+  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
+  .instr (.VirtualShiftRightBitmask (.vreg 2) (.vreg 0)) <|
+  .instr (.VirtualSRL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 1)) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LWU::inline_sequence`. -/
 def lwuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertLoadAlignment rs1 imm (3 : BitVec 64)) <|
+  .instr (.VirtualAssertWordAlignment rs1 imm) <|
   .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD 1 1 0) <|
+  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .instr (.XORI (.vreg 0) (.vreg 0) 4) <|
-  .instr (.SLLI (.vreg 0) (.vreg 0) 3) <|
-  .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) <|
-  .instr (.SRLI (.xreg rd) (.vreg 1) (32 : BitVec 6)) <|
+  .instr (.VirtualMULI (.vreg 0) (.vreg 0) (8 : BitVec 64)) <|
+  .instr (.VirtualPow2 (.vreg 2) (.vreg 0)) <|
+  .instr (.MUL (.vreg 1) (.vreg 1) (.vreg 2)) <|
+  .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (srliBitmask (32 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 end JoltISA

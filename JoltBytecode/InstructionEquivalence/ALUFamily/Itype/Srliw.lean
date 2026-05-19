@@ -1,6 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.ALU
-import JoltBytecode.JoltISA.Semantics.Instructions.SLLI
+import JoltBytecode.JoltISA.Semantics.ExpansionBlocks.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSRLI
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSignExtendWord
 import JoltBytecode.JoltISA.Semantics.Instructions
@@ -125,8 +125,8 @@ theorem srliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJol
   -- Instruction 1: `SLLI v0, rs1, 32` writes the left-shifted source to `v0`.
   let leftShiftedSource := shift_bits_left v (32 : BitVec 6)
   obtain ⟨js_afterLeftShift, h_left_shift_reads_rs1, h_left_shift_keeps_sail,
-      h_left_shift_writes_leftShiftedSource, _, h_left_shift_succeeds⟩ :=
-    JoltISA.exists_state_after_slli_run_vreg_xreg
+      h_left_shift_writes_leftShiftedSource, _, h_left_shift_block_succeeds⟩ :=
+    JoltISA.exists_state_after_slli_block_run_vreg_xreg
       (0 : JoltISA.VReg) rs1 (32 : BitVec 6) js v h_read_rs1
 
   -- Instruction 2: `VirtualSRLI rd, v0, srliwBitmask shamt` writes the shifted result.
@@ -148,7 +148,7 @@ theorem srliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJol
         .ok RETIRE_SUCCESS js_afterSignExtend := by
     unfold JoltISA.srliwProgram
     rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterLeftShift h_left_shift_succeeds]
+    rw [h_left_shift_block_succeeds _]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterLeftShift js_afterSrli
       h_srli_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterSrli js_afterSignExtend

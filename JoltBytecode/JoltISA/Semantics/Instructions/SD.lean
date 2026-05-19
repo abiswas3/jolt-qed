@@ -24,9 +24,9 @@ theorem execInstr_sd_vreg_run_of_write (base value : VReg) (imm : BitVec 12)
       vmem_write_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 8
         (js.vregs value) (Store Data) false false false js.sail =
         .ok (Ok true) s') :
-    (execInstr (.SD base value imm)).run js =
+    (execInstr (.SD (.vreg base) (.vreg value) imm)).run js =
       .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
-  unfold execInstr readVReg liftSail
+  unfold execInstr readSrc readVReg liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [h]

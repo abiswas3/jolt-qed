@@ -27,6 +27,28 @@ theorem mul_run_vreg_vreg_vreg (vd lhs rhs : VReg) (js : SailJoltState) :
     get, getThe, MonadStateOf.get, EStateM.get,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
+/-- `MUL` from two virtual sources to a virtual destination, packaged as an
+instruction step from known virtual-source values. -/
+theorem exists_state_after_mul_run_vreg_vreg_vreg
+    (vd lhs rhs : VReg) (js : SailJoltState) (x y : BitVec 64)
+    (h_lhs : js.vregs lhs = x)
+    (h_rhs : js.vregs rhs = y) :
+    ∃ js',
+      js'.sail = js.sail ∧
+      js'.vregs vd = x * y ∧
+      (∀ r, r ≠ vd → js'.vregs r = js.vregs r) ∧
+      (execInstr (.MUL (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
+        .ok RETIRE_SUCCESS js' := by
+  let js' : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = vd then js.vregs lhs * js.vregs rhs
+        else js.vregs r }
+  refine ⟨js', rfl, ?_, ?_, ?_⟩
+  · simp [js', h_lhs, h_rhs]
+  · intro r hne
+    simp [js', hne]
+  · simpa only [js'] using mul_run_vreg_vreg_vreg vd lhs rhs js
+
 /-- `MUL` from a virtual source and a real source to a virtual destination reads
 the real source through Sail, writes the low product to the virtual destination,
 and leaves the Sail state unchanged when the real read is state-preserving. -/

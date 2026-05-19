@@ -29,6 +29,20 @@ theorem mulhu_run_vreg_xreg_xreg (vd : VReg) (lhs rhs : regidx)
   simp only [h₁, h₂, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
+/-- `MULHU` on virtual registers writes the unsigned high product and leaves
+the Sail state unchanged. -/
+theorem mulhu_run_vreg_vreg_vreg (vd lhs rhs : VReg) (js : SailJoltState) :
+    (execInstr (.MULHU (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r =>
+            if r = vd then jolt_mulhu_value (js.vregs lhs) (js.vregs rhs)
+            else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
 /-- `MULHU` from two real sources to a virtual destination, packaged from a
 known base Sail state. -/
 theorem exists_state_after_mulhu_run_vreg_xreg_xreg
@@ -59,6 +73,29 @@ theorem exists_state_after_mulhu_run_vreg_xreg_xreg
     simp [js', hne]
   · simpa only [js'] using
       mulhu_run_vreg_xreg_xreg vd lhs rhs js x y h_lhs_current h_rhs_current
+
+/-- `MULHU` from two virtual sources to a virtual destination, packaged from
+known virtual-source values. -/
+theorem exists_state_after_mulhu_run_vreg_vreg_vreg
+    (vd lhs rhs : VReg) (js : SailJoltState) (x y : BitVec 64)
+    (h_lhs : js.vregs lhs = x)
+    (h_rhs : js.vregs rhs = y) :
+    ∃ js',
+      js'.sail = js.sail ∧
+      js'.vregs vd = jolt_mulhu_value x y ∧
+      (∀ r, r ≠ vd → js'.vregs r = js.vregs r) ∧
+      (execInstr (.MULHU (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
+        .ok RETIRE_SUCCESS js' := by
+  let js' : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r =>
+        if r = vd then jolt_mulhu_value (js.vregs lhs) (js.vregs rhs)
+        else js.vregs r }
+  refine ⟨js', rfl, ?_, ?_, ?_⟩
+  · simp [js', h_lhs, h_rhs]
+  · intro r hne
+    simp [js', hne]
+  · simpa only [js'] using mulhu_run_vreg_vreg_vreg vd lhs rhs js
 
 /-- `MULHU` from a virtual source and a real source to a virtual destination
 reads the real source through Sail and writes the unsigned high product. -/

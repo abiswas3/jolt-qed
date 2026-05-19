@@ -28,6 +28,18 @@ theorem movsign_run_vreg_xreg (vd : VReg) (rs : regidx)
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
+/-- `VirtualMovsign` from a virtual register to a virtual register writes the
+sign mask of the virtual source and leaves the Sail state unchanged. -/
+theorem movsign_run_vreg_vreg (vd vs : VReg) (js : SailJoltState) :
+    (execInstr (.VirtualMovsign (.vreg vd) (.vreg vs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then jolt_movsign_value (js.vregs vs) else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
 /-- `VirtualMovsign` from a real source to a virtual destination, packaged as
 an instruction step from a known base Sail state. -/
 theorem exists_state_after_movsign_run_vreg_xreg
@@ -53,6 +65,26 @@ theorem exists_state_after_movsign_run_vreg_xreg
   · intro r hne
     simp [js', hne]
   · simpa only [js'] using movsign_run_vreg_xreg vd rs js x h_read_current
+
+/-- `VirtualMovsign` from a virtual source to a virtual destination, packaged
+as an instruction step from a known virtual-source value. -/
+theorem exists_state_after_movsign_run_vreg_vreg
+    (vd vs : VReg) (js : SailJoltState) (x : BitVec 64)
+    (h_source : js.vregs vs = x) :
+    ∃ js',
+      js'.sail = js.sail ∧
+      js'.vregs vd = jolt_movsign_value x ∧
+      (∀ r, r ≠ vd → js'.vregs r = js.vregs r) ∧
+      (execInstr (.VirtualMovsign (.vreg vd) (.vreg vs))).run js =
+        .ok RETIRE_SUCCESS js' := by
+  let js' : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = vd then jolt_movsign_value (js.vregs vs) else js.vregs r }
+  refine ⟨js', rfl, ?_, ?_, ?_⟩
+  · simp [js', h_source]
+  · intro r hne
+    simp [js', hne]
+  · simpa only [js'] using movsign_run_vreg_vreg vd vs js
 
 end JoltISA
 
