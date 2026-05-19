@@ -69,30 +69,28 @@ theorem addwProgram_concrete
     (rs2 : regidx)
     (rs1 : regidx)
     (rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState)
-    (hwf : WellFormed js) :
-    ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
-      rX_bits rs1 js.sail = .ok v1 js.sail ∧
-        rX_bits rs2 js.sail = .ok v2 js.sail ∧
-        (JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js =
-          .ok RETIRE_SUCCESS js' ∧
-        js'.sail = stateAfterWrite js.sail rd (addw_sail_operation v1 v2) := by
-    obtain ⟨v1, hok1⟩ := hwf rs1
-    obtain ⟨v2, hok2⟩ := hwf rs2
+    (v1 v2 : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    ∃ (js' : SailJoltState),
+      (JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js =
+        .ok RETIRE_SUCCESS js' ∧
+      js'.sail = stateAfterWrite js.sail rd (addw_sail_operation v1 v2) := by
 
     -- Instruction 1: `ADD rd, rs1, rs2` writes the 64-bit sum to `rd`.
     let sum := v1 + v2
     obtain ⟨js_afterAdd, h_add_reads_rs1, h_add_reads_rs2,
         h_add_writes_sum, h_add_succeeds⟩ :=
-      JoltISA.exists_state_after_add_run_xreg_xreg_xreg rd rs1 rs2 js v1 v2 hok1 hok2
+      JoltISA.exists_state_after_add_run_xreg_xreg_xreg rd rs1 rs2 js v1 v2
+        h_read_rs1 h_read_rs2
 
     -- Instruction 2: `VirtualSignExtendWord rd, rd` writes the ADDW result.
     let jolt_val := addw_jolt_val v1 v2
-    obtain ⟨js_afterSignExtend, h_sign_extend_reads_sum, h_sign_extend_writes_jolt_val,
+    obtain ⟨js_afterSignExtend, h_sign_extend_writes_jolt_val,
         h_sign_extend_succeeds⟩ :=
-      JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_source_write
-        rd rd js_afterAdd js.sail sum hrd h_add_writes_sum
+      JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_same_register_write
+        rd js_afterAdd js.sail sum h_add_writes_sum
 
     -- Full program succeeds by stepping through the two instruction runs.
     have h_program_succeeds :
@@ -104,16 +102,12 @@ theorem addwProgram_concrete
         h_sign_extend_succeeds]
       rfl
 
-    refine ⟨js_afterSignExtend, v1, v2, h_add_reads_rs1, h_add_reads_rs2,
-      h_program_succeeds, ?_⟩
+    refine ⟨js_afterSignExtend, h_program_succeeds, ?_⟩
 
     -- The instruction trace leaves `rd` containing the Jolt ADDW value.
     have h_final_jolt_value :
         js_afterSignExtend.sail = stateAfterWrite js.sail rd jolt_val := by
-      rw [h_sign_extend_writes_jolt_val, h_add_writes_sum]
-      change stateAfterWrite (stateAfterWrite js.sail rd sum) rd jolt_val =
-        stateAfterWrite js.sail rd jolt_val
-      exact stateAfterWrite_stateAfterWrite rd sum jolt_val js.sail
+      exact h_sign_extend_writes_jolt_val
 
     -- No more execution reasoning remains.
     -- The only real content left is the pure value equality:
@@ -133,14 +127,14 @@ theorem addwProgram_eq_sail
     (rs2 : regidx)
     (rs1 : regidx)
     (rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState)
-    (hwf : WellFormed js) :
+    (v1 v2 : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run js.sail := by
-  obtain ⟨js_afterSignExtend, v1, v2, h_read_rs1, h_read_rs2,
-      h_program_succeeds, h_final_sail⟩ :=
-    addwProgram_concrete rs2 rs1 rd hrd js hwf
+  obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
+    addwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2
 
   -- Use the concrete proof to collapse the Jolt side to its final Sail state.
   rw [h_program_succeeds]

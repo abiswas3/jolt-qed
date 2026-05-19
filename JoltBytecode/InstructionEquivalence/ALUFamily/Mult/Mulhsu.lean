@@ -455,16 +455,14 @@ private theorem vreg3_ne_vreg2 :
 The instruction blocks prove the emitted Jolt sequence writes
 `jolt_mulhsu_value`.  The final value block is the only place where the pure
 arithmetic theorem changes that Jolt value into Sail's `MULHSU` value. -/
-theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
-    ∃ (jsf : SailJoltState) (v1 v2 : BitVec 64),
-      rX_bits rs1 js.sail = .ok v1 js.sail ∧
-      rX_bits rs2 js.sail = .ok v2 js.sail ∧
+theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (v1 v2 : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    ∃ (jsf : SailJoltState),
       (JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS jsf ∧
       jsf.sail = stateAfterWrite js.sail rd (mulhsu v1 v2) := by
-  obtain ⟨v1, h_read_rs1⟩ := hwf rs1
-  obtain ⟨v2, h_read_rs2⟩ := hwf rs2
 
   -- Instruction 1: `VirtualMovsign v0, rs1` writes the sign mask of `rs1`.
   let rs1SignMask := jolt_movsign_value v1
@@ -692,7 +690,7 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx)
       h_final_add_succeeds]
     rfl
 
-  refine ⟨js_afterFinalAdd, v1, v2, h_read_rs1, h_read_rs2, h_program_succeeds, ?_⟩
+  refine ⟨js_afterFinalAdd, h_program_succeeds, ?_⟩
 
   -- The instruction trace leaves `rd` containing the Jolt MULHSU value.
   have h_final_jolt_value :
@@ -715,13 +713,15 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx)
 
 /-- Main program-level theorem: interpreting the Jolt ISA `MULHSU` expansion
 has the same projected architectural result as Sail's `MULHSU` semantics. -/
-theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx)
+    (js : SailJoltState)
+    (v1 v2 : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js) =
     (execute_MUL rs2 rs1 rd mulhsuOp).run js.sail := by
-  obtain ⟨js_afterFinalAdd, v1, v2, h_read_rs1, h_read_rs2,
-      h_program_succeeds, h_final_sail⟩ :=
-    mulhsuProgram_concrete rs2 rs1 rd hrd js hwf
+  obtain ⟨js_afterFinalAdd, h_program_succeeds, h_final_sail⟩ :=
+    mulhsuProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2
 
   rw [h_program_succeeds]
   simp only [projectResult, project]
