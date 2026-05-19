@@ -15,6 +15,7 @@ namespace JoltISA
 /-- Rust's RV64 `MULH::inline_sequence`, with allocator outputs fixed as
 `v_sx = 0`, `v_sy = 1`, `v_tmp = 2`. -/
 def mulhProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualMovsign (.vreg 0) (.xreg rs1)) <|
   .instr (.VirtualMovsign (.vreg 1) (.xreg rs2)) <|
   .instr (.MUL (.vreg 0) (.vreg 0) (.xreg rs2)) <|
@@ -27,6 +28,7 @@ def mulhProgram (rs2 rs1 rd : regidx) : Program :=
 /-- Rust's RV64 `MULHSU::inline_sequence`, with allocator outputs fixed as
 `v0 = 0`, `v1 = 1`, `v2 = 2`, `v3 = 3`. -/
 def mulhsuProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualMovsign (.vreg 0) (.xreg rs1)) <|
   .instr (.ANDI (.vreg 1) (.vreg 0) 1) <|
   .instr (.XOR (.vreg 2) (.xreg rs1) (.vreg 0)) <|

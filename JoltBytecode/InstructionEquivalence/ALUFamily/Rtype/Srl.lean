@@ -70,12 +70,12 @@ theorem srlProgram_concrete
     (js : SailJoltState)
     (v1 v2 : BitVec 64)
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.srlProgram rs2 rs1 rd)).run js =
           .ok RETIRE_SUCCESS js' ∧
         js'.sail = stateAfterWrite js.sail rd (srl_sail_operation v1 v2) := by
-
   -- Instruction 1: `VirtualShiftRightBitmask v0, rs2` writes the shift bitmask to `v0`.
   let shiftBitmask := jolt_virtual_shift_right_bitmask_value v2
   obtain ⟨js_afterBitmask, h_bitmask_reads_rs2, h_bitmask_keeps_sail,
@@ -95,6 +95,7 @@ theorem srlProgram_concrete
       (JoltISA.execProgram (JoltISA.srlProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSrl := by
     unfold JoltISA.srlProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterBitmask h_bitmask_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterBitmask js_afterSrl
       h_virtual_srl_succeeds]
@@ -132,8 +133,19 @@ theorem srlProgram_eq_sail
     (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.srlProgram rs2 rs1 rd)).run js) =
     (execute_RTYPE rs2 rs1 rd rop.SRL).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.srlProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_RTYPE_SRL_factored rs2 rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1, h_read_rs2]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterSrl, h_program_succeeds, h_final_sail⟩ :=
-    srlProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2
+    srlProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

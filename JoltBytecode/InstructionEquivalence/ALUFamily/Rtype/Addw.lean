@@ -59,29 +59,6 @@ private theorem addw_value_eq_sail (v1 v2 : BitVec 64) :
   simp only [addw_jolt_val, addw_sail_operation]
   rw [extractLsb_add]
 
-/-- The ADDW dispatch predicate recognizes architectural register `x0`. -/
-private theorem isX0_regidx_zero :
-    JoltISA.isX0 (regidx.Regidx 0) = true := by
-  unfold JoltISA.isX0
-  simp
-
-/-- If `rd` is not architectural register `x0`, the ADDW dispatch predicate is
-false and the ordinary ADDW inline sequence is used. -/
-private theorem isX0_eq_false_of_ne_zero
-    {rd : regidx}
-    (hrd : rd ≠ regidx.Regidx 0) :
-    JoltISA.isX0 rd = false := by
-  cases rd with
-  | Regidx bits =>
-      unfold JoltISA.isX0
-      simp only
-      apply decide_eq_false
-      intro hbits
-      apply hrd
-      congr
-      apply BitVec.eq_of_toNat_eq
-      simpa using hbits
-
 /-- Program-level concrete theorem for `ADDW`.
 
 The new Jolt-ISA program states the Rust-style expansion directly:
@@ -121,8 +98,7 @@ theorem addwProgram_concrete
         (JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js =
           .ok RETIRE_SUCCESS js_afterSignExtend := by
       unfold JoltISA.addwProgram
-      rw [isX0_eq_false_of_ne_zero hrd]
-      simp only [Bool.false_eq_true, ↓reduceIte]
+      rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
       rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterAdd h_add_succeeds]
       rw [JoltISA.execProgram_instr_run_retire _ _ js_afterAdd js_afterSignExtend
         h_sign_extend_succeeds]
@@ -156,22 +132,9 @@ private theorem addw_rd_zero_noop_concrete
     (js : SailJoltState) :
     (JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 (regidx.Regidx 0))).run js =
       .ok RETIRE_SUCCESS js := by
-  have h_addi_succeeds :
-      (JoltISA.execInstr
-        (.ADDI (.xreg (regidx.Regidx 0)) (.xreg (regidx.Regidx 0)) (0 : BitVec 12))).run js =
-        .ok RETIRE_SUCCESS js := by
-    simpa using
-      JoltISA.addi_run_xreg_xreg
-        (regidx.Regidx 0) (regidx.Regidx 0) (0 : BitVec 12)
-        js (0#64) js.sail
-        (rX_bits_regidx_zero js.sail)
-        (wX_bits_regidx_zero
-          (0#64 + sign_extend (m := 64) (0 : BitVec 12)) js.sail)
   unfold JoltISA.addwProgram
-  rw [isX0_regidx_zero]
-  simp only [↓reduceIte]
-  rw [JoltISA.execProgram_instr_run_retire _ _ js js h_addi_succeeds]
-  rfl
+  rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+  exact JoltISA.pureWritebackRdZeroProgram_run js
 
 /-- Main program-level equivalence for `ADDW`. -/
 theorem addwProgram_eq_sail

@@ -204,7 +204,8 @@ arithmetic theorem changes that Jolt value into Sail's `MULH` value. -/
 theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (v1 v2 : BitVec 64)
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (jsf : SailJoltState),
       (JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS jsf ∧
@@ -307,6 +308,7 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       (JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterFinalAdd := by
     unfold JoltISA.mulhProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterRs1SignMask
       h_rs1_sign_mask_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterRs1SignMask js_afterRs2SignMask
@@ -353,8 +355,19 @@ theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx)
     (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js) =
     (execute_MUL rs2 rs1 rd mulhOp).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.mulhProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_MULH_factored rs2 rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1, h_read_rs2]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterFinalAdd, h_program_succeeds, h_final_sail⟩ :=
-    mulhProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2
+    mulhProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

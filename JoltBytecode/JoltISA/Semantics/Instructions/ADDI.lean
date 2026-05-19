@@ -69,6 +69,26 @@ theorem exists_state_after_addi_run_xreg_xreg (rd rs1 : regidx) (imm : BitVec 12
     h_sail_after_addi,
     addi_run_xreg_xreg rd rs1 imm js x s' h hw⟩
 
+/-- Rust's pure-writeback `rd = x0` no-op replacement retires successfully and
+leaves the Jolt state unchanged. -/
+theorem pureWritebackRdZeroProgram_run (js : SailJoltState) :
+    (execProgram pureWritebackRdZeroProgram).run js =
+      .ok RETIRE_SUCCESS js := by
+  have h_addi_succeeds :
+      (execInstr
+        (.ADDI (.xreg (regidx.Regidx 0)) (.xreg (regidx.Regidx 0)) (0 : BitVec 12))).run js =
+        .ok RETIRE_SUCCESS js := by
+    simpa using
+      addi_run_xreg_xreg
+        (regidx.Regidx 0) (regidx.Regidx 0) (0 : BitVec 12)
+        js (0#64) js.sail
+        (rX_bits_regidx_zero js.sail)
+        (wX_bits_regidx_zero
+          (0#64 + sign_extend (m := 64) (0 : BitVec 12)) js.sail)
+  unfold pureWritebackRdZeroProgram
+  rw [execProgram_instr_run_retire _ _ js js h_addi_succeeds]
+  rfl
+
 end JoltISA
 
 end

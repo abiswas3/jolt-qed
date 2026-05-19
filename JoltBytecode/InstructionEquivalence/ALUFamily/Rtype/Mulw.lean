@@ -104,12 +104,12 @@ theorem mulwProgram_concrete
     (js : SailJoltState)
     (v1 v2 : BitVec 64)
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.mulwProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd (sail_operation v1 v2) := by
-
   -- Instruction 1: `MUL rd, rs1, rs2` writes the 64-bit product to `rd`.
   let product := v1 * v2
   obtain ⟨js_afterMul, h_mul_reads_rs1, h_mul_reads_rs2,
@@ -128,6 +128,7 @@ theorem mulwProgram_concrete
       (JoltISA.execProgram (JoltISA.mulwProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSignExtend := by
     unfold JoltISA.mulwProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterMul h_mul_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterMul js_afterSignExtend
       h_sign_extend_succeeds]
@@ -165,8 +166,19 @@ theorem mulwProgram_eq_sail
     (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.mulwProgram rs2 rs1 rd)).run js) =
     (execute_MULW rs2 rs1 rd).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.mulwProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_MULW_factored rs2 rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1, h_read_rs2]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-    mulwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2
+    mulwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
 
   -- Use the concrete proof to collapse the Jolt side to its final Sail state.
   rw [h_program_succeeds]

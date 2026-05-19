@@ -115,7 +115,8 @@ The program shifts `rs1` left into scratch `v0`, applies `VirtualSRLI` with the
 encoded immediate bitmask, and then sign-extends `rd`. -/
 theorem srliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState)
     (v : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.srliwProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -146,6 +147,7 @@ theorem srliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJol
       (JoltISA.execProgram (JoltISA.srliwProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSignExtend := by
     unfold JoltISA.srliwProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterLeftShift h_left_shift_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterLeftShift js_afterSrli
       h_srli_succeeds]
@@ -179,8 +181,19 @@ theorem srliwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJolt
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.srliwProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIWOP shamt rs1 rd sopw.SRLIW).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.srliwProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_SHIFTIWOP_SRLIW_factored shamt rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-    srliwProgram_concrete shamt rs1 rd js v h_read_rs1
+    srliwProgram_concrete shamt rs1 rd js v h_read_rs1 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

@@ -82,7 +82,8 @@ ordinary arithmetic shift. -/
 theorem sraiProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
     (js : SailJoltState)
     (v : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -99,6 +100,7 @@ theorem sraiProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
       (JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSrai := by
     unfold JoltISA.sraiProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSrai h_srai_succeeds]
     rfl
 
@@ -130,8 +132,19 @@ theorem sraiProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIOP shamt rs1 rd sop.SRAI).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.sraiProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_SHIFTIOP_SRAI_factored shamt rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterSrai, h_program_succeeds, h_final_sail⟩ :=
-    sraiProgram_concrete shamt rs1 rd js v h_read_rs1
+    sraiProgram_concrete shamt rs1 rd js v h_read_rs1 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

@@ -31,6 +31,7 @@ loaded into `v0`, and the absolute remainder loaded into `v1`.
 -/
 def divwProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualAdvice 0 quotient) <|
   .instr (.VirtualAdvice 1 remAbs) <|
   .instr (.VirtualSignExtendWord (.vreg 6) (.xreg rs1)) <|
@@ -57,6 +58,7 @@ def divwProgram (rs2 rs1 rd : regidx)
 /-- Proof-facing phase decomposition of `divwProgram`. -/
 def divwProgramPhases (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
+  pureWritebackTraceProgram rd <|
   (Divw.phase_setup rs1 rs2 quotient remAbs).append <|
   Divw.phase_overflow_check.append <|
   Divw.phase_rem_nonneg.append <|
@@ -76,7 +78,8 @@ Sail's signed DIVW value to `rd`. -/
 theorem divwProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ js',
       (execProgram (divwProgram rs2 rs1 rd
           (sail_divw_value dividend divisor false)
@@ -141,6 +144,7 @@ theorem divwProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
   have h_phase_program_succeeds :
       Program.Run (divwProgramPhases rs2 rs1 rd q rem) js js₆ := by
     unfold divwProgramPhases
+    rw [pureWritebackTraceProgram_of_ne_zero hrd]
     exact Program.Run.append hrun1
       (Program.Run.append hrun2
         (Program.Run.append hrun3
@@ -188,8 +192,19 @@ theorem divwProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
                       (sail_divw_value dividend divisor false)
                       (bv_abs (sail_remw_value dividend divisor false)))).run js) =
     (execute_DIVW rs2 rs1 rd false).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold divwProgram
+    rw [pureWritebackTraceProgram_regidx_zero]
+    rw [pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_DIVW_factored rs2 rs1 (regidx.Regidx 0) false]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [hrs1, hrs2]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-   divwProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2
+   divwProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2 hrd
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail]
@@ -203,6 +218,7 @@ theorem divwProgram_sound (rs2 rs1 rd : regidx)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hrd : rd ≠ regidx.Regidx 0)
     (js' : SailJoltState)
     (hok : (execProgram (divwProgram rs2 rs1 rd q rem)).run js =
       .ok RETIRE_SUCCESS js') :
@@ -212,6 +228,7 @@ theorem divwProgram_sound (rs2 rs1 rd : regidx)
     rw [← divwProgram_eq_phases]
     exact hok
   unfold divwProgramPhases at h_program_succeeds
+  rw [pureWritebackTraceProgram_of_ne_zero hrd] at h_program_succeeds
   obtain ⟨js₁, hp1, h_program_succeeds⟩ :=
     Program.Run.append_inv h_program_succeeds
   obtain ⟨js₂, hp2, h_program_succeeds⟩ :=

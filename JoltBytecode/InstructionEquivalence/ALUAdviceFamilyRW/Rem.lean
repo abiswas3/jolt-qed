@@ -32,6 +32,7 @@ namespace JoltISA
 parameters supplied by the oracle. -/
 def remProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualAdvice 0 quotient) <|
   .instr (.VirtualAdvice 1 remAbs) <|
   .instr (.VirtualAssertValidDiv0 rs2 0) <|
@@ -56,6 +57,7 @@ def remProgram (rs2 rs1 rd : regidx)
 above remains the literal bytecode expansion. -/
 def remProgramPhases (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
+  pureWritebackTraceProgram rd <|
   (Rem.phase_setup rs2 quotient remAbs).append <|
   (Rem.phase_overflow_check rs1 rs2).append <|
   (Rem.phase_quotient_product rs1).append <|
@@ -78,7 +80,8 @@ and writes Sail's signed REM value to `rd`. -/
 theorem remProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ js',
       (execProgram (remProgram rs2 rs1 rd
           (sail_div_value dividend divisor false)
@@ -134,6 +137,7 @@ theorem remProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
   have h_phase_program_succeeds :
       Program.Run (remProgramPhases rs2 rs1 rd q rem) js js₅ := by
     unfold remProgramPhases
+    rw [pureWritebackTraceProgram_of_ne_zero hrd]
     exact Program.Run.append hrun1
       (Program.Run.append hrun2
         (Program.Run.append hrun3
@@ -180,8 +184,19 @@ theorem remProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
                       (sail_div_value dividend divisor false)
                       (bv_abs (sail_rem_value dividend divisor false)))).run js) =
     (execute_REM rs2 rs1 rd false).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold remProgram
+    rw [pureWritebackTraceProgram_regidx_zero]
+    rw [pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_REM_factored rs2 rs1 (regidx.Regidx 0) false]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [hrs1, hrs2]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-   remProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2
+   remProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2 hrd
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail]
@@ -200,6 +215,7 @@ theorem remProgram_sound (rs2 rs1 rd : regidx)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hrd : rd ≠ regidx.Regidx 0)
     (js' : SailJoltState)
     (hok : (execProgram (remProgram rs2 rs1 rd q rem)).run js =
       .ok RETIRE_SUCCESS js') :
@@ -211,6 +227,7 @@ theorem remProgram_sound (rs2 rs1 rd : regidx)
     rw [← remProgram_eq_phases]
     exact hok
   unfold remProgramPhases at h_program_succeeds
+  rw [pureWritebackTraceProgram_of_ne_zero hrd] at h_program_succeeds
   obtain ⟨js₁, hp1, h_program_succeeds⟩ :=
     Program.Run.append_inv h_program_succeeds
   obtain ⟨js₂, hp2, h_program_succeeds⟩ :=

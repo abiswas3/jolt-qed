@@ -129,4 +129,67 @@ def Program.append : Program → Program → Program
   | .done result, _ => .done result
   | .instr instruction rest, second => .instr instruction (rest.append second)
 
+/-- Rust's trace-dispatch replacement for pure writeback instructions whose
+destination is architectural `x0`: emit a single no-op `ADDI x0, x0, 0` row. -/
+def pureWritebackRdZeroProgram : Program :=
+  .instr (.ADDI (.xreg (regidx.Regidx 0)) (.xreg (regidx.Regidx 0)) (0 : BitVec 12)) <|
+  .done RETIRE_SUCCESS
+
+/-- Boolean test for architectural register `x0`.
+
+The generated `regidx` type does not derive `DecidableEq`, so trace-dispatch
+programs use this Boolean predicate instead of comparing registers directly. -/
+def isX0 (rd : regidx) : Bool :=
+  match rd with
+  | regidx.Regidx bits => decide (bits.toNat = 0)
+
+/-- Rust's trace-dispatch rule for pure writeback instructions.
+
+If `rd = x0`, Rust emits `pureWritebackRdZeroProgram`; otherwise it uses the
+instruction's ordinary inline sequence unchanged. -/
+def pureWritebackTraceProgram (rd : regidx) (normal : Program) : Program :=
+  if isX0 rd then pureWritebackRdZeroProgram else normal
+
+/-- The `isX0` predicate recognizes architectural register `x0`. -/
+theorem isX0_regidx_zero :
+    isX0 (regidx.Regidx 0) = true := by
+  unfold isX0
+  simp
+
+/-- If a register is not architectural `x0`, `isX0` returns `false`. -/
+theorem isX0_eq_false_of_ne_zero
+    {rd : regidx}
+    (hrd : rd ≠ regidx.Regidx 0) :
+    isX0 rd = false := by
+  cases rd with
+  | Regidx bits =>
+      unfold isX0
+      simp only
+      apply decide_eq_false
+      intro hbits
+      apply hrd
+      congr
+      apply BitVec.eq_of_toNat_eq
+      simpa using hbits
+
+/-- For `rd = x0`, pure-writeback trace dispatch uses the no-op replacement
+program. -/
+theorem pureWritebackTraceProgram_regidx_zero (normal : Program) :
+    pureWritebackTraceProgram (regidx.Regidx 0) normal =
+      pureWritebackRdZeroProgram := by
+  unfold pureWritebackTraceProgram
+  rw [isX0_regidx_zero]
+  simp only [↓reduceIte]
+
+/-- For `rd ≠ x0`, pure-writeback trace dispatch uses the ordinary inline
+sequence unchanged. -/
+theorem pureWritebackTraceProgram_of_ne_zero
+    {rd : regidx}
+    (hrd : rd ≠ regidx.Regidx 0)
+    (normal : Program) :
+    pureWritebackTraceProgram rd normal = normal := by
+  unfold pureWritebackTraceProgram
+  rw [isX0_eq_false_of_ne_zero hrd]
+  simp only [Bool.false_eq_true, ↓reduceIte]
+
 end JoltISA

@@ -90,12 +90,12 @@ theorem sllProgram_concrete
     (js : SailJoltState)
     (v1 v2 : BitVec 64)
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.sllProgram rs2 rs1 rd)).run js =
           .ok RETIRE_SUCCESS js' ∧
         js'.sail = stateAfterWrite js.sail rd (sll_sail_operation v1 v2) := by
-
   -- Instruction 1: `VirtualPow2 v0, rs2` writes `2 ^ rs2[5:0]` to `v0`.
   let pow2 := jolt_virtual_pow2_value v2
   obtain ⟨js_afterPow2, h_pow2_reads_rs2, h_pow2_keeps_sail,
@@ -114,6 +114,7 @@ theorem sllProgram_concrete
       (JoltISA.execProgram (JoltISA.sllProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterMul := by
     unfold JoltISA.sllProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterPow2 h_pow2_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterPow2 js_afterMul h_mul_succeeds]
     rfl
@@ -150,8 +151,19 @@ theorem sllProgram_eq_sail
     (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.sllProgram rs2 rs1 rd)).run js) =
     (execute_RTYPE rs2 rs1 rd rop.SLL).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.sllProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_RTYPE_SLL_factored rs2 rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1, h_read_rs2]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterMul, h_program_succeeds, h_final_sail⟩ :=
-    sllProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2
+    sllProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

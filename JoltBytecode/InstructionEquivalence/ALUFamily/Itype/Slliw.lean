@@ -61,7 +61,8 @@ The Jolt-ISA program uses `VirtualMULI` with the immediate power of two, then
 sign-extends the low word of `rd`. -/
 theorem slliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState)
     (v : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.slliwProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -84,6 +85,7 @@ theorem slliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJol
       (JoltISA.execProgram (JoltISA.slliwProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSignExtend := by
     unfold JoltISA.slliwProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterMuli h_muli_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterMuli js_afterSignExtend
       h_sign_extend_succeeds]
@@ -115,8 +117,19 @@ theorem slliwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJolt
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.slliwProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIWOP shamt rs1 rd sopw.SLLIW).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.slliwProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_SHIFTIWOP_SLLIW_factored shamt rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-    slliwProgram_concrete shamt rs1 rd js v h_read_rs1
+    slliwProgram_concrete shamt rs1 rd js v h_read_rs1 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

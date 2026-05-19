@@ -70,12 +70,12 @@ theorem subwProgram_concrete
     (js : SailJoltState)
     (v1 v2 : BitVec 64)
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.subwProgram rs2 rs1 rd)).run js =
           .ok RETIRE_SUCCESS js' ∧
         js'.sail = stateAfterWrite js.sail rd (subw_sail_operation v1 v2) := by
-
     -- Instruction 1: `SUB rd, rs1, rs2` writes the 64-bit difference to `rd`.
     let difference := v1 - v2
     obtain ⟨js_afterSub, h_sub_reads_rs1, h_sub_reads_rs2,
@@ -93,6 +93,7 @@ theorem subwProgram_concrete
         (JoltISA.execProgram (JoltISA.subwProgram rs2 rs1 rd)).run js =
           .ok RETIRE_SUCCESS js_afterSignExtend := by
       unfold JoltISA.subwProgram
+      rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
       rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSub h_sub_succeeds]
       rw [JoltISA.execProgram_instr_run_retire _ _ js_afterSub js_afterSignExtend
         h_sign_extend_succeeds]
@@ -129,8 +130,19 @@ theorem subwProgram_eq_sail
     (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.subwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SUBW).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.subwProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_RTYPEW_SUBW_factored rs2 rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1, h_read_rs2]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-    subwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2
+    subwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
 
   -- Use the concrete proof to collapse the Jolt side to its final Sail state.
   rw [h_program_succeeds]

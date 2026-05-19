@@ -133,12 +133,12 @@ theorem srawProgram_concrete
     (js : SailJoltState)
     (v1 v2 : BitVec 64)
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.srawProgram rs2 rs1 rd)).run js =
           .ok RETIRE_SUCCESS js' ∧
         js'.sail = stateAfterWrite js.sail rd (sraw_sail_operation v1 v2) := by
-
   -- Instruction 1: `VirtualSignExtendWord v0, rs1` writes the signed source word to `v0`.
   let signedSource := sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0)
   obtain ⟨js_afterSourceSignExtend, h_source_sign_extend_reads_rs1,
@@ -186,6 +186,7 @@ theorem srawProgram_concrete
       (JoltISA.execProgram (JoltISA.srawProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSignExtend := by
     unfold JoltISA.srawProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSourceSignExtend
       h_source_sign_extend_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterSourceSignExtend js_afterAndi
@@ -229,8 +230,19 @@ theorem srawProgram_eq_sail
     (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.srawProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SRAW).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.srawProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_RTYPEW_SRAW_factored rs2 rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1, h_read_rs2]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-    srawProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2
+    srawProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
 
   -- Use the concrete proof to collapse the Jolt side to its final Sail state.
   rw [h_program_succeeds]

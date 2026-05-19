@@ -127,7 +127,8 @@ The program first sign-extends the source word into scratch `v1`, then runs
 `VirtualSRAI` with the immediate bitmask, and finally sign-extends `rd`. -/
 theorem sraiwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState)
     (v : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.sraiwProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -159,6 +160,7 @@ theorem sraiwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJol
       (JoltISA.execProgram (JoltISA.sraiwProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSignExtend := by
     unfold JoltISA.sraiwProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSourceSignExtend
       h_source_sign_extend_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterSourceSignExtend js_afterSrai
@@ -193,8 +195,19 @@ theorem sraiwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJolt
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.sraiwProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIWOP shamt rs1 rd sopw.SRAIW).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.sraiwProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_SHIFTIWOP_SRAIW_factored shamt rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-    sraiwProgram_concrete shamt rs1 rd js v h_read_rs1
+    sraiwProgram_concrete shamt rs1 rd js v h_read_rs1 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]
