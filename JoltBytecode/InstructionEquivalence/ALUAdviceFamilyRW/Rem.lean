@@ -37,20 +37,20 @@ def remProgram (rs2 rs1 rd : regidx)
   .instr (.VirtualAdvice 1 remAbs) <|
   .instr (.VirtualAssertValidDiv0 rs2 0) <|
   .instr (.VirtualChangeDivisor 2 rs1 rs2) <|
-  .instr (.MULH (.vreg 3) (.vreg 0) (.vreg 2)) <|
-  .instr (.MUL (.vreg 4) (.vreg 0) (.vreg 2)) <|
-  .instr (.SRAI (.vreg 5) (.vreg 4) (63 : BitVec 6)) <|
-  .instr (.VirtualAssertEQ 3 5) <|
-  .instr (.SRAI (.vreg 3) (.xreg rs1) (63 : BitVec 6)) <|
-  .instr (.XOR (.vreg 5) (.vreg 1) (.vreg 3)) <|
-  .instr (.SUB (.vreg 5) (.vreg 5) (.vreg 3)) <|
-  .instr (.ADD (.vreg 4) (.vreg 4) (.vreg 5)) <|
-  .instr (.VirtualAssertEQReal 4 rs1) <|
-  .instr (.SRAI (.vreg 3) (.vreg 2) (63 : BitVec 6)) <|
-  .instr (.XOR (.vreg 4) (.vreg 2) (.vreg 3)) <|
-  .instr (.SUB (.vreg 4) (.vreg 4) (.vreg 3)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder 1 4) <|
-  .instr (.ADDI (.xreg rd) (.vreg 5) (0 : BitVec 12)) <|
+  mulhBlock 4 5 6 (.vreg 3) (.vreg 0) (.vreg 2) <|
+  .instr (.MUL (.vreg 7) (.vreg 0) (.vreg 2)) <|
+  sraiBlock (.vreg 8) (.vreg 7) (63 : BitVec 6) <|
+  .instr (.VirtualAssertEQ 3 8) <|
+  sraiBlock (.vreg 3) (.xreg rs1) (63 : BitVec 6) <|
+  .instr (.XOR (.vreg 8) (.vreg 1) (.vreg 3)) <|
+  .instr (.SUB (.vreg 8) (.vreg 8) (.vreg 3)) <|
+  .instr (.ADD (.vreg 7) (.vreg 7) (.vreg 8)) <|
+  .instr (.VirtualAssertEQReal 7 rs1) <|
+  sraiBlock (.vreg 3) (.vreg 2) (63 : BitVec 6) <|
+  .instr (.XOR (.vreg 7) (.vreg 2) (.vreg 3)) <|
+  .instr (.SUB (.vreg 7) (.vreg 7) (.vreg 3)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder 1 7) <|
+  .instr (.ADDI (.xreg rd) (.vreg 8) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `remProgram`. The canonical program
@@ -115,25 +115,25 @@ theorem remProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     h1_sail.symm ▸ hrs1
   have hrs2_js1 : rX_bits rs2 js₁.sail = .ok divisor js₁.sail :=
     h1_sail.symm ▸ hrs2
-  obtain ⟨js₂, hrun2, h2_v0, h2_v1, h2_v2, h2_v4, h2_sail⟩ :=
+  obtain ⟨js₂, hrun2, h2_v0, h2_v1, h2_v2, h2_v7, h2_sail⟩ :=
     Rem.phase_overflow_check_run rs1 rs2 js₁ q rem adj dividend divisor
       hrs1_js1 hrs2_js1 h1_v0 h1_v1 rfl hguard_overflow
   have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
   have hrs1_js2 : rX_bits rs1 js₂.sail = .ok dividend js₂.sail :=
     h2_sail_orig.symm ▸ hrs1
-  obtain ⟨js₃, hrun3, h3_v0, h3_v1, h3_v2, h3_v5, h3_sail⟩ :=
+  obtain ⟨js₃, hrun3, h3_v0, h3_v1, h3_v2, h3_v8, h3_sail⟩ :=
     Rem.phase_quotient_product_run rs1 js₂ q rem adj dividend
-      hrs1_js2 h2_v0 h2_v1 h2_v2 h2_v4 hguard_quotient_product
+      hrs1_js2 h2_v0 h2_v1 h2_v2 h2_v7 hguard_quotient_product
   have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
-  have h3_v5_signed : js₃.vregs 5 = signedRem := by
+  have h3_v8_signed : js₃.vregs 8 = signedRem := by
     unfold signedRem
-    exact h3_v5
-  obtain ⟨js₄, hrun4, h4_v5, h4_sail⟩ :=
+    exact h3_v8
+  obtain ⟨js₄, hrun4, h4_v8, h4_sail⟩ :=
     Rem.phase_remainder_bound_run js₃ rem adj signedRem
-      h3_v1 h3_v2 h3_v5_signed hguard_rem_bound
+      h3_v1 h3_v2 h3_v8_signed hguard_rem_bound
   have h4_sail_orig : js₄.sail = js.sail := h4_sail.trans h3_sail_orig
   obtain ⟨js₅, hrun5, h5_sail⟩ :=
-    Rem.phase_writeback_run rd js₄ js.sail signedRem h4_v5 h4_sail_orig
+    Rem.phase_writeback_run rd js₄ js.sail signedRem h4_v8 h4_sail_orig
   have h_phase_program_succeeds :
       Program.Run (remProgramPhases rs2 rs1 rd q rem) js js₅ := by
     unfold remProgramPhases
@@ -242,22 +242,22 @@ theorem remProgram_sound (rs2 rs1 rd : regidx)
     h1_sail.symm ▸ hrs1
   have hrs2_1 : rX_bits rs2 js₁.sail = .ok divisor js₁.sail :=
     h1_sail.symm ▸ hrs2
-  obtain ⟨hguard2, h2_v0, h2_v1, h2_v2, h2_v4, h2_sail⟩ :=
+  obtain ⟨hguard2, h2_v0, h2_v1, h2_v2, h2_v7, h2_sail⟩ :=
     Rem.phase_overflow_check_run_sound rs1 rs2 js₁ js₂ q rem adj dividend divisor
       hrs1_1 hrs2_1 h1_v0 h1_v1 rfl hp2
   have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
   have hrs1_2 : rX_bits rs1 js₂.sail = .ok dividend js₂.sail :=
     h2_sail_orig.symm ▸ hrs1
-  obtain ⟨hguard3, h3_v0, h3_v1, h3_v2, h3_v5, h3_sail⟩ :=
+  obtain ⟨hguard3, h3_v0, h3_v1, h3_v2, h3_v8, h3_sail⟩ :=
     Rem.phase_quotient_product_run_sound rs1 js₂ js₃ q rem adj dividend
-      hrs1_2 h2_v0 h2_v1 h2_v2 h2_v4 hp3
+      hrs1_2 h2_v0 h2_v1 h2_v2 h2_v7 hp3
   have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
-  have h3_v5_signed : js₃.vregs 5 = signedRem := by
+  have h3_v8_signed : js₃.vregs 8 = signedRem := by
     unfold signedRem
-    exact h3_v5
-  obtain ⟨hguard4, h4_v5, h4_sail⟩ :=
+    exact h3_v8
+  obtain ⟨hguard4, h4_v8, h4_sail⟩ :=
     Rem.phase_remainder_bound_run_sound js₃ js₄ rem adj signedRem
-      h3_v1 h3_v2 h3_v5_signed hp4
+      h3_v1 h3_v2 h3_v8_signed hp4
   have h4_sail_orig : js₄.sail = js.sail := h4_sail.trans h3_sail_orig
   have hadvice :=
     advice_unique_of_guards dividend divisor q rem adj rfl
@@ -269,7 +269,7 @@ theorem remProgram_sound (rs2 rs1 rd : regidx)
     exact signed_rem_of_honest_abs_eq_sail_rem dividend divisor
   have hwrite :=
     Rem.phase_writeback_run_sound rd js₄ js' js.sail
-      signedRem h4_v5 h4_sail_orig hp5
+      signedRem h4_v8 h4_sail_orig hp5
   rw [hsigned] at hwrite
   exact hwrite
 

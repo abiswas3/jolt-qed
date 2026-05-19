@@ -236,7 +236,7 @@ The DIV sequence doesn't need this because its `|rem|` is a full 64-bit value.
 For DIVW the `|rem|` lives inside a 64-bit BitVec but represents a u32,
 so the high half must be checked explicitly. -/
 def phase_rem_nonneg : JoltISA.Program :=
-  .instr (.SRAI (.vreg 4) (.vreg 1) (32 : BitVec 6)) <|
+  JoltISA.sraiBlock (.vreg 4) (.vreg 1) (32 : BitVec 6) <|
   .instr (.VirtualAssertEQReal 4 (regidx.Regidx 0)) <|
   .done RETIRE_SUCCESS
 
@@ -248,7 +248,7 @@ width (`shamt = 31`), reading the dividend from the sign-extended
 virtual copy `v6` rather than the real `rs1`. The guard then checks
 `q*adj + signed_rem = sext(rs1)`. -/
 def phase_quotient_product : JoltISA.Program :=
-  .instr (.SRAI (.vreg 4) (.vreg 6) (31 : BitVec 6)) <|
+  JoltISA.sraiBlock (.vreg 4) (.vreg 6) (31 : BitVec 6) <|
   .instr (.XOR (.vreg 5) (.vreg 1) (.vreg 4)) <|
   .instr (.SUB (.vreg 5) (.vreg 5) (.vreg 4)) <|
   .instr (.MUL (.vreg 3) (.vreg 0) (.vreg 2)) <|
@@ -261,7 +261,7 @@ def phase_quotient_product : JoltISA.Program :=
 Same shape as DIV's phase 4 but with `shamt = 31` instead of `63`,
 operating on the virtual sign-extended adjusted divisor in `v2`. -/
 def phase_remainder_bound : JoltISA.Program :=
-  .instr (.SRAI (.vreg 4) (.vreg 2) (31 : BitVec 6)) <|
+  JoltISA.sraiBlock (.vreg 4) (.vreg 2) (31 : BitVec 6) <|
   .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 4)) <|
   .instr (.SUB (.vreg 3) (.vreg 3) (.vreg 4)) <|
   .instr (.VirtualAssertValidUnsignedRemainder 1 3) <|
@@ -407,7 +407,7 @@ theorem phase_rem_nonneg_run
   have hguard : s1.vregs 4 = 0#64 := by rw [hs1_v4_eq]; exact hguard_rem_nonneg
   have h2 := vreg_assert_eq_real_run_ok 4 (regidx.Regidx 0) s1 0#64 hx0_s1 hguard
   refine ⟨s1, ?_, hs1_v0, hs1_v1, hs1_v2, hs1_v5, hs1_v6, hs1_sail⟩
-  rw [JoltISA.execProgram_instr_run_retire _ _ js s1 h1]
+  rw [h1 _]
   rw [JoltISA.execProgram_instr_run_retire _ _ s1 s1 h2]
   rfl
 
@@ -484,7 +484,7 @@ theorem phase_quotient_product_run
     ((hs5_pres 2 (by decide)).trans ((hs4_pres 2 (by decide)).trans
       (chain_pres_3 hs1_pres hs2_pres hs3_pres 2 (by decide)))).trans h_v2
   refine ⟨s5, ?_, hs5_v0, hs5_v1, hs5_v2, hs5_sail_orig⟩
-  rw [JoltISA.execProgram_instr_run_retire _ _ js s1 h1]
+  rw [h1 _]
   rw [JoltISA.execProgram_instr_run_retire _ _ s1 s2 h2]
   rw [JoltISA.execProgram_instr_run_retire _ _ s2 s3 h3]
   rw [JoltISA.execProgram_instr_run_retire _ _ s3 s4 h4]
@@ -533,7 +533,7 @@ theorem phase_remainder_bound_run
   have hs3_v0 : s3.vregs 0 = q :=
     (chain_pres_3 hs1_pres hs2_pres hs3_pres 0 (by decide)).trans h_v0
   refine ⟨s3, ?_, hs3_v0, hs3_sail_orig⟩
-  rw [JoltISA.execProgram_instr_run_retire _ _ js s1 h1]
+  rw [h1 _]
   rw [JoltISA.execProgram_instr_run_retire _ _ s1 s2 h2]
   rw [JoltISA.execProgram_instr_run_retire _ _ s2 s3 h3]
   rw [JoltISA.execProgram_instr_run_retire _ _ s3 s3 h4]
@@ -700,12 +700,10 @@ theorem phase_rem_nonneg_run_sound
     js₁.vregs 2 = adj ∧
     js₁.vregs 5 = sext_divisor ∧
     js₁.vregs 6 = sext_dividend ∧
-    js₁.sail = js.sail := by
+  js₁.sail = js.sail := by
   unfold phase_rem_nonneg at hp
-  obtain ⟨s1, hrun1, hp⟩ :=
-    JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s1', hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 1 32 js
-  rw [hrun1_ex] at hrun1; cases hrun1
+  obtain ⟨s1, hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 1 32 js
+  rw [hrun1_ex _] at hp
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure] at hdone
@@ -743,12 +741,10 @@ theorem phase_quotient_product_run_sound
     js₁.vregs 0 = q ∧
     js₁.vregs 1 = rem ∧
     js₁.vregs 2 = adj ∧
-    js₁.sail = js.sail := by
+  js₁.sail = js.sail := by
   unfold phase_quotient_product at hp
-  obtain ⟨s1, hrun1, hp⟩ :=
-    JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s1', hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 6 31 js
-  rw [hrun1_ex] at hrun1; cases hrun1
+  obtain ⟨s1, hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 6 31 js
+  rw [hrun1_ex _] at hp
   obtain ⟨s2, hrun2, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s2', hrun2_ex, hs2_v5, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 5 1 4 s1
@@ -830,12 +826,10 @@ theorem phase_remainder_bound_run_sound
       rem.toNat <
         ((adj ^^^ adj.sshiftRight 31) - adj.sshiftRight 31).toNat) ∧
     js₁.vregs 0 = q ∧
-    js₁.sail = js.sail := by
+  js₁.sail = js.sail := by
   unfold phase_remainder_bound at hp
-  obtain ⟨s1, hrun1, hp⟩ :=
-    JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s1', hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 2 31 js
-  rw [hrun1_ex] at hrun1; cases hrun1
+  obtain ⟨s1, hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 2 31 js
+  rw [hrun1_ex _] at hp
   obtain ⟨s2, hrun2, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s2', hrun2_ex, hs2_v3, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 3 2 4 s1

@@ -40,15 +40,15 @@ def remwProgram (rs2 rs1 rd : regidx)
   .instr (.VirtualChangeDivisorW 2 6 5) <|
   .instr (.VirtualSignExtendWord (.vreg 3) (.vreg 0)) <|
   .instr (.VirtualAssertEQ 3 0) <|
-  .instr (.SRAI (.vreg 4) (.vreg 1) (32 : BitVec 6)) <|
+  sraiBlock (.vreg 4) (.vreg 1) (32 : BitVec 6) <|
   .instr (.VirtualAssertEQReal 4 (regidx.Regidx 0)) <|
-  .instr (.SRAI (.vreg 4) (.vreg 6) (31 : BitVec 6)) <|
+  sraiBlock (.vreg 4) (.vreg 6) (31 : BitVec 6) <|
   .instr (.XOR (.vreg 5) (.vreg 1) (.vreg 4)) <|
   .instr (.SUB (.vreg 5) (.vreg 5) (.vreg 4)) <|
   .instr (.MUL (.vreg 3) (.vreg 0) (.vreg 2)) <|
   .instr (.ADD (.vreg 3) (.vreg 3) (.vreg 5)) <|
   .instr (.VirtualAssertEQ 3 6) <|
-  .instr (.SRAI (.vreg 4) (.vreg 2) (31 : BitVec 6)) <|
+  sraiBlock (.vreg 4) (.vreg 2) (31 : BitVec 6) <|
   .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 4)) <|
   .instr (.SUB (.vreg 3) (.vreg 3) (.vreg 4)) <|
   .instr (.VirtualAssertValidUnsignedRemainder 1 3) <|
