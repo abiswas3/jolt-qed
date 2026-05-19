@@ -55,6 +55,55 @@ For Jolt/Sail equivalence proofs, separate semantic content from plumbing:
   normalize the monadic computation;
 - if the same `wX_shape` / `stateAfterWrite` bridge appears repeatedly, consider a helper lemma.
 
+## Jolt ISA Boundary
+
+`JoltISA.Instr` is the Lean model of final Jolt trace rows, not the full Rust
+`Instruction` enum and not proof-friendly pseudo-operations.  If a Rust
+instruction overrides `RISCVTrace.trace` by iterating over `inline_sequence`,
+that instruction is a source instruction and must not be a `JoltISA.Instr`
+constructor or `execInstr` case.  Its Lean representation belongs in an
+expansion `Program` built from final trace-row instructions.
+
+As of the Rust tree at
+`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction`, the source
+instructions with custom trace/inline lowering are:
+
+- ALU and word/shift source instructions: `ADDW`, `ADDIW`, `SUBW`, `MULW`,
+  `MULH`, `MULHSU`, `SLL`, `SLLI`, `SLLW`, `SLLIW`, `SRL`, `SRLI`, `SRLW`,
+  `SRLIW`, `SRA`, `SRAI`, `SRAW`, `SRAIW`.
+- DIV/REM source instructions: `DIV`, `DIVU`, `DIVW`, `DIVUW`, `REM`, `REMU`,
+  `REMW`, `REMUW`.
+- Load/store/advice-load source instructions: `LB`, `LBU`, `LH`, `LHU`, `LW`,
+  `LWU`, `SB`, `SH`, `SW`, `AdviceLB`, `AdviceLH`, `AdviceLW`, `AdviceLD`.
+- Atomic and reservation source instructions: `LRW`, `LRD`, `SCW`, `SCD`,
+  `AMOSWAPW`, `AMOSWAPD`, `AMOADDW`, `AMOADDD`, `AMOANDW`, `AMOANDD`,
+  `AMOORW`, `AMOORD`, `AMOXORW`, `AMOXORD`, `AMOMINW`, `AMOMIND`,
+  `AMOMINUW`, `AMOMINUD`, `AMOMAXW`, `AMOMAXD`, `AMOMAXUW`, `AMOMAXUD`.
+- CSR/system/source wrappers: `CSRRS`, `CSRRW`, `ECALL`, `EBREAK`, `MRET`,
+  and `INLINE`.
+
+When comparing Lean against Rust, also reject Lean-only convenience
+constructors that do not correspond to a final Rust trace-row instruction.  In
+particular, do not keep source-level helpers such as `LDFrom`, `SDFrom`,
+`VirtualAssertLoadAlignment`, or `VirtualAssertStoreAlignment` in
+`JoltISA.Instr`.  If Rust has one final instruction with general register
+operands, Lean should prefer one constructor with `Src`/`Dst`-style operands
+rather than separate proof-specific `Real`/`V` constructors.
+
+Current proof repair queue after removing source-level rows from
+`JoltISA.Instr`:
+
+- `ALUFamily` has been repaired against the ISA boundary and should build.
+- `LoadFamily` still has source-row program/proof mentions in
+  `ProgramBlocks.lean`, `LW_main.lean`, `LB_main.lean`, `LH_main.lean`,
+  `LBU_main.lean`, `LHU_main.lean`, and `LWU_main.lean`.
+- `StoreFamily` still has source-row program/proof mentions in
+  `ProgramBlocks.lean`, `Sb_main.lean`, `Sh_main.lean`, and `Sw_main.lean`.
+- `ALUAdviceFamilyRW` still has source-row program/proof mentions in
+  `Div.lean`, `Rem.lean`, `Divw.lean`, `Remw.lean`,
+  `Div_phase_helpers.lean`, `Rem_phase_helpers.lean`,
+  `Divw_phase_helpers.lean`, and `Remw_phase_helpers.lean`.
+
 ## ALUFamily Proof Standard
 
 As of 2026-05-15, the cleaned `ALUFamily` proofs use
