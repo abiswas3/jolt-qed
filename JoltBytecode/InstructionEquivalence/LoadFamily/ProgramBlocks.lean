@@ -366,7 +366,6 @@ the loaded dword right by `(ea * 8) & 63`, writes that intermediate value to
 real `rd`, and leaves the final 32-to-64 sign extension to `VirtualSignExtendWord`. -/
 theorem lwSrlBlock (rest : JoltISA.Program)
     (imm : BitVec 12) (rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
     (js js_load : SailJoltState) (val : BitVec 64)
     (hload_sail : js_load.sail = js.sail)
     (hload_v0 : js_load.vregs 0 = load_effective_address val imm)
@@ -382,8 +381,7 @@ theorem lwSrlBlock (rest : JoltISA.Program)
           (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
           (Sail.BitVec.extractLsb
             (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0) ∧
-      js_logic.sail = stateAfterWrite js.sail rd logic_val ∧
-      rX_bits rd js_logic.sail = .ok logic_val js_logic.sail := by
+      js_logic.sail = stateAfterWrite js.sail rd logic_val := by
   let logic_val :=
     shift_bits_right
       (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
@@ -431,9 +429,7 @@ theorem lwSrlBlock (rest : JoltISA.Program)
         (0 : JoltISA.VReg) js_shift s_shift hw_shift')
   have hs_logic : js_logic.sail = stateAfterWrite js.sail rd logic_val := by
     exact wX_bits_eq_stateAfterWrite rd logic_val js.sail s_shift hw_shift
-  have hread_logic : rX_bits rd js_logic.sail = .ok logic_val js_logic.sail := by
-    simpa [js_logic] using (wX_rX_roundtrip rd logic_val js.sail s_shift hrd hw_shift)
-  refine ⟨js_logic, logic_val, ?_, rfl, hs_logic, hread_logic⟩
+  refine ⟨js_logic, logic_val, ?_, rfl, hs_logic⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js_load js_shift hslli]
   rw [JoltISA.execProgram_instr_run_retire _ _ js_shift js_logic hsrl]
 
@@ -444,8 +440,7 @@ real `rd`.  `VirtualSignExtendWord rd, rd` reads it back, sign-extends the low 3
 writes the final architectural value. -/
 theorem sextwWriteBlock
     (rd : regidx) (js js_logic : SailJoltState) (logic_val : BitVec 64)
-    (hlogic_sail : js_logic.sail = stateAfterWrite js.sail rd logic_val)
-    (hread_logic : rX_bits rd js_logic.sail = .ok logic_val js_logic.sail) :
+    (hlogic_sail : js_logic.sail = stateAfterWrite js.sail rd logic_val) :
     ∃ js' : SailJoltState,
       (JoltISA.execProgram
         (.instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) (.done RETIRE_SUCCESS))).run js_logic =
@@ -453,23 +448,13 @@ theorem sextwWriteBlock
       js'.sail =
         stateAfterWrite js.sail rd
           (sign_extend (m := 64) ((Sail.BitVec.extractLsb logic_val 31 0) : BitVec 32)) := by
-  let final_val :=
-    sign_extend (m := 64) ((Sail.BitVec.extractLsb logic_val 31 0) : BitVec 32)
-  obtain ⟨s_final, hw_final⟩ := wX_shape rd final_val js_logic.sail
-  let js' : SailJoltState := { sail := s_final, vregs := js_logic.vregs }
-  have hsextw :
-      (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_logic =
-        .ok RETIRE_SUCCESS js' := by
-    simpa [js', final_val] using
-      (JoltISA.virtual_sign_extend_word_run_xreg_xreg rd rd js_logic logic_val s_final
-        hread_logic hw_final)
+  obtain ⟨js', hwrite_sail, hsextw⟩ :=
+    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_same_register_write
+      rd js_logic js.sail logic_val hlogic_sail
   refine ⟨js', ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js_logic js' hsextw]
     rfl
-  · have hs_final : s_final = stateAfterWrite js_logic.sail rd final_val :=
-      wX_bits_eq_stateAfterWrite rd final_val js_logic.sail s_final hw_final
-    rw [show js'.sail = s_final by rfl, hs_final, hlogic_sail,
-      stateAfterWrite_stateAfterWrite]
+  · exact hwrite_sail
 
 end LoadProgramBlocks
 

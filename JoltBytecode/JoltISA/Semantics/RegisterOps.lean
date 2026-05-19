@@ -79,6 +79,13 @@ theorem rX_bits_pure (r : regidx) (s : SailState) (v : BitVec 64) (s' : SailStat
       obtain ⟨_, rfl⟩ := h
       exact readReg_pure _ s a s'' hread)
 
+/-- Reading architectural register `x0` always returns zero and leaves the Sail
+state unchanged. -/
+theorem rX_bits_regidx_zero (s : SailState) :
+    rX_bits (regidx.Regidx 0) s = .ok 0#64 s := by
+  unfold rX_bits rX regval_from_reg zero_reg zeros
+  simp [Sail.BitVec.toNatInt, bind, EStateM.bind, pure, EStateM.pure]
+
 -- ============================================================================
 -- wX_bits lemmas
 -- ============================================================================
@@ -92,6 +99,13 @@ theorem wX_shape (r : regidx) (v : BitVec 64) (s : SailState) :
     simp_all [Sail.writeReg, PreSail.writeReg, xreg_write_callback,
               reg_name_forwards, to_bits] <;>
     exact ⟨_, rfl⟩
+
+/-- Writing architectural register `x0` always succeeds and leaves the Sail
+state unchanged. -/
+theorem wX_bits_regidx_zero (v : BitVec 64) (s : SailState) :
+    wX_bits (regidx.Regidx 0) v s = .ok () s := by
+  unfold wX_bits wX regval_into_reg
+  simp [Sail.BitVec.toNatInt, bind, EStateM.bind, pure, EStateM.pure]
 
 theorem eStateM_deterministic {σ ε α : Type} {m : EStateM ε σ α} {s : σ}
     {a1 a2 : α} {s1 s2 : σ}
@@ -239,6 +253,13 @@ theorem wX_rX_roundtrip (r : regidx) (v : BitVec 64) (s s' : SailState)
 -- ============================================================================
 noncomputable def stateAfterWrite (s : SailState) (rd : regidx) (val : BitVec 64) : SailState :=
   { s with regs := wX_update_regs rd val s.regs }
+
+/-- The pure write model leaves the Sail state unchanged when the destination
+is architectural register `x0`. -/
+theorem stateAfterWrite_regidx_zero (s : SailState) (val : BitVec 64) :
+    stateAfterWrite s (regidx.Regidx 0) val = s := by
+  unfold stateAfterWrite wX_update_regs
+  rfl
 
 theorem stateAfterWrite_stateAfterWrite (rd : regidx) (v1 v2 : BitVec 64) (s : SailState) :
     stateAfterWrite (stateAfterWrite s rd v1) rd v2 = stateAfterWrite s rd v2 := by

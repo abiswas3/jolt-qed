@@ -85,6 +85,43 @@ theorem exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_source_writ
       h_source_reads_x
   exact ⟨js', h_source_reads_x, h_sail_after_sign_extend, h_run⟩
 
+/-- `VirtualSignExtendWord rd, rd` after a prior write to the same `rd`.
+
+For `rd ≠ x0`, the instruction reads back the value written by the previous
+instruction. For `rd = x0`, both writes are no-ops and the instruction reads
+zero, so the same final `stateAfterWrite` statement still holds without an
+external `rd ≠ x0` assumption. -/
+theorem exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_same_register_write
+    (rd : regidx)
+    (js : SailJoltState)
+    (s_before : SailState)
+    (x : BitVec 64)
+    (h_sail : js.sail = stateAfterWrite s_before rd x) :
+    ∃ js',
+      js'.sail = stateAfterWrite s_before rd
+        (sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0)) ∧
+      (execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js =
+        .ok RETIRE_SUCCESS js' := by
+  by_cases hrd_zero : rd = regidx.Regidx 0
+  · subst hrd_zero
+    obtain ⟨js', h_run, h_sail_after_sign_extend⟩ :=
+      exists_state_after_virtual_sign_extend_word_run_xreg_xreg
+        (regidx.Regidx 0) (regidx.Regidx 0) js 0#64
+        (rX_bits_regidx_zero js.sail)
+    refine ⟨js', ?_, h_run⟩
+    rw [h_sail_after_sign_extend, stateAfterWrite_regidx_zero]
+    rw [h_sail, stateAfterWrite_regidx_zero, stateAfterWrite_regidx_zero]
+  · have h_source_reads_x : rX_bits rd js.sail = .ok x js.sail := by
+      rw [h_sail]
+      exact rX_after_stateAfterWrite rd x s_before hrd_zero
+    obtain ⟨js', h_run, h_sail_after_sign_extend⟩ :=
+      exists_state_after_virtual_sign_extend_word_run_xreg_xreg rd rd js x
+        h_source_reads_x
+    refine ⟨js', ?_, h_run⟩
+    rw [h_sail_after_sign_extend, h_sail]
+    exact stateAfterWrite_stateAfterWrite rd x
+      (sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0)) s_before
+
 theorem jolt_virtual_sign_extend_word_concrete (rd : regidx)
     (js : SailJoltState) (v : BitVec 64)
     (hread : rX_bits rd js.sail = .ok v js.sail) :

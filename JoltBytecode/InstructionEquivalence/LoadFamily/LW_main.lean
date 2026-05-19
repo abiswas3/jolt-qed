@@ -303,7 +303,6 @@ The lemma also records the exact `logic_val`; the pure bridge lemma later
 identifies this value with the Sail word load. -/
 private theorem lwProgram_logic_block (rest : JoltISA.Program)
     (imm : BitVec 12) (rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
     (js js_load : SailJoltState) (val : BitVec 64)
     (hload_sail : js_load.sail = js.sail)
     (hload_v0 : js_load.vregs 0 = load_effective_address val imm)
@@ -319,8 +318,7 @@ private theorem lwProgram_logic_block (rest : JoltISA.Program)
           (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
           (Sail.BitVec.extractLsb
             (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0) ∧
-      js_logic.sail = stateAfterWrite js.sail rd logic_val ∧
-      rX_bits rd js_logic.sail = .ok logic_val js_logic.sail := by
+      js_logic.sail = stateAfterWrite js.sail rd logic_val := by
   let logic_val :=
     shift_bits_right
       (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
@@ -368,9 +366,7 @@ private theorem lwProgram_logic_block (rest : JoltISA.Program)
         (0 : JoltISA.VReg) js_shift s_shift hw_shift')
   have hs_logic : js_logic.sail = stateAfterWrite js.sail rd logic_val := by
     exact wX_bits_eq_stateAfterWrite rd logic_val js.sail s_shift hw_shift
-  have hread_logic : rX_bits rd js_logic.sail = .ok logic_val js_logic.sail := by
-    simpa [js_logic] using (wX_rX_roundtrip rd logic_val js.sail s_shift hrd hw_shift)
-  refine ⟨js_logic, logic_val, ?_, rfl, hs_logic, hread_logic⟩
+  refine ⟨js_logic, logic_val, ?_, rfl, hs_logic⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js_load js_shift hslli]
   rw [JoltISA.execProgram_instr_run_retire _ _ js_shift js_logic hsrl]
 
@@ -382,8 +378,7 @@ The collapse `stateAfterWrite (stateAfterWrite s rd x) rd y = stateAfterWrite
 s rd y` keeps the theorem statement focused on the final architectural state. -/
 private theorem lwProgram_write_block
     (rd : regidx) (js js_logic : SailJoltState) (logic_val : BitVec 64)
-    (hlogic_sail : js_logic.sail = stateAfterWrite js.sail rd logic_val)
-    (hread_logic : rX_bits rd js_logic.sail = .ok logic_val js_logic.sail) :
+    (hlogic_sail : js_logic.sail = stateAfterWrite js.sail rd logic_val) :
     ∃ js' : SailJoltState,
       (JoltISA.execProgram
         (.instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) (.done RETIRE_SUCCESS))).run js_logic =
@@ -391,23 +386,13 @@ private theorem lwProgram_write_block
       js'.sail =
         stateAfterWrite js.sail rd
           (sign_extend (m := 64) ((Sail.BitVec.extractLsb logic_val 31 0) : BitVec 32)) := by
-  let final_val :=
-    sign_extend (m := 64) ((Sail.BitVec.extractLsb logic_val 31 0) : BitVec 32)
-  obtain ⟨s_final, hw_final⟩ := wX_shape rd final_val js_logic.sail
-  let js' : SailJoltState := { sail := s_final, vregs := js_logic.vregs }
-  have hsextw :
-      (JoltISA.execInstr (.VirtualSignExtendWord (.xreg rd) (.xreg rd))).run js_logic =
-        .ok RETIRE_SUCCESS js' := by
-    simpa [js', final_val] using
-      (JoltISA.virtual_sign_extend_word_run_xreg_xreg rd rd js_logic logic_val s_final
-        hread_logic hw_final)
+  obtain ⟨js', hwrite_sail, hsextw⟩ :=
+    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_same_register_write
+      rd js_logic js.sail logic_val hlogic_sail
   refine ⟨js', ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js_logic js' hsextw]
     rfl
-  · have hs_final : s_final = stateAfterWrite js_logic.sail rd final_val :=
-      wX_bits_eq_stateAfterWrite rd final_val js_logic.sail s_final hw_final
-    rw [show js'.sail = s_final by rfl, hs_final, hlogic_sail,
-      stateAfterWrite_stateAfterWrite]
+  · exact hwrite_sail
 
 /-- Program-level aligned execution for LW.
 
@@ -428,7 +413,6 @@ each local `have` names one bytecode instruction.  That is the pattern we want
 for paper-facing proofs, because it lets the reader line the Lean proof up
 against the Rust expansion and the Jolt-ISA interpreter. -/
 theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& 3 = 0)
@@ -447,10 +431,10 @@ theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
   rcases LoadProgramBlocks.assertSetupBlockAligned logicTail (3 : BitVec 64)
       imm rs1 js hcfg val hrx halign h_dword_translate h_dword_phys with
     ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
-  rcases LoadProgramBlocks.lwSrlBlock writeTail imm rd hrd js js_load val
+  rcases LoadProgramBlocks.lwSrlBlock writeTail imm rd js js_load val
       hload_sail hload_v0 hload_v1 with
-    ⟨js_logic, logic_val, hlogic_run, hlogic_val, hlogic_sail, hread_logic⟩
-  rcases LoadProgramBlocks.sextwWriteBlock rd js js_logic logic_val hlogic_sail hread_logic with
+    ⟨js_logic, logic_val, hlogic_run, hlogic_val, hlogic_sail⟩
+  rcases LoadProgramBlocks.sextwWriteBlock rd js js_logic logic_val hlogic_sail with
     ⟨js', hwrite_run, hwrite_sail⟩
   refine ⟨js', ?_, ?_⟩
   · unfold JoltISA.lwProgram
@@ -496,7 +480,6 @@ theorem lwProgram_concrete_misaligned (imm : BitVec 12) (rs1 rd : regidx)
 Jolt-ISA program. -/
 theorem lwProgram_eq_sail_aligned (imm : BitVec 12)
     (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
@@ -519,7 +502,7 @@ theorem lwProgram_eq_sail_aligned (imm : BitVec 12)
         split := ?_ }
     · simpa [ea] using access_misaligned_4_aligned_false ea h_align
     · simpa [ea] using split_misaligned_aligned_4 ea h_align
-  rcases lwProgram_concrete_aligned imm rs1 rd hrd js hcfg val hrx h_align
+  rcases lwProgram_concrete_aligned imm rs1 rd js hcfg val hrx h_align
       h_dword_translate h_dword_phys with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_LW_reduces imm rs1 rd js hcfg val hrx hload h_word_no_ovf
@@ -565,7 +548,6 @@ for signed word loads.  The proof dispatches on the same alignment predicate
 that the first Jolt virtual instruction checks. -/
 theorem lwProgram_eq_sail (imm : BitVec 12)
     (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
@@ -578,7 +560,7 @@ theorem lwProgram_eq_sail (imm : BitVec 12)
     (execute_LOAD imm rs1 rd false 4).run js.sail := by
   let ea := load_effective_address val imm
   by_cases h_align : ea &&& 3 = 0
-  · exact lwProgram_eq_sail_aligned imm rs1 rd hrd js hcfg val hrx
+  · exact lwProgram_eq_sail_aligned imm rs1 rd js hcfg val hrx
       h_dword_translate h_dword_phys htranslate hphys h_word_no_ovf h_align
   · exact lwProgram_eq_sail_misaligned imm rs1 rd js hcfg val hrx
       htranslate hphys h_word_no_ovf h_align
