@@ -402,7 +402,6 @@ theorem setupBlock (rest : JoltISA.Program)
     (imm : BitVec 12) (rs1 : regidx)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
@@ -445,9 +444,8 @@ theorem setupBlock (rest : JoltISA.Program)
       aligned_dword_addr_eq] using
       (aligned_dword_addr_is_aligned_dword_access val imm)
   have hd : DwordLoadAssumptions base js.sail :=
-    { aligned := h_base_aligned
-      translate := by simpa [base] using h_dword_translate
-      phys := by simpa [base] using h_dword_phys }
+    dwordLoadAssumptions_of_aligned_phys base js.sail h_base_aligned
+      (by simpa [base] using h_dword_phys)
   have hld_read :
       vmem_read_addr (Virtaddr (js1.vregs 1 + sign_extend (m := 64) (0 : BitVec 12))) 0 8
         (Load Data) false false false js1.sail =
@@ -483,7 +481,6 @@ theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& (1 : BitVec 64) = 0)
-    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
@@ -504,7 +501,7 @@ theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
     exact JoltISA.virtual_assert_halfword_alignment_run_aligned rs1 imm
       (ExceptionType.E_SAMO_Addr_Align ())
       js val hrx (by simpa [load_effective_address] using halign)
-  rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_translate h_dword_phys with
+  rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_phys with
     ⟨js_load, hrun, hsail, hv0, hv1, hv2⟩
   refine ⟨js_load, ?_, hsail, hv0, hv1, hv2⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
@@ -517,7 +514,6 @@ theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& (3 : BitVec 64) = 0)
-    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
@@ -538,7 +534,7 @@ theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
     exact JoltISA.virtual_assert_word_alignment_run_aligned rs1 imm
       (ExceptionType.E_SAMO_Addr_Align ())
       js val hrx (by simpa [load_effective_address] using halign)
-  rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_translate h_dword_phys with
+  rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_phys with
     ⟨js_load, hrun, hsail, hv0, hv1, hv2⟩
   refine ⟨js_load, ?_, hsail, hv0, hv1, hv2⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]

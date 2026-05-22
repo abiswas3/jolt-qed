@@ -21,7 +21,7 @@ noncomputable section
 
 namespace AtomicFamily
 
-structure StoreBareTranslation (addr : BitVec 64) (s : SailState) : Prop where
+structure StoreIdentityTranslation (addr : BitVec 64) (s : SailState) : Prop where
   translate : translateAddr (Virtaddr addr) (Store Data) s =
     .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s
 
@@ -31,7 +31,7 @@ structure FlatStoreMem (addr : BitVec 64) (width : Nat) (s : SailState) :
     (physaddr.Physaddr addr) width false s = .ok none s
   mmio : within_mmio_writable (physaddr.Physaddr addr) width s = .ok false s
 
-structure AtomicBareTranslation (op : amoop) (addr : BitVec 64)
+structure AtomicIdentityTranslation (op : amoop) (addr : BitVec 64)
     (s : SailState) : Prop where
   translate : translateAddr (Virtaddr addr) (Atomic (op, Data, Data)) s =
     .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s
@@ -48,11 +48,10 @@ structure FlatAtomicMem (op : amoop) (addr : BitVec 64) (width : Nat)
 structure AmoMemoryAssumptions
     (op : amoop) (sailWidth : Nat) (joltAddr amoAddr : BitVec 64)
     (s : SailState) : Prop where
-  jolt_load_translate : BareTranslation joltAddr s
   jolt_load_mem : FlatPhysMem joltAddr 8 s
-  jolt_store_translate : StoreBareTranslation joltAddr s
+  jolt_store_translate : StoreIdentityTranslation joltAddr s
   jolt_store_mem : FlatStoreMem joltAddr 8 s
-  sail_atomic_translate : AtomicBareTranslation op amoAddr s
+  sail_atomic_translate : AtomicIdentityTranslation op amoAddr s
   sail_atomic_mem : FlatAtomicMem op amoAddr sailWidth s
 
 theorem amoadddProgram_eq_sail_aligned

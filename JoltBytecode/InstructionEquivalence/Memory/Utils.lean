@@ -73,12 +73,6 @@ structure AlignedDwordAccess (addr : BitVec 64) : Prop extends AlignedAccess add
   align : addr &&& 7 = 0
   no_ovf : addr.toNat + 7 < 2 ^ 64
 
-/-- Translation at `addr` for a normal data load is the identity and leaves the
-    Sail state unchanged. -/
-structure BareTranslation (addr : BitVec 64) (s : SailState) : Prop where
-  translate : translateAddr (Virtaddr addr) (Load Data) s =
-    .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s
-
 /-- Physical memory at `addr` of `width` bytes is ordinary RAM, not MMIO. -/
 structure FlatPhysMem (addr : BitVec 64) (width : Nat) (s : SailState) : Prop where
   pmp : phys_access_check (Load Data) Privilege.Machine (physaddr.Physaddr addr) width false s =
@@ -97,6 +91,25 @@ structure FlatPhysMem (addr : BitVec 64) (width : Nat) (s : SailState) : Prop wh
 --      `split_misaligned` returns `pure (1, w)` (one access, full width).
 -- These collapse the vmem pipeline into the clean "read all `w` bytes at once"
 -- branch. Byte (width 1) is trivially aligned so doesn't need lemmas.
+
+/-- Every address is aligned for a 1-byte access. -/
+theorem access_misaligned_1_false (addr : BitVec 64) :
+    access_causes_misaligned_exception (Virtaddr addr) 1 false = false := by
+  unfold access_causes_misaligned_exception is_aligned_vaddr Sail.BitVec.toNatInt
+  simp [Int.tmod, LeanRV64D.Functions.not]
+
+/-- A 1-byte access never fragments. -/
+theorem split_misaligned_1 (addr : BitVec 64) :
+    split_misaligned (Virtaddr addr) 1 = (pure (1, 1) : SailM (Int × Int)) := by
+  funext s
+  unfold split_misaligned is_aligned_vaddr Sail.BitVec.toNatInt
+  simp [Int.tmod, pure, EStateM.pure]
+
+/-- The reusable aligned-access bundle for byte loads. -/
+theorem aligned_access_1 (addr : BitVec 64) : AlignedAccess addr 1 := by
+  exact
+    { misalign := access_misaligned_1_false addr
+      split := split_misaligned_1 addr }
 
 /-- An 8-aligned address doesn't trigger the misalignment exception. -/
 theorem access_misaligned_8_aligned_false (addr : BitVec 64)
@@ -505,7 +518,7 @@ theorem mem_read_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
   rw [checked_mem_read_4_eq_loaded_word addr s hcfg.mem_populated h_no_ovf hfm]
 
 theorem vmem_read_addr_byte_bridge (addr : BitVec 64) (offset : BitVec 64) (s : SailState)
-    (ha : AlignedAccess addr 1) (ht : BareTranslation addr s)
+    (hcfg : JoltConfig s) (ha : AlignedAccess addr 1)
     (h_mem :
       mem_read (Load Data) (physaddr.Physaddr addr) 1 false false false s =
         .ok (Ok (loaded_byte_at s addr)) s) :
@@ -514,6 +527,7 @@ theorem vmem_read_addr_byte_bridge (addr : BitVec 64) (offset : BitVec 64) (s : 
   unfold vmem_read_addr
   simp only [ha.misalign, Bool.false_eq_true, if_false]
   unfold SailME.run PreSail.PreSailME.run
+  have htranslate := translateAddr_load_data_of_joltConfig addr s hcfg
   simp [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
         ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
         ExceptT.pure, ExceptT.lift, ExceptT.map, ExceptT.instMonadLift,
@@ -524,14 +538,13 @@ theorem vmem_read_addr_byte_bridge (addr : BitVec 64) (offset : BitVec 64) (s : 
         untilFuelM, untilFuelM.go, zeros, BitVec.zero, BitVec.addInt,
         Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange',
         liftM, monadLift, Functor.map,
-        ha.split, ht.translate, h_mem]
+        ha.split, htranslate, h_mem]
   bv_decide
 
 theorem vmem_read_byte_reduces (imm : BitVec 12) (rs1 : regidx)
-    (s : SailState)
+    (s : SailState) (hcfg : JoltConfig s)
     (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
     (ha : AlignedAccess (v + sign_extend (m := 64) imm) 1)
-    (ht : BareTranslation (v + sign_extend (m := 64) imm) s)
     (h_mem :
       mem_read (Load Data) (physaddr.Physaddr (v + sign_extend (m := 64) imm)) 1 false false false s =
         .ok (Ok (loaded_byte_at s (v + sign_extend (m := 64) imm))) s) :
@@ -544,10 +557,10 @@ theorem vmem_read_byte_reduces (imm : BitVec 12) (rs1 : regidx)
         ExceptT.pure, ExceptT.lift,
         MonadLift.monadLift, liftM, monadLift, Functor.map,
         ext_data_get_addr, hrx,
-        vmem_read_addr_byte_bridge _ _ s ha ht h_mem]
+        vmem_read_addr_byte_bridge _ _ s hcfg ha h_mem]
 
 theorem vmem_read_addr_halfword_bridge (addr : BitVec 64) (offset : BitVec 64) (s : SailState)
-    (ha : AlignedAccess addr 2) (ht : BareTranslation addr s)
+    (hcfg : JoltConfig s) (ha : AlignedAccess addr 2)
     (h_mem :
       mem_read (Load Data) (physaddr.Physaddr addr) 2 false false false s =
         .ok (Ok (loaded_halfword_at s addr)) s) :
@@ -556,6 +569,7 @@ theorem vmem_read_addr_halfword_bridge (addr : BitVec 64) (offset : BitVec 64) (
   unfold vmem_read_addr
   simp only [ha.misalign, Bool.false_eq_true, if_false]
   unfold SailME.run PreSail.PreSailME.run
+  have htranslate := translateAddr_load_data_of_joltConfig addr s hcfg
   simp [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
         ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
         ExceptT.pure, ExceptT.lift, ExceptT.map, ExceptT.instMonadLift,
@@ -566,11 +580,11 @@ theorem vmem_read_addr_halfword_bridge (addr : BitVec 64) (offset : BitVec 64) (
         untilFuelM, untilFuelM.go, zeros, BitVec.zero, BitVec.addInt,
         Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange',
         liftM, monadLift, Functor.map,
-        ha.split, ht.translate, h_mem]
+        ha.split, htranslate, h_mem]
   bv_decide
 
 theorem vmem_read_addr_word_bridge (addr : BitVec 64) (offset : BitVec 64) (s : SailState)
-    (ha : AlignedAccess addr 4) (ht : BareTranslation addr s)
+    (hcfg : JoltConfig s) (ha : AlignedAccess addr 4)
     (h_mem :
       mem_read (Load Data) (physaddr.Physaddr addr) 4 false false false s =
         .ok (Ok (loaded_word_at s addr)) s) :
@@ -579,6 +593,7 @@ theorem vmem_read_addr_word_bridge (addr : BitVec 64) (offset : BitVec 64) (s : 
   unfold vmem_read_addr
   simp only [ha.misalign, Bool.false_eq_true, if_false]
   unfold SailME.run PreSail.PreSailME.run
+  have htranslate := translateAddr_load_data_of_joltConfig addr s hcfg
   simp [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
         ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
         ExceptT.pure, ExceptT.lift, ExceptT.map, ExceptT.instMonadLift,
@@ -589,7 +604,7 @@ theorem vmem_read_addr_word_bridge (addr : BitVec 64) (offset : BitVec 64) (s : 
         untilFuelM, untilFuelM.go, zeros, BitVec.zero, BitVec.addInt,
         Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange',
         liftM, monadLift, Functor.map,
-        ha.split, ht.translate, h_mem]
+        ha.split, htranslate, h_mem]
   bv_decide
 
 theorem read_ram_eq_loaded_dword (addr : BitVec 64) (s : SailState)
@@ -638,7 +653,7 @@ theorem mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
   rw [checked_mem_read_eq_loaded_dword addr s hcfg.mem_populated h_no_ovf hfm]
 
 theorem vmem_read_addr_pipeline_bridge (addr : BitVec 64) (s : SailState)
-    (ha : AlignedAccess addr 8) (ht : BareTranslation addr s)
+    (hcfg : JoltConfig s) (ha : AlignedAccess addr 8)
     (h_mem :
       mem_read (Load Data) (physaddr.Physaddr addr) 8 false false false s =
         .ok (Ok (loaded_dword_at s addr)) s) :
@@ -647,6 +662,7 @@ theorem vmem_read_addr_pipeline_bridge (addr : BitVec 64) (s : SailState)
   unfold vmem_read_addr
   simp only [ha.misalign, Bool.false_eq_true, if_false]
   unfold SailME.run PreSail.PreSailME.run
+  have htranslate := translateAddr_load_data_of_joltConfig addr s hcfg
   simp [ExceptT.mk, ExceptT.run,
         SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
         misaligned_order, sys_misaligned_order_decreasing,
@@ -656,24 +672,23 @@ theorem vmem_read_addr_pipeline_bridge (addr : BitVec 64) (s : SailState)
   simp only [liftM, monadLift, MonadLift.monadLift,
              ExceptT.lift, ExceptT.mk,
              bind, EStateM.bind, EStateM.map,
-             Functor.map, ht.translate, h_mem,
+             Functor.map, htranslate, h_mem,
              ExceptT.bind, ExceptT.bindCont, ExceptT.map,
              Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange']
   simp [pure, EStateM.pure, ExceptT.pure, ExceptT.mk]
 
 theorem vmem_read_addr_dword_reduces (addr : BitVec 64) (s : SailState)
     (hcfg : JoltConfig s)
-    (hda : AlignedDwordAccess addr) (ht : BareTranslation addr s) (hfm : FlatPhysMem addr 8 s) :
+    (hda : AlignedDwordAccess addr) (hfm : FlatPhysMem addr 8 s) :
     vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false s =
     .ok (Ok (loaded_dword_at s addr)) s :=
-  vmem_read_addr_pipeline_bridge addr s hda.toAlignedAccess ht
+  vmem_read_addr_pipeline_bridge addr s hcfg hda.toAlignedAccess
     (mem_read_eq_loaded_dword addr s hcfg hda.no_ovf hfm)
 
 theorem vmem_read_word_reduces (imm : BitVec 12) (rs1 : regidx)
-    (s : SailState)
+    (s : SailState) (hcfg : JoltConfig s)
     (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
     (ha : AlignedAccess (v + sign_extend (m := 64) imm) 4)
-    (ht : BareTranslation (v + sign_extend (m := 64) imm) s)
     (h_mem :
       mem_read (Load Data) (physaddr.Physaddr (v + sign_extend (m := 64) imm)) 4 false false false s =
         .ok (Ok (loaded_word_at s (v + sign_extend (m := 64) imm))) s) :
@@ -686,13 +701,12 @@ theorem vmem_read_word_reduces (imm : BitVec 12) (rs1 : regidx)
         ExceptT.pure, ExceptT.lift,
         MonadLift.monadLift, liftM, monadLift, Functor.map,
         ext_data_get_addr, hrx,
-        vmem_read_addr_word_bridge _ _ s ha ht h_mem]
+        vmem_read_addr_word_bridge _ _ s hcfg ha h_mem]
 
 theorem vmem_read_halfword_reduces (imm : BitVec 12) (rs1 : regidx)
-    (s : SailState)
+    (s : SailState) (hcfg : JoltConfig s)
     (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
     (ha : AlignedAccess (v + sign_extend (m := 64) imm) 2)
-    (ht : BareTranslation (v + sign_extend (m := 64) imm) s)
     (h_mem :
       mem_read (Load Data) (physaddr.Physaddr (v + sign_extend (m := 64) imm)) 2 false false false s =
         .ok (Ok (loaded_halfword_at s (v + sign_extend (m := 64) imm))) s) :
@@ -705,6 +719,6 @@ theorem vmem_read_halfword_reduces (imm : BitVec 12) (rs1 : regidx)
         ExceptT.pure, ExceptT.lift,
         MonadLift.monadLift, liftM, monadLift, Functor.map,
         ext_data_get_addr, hrx,
-        vmem_read_addr_halfword_bridge _ _ s ha ht h_mem]
+        vmem_read_addr_halfword_bridge _ _ s hcfg ha h_mem]
 
 end

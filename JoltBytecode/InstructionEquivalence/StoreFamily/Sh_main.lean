@@ -55,8 +55,6 @@ theorem shProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     (hsetup : StoreSplice.HalfwordStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (h_dword_translate :
-      BareTranslation (compute_aligned_dword_base_address rs1_val imm) js.sail)
     (h_dword_phys :
       FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
     (hwrite_dword :
@@ -91,7 +89,7 @@ theorem shProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   let finalSail := state_after_dword_store js.sail base dword_new
   rcases StoreProgramBlocks.assertHalfwordSetupBlockAligned spliceTail
       imm rs1 js hcfg rs1_val hrs1 hsetup.halfword_aligned
-      h_dword_translate h_dword_phys with
+      h_dword_phys with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
   rcases StoreProgramBlocks.halfwordSpliceBlock writeTail imm rs2 js js_load
       rs1_val rs2_val hsetup hload_sail hload_v0 hload_v1 hload_v2 hrs2 with
@@ -174,8 +172,6 @@ theorem shProgram_concrete_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (hsetup : StoreSplice.HalfwordStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (h_dword_translate :
-      BareTranslation (compute_aligned_dword_base_address rs1_val imm) js.sail)
     (h_dword_phys :
       FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
     (hwrite_dword :
@@ -195,7 +191,7 @@ theorem shProgram_concrete_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
           (load_effective_address rs1_val imm)
           (Sail.BitVec.extractLsb rs2_val 15 0) := by
   rcases shProgram_reduces_to_dword_store imm rs2 rs1 js hcfg rs1_val rs2_val
-      hrs1 hrs2 hsetup h_dword_translate h_dword_phys hwrite_dword with
+      hrs1 hrs2 hsetup h_dword_phys hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   refine ⟨js', hjolt, ?_⟩
   rw [hjolt_sail]
@@ -238,8 +234,6 @@ theorem shProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (hsetup : StoreSplice.HalfwordStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (h_dword_translate :
-      BareTranslation (compute_aligned_dword_base_address rs1_val imm) js.sail)
     (h_dword_phys :
       FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
     (hwrite_dword :
@@ -262,7 +256,7 @@ theorem shProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
     projectResult ((JoltISA.execProgram (JoltISA.shProgram imm rs2 rs1)).run js) =
       (execute_STORE imm rs2 rs1 2).run js.sail := by
   rcases shProgram_concrete_aligned imm rs2 rs1 js hcfg rs1_val rs2_val
-      hrs1 hrs2 hsetup h_dword_translate h_dword_phys hwrite_dword with
+      hrs1 hrs2 hsetup h_dword_phys hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_SH_reduces imm rs2 rs1 js rs1_val rs2_val
     hrs1 hrs2 hwrite_halfword
