@@ -68,7 +68,7 @@ import JoltBytecode.InstructionEquivalence.LoadFamily.LWU_main    -- DONE: LWU  
 -- ============================================================================
 -- Instruction proofs — Atomic (AMO)
 -- ============================================================================
-/- import JoltBytecode.InstructionEquivalence.AtomicFamily.Statements -/
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Statements
 
 -- Load Reserved
 -- LR/SC theorem statements are not yet stated.
@@ -83,7 +83,8 @@ import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelh  -- advice load
 import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelw  -- advice load word   DONE:
 
 -- System : Shuld be easy, I'll close when we get to it.
+import JoltBytecode.InstructionEquivalence.System.Ecall
+import JoltBytecode.InstructionEquivalence.System.Ebreak
 -- import JoltBytecode.InstructionEquivalence.Csrrs     -- TODO: CSR read-set
 -- import JoltBytecode.InstructionEquivalence.Csrrw     -- TODO: CSR read-write
--- import JoltBytecode.InstructionEquivalence.Ecall     -- TODO: environment call
 -- import JoltBytecode.InstructionEquivalence.Mret      -- TODO: machine return

@@ -37,7 +37,7 @@ Status: planned.
 Goal: make the ordinary-RAM theorem envelope explicit, then later add coverage
 for readable JoltDevice regions such as input/advice/output/panic/termination.
 
-See: `docs/JOLT_SPECIAL_MEMORY_REGION_PLAN.md`
+See: `planning/JOLT_SPECIAL_MEMORY_REGION_PLAN.md`
 
 ### 3. Stores
 
