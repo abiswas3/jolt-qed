@@ -6,7 +6,7 @@ import JoltBytecode.JoltISA.Semantics.ExpansionBlocks.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.Add
 import JoltBytecode.JoltISA.Semantics.Instructions.ANDI
 import JoltBytecode.JoltISA.Semantics.Instructions.LD
-import JoltBytecode.JoltISA.Semantics.Instructions.MUL
+import JoltBytecode.JoltISA.Semantics.Instructions.Mul
 import JoltBytecode.JoltISA.Semantics.Instructions.ORI
 import JoltBytecode.JoltISA.Semantics.Instructions.SD
 import JoltBytecode.JoltISA.Semantics.Instructions.Sub
