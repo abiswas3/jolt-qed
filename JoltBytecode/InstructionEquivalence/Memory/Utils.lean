@@ -127,6 +127,54 @@ theorem access_misaligned_8_aligned_false (addr : BitVec 64)
     exact h
   simp [Int.tmod, h_mod, LeanRV64D.Functions.not]
 
+/-- A NON-8-aligned address is not aligned according to Sail's virtual-address
+    alignment predicate. -/
+theorem is_aligned_vaddr_8_unaligned_false (addr : BitVec 64)
+    (halign : addr &&& 7 ≠ 0) :
+    is_aligned_vaddr (Virtaddr addr) 8 = false := by
+  unfold is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 8 ≠ 0 := by
+    intro h0
+    apply halign
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_and]
+    have h7 : (7 : BitVec 64).toNat = 7 := by decide
+    have hzero : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h7,
+        hzero,
+        show (7 : Nat) = 2^3 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod,
+        h0]
+  have h_mod_int : (↑addr.toNat : Int) % 8 ≠ 0 := by
+    intro h0
+    apply h_mod
+    exact_mod_cast h0
+  simp [Int.tmod, h_mod_int]
+
+/-- A NON-8-aligned address triggers the misalignment exception for an
+    8-byte access. -/
+theorem access_misaligned_8_unaligned_true (addr : BitVec 64)
+    (halign : addr &&& 7 ≠ 0) :
+    access_causes_misaligned_exception (Virtaddr addr) 8 false = true := by
+  unfold access_causes_misaligned_exception is_aligned_vaddr Sail.BitVec.toNatInt
+  have h_mod : addr.toNat % 8 ≠ 0 := by
+    intro h0
+    apply halign
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_and]
+    have h7 : (7 : BitVec 64).toNat = 7 := by decide
+    have hzero : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h7,
+        hzero,
+        show (7 : Nat) = 2^3 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod,
+        h0]
+  have h_mod_int : (↑addr.toNat : Int) % 8 ≠ 0 := by
+    intro h0
+    apply h_mod
+    exact_mod_cast h0
+  simp [Int.tmod, h_mod_int, LeanRV64D.Functions.not, plat_enable_misaligned_access]
+
 /-- An 8-aligned address doesn't fragment — `split_misaligned` yields the
     single-access `(1, 8)` pair. -/
 theorem split_misaligned_aligned_8 (addr : BitVec 64)
