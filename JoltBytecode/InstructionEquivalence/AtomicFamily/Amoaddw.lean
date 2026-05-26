@@ -1,8 +1,9 @@
-import JoltBytecode.InstructionEquivalence.AtomicFamily.Common
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Word
 
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions
+open virtaddr
 
 set_option autoImplicit true
 
@@ -10,20 +11,177 @@ noncomputable section
 
 namespace AtomicFamily
 
-theorem amoaddwProgram_eq_sail_aligned
+/-- Canonical Sail state after aligned `AMOADD.W`. -/
+abbrev amoaddwFinalSailState
+    (rd : regidx) (s : SailState) (addr rs2Val : BitVec 64) : SailState :=
+  amoWordFinalSailState rd s addr
+    ((Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32) +
+      loaded_word_at s addr)
+
+/-- Sail's generated `AMOADD.W` result expression reduces to word addition. -/
+theorem amoaddw_sail_result (rs2Val : BitVec 64) (loaded : BitVec 32) :
+    amoWordSailResult amoop.AMOADD
+      (show BitVec (4 * 8) from
+        trunc (m := (((4 : Nat) : Int) * (8 : Int)).toNat) rs2Val)
+      (BitVec.setWidth (4 * 8) loaded) =
+    (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32) + loaded := by
+  rw [amo_word_trunc_4x8_eq_extract]
+  rw [amo_word_setWidth_4x8_eq_self]
+
+/-- Jolt-side aligned concrete execution for `AMOADD.W`. -/
+theorem amoaddwProgram_concrete_aligned
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (h_mem : AmoMemoryAssumptions amoop.AMOADD 4
-      (addr &&& (-8 : BitVec 64)) addr js.sail)
-    (h_no_ovf : (addr &&& (-8 : BitVec 64)).toNat + 7 < 2 ^ 64)
+      (amoWordBase addr) addr js.sail)
+    (h_align : addr &&& (3 : BitVec 64) = 0) :
+    ∃ jsf : SailJoltState,
+      (JoltISA.execProgram (JoltISA.amoaddwProgram rs2 rs1 rd)).run js =
+        .ok RETIRE_SUCCESS jsf ∧
+      jsf.sail = amoaddwFinalSailState rd js.sail addr rs2Val := by
+  change
+    ∃ jsf : SailJoltState,
+      (JoltISA.execProgram
+        (JoltISA.amoWordBinopProgram
+          (fun dst lhs rhs => .ADD dst lhs rhs) rs2 rs1 rd)).run js =
+        .ok RETIRE_SUCCESS jsf ∧
+      jsf.sail = amoaddwFinalSailState rd js.sail addr rs2Val
+  exact
+    amo_word_binop_program_concrete_aligned
+      amoop.AMOADD (fun dst lhs rhs => .ADD dst lhs rhs)
+      rs2 rs1 rd js hcfg addr
+      (rs2Val +
+        shift_bits_right
+          (loaded_dword_at js.sail (amoWordBase addr))
+          (Sail.BitVec.extractLsb
+            (shift_bits_left addr (3 : BitVec 6)) 5 0))
+      ((Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32) +
+        loaded_word_at js.sail addr)
+      hrs1 h_mem h_align
+      (amo_word_add_result_extract_eq js.sail addr rs2Val h_align)
+      (amo_word_add_middle_after_pre rs2 js addr rs2Val hrs2)
+
+/-- Sail-side aligned concrete execution for native `AMOADD.W`. -/
+theorem execute_AMOADDW_reduces_aligned
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (hcfg : JoltConfig js.sail)
+    (addr rs2Val : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
+    (h_mem : AmoMemoryAssumptions amoop.AMOADD 4
+      (amoWordBase addr) addr js.sail)
+    (h_align : addr &&& (3 : BitVec 64) = 0) :
+    (execute_AMO amoop.AMOADD false false rs2 rs1 4 rd).run js.sail =
+      .ok RETIRE_SUCCESS (amoaddwFinalSailState rd js.sail addr rs2Val) := by
+  exact
+    execute_AMO_word_non_cas_aligned
+      amoop.AMOADD rs2 rs1 rd js hcfg addr rs2Val
+      ((Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32) +
+        loaded_word_at js.sail addr)
+      hrs1 hrs2 hrd h_mem h_align
+      (by decide)
+      (amoaddw_sail_result rs2Val (loaded_word_at js.sail addr))
+
+/-- Aligned public branch for `AMOADD.W`. -/
+theorem amoaddwProgram_eq_sail_aligned
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (hcfg : JoltConfig js.sail)
+    (addr rs2Val : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
+    (h_mem : AmoMemoryAssumptions amoop.AMOADD 4
+      (amoWordBase addr) addr js.sail)
     (h_align : addr &&& (3 : BitVec 64) = 0) :
     projectResult ((JoltISA.execProgram
       (JoltISA.amoaddwProgram rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOADD false false rs2 rs1 4 rd).run js.sail := by
-  sorry
+  rcases amoaddwProgram_concrete_aligned
+      rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 h_mem h_align with
+    ⟨jsf, hjolt, hjolt_sail⟩
+  have hsail := execute_AMOADDW_reduces_aligned
+    rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 hrd h_mem h_align
+  rw [hjolt]
+  simp only [projectResult, project]
+  rw [hjolt_sail, hsail]
+
+/-- Jolt-side misaligned execution for `AMOADD.W`. -/
+theorem amoaddwProgram_concrete_misaligned
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (addr : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
+    (h_align : addr &&& (3 : BitVec 64) ≠ 0) :
+    (JoltISA.execProgram (JoltISA.amoaddwProgram rs2 rs1 rd)).run js =
+      .ok (ExecutionResult.Memory_Exception
+        (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js := by
+  unfold JoltISA.amoaddwProgram JoltISA.amoWordBinopProgram
+  exact
+    amo_word_pre64_misaligned_run rs1 JoltISA.amoOldVReg
+      JoltISA.amoDwordVReg JoltISA.amoShiftVReg
+      (.instr (.ADD (.vreg JoltISA.amoNewVReg)
+        (.vreg JoltISA.amoOldVReg) (.xreg rs2)) <|
+        JoltISA.amoPost64Program rs1 rd (.vreg JoltISA.amoNewVReg)
+          JoltISA.amoDwordVReg JoltISA.amoShiftVReg
+          JoltISA.amoMaskVReg JoltISA.amoOldVReg)
+      js addr hrs1 h_align
+
+/-- Sail-side misaligned execution for native `AMOADD.W`. -/
+theorem execute_AMOADDW_misaligned
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (hcfg : JoltConfig js.sail)
+    (addr rs2Val : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (h_align : addr &&& (3 : BitVec 64) ≠ 0) :
+    (execute_AMO amoop.AMOADD false false rs2 rs1 4 rd).run js.sail =
+      .ok (ExecutionResult.Memory_Exception
+        (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js.sail := by
+  exact
+    execute_AMO_word_misaligned
+      amoop.AMOADD rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 h_align
+
+/-- Misaligned public branch for `AMOADD.W`. -/
+theorem amoaddwProgram_eq_sail_misaligned
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (hcfg : JoltConfig js.sail)
+    (addr rs2Val : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (h_align : addr &&& (3 : BitVec 64) ≠ 0) :
+    projectResult ((JoltISA.execProgram
+      (JoltISA.amoaddwProgram rs2 rs1 rd)).run js) =
+      (execute_AMO amoop.AMOADD false false rs2 rs1 4 rd).run js.sail := by
+  have hjolt := amoaddwProgram_concrete_misaligned
+    rs2 rs1 rd js addr hrs1 h_align
+  have hsail := execute_AMOADDW_misaligned
+    rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 h_align
+  rw [hjolt]
+  simp only [projectResult, project]
+  symm
+  exact hsail
+
+/-- Main public theorem for `AMOADD.W`. -/
+theorem amoaddwProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (hcfg : JoltConfig js.sail)
+    (addr rs2Val : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
+    (h_mem : AmoMemoryAssumptions amoop.AMOADD 4
+      (amoWordBase addr) addr js.sail) :
+    projectResult ((JoltISA.execProgram
+      (JoltISA.amoaddwProgram rs2 rs1 rd)).run js) =
+      (execute_AMO amoop.AMOADD false false rs2 rs1 4 rd).run js.sail := by
+  by_cases h_align : addr &&& (3 : BitVec 64) = 0
+  · exact amoaddwProgram_eq_sail_aligned
+      rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 hrd h_mem h_align
+  · exact amoaddwProgram_eq_sail_misaligned
+      rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 h_align
 
 end AtomicFamily
 

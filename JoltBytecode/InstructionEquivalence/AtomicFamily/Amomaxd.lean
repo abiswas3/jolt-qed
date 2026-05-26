@@ -17,7 +17,6 @@ theorem amomaxdProgram_eq_sail_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (h_mem : AmoMemoryAssumptions amoop.AMOMAX 8 addr addr js.sail)
-    (h_no_ovf : addr.toNat + 7 < 2 ^ 64)
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     projectResult ((JoltISA.execProgram
       (JoltISA.amomaxdProgram rs2 rs1 rd)).run js) =

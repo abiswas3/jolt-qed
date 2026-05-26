@@ -427,6 +427,11 @@ theorem amo_dword_and_comm (lhs rhs : BitVec 64) :
     lhs &&& rhs = rhs &&& lhs := by
   bv_decide
 
+/-- Dword or is commutative at the bitvector level. -/
+theorem amo_dword_or_comm (lhs rhs : BitVec 64) :
+    lhs ||| rhs = rhs ||| lhs := by
+  bv_decide
+
 /-- The `AMOADD.D` middle instruction writes `rs2 + old` to `amoNewVReg` and
 preserves the loaded old dword. -/
 theorem amo_dword_add_middle_run
@@ -538,6 +543,43 @@ theorem amo_dword_and_middle_run
     rw [if_neg (by decide)]
     exact hold
 
+/-- The `AMOOR.D` middle instruction writes `rs2 | old` to `amoNewVReg` and
+preserves the loaded old dword. -/
+theorem amo_dword_or_middle_run
+    (rs2 : regidx) (js_afterLoad : SailJoltState)
+    (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js_afterLoad.sail =
+      .ok rs2Val js_afterLoad.sail)
+    (hold : js_afterLoad.vregs JoltISA.amoOldVReg = old) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordMiddleStep
+        (.OR (.vreg JoltISA.amoNewVReg)
+          (.vreg JoltISA.amoOldVReg) (.xreg rs2))
+        old (rs2Val ||| old) js_afterLoad js_afterMiddle := by
+  let js_afterMiddle : SailJoltState :=
+    { sail := js_afterLoad.sail
+      vregs := fun r =>
+        if r = JoltISA.amoNewVReg then old ||| rs2Val else js_afterLoad.vregs r }
+  refine ⟨js_afterMiddle, ?_, ?_, ?_, ?_⟩
+  · unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst readVReg
+      writeVReg liftSail
+    simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+      get, getThe, MonadStateOf.get, EStateM.get,
+      modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+      hold, hrs2]
+    rfl
+  · rfl
+  · change
+      (if JoltISA.amoNewVReg = JoltISA.amoNewVReg then old ||| rs2Val
+        else js_afterLoad.vregs JoltISA.amoNewVReg) = rs2Val ||| old
+    rw [if_pos rfl]
+    exact amo_dword_or_comm old rs2Val
+  · change
+      (if JoltISA.amoOldVReg = JoltISA.amoNewVReg then old ||| rs2Val
+        else js_afterLoad.vregs JoltISA.amoOldVReg) = old
+    rw [if_neg (by decide)]
+    exact hold
+
 /-- After the common dword load, the `AMOADD.D` middle instruction is ready
 for the shared double-binop program helper. -/
 theorem amo_dword_add_middle_after_load
@@ -614,6 +656,32 @@ theorem amo_dword_and_middle_after_load
     exact hrs2
   exact
     amo_dword_and_middle_run rs2 js_afterLoad rs2Val
+      (loaded_dword_at js.sail addr) hrs2_afterLoad hld_old
+
+/-- After the common dword load, the `AMOOR.D` middle instruction is ready
+for the shared double-binop program helper. -/
+theorem amo_dword_or_middle_after_load
+    (rs2 : regidx) (js : SailJoltState) (addr rs2Val : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ js_afterLoad : SailJoltState,
+      js_afterLoad.sail = js.sail →
+      js_afterLoad.vregs JoltISA.amoOldVReg =
+        loaded_dword_at js.sail addr →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoDwordMiddleStep
+          (.OR (.vreg JoltISA.amoNewVReg)
+            (.vreg JoltISA.amoOldVReg) (.xreg rs2))
+          (loaded_dword_at js.sail addr)
+          (rs2Val ||| loaded_dword_at js.sail addr)
+          js_afterLoad js_afterMiddle := by
+  intro js_afterLoad hld_sail hld_old
+  have hrs2_afterLoad :
+      rX_bits rs2 js_afterLoad.sail =
+        .ok rs2Val js_afterLoad.sail := by
+    rw [hld_sail]
+    exact hrs2
+  exact
+    amo_dword_or_middle_run rs2 js_afterLoad rs2Val
       (loaded_dword_at js.sail addr) hrs2_afterLoad hld_old
 
 /-- After a pure AMO middle instruction, `SD amoNewVReg, 0(rs1)` writes the
