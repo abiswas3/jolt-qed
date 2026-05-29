@@ -40,17 +40,22 @@ Goal: close every red-risk item that doesn't depend on a structural rewrite, and
 
 + [ ] ![Target](https://img.shields.io/badge/target-2026--05--17-yellow) Centralise the memory envelope: introduce `JoltFlatMemoryEnvelope` and rewrite load/store theorems to use it. See [Risks: memory_envelope](risks.md).
 
-+ [x] Close the store family (`SB`, `SH`, `SW`) in the new `JoltISA` architecture.
++ [x] Close [Risk: Store Proofs Are Still Behind Loads](risks.md#store-proofs-are-still-behind-loads).
   ![Closed](https://img.shields.io/badge/closed-2026--05--06-brightgreen) Added Rust-faithful store expansion programs plus shared store program blocks and splice bridges. The public `SB`, `SH`, and `SW` equivalence theorems now pass in `StoreFamily/{Sb,Sh,Sw}_main.lean`.
+  ![Artifact](https://img.shields.io/badge/artifact-2026--05--19-blue) Repaired the Store family after enforcing the Jolt-ISA boundary: Store expansions now use final trace rows plus `slliBlock`, `sllBlock`, and `srliBlock`; the Store proof files no longer mention source rows such as `.SLL`, `.SLLI`, `.SRLI`, or the old store-alignment pseudo-instruction.
 
-+ [ ] ![Stalled](https://img.shields.io/badge/stalled-2026--05--11-lightgrey) Add `rd = x0` wrapper theorems where Rust handles the case explicitly. We are keeping the current `rd ≠ x0` theorem assumptions for now and will revisit wrapper coverage after the remaining instruction families settle. See [Risks: rd_x0](risks.md).
++ [x] Close [Risk: Recursive Expansion Is Not Yet Final-Row Faithful](risks.md#recursive-expansion-is-not-yet-final-row-faithful).
+  ![Closed](https://img.shields.io/badge/closed-2026--05--19-brightgreen) Restricted `JoltISA.Instr` to final trace-row instructions and represented source instructions that inline through named expansion blocks. The recursive issue is now handled compositionally: expansions call block programs, and block lemmas relate those programs to the old proof phases.
+
++ [x] Partially close [Risk: `rd = x0` Policy Is Outside Many Theorems](risks.md#rd--x0-policy-is-outside-many-theorems).
+  ![Partially closed](https://img.shields.io/badge/partial-2026--05--19-orange) Pure non-side-effecting writebacks now use Rust's no-op replacement path, `ADDI x0, x0, 0`, instead of needing an `rd ≠ x0` theorem shape. Side-effecting instructions are still open because Rust handles them by virtual-register remapping rather than by the pure no-op rule.
 
 ## June
 
 Goal: extend coverage to the atomic, load-reserved, store-conditional, and remaining multiplication families on top of the May infrastructure.
 
-+ [ ] ![Target](https://img.shields.io/badge/target-2026--06--07-yellow) Close `AMOSWAP.W/D`, `AMOAND.W/D`, `AMOOR.W/D`, `AMOXOR.W/D` (the eight degenerate-splice atomics) using the SW splice and centralised memory envelope.
-+ [ ] ![Target](https://img.shields.io/badge/target-2026--06--14-yellow) Close `AMOADD.W/D`, `AMOMIN.W/D`, `AMOMINU.W/D`, `AMOMAX.W/D`, `AMOMAXU.W/D` (the ten arithmetic atomics).
++ [x] ![Closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) Close `AMOSWAP.W/D`, `AMOAND.W/D`, `AMOOR.W/D`, `AMOXOR.W/D` (the eight degenerate-splice atomics) using the SW splice and centralised memory envelope.
++ [x] ![Closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) Close `AMOADD.W/D`, `AMOMIN.W/D`, `AMOMINU.W/D`, `AMOMAX.W/D`, `AMOMAXU.W/D` (the ten arithmetic atomics).
 + [ ] ![Target](https://img.shields.io/badge/target-2026--06--18-yellow) State and prove `LR.W` and `LR.D` on top of the closed `LW` / `LD` theorems.
 + [ ] ![Target](https://img.shields.io/badge/target-2026--06--22-yellow) State and prove `SC.W` and `SC.D` on top of the SW splice + reservation set.
 + [ ] ![Target](https://img.shields.io/badge/target-2026--06--30-yellow) Decide scope for the system instructions (`ECALL`, `EBREAK`, `MRET`, `CSRRW`, `CSRRS`) — either state stub theorems or document them as out-of-scope for the August claim.

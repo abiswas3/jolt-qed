@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Semantics
+import JoltBytecode.JoltISA.Expansions.ALU
 
 /-!
 # Atomic Jolt expansion programs
@@ -22,16 +23,18 @@ def amoTmpVReg : VReg := 2
 def amoDwordVReg : VReg := 3
 def amoShiftVReg : VReg := 4
 def amoMaskVReg : VReg := 5
+def amoInlineTmpVReg : VReg := 6
 
 /-- Shared Rust `amo_pre64`: assert word alignment, load the containing
 doubleword, then extract the addressed word into `old`. -/
 def amoPre64Program (rs1 : regidx) (old dword shift : VReg) (tail : Program) :
     Program :=
-  .instr (.VirtualAssertStoreAlignment rs1 (0 : BitVec 12) (3 : BitVec 64)) <|
+  .instr (.VirtualAssertWordAlignment rs1 (0 : BitVec 12) (ExceptionType.E_SAMO_Addr_Align ())) <|
   .instr (.ANDI (.vreg shift) (.xreg rs1) (-8 : BitVec 12)) <|
-  .instr (.LD dword shift (0 : BitVec 12)) <|
-  .instr (.SLLI (.vreg shift) (.xreg rs1) (3 : BitVec 6)) <|
-  .instr (.SRL (.vreg old) (.vreg dword) (.vreg shift)) <|
+  .instr (.LD (.vreg dword) (.vreg shift) (0 : BitVec 12)) <|
+  .instr (.VirtualMULI (.vreg shift) (.xreg rs1) (8 : BitVec 64)) <|
+  .instr (.VirtualShiftRightBitmask (.vreg amoInlineTmpVReg) (.vreg shift)) <|
+  .instr (.VirtualSRL (.vreg old) (.vreg dword) (.vreg amoInlineTmpVReg)) <|
   tail
 
 /-- Shared Rust `amo_post64`: splice `newValue` into the containing doubleword,
@@ -39,34 +42,38 @@ store it back, and sign-extend the old word into `rd`. -/
 def amoPost64Program
     (rs1 rd : regidx) (newValue : Src) (dword shift mask old : VReg) : Program :=
   .instr (.ORI (.vreg mask) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
-  .instr (.SRLI (.vreg mask) (.vreg mask) (32 : BitVec 6)) <|
-  .instr (.SLL (.vreg mask) (.vreg mask) (.vreg shift)) <|
-  .instr (.SLL (.vreg shift) newValue (.vreg shift)) <|
+  .instr (.VirtualSRLI (.vreg mask) (.vreg mask) (srliBitmask (32 : BitVec 6))) <|
+  .instr (.VirtualPow2 (.vreg amoInlineTmpVReg) (.vreg shift)) <|
+  .instr (.MUL (.vreg mask) (.vreg mask) (.vreg amoInlineTmpVReg)) <|
+  .instr (.VirtualPow2 (.vreg amoInlineTmpVReg) (.vreg shift)) <|
+  .instr (.MUL (.vreg shift) newValue (.vreg amoInlineTmpVReg)) <|
   .instr (.XOR (.vreg shift) (.vreg dword) (.vreg shift)) <|
   .instr (.AND (.vreg shift) (.vreg shift) (.vreg mask)) <|
   .instr (.XOR (.vreg dword) (.vreg dword) (.vreg shift)) <|
   .instr (.ANDI (.vreg mask) (.xreg rs1) (-8 : BitVec 12)) <|
-  .instr (.SD mask dword (0 : BitVec 12)) <|
+  .instr (.SD (.vreg mask) (.vreg dword) (0 : BitVec 12)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.vreg old)) <|
   .done RETIRE_SUCCESS
 
 def amoDoubleBinopProgram
     (op : Dst → Src → Src → Instr) (rs2 rs1 rd : regidx) : Program :=
-  .instr (.LDFrom amoOldVReg (.xreg rs1) (0 : BitVec 12)) <|
+  .instr (.VirtualAssertDwordAlignment rs1 (0 : BitVec 12) (ExceptionType.E_SAMO_Addr_Align ())) <|
+  .instr (.LD (.vreg amoOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
   .instr (op (.vreg amoNewVReg) (.vreg amoOldVReg) (.xreg rs2)) <|
-  .instr (.SDFrom (.xreg rs1) (.vreg amoNewVReg) (0 : BitVec 12)) <|
+  .instr (.SD (.xreg rs1) (.vreg amoNewVReg) (0 : BitVec 12)) <|
   .instr (.ADDI (.xreg rd) (.vreg amoOldVReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 def amoDoubleSelectProgram
     (cmpInstr : Dst → Src → Src → Instr) (cmpLhs cmpRhs : Src)
     (rs2 rs1 rd : regidx) : Program :=
-  .instr (.LDFrom amoOldVReg (.xreg rs1) (0 : BitVec 12)) <|
+  .instr (.VirtualAssertDwordAlignment rs1 (0 : BitVec 12) (ExceptionType.E_SAMO_Addr_Align ())) <|
+  .instr (.LD (.vreg amoOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
   .instr (cmpInstr (.vreg amoNewVReg) cmpLhs cmpRhs) <|
   .instr (.SUB (.vreg amoTmpVReg) (.xreg rs2) (.vreg amoOldVReg)) <|
   .instr (.MUL (.vreg amoTmpVReg) (.vreg amoTmpVReg) (.vreg amoNewVReg)) <|
   .instr (.ADD (.vreg amoNewVReg) (.vreg amoOldVReg) (.vreg amoTmpVReg)) <|
-  .instr (.SDFrom (.xreg rs1) (.vreg amoNewVReg) (0 : BitVec 12)) <|
+  .instr (.SD (.xreg rs1) (.vreg amoNewVReg) (0 : BitVec 12)) <|
   .instr (.ADDI (.xreg rd) (.vreg amoOldVReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
@@ -103,8 +110,9 @@ def amoxordProgram (rs2 rs1 rd : regidx) : Program :=
   amoDoubleBinopProgram (fun dst lhs rhs => .XOR dst lhs rhs) rs2 rs1 rd
 
 def amoswapdProgram (rs2 rs1 rd : regidx) : Program :=
-  .instr (.LDFrom amoOldVReg (.xreg rs1) (0 : BitVec 12)) <|
-  .instr (.SDFrom (.xreg rs1) (.xreg rs2) (0 : BitVec 12)) <|
+  .instr (.VirtualAssertDwordAlignment rs1 (0 : BitVec 12) (ExceptionType.E_SAMO_Addr_Align ())) <|
+  .instr (.LD (.vreg amoOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
+  .instr (.SD (.xreg rs1) (.xreg rs2) (0 : BitVec 12)) <|
   .instr (.ADDI (.xreg rd) (.vreg amoOldVReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 

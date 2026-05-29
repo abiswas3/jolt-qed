@@ -14,12 +14,11 @@ The formal verification task here to show equivalence.
 
 ### 1. Compositional Lowering
 
-Status: planned.
+Status: closed.
 
-Goal: prove lowering theorems once for recursively expanding instructions, then
-reuse them in caller proofs instead of expanding every caller manually.
-
-See: `planning/JOLT_COMPOSITIONAL_LOWERING_PLAN.md`
+2026-05-19: Closed the recursive inline-expansion issue by restricting
+`JoltISA.Instr` to final trace-row instructions and using expansion blocks for
+source instructions that themselves inline.
 
 ### 2. Loads and Special Memory Regions
 
@@ -32,7 +31,7 @@ See: `planning/JOLT_SPECIAL_MEMORY_REGION_PLAN.md`
 
 ### 3. Stores
 
-Status: incomplete.
+Status: closed
 
 Goal: finish `SW`, `SH`, and `SB` expansion proofs, including read-modify-write
 splice lemmas and the relevant memory envelope.
@@ -46,11 +45,16 @@ instruction family used by the Rust tracer.
 
 ### 5. `rd = x0` Policy
 
-Status: planned.
+Status: partially closed.
 
 Goal: model Rust's dispatch policy for `rd = x0`: no-op replacement for pure
 writeback instructions, virtual-register remapping for side-effecting
 instructions, and special-case handling where needed.
+
+2026-05-19: Closed the `rd = x0` policy for pure writeback instructions with
+no side effects by using Rust's no-op `ADDI x0, x0, 0` replacement path. The
+side-effecting cases remain open because they need the Rust-style
+virtual-register remapping rather than the pure no-op rule.
 
 ### 6. Advice Tape
 
@@ -75,33 +79,4 @@ Status: later.
 Goal: prove a renaming-invariance theorem connecting fixed Lean virtual-register
 templates to Rust allocator-chosen virtual registers.
 
-See: `planning/JOLT_VIRTUAL_REGISTER_RENAMING_PLAN.md`
-
-## Milestones
-
-
-# Next Block 
-
-## Lookup Table Verification
-
-First target: the `AND` table.
-
-1. Prove Boolean-hypercube agreement:
-
-   ```rust
-   evaluate_mle_AND(bits(index)) = materialize_entry_AND(index)
-   ```
-
-   In words: on every Boolean point of the lookup-table hypercube, the verifier
-   polynomial agrees with the finite AND table.
-
-2. Prove the full MLE theorem:
-
-   ```rust
-   evaluate_mle_AND(r)
-     = multilinear extension of materialize_entry_AND
-   ```
-
-   In words: the Rust `evaluate_mle` code really evaluates the multilinear
-   extension of the AND lookup table, not just an arbitrary polynomial that
-   happens to agree on tested points.
+See: `docs/JOLT_VIRTUAL_REGISTER_RENAMING_PLAN.md`

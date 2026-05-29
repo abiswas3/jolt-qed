@@ -99,7 +99,7 @@ theorem execute_LBU_reduces (imm : BitVec 12) (rs1 rd : regidx)
   simp (config := { decide := true }) only []
   simp (config := { decide := true }) only [PreSail.assert, EStateM.bind, pure, EStateM.pure,
        EStateM.run, if_true]
-  rw [vmem_read_byte_reduces imm rs1 js.sail val hrx hload.aligned hload.translate
+  rw [vmem_read_byte_reduces imm rs1 js.sail hcfg val hrx hload.aligned
       (mem_read_1_eq_loaded_byte _ js.sail hcfg hload.phys)]
   -- DIFF: `if_true` instead of `Bool.false_eq_true, if_false` — the unsigned
   --       branch in `extend_value` is gated on the `true` signed flag, so the
@@ -130,7 +130,6 @@ before writing the architectural destination. -/
 theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js' : SailJoltState,
       (JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js = .ok RETIRE_SUCCESS js' ∧
@@ -138,13 +137,14 @@ theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
         (zero_extend (m := 64)
           (loaded_byte_at js.sail (load_effective_address val imm))) := by
   let writeTail : JoltISA.Program :=
-    .instr (.SRLI (.xreg rd) (.vreg 1) (56 : BitVec 6)) (.done RETIRE_SUCCESS)
+    .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (JoltISA.srliBitmask (56 : BitVec 6)))
+      (.done RETIRE_SUCCESS)
   let logicTail : JoltISA.Program :=
     .instr (.XORI (.vreg 0) (.vreg 0) (7 : BitVec 12)) <|
-    .instr (.SLLI (.vreg 0) (.vreg 0) (3 : BitVec 6)) <|
-    .instr (.SLL (.vreg 1) (.vreg 1) (.vreg 0)) writeTail
+    JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
+    JoltISA.sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) writeTail
   rcases LoadProgramBlocks.setupBlock logicTail imm rs1 js hcfg val hrx
-      h_dword_translate h_dword_phys with
+      h_dword_phys with
     ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
   rcases LoadProgramBlocks.xoriSlliSllBlock writeTail imm (7 : BitVec 12)
       js js_load val hload_sail hload_v0 hload_v1 with
@@ -166,7 +166,7 @@ theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
     change (JoltISA.execProgram
       (.instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-       .instr (.LD 1 1 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
+       .instr (.LD (.vreg 1) (.vreg 1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
     rw [hload_run, hlogic_run, hwrite_run]
     rfl
   · rw [hwrite_sail]
@@ -181,13 +181,16 @@ byte-load execution. -/
 theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_translate : BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hload : LoadReadAssumptions (load_effective_address val imm) 1 js.sail) :
+    (hphys : FlatPhysMem (load_effective_address val imm) 1 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd true 1).run js.sail := by
+  have hload : LoadReadAssumptions (load_effective_address val imm) 1 js.sail :=
+    loadReadAssumptions_of_aligned_phys
+      (load_effective_address val imm) 1 js.sail
+      (aligned_access_1 (load_effective_address val imm)) hphys
   rcases lbuProgram_concrete imm rs1 rd js hcfg val hrx
-      h_dword_translate h_dword_phys with
+      h_dword_phys with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_LBU_reduces imm rs1 rd js hcfg val hrx hload
   rw [hjolt]

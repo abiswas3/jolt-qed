@@ -24,14 +24,35 @@ theorem ld_run_vreg_vreg_from_memory_read (vd base : VReg) (imm : BitVec 12)
       vmem_read_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 0 8
         (Load Data) false false false js.sail =
         .ok (Ok value) js.sail) :
-    (execInstr (.LD vd base imm)).run js =
+    (execInstr (.LD (.vreg vd) (.vreg base) imm)).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r => if r = vd then value else js.vregs r } := by
-  unfold execInstr readVReg liftSail writeVReg
+  unfold execInstr readSrc writeDst readVReg liftSail writeVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [h]
+  simp only [EStateM.bind, EStateM.pure, modify, modifyGet,
+    MonadStateOf.modifyGet, EStateM.modifyGet]
+
+/-- Successful `LD` from an architectural-register base into a virtual
+register. -/
+theorem ld_run_vreg_xreg_from_memory_read (vd : VReg) (base : regidx)
+    (imm : BitVec 12) (js : SailJoltState) (baseValue value : BitVec 64)
+    (hbase : rX_bits base js.sail = .ok baseValue js.sail)
+    (hread :
+      vmem_read_addr (Virtaddr (baseValue + sign_extend (m := 64) imm)) 0 8
+        (Load Data) false false false js.sail =
+        .ok (Ok value) js.sail) :
+    (execInstr (.LD (.vreg vd) (.xreg base) imm)).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then value else js.vregs r } := by
+  unfold execInstr readSrc writeDst liftSail writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.run]
+  rw [hbase]
+  dsimp only
+  rw [hread]
   simp only [EStateM.bind, EStateM.pure, modify, modifyGet,
     MonadStateOf.modifyGet, EStateM.modifyGet]
 

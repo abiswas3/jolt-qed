@@ -17,14 +17,12 @@ noncomputable section
 
 namespace InstructionEquivalence
 
-theorem dword_load_assumptions_of_aligned_translate_phys (addr : BitVec 64) (s : SailState)
+theorem dword_load_assumptions_of_aligned_phys (addr : BitVec 64) (s : SailState)
     (haligned : AlignedDwordAccess addr)
-    (htranslate : BareTranslation addr s)
     (hphys : FlatPhysMem addr 8 s) :
     DwordLoadAssumptions addr s := by
   refine
     { aligned := haligned
-      translate := htranslate
       phys := hphys }
 
 end InstructionEquivalence

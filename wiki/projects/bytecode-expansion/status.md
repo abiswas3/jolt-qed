@@ -6,7 +6,7 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 
 
-**Overall:** ![closed](https://img.shields.io/badge/closed-40-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-18-yellow) ![todo](https://img.shields.io/badge/todo-9-lightgrey) — **67 instructions total**
+**Overall:** ![closed](https://img.shields.io/badge/closed-58-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-9-lightgrey) — **67 instructions total**
 
 
 ## ALU — I-type shifts
@@ -132,28 +132,28 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 ## Atomics
 
-![closed](https://img.shields.io/badge/closed-0-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-18-yellow) ![todo](https://img.shields.io/badge/todo-0-lightgrey)
+![closed](https://img.shields.io/badge/closed-18-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-0-lightgrey)
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| AMOADD.W | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoaddwProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOADD.D | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoadddProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOAND.W | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoandwProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOAND.D | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoanddProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOOR.W | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoorwProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOOR.D | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoordProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOXOR.W | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoxorwProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOXOR.D | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoxordProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOSWAP.W | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoswapwProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOSWAP.D | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amoswapdProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOMIN.W | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amominwProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOMIN.D | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amomindProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOMINU.W | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amominuwProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOMINU.D | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amominudProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOMAX.W | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amomaxwProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOMAX.D | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amomaxdProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOMAXU.W | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amomaxuwProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
-| AMOMAXU.D | ![in progress](https://img.shields.io/badge/in_progress-yellow) | [`amomaxudProgram_eq_sail_aligned`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Statements.lean) |
+| AMOADD.W | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoaddw.lean#L168`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoaddw.lean#L168) |
+| AMOADD.D | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoaddd.lean#L123`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoaddd.lean#L123) |
+| AMOAND.W | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoandw.lean#L168`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoandw.lean#L168) |
+| AMOAND.D | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoandd.lean#L123`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoandd.lean#L123) |
+| AMOOR.W | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoorw.lean#L168`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoorw.lean#L168) |
+| AMOOR.D | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoord.lean#L123`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoord.lean#L123) |
+| AMOXOR.W | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoxorw.lean#L168`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoxorw.lean#L168) |
+| AMOXOR.D | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoxord.lean#L123`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoxord.lean#L123) |
+| AMOSWAP.W | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoswapw.lean#L257`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoswapw.lean#L257) |
+| AMOSWAP.D | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amoswapd.lean#L312`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amoswapd.lean#L312) |
+| AMOMIN.W | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amominw.lean#L162`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amominw.lean#L162) |
+| AMOMIN.D | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amomind.lean#L136`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amomind.lean#L136) |
+| AMOMINU.W | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amominuw.lean#L162`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amominuw.lean#L162) |
+| AMOMINU.D | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amominud.lean#L147`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amominud.lean#L147) |
+| AMOMAX.W | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amomaxw.lean#L162`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amomaxw.lean#L162) |
+| AMOMAX.D | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amomaxd.lean#L136`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amomaxd.lean#L136) |
+| AMOMAXU.W | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amomaxuw.lean#L162`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amomaxuw.lean#L162) |
+| AMOMAXU.D | ![closed](https://img.shields.io/badge/closed-2026--05--26-brightgreen) | [`AtomicFamily/Amomaxud.lean#L136`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/AtomicFamily/Amomaxud.lean#L136) |
 
 ## System
 

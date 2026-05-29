@@ -3,9 +3,9 @@ import JoltBytecode.JoltISA.Values
 /-!
 # Jolt ISA syntax
 
-This is the data layer that Rust extraction should eventually target.  The
-constructors intentionally stay close to the inline bytecode instructions
-rather than baking in proof-specific factoring.
+This is the data layer for final Jolt trace-row instructions.  Source
+instructions that Rust lowers through `inline_sequence` belong in the expansion
+layer, not as constructors here.
 -/
 
 open Sail PreSail LeanRV64D.Functions
@@ -29,12 +29,10 @@ inductive Instr where
   | BGE (lhs rhs : Src) (imm : BitVec 13)
   | BLTU (lhs rhs : Src) (imm : BitVec 13)
   | BGEU (lhs rhs : Src) (imm : BitVec 13)
-  | EBREAK (address : BitVec 64)
   | FENCE
   | ADD  (dst : Dst) (lhs rhs : Src)
   | SUB  (dst : Dst) (lhs rhs : Src)
   | MUL  (dst : Dst) (lhs rhs : Src)
-  | MULH (dst : Dst) (lhs rhs : Src)
   | MULHU (dst : Dst) (lhs rhs : Src)
   | ANDN (dst : Dst) (lhs rhs : Src)
   | VirtualMULI (dst : Dst) (src : Src) (imm : BitVec 64)
@@ -64,22 +62,14 @@ inductive Instr where
   | AND  (dst : Dst) (lhs rhs : Src)
   | SLT  (dst : Dst) (lhs rhs : Src)
   | SLTU (dst : Dst) (lhs rhs : Src)
-  | SLLI (dst : Dst) (src : Src) (shamt : BitVec 6)
-  | SRLI (dst : Dst) (src : Src) (shamt : BitVec 6)
-  | SRAI (dst : Dst) (src : Src) (shamt : BitVec 6)
-  | SLL  (dst : Dst) (value shamt : Src)
-  | SRL  (dst : Dst) (value shamt : Src)
   | VirtualSignExtendWord (dst : Dst) (src : Src)
   | VirtualZeroExtendWord (dst : Dst) (src : Src)
   | VirtualMovsign (dst : Dst) (src : Src)
-  | VirtualAssertHalfwordAlignment (base : regidx) (imm : BitVec 12)
-  | VirtualAssertWordAlignment (base : regidx) (imm : BitVec 12)
-  | VirtualAssertLoadAlignment (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
-  | VirtualAssertStoreAlignment (base : regidx) (imm : BitVec 12) (mask : BitVec 64)
-  | LD (vd base : VReg) (imm : BitVec 12)
-  | LDFrom (vd : VReg) (base : Src) (imm : BitVec 12)
-  | SD (base value : VReg) (imm : BitVec 12)
-  | SDFrom (base value : Src) (imm : BitVec 12)
+  | VirtualAssertHalfwordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
+  | VirtualAssertWordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
+  | VirtualAssertDwordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
+  | LD (dst : Dst) (base : Src) (imm : BitVec 12)
+  | SD (base value : Src) (imm : BitVec 12)
   | VirtualLW (dst : Dst) (base : Src) (imm : BitVec 12)
   | VirtualSW (base value : Src) (imm : BitVec 12)
   | VirtualAdvice (vd : VReg) (value : BitVec 64)
@@ -113,9 +103,9 @@ inductive Program where
   deriving Repr
 
 /-- Build the common straight-line "run every instruction, then retire"
-program.  This is useful for expansions such as `MULH`, which have no explicit
-early-return instruction apart from the generic non-retire short-circuiting
-handled by `Program.instr`. -/
+program.  This is useful for expansions with no explicit early-return
+instruction apart from the generic non-retire short-circuiting handled by
+`Program.instr`. -/
 def Program.seq (instrs : List Instr) : Program :=
   instrs.foldr Program.instr (.done RETIRE_SUCCESS)
 
@@ -128,5 +118,68 @@ def Program.append : Program → Program → Program
   | .done (.Retire_Success ()), second => second
   | .done result, _ => .done result
   | .instr instruction rest, second => .instr instruction (rest.append second)
+
+/-- Rust's trace-dispatch replacement for pure writeback instructions whose
+destination is architectural `x0`: emit a single no-op `ADDI x0, x0, 0` row. -/
+def pureWritebackRdZeroProgram : Program :=
+  .instr (.ADDI (.xreg (regidx.Regidx 0)) (.xreg (regidx.Regidx 0)) (0 : BitVec 12)) <|
+  .done RETIRE_SUCCESS
+
+/-- Boolean test for architectural register `x0`.
+
+The generated `regidx` type does not derive `DecidableEq`, so trace-dispatch
+programs use this Boolean predicate instead of comparing registers directly. -/
+def isX0 (rd : regidx) : Bool :=
+  match rd with
+  | regidx.Regidx bits => decide (bits.toNat = 0)
+
+/-- Rust's trace-dispatch rule for pure writeback instructions.
+
+If `rd = x0`, Rust emits `pureWritebackRdZeroProgram`; otherwise it uses the
+instruction's ordinary inline sequence unchanged. -/
+def pureWritebackTraceProgram (rd : regidx) (normal : Program) : Program :=
+  if isX0 rd then pureWritebackRdZeroProgram else normal
+
+/-- The `isX0` predicate recognizes architectural register `x0`. -/
+theorem isX0_regidx_zero :
+    isX0 (regidx.Regidx 0) = true := by
+  unfold isX0
+  simp
+
+/-- If a register is not architectural `x0`, `isX0` returns `false`. -/
+theorem isX0_eq_false_of_ne_zero
+    {rd : regidx}
+    (hrd : rd ≠ regidx.Regidx 0) :
+    isX0 rd = false := by
+  cases rd with
+  | Regidx bits =>
+      unfold isX0
+      simp only
+      apply decide_eq_false
+      intro hbits
+      apply hrd
+      congr
+      apply BitVec.eq_of_toNat_eq
+      simpa using hbits
+
+/-- For `rd = x0`, pure-writeback trace dispatch uses the no-op replacement
+program. -/
+theorem pureWritebackTraceProgram_regidx_zero (normal : Program) :
+    pureWritebackTraceProgram (regidx.Regidx 0) normal =
+      pureWritebackRdZeroProgram := by
+  unfold pureWritebackTraceProgram
+  rw [isX0_regidx_zero]
+  simp only [↓reduceIte]
+
+/-- For `rd ≠ x0`, pure-writeback trace dispatch uses the ordinary inline
+sequence unchanged. -/
+theorem pureWritebackTraceProgram_of_ne_zero
+    {rd : regidx}
+    (hrd : rd ≠ regidx.Regidx 0)
+    (normal : Program) :
+    pureWritebackTraceProgram rd normal = normal := by
+  unfold pureWritebackTraceProgram
+  rw [isX0_eq_false_of_ne_zero hrd]
+  simp only [Bool.false_eq_true, ↓reduceIte]
 
 end JoltISA

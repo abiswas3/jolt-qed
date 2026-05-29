@@ -48,6 +48,20 @@ theorem exists_state_after_virtual_pow2_run_vreg_xreg
     simp [js', hne]
   · simpa only [js'] using virtual_pow2_run_vreg_xreg vd rs js x h
 
+/-- `VirtualPow2` from a virtual source to a virtual destination writes
+`2 ^ source[5:0]` and leaves Sail unchanged. -/
+theorem virtual_pow2_run_vreg_vreg (vd vs : VReg)
+    (js : SailJoltState) :
+    (execInstr (.VirtualPow2 (.vreg vd) (.vreg vs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r =>
+            if r = vd then jolt_virtual_pow2_value (js.vregs vs) else js.vregs r } := by
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
 end JoltISA
 
 end

@@ -36,23 +36,24 @@ namespace JoltISA
 inputs: quotient and absolute remainder. -/
 def divProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualAdvice 0 quotient) <|
   .instr (.VirtualAdvice 1 remAbs) <|
   .instr (.VirtualAssertValidDiv0 rs2 0) <|
   .instr (.VirtualChangeDivisor 2 rs1 rs2) <|
-  .instr (.MULH (.vreg 3) (.vreg 0) (.vreg 2)) <|
-  .instr (.MUL (.vreg 4) (.vreg 0) (.vreg 2)) <|
-  .instr (.SRAI (.vreg 5) (.vreg 4) (63 : BitVec 6)) <|
-  .instr (.VirtualAssertEQ 3 5) <|
-  .instr (.SRAI (.vreg 3) (.xreg rs1) (63 : BitVec 6)) <|
-  .instr (.XOR (.vreg 5) (.vreg 1) (.vreg 3)) <|
-  .instr (.SUB (.vreg 5) (.vreg 5) (.vreg 3)) <|
-  .instr (.ADD (.vreg 4) (.vreg 4) (.vreg 5)) <|
-  .instr (.VirtualAssertEQReal 4 rs1) <|
-  .instr (.SRAI (.vreg 3) (.vreg 2) (63 : BitVec 6)) <|
-  .instr (.XOR (.vreg 5) (.vreg 2) (.vreg 3)) <|
-  .instr (.SUB (.vreg 5) (.vreg 5) (.vreg 3)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder 1 5) <|
+  mulhBlock 4 5 6 (.vreg 3) (.vreg 0) (.vreg 2) <|
+  .instr (.MUL (.vreg 7) (.vreg 0) (.vreg 2)) <|
+  sraiBlock (.vreg 8) (.vreg 7) (63 : BitVec 6) <|
+  .instr (.VirtualAssertEQ 3 8) <|
+  sraiBlock (.vreg 3) (.xreg rs1) (63 : BitVec 6) <|
+  .instr (.XOR (.vreg 8) (.vreg 1) (.vreg 3)) <|
+  .instr (.SUB (.vreg 8) (.vreg 8) (.vreg 3)) <|
+  .instr (.ADD (.vreg 7) (.vreg 7) (.vreg 8)) <|
+  .instr (.VirtualAssertEQReal 7 rs1) <|
+  sraiBlock (.vreg 3) (.vreg 2) (63 : BitVec 6) <|
+  .instr (.XOR (.vreg 8) (.vreg 2) (.vreg 3)) <|
+  .instr (.SUB (.vreg 8) (.vreg 8) (.vreg 3)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder 1 8) <|
   .instr (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
@@ -60,6 +61,7 @@ def divProgram (rs2 rs1 rd : regidx)
 above remains the literal bytecode expansion. -/
 def divProgramPhases (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
+  pureWritebackTraceProgram rd <|
   (Div.phase_setup rs2 quotient remAbs).append <|
   (Div.phase_overflow_check rs1 rs2).append <|
   (Div.phase_quotient_product rs1).append <|
@@ -75,11 +77,11 @@ theorem divProgram_eq_phases (rs2 rs1 rd : regidx)
 
 /-- Running `divProgram` with honest DIV/REM advice succeeds and writes Sail's
 signed DIV value to `rd`. -/
-theorem divProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem divProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
     ∃ js',
       (execProgram (divProgram rs2 rs1 rd
           (sail_div_value dividend divisor false)
@@ -108,7 +110,7 @@ theorem divProgram_concrete (rs2 rs1 rd : regidx)
     h1_sail.symm ▸ hrs1
   have hrs2_js1 : rX_bits rs2 js₁.sail = .ok divisor js₁.sail :=
     h1_sail.symm ▸ hrs2
-  obtain ⟨js₂, hrun2, h2_v0, h2_v1, h2_v2, h2_v4, h2_sail⟩ :=
+  obtain ⟨js₂, hrun2, h2_v0, h2_v1, h2_v2, h2_v7, h2_sail⟩ :=
     Div.phase_overflow_check_run rs1 rs2 js₁ q rem adj dividend divisor
       hrs1_js1 hrs2_js1 h1_v0 h1_v1 rfl hguard_overflow
   have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
@@ -116,7 +118,7 @@ theorem divProgram_concrete (rs2 rs1 rd : regidx)
     h2_sail_orig.symm ▸ hrs1
   obtain ⟨js₃, hrun3, h3_v0, h3_v1, h3_v2, h3_sail⟩ :=
     Div.phase_quotient_product_run rs1 js₂ q rem adj dividend
-      hrs1_js2 h2_v0 h2_v1 h2_v2 h2_v4 hguard_quotient_product
+      hrs1_js2 h2_v0 h2_v1 h2_v2 h2_v7 hguard_quotient_product
   have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
   obtain ⟨js₄, hrun4, h4_v0, h4_sail⟩ :=
     Div.phase_remainder_bound_run js₃ q rem adj h3_v0 h3_v1 h3_v2 hguard_rem_bound
@@ -126,6 +128,7 @@ theorem divProgram_concrete (rs2 rs1 rd : regidx)
   have h_phase_program_succeeds :
       Program.Run (divProgramPhases rs2 rs1 rd q rem) js js₅ := by
     unfold divProgramPhases
+    rw [pureWritebackTraceProgram_of_ne_zero hrd]
     exact Program.Run.append hrun1
       (Program.Run.append hrun2
         (Program.Run.append hrun3
@@ -146,8 +149,7 @@ theorem execute_DIV_factored (rs2 rs1 rd : regidx) (is_unsigned : Bool) :
   simp [execute_DIV, sail_div_value, bind_pure_comp]
 
 /-- Sail's `execute_DIV ... false` writes `sail_div_value`. -/
-theorem execute_DIV_reduces (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem execute_DIV_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -164,8 +166,7 @@ theorem execute_DIV_reduces (rs2 rs1 rd : regidx)
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
 /-- Honest advice makes `divProgram` match Sail DIV. -/
-theorem divProgram_complete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js)
+theorem divProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
@@ -173,12 +174,23 @@ theorem divProgram_complete (rs2 rs1 rd : regidx)
                       (sail_div_value dividend divisor false)
                       (bv_abs (sail_rem_value dividend divisor false)))).run js) =
     (execute_DIV rs2 rs1 rd false).run js.sail := by
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold divProgram
+    rw [pureWritebackTraceProgram_regidx_zero]
+    rw [pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_DIV_factored rs2 rs1 (regidx.Regidx 0) false]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [hrs1, hrs2]
+    simp only [wX_bits_regidx_zero]
+
   obtain ⟨js', hjolt, hjolt_sail⟩ :=
-    divProgram_concrete rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2
+   divProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2 hrd
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail]
-  rw [execute_DIV_reduces rs2 rs1 rd hrd js hwf dividend divisor hrs1 hrs2]
+  rw [execute_DIV_reduces rs2 rs1 rd js dividend divisor hrs1 hrs2]
 
 /-- Any successful DIV run pins the advice to Sail's quotient and absolute
 remainder values. -/
@@ -188,6 +200,7 @@ theorem divProgram_sound (rs2 rs1 rd : regidx)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hrd : rd ≠ regidx.Regidx 0)
     (js' : SailJoltState)
     (hok : (execProgram (divProgram rs2 rs1 rd q rem)).run js =
       .ok RETIRE_SUCCESS js') :
@@ -198,6 +211,7 @@ theorem divProgram_sound (rs2 rs1 rd : regidx)
     rw [← divProgram_eq_phases]
     exact hok
   unfold divProgramPhases at h_program_succeeds
+  rw [pureWritebackTraceProgram_of_ne_zero hrd] at h_program_succeeds
   obtain ⟨js₁, hp1, h_program_succeeds⟩ :=
     Program.Run.append_inv h_program_succeeds
   obtain ⟨js₂, hp2, h_program_succeeds⟩ :=
@@ -212,7 +226,7 @@ theorem divProgram_sound (rs2 rs1 rd : regidx)
     h1_sail.symm ▸ hrs1
   have hrs2_1 : rX_bits rs2 js₁.sail = .ok divisor js₁.sail :=
     h1_sail.symm ▸ hrs2
-  obtain ⟨hguard2, h2_v0, h2_v1, h2_v2, h2_v4, h2_sail⟩ :=
+  obtain ⟨hguard2, h2_v0, h2_v1, h2_v2, h2_v7, h2_sail⟩ :=
     Div.phase_overflow_check_run_sound rs1 rs2 js₁ js₂ q rem adj dividend divisor
       hrs1_1 hrs2_1 h1_v0 h1_v1 rfl hp2
   have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
@@ -220,7 +234,7 @@ theorem divProgram_sound (rs2 rs1 rd : regidx)
     h2_sail_orig.symm ▸ hrs1
   obtain ⟨hguard3, h3_v0, h3_v1, h3_v2, _h3_sail⟩ :=
     Div.phase_quotient_product_run_sound rs1 js₂ js₃ q rem adj dividend
-      hrs1_2 h2_v0 h2_v1 h2_v2 h2_v4 hp3
+      hrs1_2 h2_v0 h2_v1 h2_v2 h2_v7 hp3
   obtain ⟨hguard4, _, _⟩ :=
     Div.phase_remainder_bound_run_sound js₃ js₄ q rem adj
       h3_v0 h3_v1 h3_v2 hp4

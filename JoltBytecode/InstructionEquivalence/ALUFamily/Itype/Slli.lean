@@ -1,6 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.ALU
-import JoltBytecode.JoltISA.Semantics.Instructions.VirtualMULI
+import JoltBytecode.JoltISA.Semantics.ExpansionBlocks.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions
 
 set_option linter.unusedVariables false
@@ -61,56 +61,68 @@ This is the theorem that the new architecture wants proofs to consume: the
 left-hand side is the explicit Jolt-ISA program, not the older hand-written
 monadic expansion. The instruction sequence is visible in the statement. -/
 theorem slliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
-    ∃ (js' : SailJoltState) (v : BitVec 64),
-      rX_bits rs1 js.sail = .ok v js.sail ∧
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd (slli_sail_operation shamt v) := by
-  obtain ⟨v, hok⟩ := hwf rs1
 
-  -- Instruction 1: `VirtualMULI rd, rs1, 2^shamt` writes the shifted result to `rd`.
-  let multiplier := BitVec.ofNat 64 (2 ^ shamt.toNat)
-  let jolt_val := slli_jolt_val shamt v
-  obtain ⟨js_afterMuli, h_muli_reads_rs1, h_muli_writes_jolt_val,
-      h_muli_succeeds⟩ :=
-    JoltISA.exists_state_after_virtual_muli_run_xreg_xreg rd rs1 multiplier js v hok
+  -- Block 1: Rust `SLLI::inline_sequence` writes the shifted source to `rd`.
+  let shiftedSource := shift_bits_left v shamt
+  obtain ⟨js_afterSlli, h_slli_reads_rs1, h_slli_writes_shiftedSource, _,
+      h_slli_block_succeeds⟩ :=
+    JoltISA.exists_state_after_slli_block_run_xreg_xreg rd rs1 shamt js v h_read_rs1
 
   have h_program_succeeds :
       (JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js =
-        .ok RETIRE_SUCCESS js_afterMuli := by
+        .ok RETIRE_SUCCESS js_afterSlli := by
     unfold JoltISA.slliProgram
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterMuli h_muli_succeeds]
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
+    rw [h_slli_block_succeeds _]
     rfl
 
-  refine ⟨js_afterMuli, v, h_muli_reads_rs1, h_program_succeeds, ?_⟩
+  refine ⟨js_afterSlli, h_program_succeeds, ?_⟩
 
-  -- The instruction trace leaves `rd` containing the Jolt SLLI value.
-  have h_final_jolt_value :
-      js_afterMuli.sail = stateAfterWrite js.sail rd jolt_val := by
-    simp only [jolt_val, slli_jolt_val]
-    exact h_muli_writes_jolt_val
+  -- The block leaves `rd` containing the shifted source value.
+  have h_final_shiftedSource :
+      js_afterSlli.sail = stateAfterWrite js.sail rd shiftedSource := by
+    exact h_slli_writes_shiftedSource
 
-  -- No more execution reasoning remains.
-  -- The only real content left is the pure value equality:
-  -- Jolt's immediate multiply is Sail's SLLI value.
+  -- No more execution reasoning remains. The only content left is that the
+  -- block value is Sail's `SLLI` value.
   have h_slli_value :
-      jolt_val = slli_sail_operation shamt v := by
-    simp only [jolt_val]
-    -- NOTE: The core math theorem.
-    exact slli_value_eq_sail shamt v
+      shiftedSource = slli_sail_operation shamt v := by
+    simp only [shiftedSource, slli_sail_operation]
+    rw [extractLsb_shamt6_id]
+    rfl
 
   -- After the value theorem, the final state claim is mechanical.
   rw [← h_slli_value]
-  exact h_final_jolt_value
+  exact h_final_shiftedSource
 
 /-- Main program-level equivalence for `SLLI`. -/
 theorem slliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIOP shamt rs1 rd sop.SLLI).run js.sail := by
-  obtain ⟨js_afterMuli, v, h_read_rs1, h_program_succeeds, h_final_sail⟩ :=
-    slliProgram_concrete shamt rs1 rd js hwf
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.slliProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_SHIFTIOP_SLLI_factored shamt rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1]
+    simp only [wX_bits_regidx_zero]
+
+  obtain ⟨js_afterMuli, h_program_succeeds, h_final_sail⟩ :=
+    slliProgram_concrete shamt rs1 rd js v h_read_rs1 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

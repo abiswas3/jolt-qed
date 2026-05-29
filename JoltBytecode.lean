@@ -68,7 +68,24 @@ import JoltBytecode.InstructionEquivalence.LoadFamily.LWU_main    -- DONE: LWU  
 -- ============================================================================
 -- Instruction proofs — Atomic (AMO)
 -- ============================================================================
-/- import JoltBytecode.InstructionEquivalence.AtomicFamily.Statements -/
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoaddd
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoandd
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoord
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoxord
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoswapd
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomind
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxd
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amominud
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxud
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoaddw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoandw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoorw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoxorw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoswapw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amominw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amominuw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxuw
 
 -- Load Reserved
 -- LR/SC theorem statements are not yet stated.
@@ -83,7 +100,8 @@ import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelh  -- advice load
 import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelw  -- advice load word   DONE:
 
 -- System : Shuld be easy, I'll close when we get to it.
+import JoltBytecode.InstructionEquivalence.System.Ecall
+import JoltBytecode.InstructionEquivalence.System.Ebreak
 -- import JoltBytecode.InstructionEquivalence.Csrrs     -- TODO: CSR read-set
 -- import JoltBytecode.InstructionEquivalence.Csrrw     -- TODO: CSR read-write
--- import JoltBytecode.InstructionEquivalence.Ecall     -- TODO: environment call
 -- import JoltBytecode.InstructionEquivalence.Mret      -- TODO: machine return

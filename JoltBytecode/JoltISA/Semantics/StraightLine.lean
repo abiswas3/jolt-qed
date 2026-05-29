@@ -4,7 +4,6 @@ import JoltBytecode.JoltISA.Semantics.Instructions.ANDI
 import JoltBytecode.JoltISA.Semantics.Instructions.Add
 import JoltBytecode.JoltISA.Semantics.Instructions.Mul
 import JoltBytecode.JoltISA.Semantics.Instructions.ORI
-import JoltBytecode.JoltISA.Semantics.Instructions.SLLI
 import JoltBytecode.JoltISA.Semantics.Instructions.Sub
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualMULI
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualPow2
@@ -100,56 +99,6 @@ theorem execInstr_lui_vreg_run (vd : VReg) (imm : BitVec 64)
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
-/-- `SLL` on virtual registers shifts one virtual value by the low six bits of
-another virtual value.  This is the common "move the requested lane to the top
-of the dword" step for byte, halfword, and unsigned-word loads. -/
-theorem execInstr_sll_vreg_vreg_vreg_run (vd value shamt : VReg)
-    (js : SailJoltState) :
-    (execInstr (.SLL (.vreg vd) (.vreg value) (.vreg shamt))).run js =
-      .ok RETIRE_SUCCESS
-        { sail := js.sail
-          vregs := fun r =>
-            if r = vd then
-              shift_bits_left (js.vregs value) (Sail.BitVec.extractLsb (js.vregs shamt) 5 0)
-            else js.vregs r } := by
-  unfold execInstr readSrc writeDst readVReg writeVReg
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
-
-/-- `SLL` can also read the value from a real register and the shift amount
-from a virtual register before writing a virtual scratch register.  Store
-expansions use this to move the low byte/halfword/word of `rs2` into the target
-lane of the loaded dword. -/
-theorem execInstr_sll_xreg_vreg_vreg_run (vd : VReg) (rs : regidx) (shamt : VReg)
-    (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits rs js.sail = .ok x js.sail) :
-    (execInstr (.SLL (.vreg vd) (.xreg rs) (.vreg shamt))).run js =
-      .ok RETIRE_SUCCESS
-        { sail := js.sail
-          vregs := fun r =>
-            if r = vd then
-              shift_bits_left x (Sail.BitVec.extractLsb (js.vregs shamt) 5 0)
-            else js.vregs r } := by
-  unfold execInstr readSrc writeDst readVReg liftSail writeVReg
-  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
-
-/-- `SRLI` on virtual registers is a pure virtual-register update.  `SW` uses
-it to turn all-ones into the 32-bit store mask before shifting that mask into
-the target word lane. -/
-theorem execInstr_srli_vreg_vreg_run (vd vs : VReg) (shamt : BitVec 6)
-    (js : SailJoltState) :
-    (execInstr (.SRLI (.vreg vd) (.vreg vs) shamt)).run js =
-      .ok RETIRE_SUCCESS
-        { sail := js.sail
-          vregs := fun r => if r = vd then shift_bits_right (js.vregs vs) shamt else js.vregs r } := by
-  unfold execInstr readSrc writeDst readVReg writeVReg
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
-
 /-- `AND` on virtual registers is a pure virtual-register update.  Store
 expansions use it to keep only the changed bytes under the shifted mask. -/
 theorem execInstr_and_vreg_vreg_vreg_run (vd lhs rhs : VReg)
@@ -163,42 +112,6 @@ theorem execInstr_and_vreg_vreg_vreg_run (vd lhs rhs : VReg)
     get, getThe, MonadStateOf.get, EStateM.get,
     modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
-/-- `SRL` from virtual registers to a real register performs the final logical
-right shift for `LW`, writing the shifted value through Sail's architectural
-register write. -/
-theorem execInstr_srl_vreg_vreg_xreg_run (rd : regidx) (value shamt : VReg)
-    (js : SailJoltState) (s' : SailState)
-    (h : wX_bits rd
-        (shift_bits_right (js.vregs value) (Sail.BitVec.extractLsb (js.vregs shamt) 5 0))
-        js.sail = .ok () s') :
-    (execInstr (.SRL (.xreg rd) (.vreg value) (.vreg shamt))).run js =
-      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
-  unfold execInstr readSrc writeDst readVReg liftSail
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get, h]
-
-/-- `SRLI` from a virtual register to a real register performs the final
-zero-extending extraction step for unsigned byte, halfword, and word loads. -/
-theorem execInstr_srli_vreg_xreg_run (rd : regidx) (vs : VReg)
-    (shamt : BitVec 6) (js : SailJoltState) (s' : SailState)
-    (h : wX_bits rd (shift_bits_right (js.vregs vs) shamt) js.sail = .ok () s') :
-    (execInstr (.SRLI (.xreg rd) (.vreg vs) shamt)).run js =
-      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
-  unfold execInstr readSrc writeDst readVReg liftSail
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get, h]
-
-/-- `SRAI` from a virtual register to a real register performs the final
-sign-extending extraction step for signed byte and halfword loads. -/
-theorem execInstr_srai_vreg_xreg_run (rd : regidx) (vs : VReg)
-    (shamt : BitVec 6) (js : SailJoltState) (s' : SailState)
-    (h : wX_bits rd (shift_bits_right_arith (js.vregs vs) shamt) js.sail = .ok () s') :
-    (execInstr (.SRAI (.xreg rd) (.vreg vs) shamt)).run js =
-      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
-  unfold execInstr readSrc writeDst readVReg liftSail
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get, h]
-
 /-- Successful `LD`: if Sail's dword read pipeline returns `value`, then the
 Jolt-ISA `LD` writes that dword to the destination virtual register and
 continues with `RETIRE_SUCCESS`. -/
@@ -208,11 +121,11 @@ theorem ld_run_vreg_vreg_from_memory_read (vd base : VReg) (imm : BitVec 12)
       vmem_read_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 0 8
         (Load Data) false false false js.sail =
         .ok (Ok value) js.sail) :
-    (execInstr (.LD vd base imm)).run js =
+    (execInstr (.LD (.vreg vd) (.vreg base) imm)).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r => if r = vd then value else js.vregs r } := by
-  unfold execInstr readVReg liftSail writeVReg
+  unfold execInstr readSrc writeDst readVReg liftSail writeVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [h]
@@ -228,9 +141,9 @@ theorem execInstr_sd_vreg_run_of_write (base value : VReg) (imm : BitVec 12)
       vmem_write_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 8
         (js.vregs value) (Store Data) false false false js.sail =
         .ok (Ok true) s') :
-    (execInstr (.SD base value imm)).run js =
+    (execInstr (.SD (.vreg base) (.vreg value) imm)).run js =
       .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
-  unfold execInstr readVReg liftSail
+  unfold execInstr readSrc readVReg liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [h]

@@ -34,7 +34,7 @@ def loadSetupPhase (imm : BitVec 12) (rs1 : regidx) : JoltISA.Program :=
 
 /-- Common dword-load phase for load expansions: `LD v1, v1, 0`. -/
 def loadDwordPhase : JoltISA.Program :=
-  .instr (.LD 1 1 0) <|
+  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
   .done RETIRE_SUCCESS
 
 /-- Common setup-plus-dword-load phase. -/
@@ -96,7 +96,6 @@ theorem loadDwordPhase_run (js : SailJoltState) (js_setup : SailJoltState)
     (hsetup_sail : js_setup.sail = js.sail)
     (hsetup_v1 : js_setup.vregs 1 = addr)
     (haligned : AlignedDwordAccess addr)
-    (htranslate : BareTranslation addr js.sail)
     (hphys : FlatPhysMem addr 8 js.sail) :
     ∃ js_load,
       JoltISA.Program.Run loadDwordPhase js_setup js_load ∧
@@ -109,15 +108,13 @@ theorem loadDwordPhase_run (js : SailJoltState) (js_setup : SailJoltState)
       vregs := fun r => if r = (1 : JoltISA.VReg) then dword else js_setup.vregs r }
   have hcfg_setup : JoltConfig js_setup.sail := by
     simpa only [hsetup_sail] using hcfg
-  have htranslate_setup : BareTranslation addr js_setup.sail := by
-    simpa only [hsetup_sail] using htranslate
   have hphys_setup : FlatPhysMem addr 8 js_setup.sail := by
     simpa only [hsetup_sail] using hphys
   have hdword : DwordLoadAssumptions addr js_setup.sail :=
-    dword_load_assumptions_of_aligned_translate_phys
-      addr js_setup.sail haligned htranslate_setup hphys_setup
+    dword_load_assumptions_of_aligned_phys
+      addr js_setup.sail haligned hphys_setup
   have h_ld_succeeds :
-      (JoltISA.execInstr (.LD 1 1 0)).run js_setup =
+      (JoltISA.execInstr (.LD (.vreg 1) (.vreg 1) 0)).run js_setup =
         .ok RETIRE_SUCCESS js_load := by
     have hld :=
       vreg_LD_run_of_dword_assumptions 1 1 js_setup addr hsetup_v1 hcfg_setup hdword
@@ -139,8 +136,6 @@ theorem loadPhase_run (imm : BitVec 12) (rs1 : regidx)
     (js : SailJoltState) (val : BitVec 64)
     (hcfg : JoltConfig js.sail)
     (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_translate :
-      BareTranslation (compute_aligned_dword_base_address val imm) js.sail)
     (h_dword_phys :
       FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load,
@@ -158,7 +153,7 @@ theorem loadPhase_run (imm : BitVec 12) (rs1 : regidx)
       (aligned_dword_addr_is_aligned_dword_access val imm)
   obtain ⟨js_load, h_load_succeeds, h_load_sail, h_load_v0_raw, h_load_v1⟩ :=
     loadDwordPhase_run js js_setup (compute_aligned_dword_base_address val imm)
-      hcfg h_setup_sail h_setup_v1 h_daddr_aligned h_dword_translate h_dword_phys
+      hcfg h_setup_sail h_setup_v1 h_daddr_aligned h_dword_phys
   have h_phase_succeeds :
       JoltISA.Program.Run (loadPhase imm rs1) js js_load := by
     unfold loadPhase

@@ -43,59 +43,103 @@ def sraiwBitmask (shamt : BitVec 5) : Nat :=
   let ones := (1 <<< (64 - shift)) - 1
   ones <<< shift
 
+/-- Immediate multiplier used by Rust's `SLLI` inline sequence. -/
+def slliMultiplier (shamt : BitVec 6) : BitVec 64 :=
+  BitVec.ofNat 64 (2 ^ shamt.toNat)
+
+/-- Rust `SLLI::inline_sequence`: multiply by the immediate power of two. -/
+def slliBlock (dst : Dst) (src : Src) (shamt : BitVec 6) (tail : Program) : Program :=
+  .instr (.VirtualMULI dst src (slliMultiplier shamt)) tail
+
+/-- Rust `SLL::inline_sequence`: compute `2 ^ shift[5:0]` in a scratch
+virtual register, then multiply the value by that power of two. -/
+def sllBlock (dst : Dst) (value shift : Src) (scratch : VReg)
+    (tail : Program) : Program :=
+  .instr (.VirtualPow2 (.vreg scratch) shift) <|
+  .instr (.MUL dst value (.vreg scratch)) tail
+
+/-- Rust `SRAI::inline_sequence`: run `VirtualSRAI` with the encoded bitmask. -/
+def sraiBlock (dst : Dst) (src : Src) (shamt : BitVec 6) (tail : Program) : Program :=
+  .instr (.VirtualSRAI dst src (sraiBitmask shamt)) tail
+
+/-- Rust `SRLI::inline_sequence`: run `VirtualSRLI` with the encoded bitmask. -/
+def srliBlock (dst : Dst) (src : Src) (shamt : BitVec 6) (tail : Program) : Program :=
+  .instr (.VirtualSRLI dst src (srliBitmask shamt)) tail
+
+/-- Rust `SRL::inline_sequence`: compute the right-shift bitmask in a scratch
+virtual register, then run `VirtualSRL` with that bitmask. -/
+def srlBlock (dst : Dst) (value shift : Src) (scratch : VReg)
+    (tail : Program) : Program :=
+  .instr (.VirtualShiftRightBitmask (.vreg scratch) shift) <|
+  .instr (.VirtualSRL dst value (.vreg scratch)) tail
+
 /-- `SLL`: compute `2 ^ rs2[5:0]` in `v0`, then multiply `rs1` by it. -/
 def sllProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualPow2 (.vreg 0) (.xreg rs2)) <|
   .instr (.MUL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
   .done RETIRE_SUCCESS
 
 /-- `SLLI`: multiply `rs1` by the immediate power of two. -/
 def slliProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
-  .instr (.VirtualMULI (.xreg rd) (.xreg rs1) (BitVec.ofNat 64 (2 ^ shamt.toNat))) <|
+  pureWritebackTraceProgram rd <|
+  slliBlock (.xreg rd) (.xreg rs1) shamt <|
   .done RETIRE_SUCCESS
 
 /-- `SRL`: compute a right-shift bitmask in `v0`, then run `VirtualSRL`. -/
 def srlProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualShiftRightBitmask (.vreg 0) (.xreg rs2)) <|
   .instr (.VirtualSRL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
   .done RETIRE_SUCCESS
 
 /-- `SRLI`: run `VirtualSRLI` with the statically encoded bitmask. -/
 def srliProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualSRLI (.xreg rd) (.xreg rs1) (srliBitmask shamt)) <|
   .done RETIRE_SUCCESS
 
 /-- `SRA`: compute a right-shift bitmask in `v0`, then run `VirtualSRA`. -/
 def sraProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualShiftRightBitmask (.vreg 0) (.xreg rs2)) <|
   .instr (.VirtualSRA (.xreg rd) (.xreg rs1) (.vreg 0)) <|
   .done RETIRE_SUCCESS
 
 /-- `SRAI`: run `VirtualSRAI` with the statically encoded bitmask. -/
 def sraiProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualSRAI (.xreg rd) (.xreg rs1) (sraiBitmask shamt)) <|
   .done RETIRE_SUCCESS
 
-/-- `ADDW`: ordinary 64-bit `ADD`, then virtual sign-extend-word. -/
+/-- `ADDW` as reached through Rust `Instruction::trace`.
+
+If the destination is architectural register `x0`, Rust emits the pure
+writeback no-op replacement `ADDI x0, x0, 0`; otherwise it uses ADDW's
+ordinary instruction-specific `inline_sequence`. -/
 def addwProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SUBW`: ordinary 64-bit `SUB`, then virtual sign-extend-word. -/
 def subwProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `MULW`: ordinary 64-bit `MUL`, then virtual sign-extend-word. -/
 def mulwProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SLLW`: compute `2 ^ rs2[4:0]` in `v0`, multiply, then sign-extend. -/
 def sllwProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualPow2W (.vreg 0) (.xreg rs2)) <|
   .instr (.MUL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
@@ -104,7 +148,8 @@ def sllwProgram (rs2 rs1 rd : regidx) : Program :=
 /-- `SRLW`: shift `rs1` left into the high word, encode `rs2 | 32` as a
 bitmask, logically shift right, then sign-extend. -/
 def srlwProgram (rs2 rs1 rd : regidx) : Program :=
-  .instr (.SLLI (.vreg 0) (.xreg rs1) (32 : BitVec 6)) <|
+  pureWritebackTraceProgram rd <|
+  slliBlock (.vreg 0) (.xreg rs1) (32 : BitVec 6) <|
   .instr (.ORI (.vreg 1) (.xreg rs2) (32 : BitVec 12)) <|
   .instr (.VirtualShiftRightBitmask (.vreg 1) (.vreg 1)) <|
   .instr (.VirtualSRL (.xreg rd) (.vreg 0) (.vreg 1)) <|
@@ -114,6 +159,7 @@ def srlwProgram (rs2 rs1 rd : regidx) : Program :=
 /-- `SRAW`: sign-extend the low word into `v0`, mask the shift amount in `v1`,
 encode that mask as a bitmask, arithmetically shift right, then sign-extend. -/
 def srawProgram (rs2 rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualSignExtendWord (.vreg 0) (.xreg rs1)) <|
   .instr (.ANDI (.vreg 1) (.xreg rs2) (0x1f : BitVec 12)) <|
   .instr (.VirtualShiftRightBitmask (.vreg 1) (.vreg 1)) <|
@@ -123,12 +169,14 @@ def srawProgram (rs2 rs1 rd : regidx) : Program :=
 
 /-- `ADDIW`: ordinary `ADDI`, then virtual sign-extend-word. -/
 def addiwProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.ADDI (.xreg rd) (.xreg rs1) imm) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
 /-- `SLLIW`: multiply by the immediate power of two, then sign-extend. -/
 def slliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualMULI (.xreg rd) (.xreg rs1) (BitVec.ofNat 64 (2 ^ shamt.toNat))) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
@@ -136,7 +184,8 @@ def slliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
 /-- `SRLIW`: shift `rs1` left into the high word, logically shift right by the
 encoded immediate bitmask, then sign-extend. -/
 def srliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
-  .instr (.SLLI (.vreg 0) (.xreg rs1) (32 : BitVec 6)) <|
+  pureWritebackTraceProgram rd <|
+  slliBlock (.vreg 0) (.xreg rs1) (32 : BitVec 6) <|
   .instr (.VirtualSRLI (.xreg rd) (.vreg 0) (srliwBitmask shamt)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
@@ -144,6 +193,7 @@ def srliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
 /-- `SRAIW`: sign-extend `rs1[31:0]` into `v1`, arithmetically shift right by
 the encoded immediate bitmask, then sign-extend again. -/
 def sraiwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
+  pureWritebackTraceProgram rd <|
   .instr (.VirtualSignExtendWord (.vreg 1) (.xreg rs1)) <|
   .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiwBitmask shamt)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|

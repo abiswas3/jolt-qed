@@ -124,9 +124,6 @@ def execInstr : Instr → JoltMonad ExecutionResult
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
-  | .EBREAK address => do
-      liftSail (Sail.writeReg Register.PC address)
-      pure RETIRE_SUCCESS
   | .FENCE =>
       pure RETIRE_SUCCESS
   | .ADD dst lhs rhs => do
@@ -143,11 +140,6 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc lhs
       let y ← readSrc rhs
       writeDst dst (x * y)
-      pure RETIRE_SUCCESS
-  | .MULH dst lhs rhs => do
-      let x ← readSrc lhs
-      let y ← readSrc rhs
-      writeDst dst (mulhs x y)
       pure RETIRE_SUCCESS
   | .MULHU dst lhs rhs => do
       let x ← readSrc lhs
@@ -279,28 +271,6 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let y ← readSrc rhs
       writeDst dst (jolt_sltu_value x y)
       pure RETIRE_SUCCESS
-  | .SLLI dst src shamt => do
-      let x ← readSrc src
-      writeDst dst (shift_bits_left x shamt)
-      pure RETIRE_SUCCESS
-  | .SRLI dst src shamt => do
-      let x ← readSrc src
-      writeDst dst (shift_bits_right x shamt)
-      pure RETIRE_SUCCESS
-  | .SRAI dst src shamt => do
-      let x ← readSrc src
-      writeDst dst (shift_bits_right_arith x shamt)
-      pure RETIRE_SUCCESS
-  | .SLL dst value shamt => do
-      let x ← readSrc value
-      let y ← readSrc shamt
-      writeDst dst (shift_bits_left x (Sail.BitVec.extractLsb y 5 0))
-      pure RETIRE_SUCCESS
-  | .SRL dst value shamt => do
-      let x ← readSrc value
-      let y ← readSrc shamt
-      writeDst dst (shift_bits_right x (Sail.BitVec.extractLsb y 5 0))
-      pure RETIRE_SUCCESS
   | .VirtualSignExtendWord dst src => do
       let x ← readSrc src
       writeDst dst (sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0))
@@ -313,60 +283,36 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc src
       writeDst dst (jolt_movsign_value x)
       pure RETIRE_SUCCESS
-  | .VirtualAssertHalfwordAlignment base imm => do
+  | .VirtualAssertHalfwordAlignment base imm fault => do
       let baseValue ← liftSail (rX_bits base)
       let addr := baseValue + sign_extend (m := 64) imm
       if addr &&& (1 : BitVec 64) = 0 then
         pure RETIRE_SUCCESS
       else
-        throw (Error.Assertion "VirtualAssertHalfwordAlignment")
-  | .VirtualAssertWordAlignment base imm => do
+        pure (ExecutionResult.Memory_Exception (Virtaddr addr, fault))
+  | .VirtualAssertWordAlignment base imm fault => do
       let baseValue ← liftSail (rX_bits base)
       let addr := baseValue + sign_extend (m := 64) imm
       if addr &&& (3 : BitVec 64) = 0 then
         pure RETIRE_SUCCESS
       else
-        throw (Error.Assertion "VirtualAssertWordAlignment")
-  | .VirtualAssertLoadAlignment base imm mask => do
+        pure (ExecutionResult.Memory_Exception (Virtaddr addr, fault))
+  | .VirtualAssertDwordAlignment base imm fault => do
       let baseValue ← liftSail (rX_bits base)
       let addr := baseValue + sign_extend (m := 64) imm
-      if addr &&& mask ≠ 0 then
-        pure (ExecutionResult.Memory_Exception
-          (Virtaddr addr, ExceptionType.E_Load_Addr_Align ()))
-      else
+      if addr &&& (7 : BitVec 64) = 0 then
         pure RETIRE_SUCCESS
-  | .VirtualAssertStoreAlignment base imm mask => do
-      let baseValue ← liftSail (rX_bits base)
-      let addr := baseValue + sign_extend (m := 64) imm
-      if addr &&& mask ≠ 0 then
-        pure (ExecutionResult.Memory_Exception
-          (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ()))
       else
-        pure RETIRE_SUCCESS
-  | .LD vd base imm => do
-      let baseValue ← readVReg base
-      let addr := baseValue + sign_extend (m := 64) imm
-      match ← liftSail (vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false) with
-      | .Ok dword =>
-          writeVReg vd dword
-          pure RETIRE_SUCCESS
-      | .Err e => pure e
-  | .LDFrom vd base imm => do
+        pure (ExecutionResult.Memory_Exception (Virtaddr addr, fault))
+  | .LD dst base imm => do
       let baseValue ← readSrc base
       let addr := baseValue + sign_extend (m := 64) imm
       match ← liftSail (vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false) with
       | .Ok dword =>
-          writeVReg vd dword
+          writeDst dst dword
           pure RETIRE_SUCCESS
       | .Err e => pure e
   | .SD base value imm => do
-      let baseValue ← readVReg base
-      let addr := baseValue + sign_extend (m := 64) imm
-      let stored ← readVReg value
-      match ← liftSail (vmem_write_addr (Virtaddr addr) 8 stored (Store Data) false false false) with
-      | .Ok _ => pure RETIRE_SUCCESS
-      | .Err e => pure e
-  | .SDFrom base value imm => do
       let baseValue ← readSrc base
       let addr := baseValue + sign_extend (m := 64) imm
       let stored ← readSrc value

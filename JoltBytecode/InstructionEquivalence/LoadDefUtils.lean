@@ -21,9 +21,9 @@ Shared type-level infrastructure used by both the load and store families:
 * **Address abbrevs**: `load_effective_address`, `aligned_dword_addr`,
   `compute_aligned_dword_base_address` — how to compute the effective
   target address and its 8-aligned enclosing dword.
-* **Assumption bundles**: `DwordLoadAssumptions` (aligned + translate +
-  FlatPhysMem of the dword), `LoadReadAssumptions` (aligned + translate +
-  FlatPhysMem for arbitrary width).
+* **Assumption bundles**: `DwordLoadAssumptions` (aligned + FlatPhysMem of
+  the dword), `LoadReadAssumptions` (aligned + FlatPhysMem for arbitrary
+  width). Translation follows from `JoltConfig`.
 * **Properties of `aligned_dword_addr`**: that it's 8-aligned, doesn't
   overflow on `+7`, and satisfies the full `AlignedDwordAccess` bundle.
   Used by every load-family decomposed proof.
@@ -52,15 +52,33 @@ abbrev compute_aligned_dword_base_address (val : BitVec 64) (imm : BitVec 12) : 
     load into a direct hashmap read. -/
 structure DwordLoadAssumptions (addr : BitVec 64) (s : SailState) : Prop where
   aligned : AlignedDwordAccess addr
-  translate : BareTranslation addr s
   phys : FlatPhysMem addr 8 s
 
 /-- Generic bundle for non-dword Sail load-pipeline assumptions. Width-specific
     overflow side conditions, when needed, remain separate. -/
 structure LoadReadAssumptions (addr : BitVec 64) (width : Nat) (s : SailState) : Prop where
   aligned : AlignedAccess addr width
-  translate : BareTranslation addr s
   phys : FlatPhysMem addr width s
+
+/-- Build load-read assumptions from alignment and physical-memory facts. -/
+theorem loadReadAssumptions_of_aligned_phys
+    (addr : BitVec 64) (width : Nat) (s : SailState)
+    (haligned : AlignedAccess addr width)
+    (hphys : FlatPhysMem addr width s) :
+    LoadReadAssumptions addr width s := by
+  exact
+    { aligned := haligned
+      phys := hphys }
+
+/-- Build dword-load assumptions from alignment and physical-memory facts. -/
+theorem dwordLoadAssumptions_of_aligned_phys
+    (addr : BitVec 64) (s : SailState)
+    (haligned : AlignedDwordAccess addr)
+    (hphys : FlatPhysMem addr 8 s) :
+    DwordLoadAssumptions addr s := by
+  exact
+    { aligned := haligned
+      phys := hphys }
 
 /-- `aligned_dword_addr` is just "effective address aligned down to 8 bytes". -/
 theorem aligned_dword_addr_eq (v : BitVec 64) (imm : BitVec 12) :
@@ -134,7 +152,7 @@ theorem aligned_dword_vmem_read_reduces (addr : BitVec 64) (s : SailState)
     vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false s =
       .ok (Ok (loaded_dword_at s addr)) s := by
   exact
-    vmem_read_addr_dword_reduces addr s hcfg hd.aligned hd.translate hd.phys
+    vmem_read_addr_dword_reduces addr s hcfg hd.aligned hd.phys
 
 /-- Specialised `vreg_LD` helper: if virtual source register `vs1` contains an
     aligned dword address satisfying the standard assumptions, then `vreg_LD`
@@ -143,7 +161,7 @@ theorem vreg_LD_run_of_dword_assumptions
     (vd vs1 : BitVec 7) (js : SailJoltState) (addr : BitVec 64)
     (hvs1 : js.vregs vs1 = addr) (hcfg : JoltConfig js.sail)
     (hd : DwordLoadAssumptions addr js.sail) :
-    (JoltISA.execInstr (.LD vd vs1 0)).run js = .ok RETIRE_SUCCESS
+    (JoltISA.execInstr (.LD (.vreg vd) (.vreg vs1) 0)).run js = .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
           if r = vd then loaded_dword_at js.sail addr else js.vregs r } := by

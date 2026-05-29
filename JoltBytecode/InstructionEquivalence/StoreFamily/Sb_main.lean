@@ -59,8 +59,6 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     (hsetup : StoreSplice.ByteStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (h_dword_translate :
-      BareTranslation (compute_aligned_dword_base_address rs1_val imm) js.sail)
     (h_dword_phys :
       FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
     (hwrite_dword :
@@ -80,12 +78,12 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
           (compute_aligned_dword_base_address rs1_val imm)
           (sbSplicedDword imm rs1_val rs2_val js.sail) := by
   let writeTail : JoltISA.Program :=
-    .instr (.SD 1 2 0) <| .done RETIRE_SUCCESS
+    .instr (.SD (.vreg 1) (.vreg 2) 0) <| .done RETIRE_SUCCESS
   let spliceTail : JoltISA.Program :=
-    .instr (.SLLI (.vreg 3) (.vreg 0) (3 : BitVec 6)) <|
+    JoltISA.slliBlock (.vreg 3) (.vreg 0) (3 : BitVec 6) <|
     .instr (.LUI (.vreg 0) (0xff : BitVec 64)) <|
-    .instr (.SLL (.vreg 0) (.vreg 0) (.vreg 3)) <|
-    .instr (.SLL (.vreg 3) (.xreg rs2) (.vreg 3)) <|
+    JoltISA.sllBlock (.vreg 0) (.vreg 0) (.vreg 3) (4 : JoltISA.VReg) <|
+    JoltISA.sllBlock (.vreg 3) (.xreg rs2) (.vreg 3) (4 : JoltISA.VReg) <|
     .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 3)) <|
     .instr (.AND (.vreg 3) (.vreg 3) (.vreg 0)) <|
     .instr (.XOR (.vreg 2) (.vreg 2) (.vreg 3)) <|
@@ -94,7 +92,7 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   let dword_new := sbSplicedDword imm rs1_val rs2_val js.sail
   let finalSail := state_after_dword_store js.sail base dword_new
   rcases StoreProgramBlocks.setupBlock spliceTail imm rs1 js hcfg rs1_val hrs1
-      h_dword_translate h_dword_phys with
+      h_dword_phys with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
   rcases StoreProgramBlocks.byteSpliceBlock writeTail imm rs2 js js_load
       rs1_val rs2_val hsetup hload_sail hload_v0 hload_v1 hload_v2 hrs2 with
@@ -180,8 +178,6 @@ theorem sbProgram_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
     (hsetup : StoreSplice.ByteStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (h_dword_translate :
-      BareTranslation (compute_aligned_dword_base_address rs1_val imm) js.sail)
     (h_dword_phys :
       FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
     (hwrite_dword :
@@ -201,7 +197,7 @@ theorem sbProgram_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
           (load_effective_address rs1_val imm)
           (Sail.BitVec.extractLsb rs2_val 7 0) := by
   rcases sbProgram_reduces_to_dword_store imm rs2 rs1 js hcfg rs1_val rs2_val
-      hrs1 hrs2 hsetup h_dword_translate h_dword_phys hwrite_dword with
+      hrs1 hrs2 hsetup h_dword_phys hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   refine ⟨js', hjolt, ?_⟩
   rw [hjolt_sail]
@@ -250,8 +246,6 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (hsetup : StoreSplice.ByteStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (h_dword_translate :
-      BareTranslation (compute_aligned_dword_base_address rs1_val imm) js.sail)
     (h_dword_phys :
       FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
     (hwrite_dword :
@@ -274,7 +268,7 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     projectResult ((JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js) =
       (execute_STORE imm rs2 rs1 1).run js.sail := by
   rcases sbProgram_concrete imm rs2 rs1 js hcfg rs1_val rs2_val
-      hrs1 hrs2 hsetup h_dword_translate h_dword_phys hwrite_dword with
+      hrs1 hrs2 hsetup h_dword_phys hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_SB_reduces imm rs2 rs1 js rs1_val rs2_val
     hrs1 hrs2 hwrite_byte

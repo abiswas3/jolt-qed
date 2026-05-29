@@ -24,12 +24,33 @@ theorem execInstr_sd_vreg_run_of_write (base value : VReg) (imm : BitVec 12)
       vmem_write_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 8
         (js.vregs value) (Store Data) false false false js.sail =
         .ok (Ok true) s') :
-    (execInstr (.SD base value imm)).run js =
+    (execInstr (.SD (.vreg base) (.vreg value) imm)).run js =
       .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
-  unfold execInstr readVReg liftSail
+  unfold execInstr readSrc readVReg liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [h]
+  rfl
+
+/-- Successful `SD` from architectural-register base and value sources. -/
+theorem execInstr_sd_xreg_xreg_run_of_write
+    (base value : regidx) (imm : BitVec 12)
+    (js : SailJoltState) (baseValue stored : BitVec 64) (s' : SailState)
+    (hbase : rX_bits base js.sail = .ok baseValue js.sail)
+    (hvalue : rX_bits value js.sail = .ok stored js.sail)
+    (hwrite :
+      vmem_write_addr (Virtaddr (baseValue + sign_extend (m := 64) imm)) 8
+        stored (Store Data) false false false js.sail =
+        .ok (Ok true) s') :
+    (execInstr (.SD (.xreg base) (.xreg value) imm)).run js =
+      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+  unfold execInstr readSrc liftSail
+  simp only [bind, EStateM.bind, pure, EStateM.run]
+  rw [hbase]
+  dsimp only
+  rw [hvalue]
+  dsimp only
+  rw [hwrite]
   rfl
 
 end JoltISA

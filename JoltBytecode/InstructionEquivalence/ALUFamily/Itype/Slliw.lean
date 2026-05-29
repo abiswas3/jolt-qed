@@ -59,47 +59,44 @@ theorem execute_SHIFTIWOP_SLLIW_factored (shamt : BitVec 5) (rs1 rd : regidx) :
 
 The Jolt-ISA program uses `VirtualMULI` with the immediate power of two, then
 sign-extends the low word of `rd`. -/
-theorem slliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
-    ∃ (js' : SailJoltState) (v : BitVec 64),
-      rX_bits rs1 js.sail = .ok v js.sail ∧
+theorem slliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.slliwProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd (slliw_sail_operation shamt v) := by
-  obtain ⟨v, hok⟩ := hwf rs1
 
   -- Instruction 1: `VirtualMULI rd, rs1, 2^shamt` writes the shifted product to `rd`.
   let multiplier := BitVec.ofNat 64 (2 ^ shamt.toNat)
   let shiftedProduct := jolt_virtual_muli_value v multiplier
   obtain ⟨js_afterMuli, h_muli_reads_rs1, h_muli_writes_shiftedProduct,
       h_muli_succeeds⟩ :=
-    JoltISA.exists_state_after_virtual_muli_run_xreg_xreg rd rs1 multiplier js v hok
+    JoltISA.exists_state_after_virtual_muli_run_xreg_xreg rd rs1 multiplier js v h_read_rs1
 
   -- Instruction 2: `VirtualSignExtendWord rd, rd` writes the SLLIW result.
   let jolt_val := slliw_jolt_val shamt v
-  obtain ⟨js_afterSignExtend, h_sign_extend_reads_shifted_product,
-      h_sign_extend_writes_jolt_val, h_sign_extend_succeeds⟩ :=
-    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_source_write
-      rd rd js_afterMuli js.sail shiftedProduct hrd h_muli_writes_shiftedProduct
+  obtain ⟨js_afterSignExtend, h_sign_extend_writes_jolt_val, h_sign_extend_succeeds⟩ :=
+    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_same_register_write
+      rd js_afterMuli js.sail shiftedProduct h_muli_writes_shiftedProduct
 
   have h_program_succeeds :
       (JoltISA.execProgram (JoltISA.slliwProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSignExtend := by
     unfold JoltISA.slliwProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterMuli h_muli_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterMuli js_afterSignExtend
       h_sign_extend_succeeds]
     rfl
 
-  refine ⟨js_afterSignExtend, v, h_muli_reads_rs1, h_program_succeeds, ?_⟩
+  refine ⟨js_afterSignExtend, h_program_succeeds, ?_⟩
 
   -- The instruction trace leaves `rd` containing the Jolt SLLIW value.
   have h_final_jolt_value :
       js_afterSignExtend.sail = stateAfterWrite js.sail rd jolt_val := by
-    rw [h_sign_extend_writes_jolt_val, h_muli_writes_shiftedProduct]
-    change stateAfterWrite (stateAfterWrite js.sail rd shiftedProduct) rd jolt_val =
-      stateAfterWrite js.sail rd jolt_val
-    exact stateAfterWrite_stateAfterWrite rd shiftedProduct jolt_val js.sail
+    exact h_sign_extend_writes_jolt_val
 
   -- No more execution reasoning remains.
   -- The only real content left is the pure value equality:
@@ -115,12 +112,24 @@ theorem slliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx)
   exact h_final_jolt_value
 
 /-- Main program-level equivalence for `SLLIW`. -/
-theorem slliwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
+theorem slliwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.slliwProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIWOP shamt rs1 rd sopw.SLLIW).run js.sail := by
-  obtain ⟨js_afterSignExtend, v, h_read_rs1, h_program_succeeds, h_final_sail⟩ :=
-    slliwProgram_concrete shamt rs1 rd hrd js hwf
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.slliwProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_SHIFTIWOP_SLLIW_factored shamt rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1]
+    simp only [wX_bits_regidx_zero]
+
+  obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
+    slliwProgram_concrete shamt rs1 rd js v h_read_rs1 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

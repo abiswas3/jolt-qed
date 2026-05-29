@@ -179,7 +179,7 @@ theorem phase_quotient_product_run
       (rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31 :=
     (hs5_pres 5 (by decide)).trans hs4_v5
   refine ⟨s5, ?_, hs5_v0, hs5_v1, hs5_v2, hs5_v5, hs5_sail_orig⟩
-  rw [JoltISA.execProgram_instr_run_retire _ _ js s1 h1]
+  rw [h1 _]
   rw [JoltISA.execProgram_instr_run_retire _ _ s1 s2 h2]
   rw [JoltISA.execProgram_instr_run_retire _ _ s2 s3 h3]
   rw [JoltISA.execProgram_instr_run_retire _ _ s3 s4 h4]
@@ -226,7 +226,7 @@ theorem phase_remainder_bound_run
   have hs3_v5 : s3.vregs 5 = signedRem :=
     (chain_pres_3 hs1_pres hs2_pres hs3_pres 5 (by decide)).trans h_v5
   refine ⟨s3, ?_, hs3_v5, hs3_sail_orig⟩
-  rw [JoltISA.execProgram_instr_run_retire _ _ js s1 h1]
+  rw [h1 _]
   rw [JoltISA.execProgram_instr_run_retire _ _ s1 s2 h2]
   rw [JoltISA.execProgram_instr_run_retire _ _ s2 s3 h3]
   rw [JoltISA.execProgram_instr_run_retire _ _ s3 s3 h4]
@@ -337,11 +337,8 @@ theorem phase_quotient_product_run_sound
       ((rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31) ∧
     js₁.sail = js.sail := by
   unfold phase_quotient_product Divw.phase_quotient_product at hp
-  obtain ⟨s1, hrun1, hp⟩ :=
-    JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s1, hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 6 31 js
-  rw [hrun1_ex] at hrun1
-  cases hrun1
+  rw [hrun1_ex _] at hp
   obtain ⟨s2, hrun2, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s2, hrun2_ex, hs2_v5, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 5 1 4 s1
@@ -435,11 +432,8 @@ theorem phase_remainder_bound_run_sound
     js₁.vregs 5 = signedRem ∧
     js₁.sail = js.sail := by
   unfold phase_remainder_bound Divw.phase_remainder_bound at hp
-  obtain ⟨s1, hrun1, hp⟩ :=
-    JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s1, hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex 4 2 31 js
-  rw [hrun1_ex] at hrun1
-  cases hrun1
+  rw [hrun1_ex _] at hp
   obtain ⟨s2, hrun2, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s2, hrun2_ex, hs2_v3, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex 3 2 4 s1

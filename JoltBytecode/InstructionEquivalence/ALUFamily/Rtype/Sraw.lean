@@ -130,25 +130,22 @@ theorem srawProgram_concrete
     (rs2 : regidx)
     (rs1 : regidx)
     (rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState)
-    (hwf : WellFormed js) :
-    ∃ (js' : SailJoltState) (v1 v2 : BitVec 64),
-      rX_bits rs1 js.sail = .ok v1 js.sail ∧
-        rX_bits rs2 js.sail = .ok v2 js.sail ∧
-        (JoltISA.execProgram (JoltISA.srawProgram rs2 rs1 rd)).run js =
+    (v1 v2 : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    ∃ (js' : SailJoltState),
+      (JoltISA.execProgram (JoltISA.srawProgram rs2 rs1 rd)).run js =
           .ok RETIRE_SUCCESS js' ∧
         js'.sail = stateAfterWrite js.sail rd (sraw_sail_operation v1 v2) := by
-  obtain ⟨v1, hok1⟩ := hwf rs1
-  obtain ⟨v2, hok2⟩ := hwf rs2
-
   -- Instruction 1: `VirtualSignExtendWord v0, rs1` writes the signed source word to `v0`.
   let signedSource := sign_extend (m := 64) (Sail.BitVec.extractLsb v1 31 0)
   obtain ⟨js_afterSourceSignExtend, h_source_sign_extend_reads_rs1,
       h_source_sign_extend_keeps_sail, h_source_sign_extend_writes_signedSource,
       _, h_source_sign_extend_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_sign_extend_word_run_vreg_xreg
-      (0 : JoltISA.VReg) rs1 js v1 hok1
+      (0 : JoltISA.VReg) rs1 js v1 h_read_rs1
 
   -- Instruction 2: `ANDI v1, rs2, 0x1f` writes the masked shift amount to `v1`.
   let maskedShift := v2 &&& sign_extend (m := 64) (0x1f : BitVec 12)
@@ -157,7 +154,7 @@ theorem srawProgram_concrete
     JoltISA.exists_state_after_andi_run_vreg_xreg_preserving_value
       (1 : JoltISA.VReg) (0 : JoltISA.VReg) rs2 (0x1f : BitVec 12)
       js_afterSourceSignExtend js.sail v2 signedSource
-      h_source_sign_extend_keeps_sail hok2 h_source_sign_extend_writes_signedSource
+      h_source_sign_extend_keeps_sail h_read_rs2 h_source_sign_extend_writes_signedSource
       vreg0_ne_vreg1
 
   -- Instruction 3: `VirtualShiftRightBitmask v1, v1` writes the shift bitmask to `v1`.
@@ -180,16 +177,16 @@ theorem srawProgram_concrete
 
   -- Instruction 5: `VirtualSignExtendWord rd, rd` writes the SRAW result.
   let jolt_val := sraw_jolt_val v1 v2
-  obtain ⟨js_afterSignExtend, h_sign_extend_reads_shifted_result,
-      h_sign_extend_writes_jolt_val, h_sign_extend_succeeds⟩ :=
-    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_source_write
-      rd rd js_afterSra js.sail shiftedResult hrd h_sra_writes_shiftedResult
+  obtain ⟨js_afterSignExtend, h_sign_extend_writes_jolt_val, h_sign_extend_succeeds⟩ :=
+    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_same_register_write
+      rd js_afterSra js.sail shiftedResult h_sra_writes_shiftedResult
 
   -- Full program succeeds by stepping through the five instruction runs.
   have h_program_succeeds :
       (JoltISA.execProgram (JoltISA.srawProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSignExtend := by
     unfold JoltISA.srawProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSourceSignExtend
       h_source_sign_extend_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterSourceSignExtend js_afterAndi
@@ -202,15 +199,12 @@ theorem srawProgram_concrete
       h_sign_extend_succeeds]
     rfl
 
-  refine ⟨js_afterSignExtend, v1, v2, hok1, hok2, h_program_succeeds, ?_⟩
+  refine ⟨js_afterSignExtend, h_program_succeeds, ?_⟩
 
   -- The instruction trace leaves `rd` containing the Jolt SRAW value.
   have h_final_jolt_value :
       js_afterSignExtend.sail = stateAfterWrite js.sail rd jolt_val := by
-    rw [h_sign_extend_writes_jolt_val, h_sra_writes_shiftedResult]
-    change stateAfterWrite (stateAfterWrite js.sail rd shiftedResult) rd jolt_val =
-      stateAfterWrite js.sail rd jolt_val
-    exact stateAfterWrite_stateAfterWrite rd shiftedResult jolt_val js.sail
+    exact h_sign_extend_writes_jolt_val
 
   -- No more execution reasoning remains.
   -- The only real content left is the pure value equality:
@@ -230,14 +224,25 @@ theorem srawProgram_eq_sail
     (rs2 : regidx)
     (rs1 : regidx)
     (rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0)
     (js : SailJoltState)
-    (hwf : WellFormed js) :
+    (v1 v2 : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.srawProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SRAW).run js.sail := by
-  obtain ⟨js_afterSignExtend, v1, v2, h_read_rs1, h_read_rs2,
-      h_program_succeeds, h_final_sail⟩ :=
-    srawProgram_concrete rs2 rs1 rd hrd js hwf
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.srawProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_RTYPEW_SRAW_factored rs2 rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1, h_read_rs2]
+    simp only [wX_bits_regidx_zero]
+
+  obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
+    srawProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
 
   -- Use the concrete proof to collapse the Jolt side to its final Sail state.
   rw [h_program_succeeds]

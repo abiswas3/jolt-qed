@@ -92,29 +92,31 @@ The Jolt-ISA program contains the real emitted operation: `VirtualSRLI` with
 an encoded bitmask immediate.  The bridge lemma above converts that bitmask
 back into Sail's ordinary logical shift amount. -/
 theorem srliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
-    ∃ (js' : SailJoltState) (v : BitVec 64),
-      rX_bits rs1 js.sail = .ok v js.sail ∧
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    ∃ (js' : SailJoltState),
       (JoltISA.execProgram (JoltISA.srliProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd (srli_sail_operation shamt v) := by
-  obtain ⟨v, hok⟩ := hwf rs1
 
   -- Instruction 1: `VirtualSRLI rd, rs1, srliBitmask shamt` writes the shifted result to `rd`.
   let bitmask := JoltISA.srliBitmask shamt
   let jolt_val := srli_jolt_val shamt v
   obtain ⟨js_afterSrli, h_srli_reads_rs1, h_srli_writes_jolt_val,
       h_srli_succeeds⟩ :=
-    JoltISA.exists_state_after_virtual_srli_run_xreg_xreg rd rs1 bitmask js v hok
+    JoltISA.exists_state_after_virtual_srli_run_xreg_xreg rd rs1 bitmask js v h_read_rs1
 
   have h_program_succeeds :
       (JoltISA.execProgram (JoltISA.srliProgram shamt rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterSrli := by
     unfold JoltISA.srliProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSrli h_srli_succeeds]
     rfl
 
-  refine ⟨js_afterSrli, v, h_srli_reads_rs1, h_program_succeeds, ?_⟩
+  refine ⟨js_afterSrli, h_program_succeeds, ?_⟩
 
   -- The instruction trace leaves `rd` containing the Jolt SRLI value.
   have h_final_jolt_value :
@@ -137,11 +139,24 @@ theorem srliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
 
 /-- Main program-level equivalence for `SRLI`. -/
 theorem srliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
-    (js : SailJoltState) (hwf : WellFormed js) :
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.srliProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIOP shamt rs1 rd sop.SRLI).run js.sail := by
-  obtain ⟨js_afterSrli, v, h_read_rs1, h_program_succeeds, h_final_sail⟩ :=
-    srliProgram_concrete shamt rs1 rd js hwf
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.srliProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_SHIFTIOP_SRLI_factored shamt rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1]
+    simp only [wX_bits_regidx_zero]
+
+  obtain ⟨js_afterSrli, h_program_succeeds, h_final_sail⟩ :=
+    srliProgram_concrete shamt rs1 rd js v h_read_rs1 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]

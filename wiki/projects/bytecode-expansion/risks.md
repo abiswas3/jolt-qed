@@ -8,13 +8,14 @@ The following were flagged as **Risks** in an AI generated audit.
 ### Recursive Expansion Is Not Yet Final-Row Faithful
 
 ![Risk](https://img.shields.io/badge/risk-recursive_expansion-red)
+![Closed](https://img.shields.io/badge/closed-2026--05--19-brightgreen)
 
 - Issue: many Lean definitions model the source-level `emit_*` sequence, while
   Rust recursively lowers each emitted instruction through `inst.inline_sequence`.
 - Impact: a theorem can prove the source expansion correct without proving that
   the final Rust bytecode rows have the same semantics.
-- Response: prove compositional lowering theorems for the recursively lowered
-  pieces, then use them in caller proofs.
+- Response: closed by restricting `JoltISA.Instr` to final trace-row
+  instructions and using expansion blocks for source instructions that inline.
 
 ### Missing Virtual And Boundary Lowering Variants
 
@@ -53,13 +54,15 @@ The following were flagged as **Risks** in an AI generated audit.
 ### `rd = x0` Policy Is Outside Many Theorems
 
 ![Risk](https://img.shields.io/badge/risk-rd_x0-yellow)
+![Partial](https://img.shields.io/badge/partial-2026--05--19-orange)
 
 - Issue: many Lean theorems assume `rd != x0`, while Rust has explicit handling
   for `rd = x0`.
 - Impact: no-op replacement and side-effecting remaps are not covered by those
   theorem statements.
-- Response: classify the Rust behavior by instruction class and add wrapper
-  theorems for the dispatch policy.
+- Response: pure non-side-effecting writebacks now use Rust's no-op
+  `ADDI x0, x0, 0` replacement path. Side-effecting instructions remain open
+  because they need Rust-style virtual-register remapping.
 
 ### Trace Failure And Architectural Traps Are Mixed
 
@@ -108,12 +111,13 @@ The following were flagged as **Risks** in an AI generated audit.
 ### Store Proofs Are Still Behind Loads
 
 ![Risk](https://img.shields.io/badge/risk-stores-red)
+![Closed](https://img.shields.io/badge/closed-2026--05--19-brightgreen)
 
 - Issue: `SB`, `SH`, and parts of `SW` remain incomplete.
 - Impact: stores block a full bytecode-expansion theorem and interact directly
   with the memory-envelope risk.
-- Response: start with `SW`, prove the read-modify-write splice lemma once, then
-  instantiate it for `SW`, `SH`, and `SB`.
+- Response: closed by proving the `SB`, `SH`, and `SW` program equivalences
+  with shared store setup, splice, and final-store blocks.
 
 ### Word-Shift Bridge Lemmas Still Have Holes
 

@@ -201,16 +201,15 @@ private theorem vreg1_ne_vreg2 :
 The instruction blocks prove the emitted Jolt sequence writes
 `jolt_mulh_value`.  The final value block is the only place where the pure
 arithmetic theorem changes that Jolt value into Sail's `MULH` value. -/
-theorem mulhProgram_concrete (rs2 rs1 rd : regidx)
-    (hrd : rd ≠ regidx.Regidx 0) (js : SailJoltState) (hwf : WellFormed js) :
-    ∃ (jsf : SailJoltState) (v1 v2 : BitVec 64),
-      rX_bits rs1 js.sail = .ok v1 js.sail ∧
-      rX_bits rs2 js.sail = .ok v2 js.sail ∧
+theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (v1 v2 : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    ∃ (jsf : SailJoltState),
       (JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS jsf ∧
       jsf.sail = stateAfterWrite js.sail rd (mulhs v1 v2) := by
-  obtain ⟨v1, h_read_rs1⟩ := hwf rs1
-  obtain ⟨v2, h_read_rs2⟩ := hwf rs2
 
   -- Instruction 1: `VirtualMovsign v0, rs1` writes the sign mask of `rs1`.
   let rs1SignMask := jolt_movsign_value v1
@@ -309,6 +308,7 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx)
       (JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS js_afterFinalAdd := by
     unfold JoltISA.mulhProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterRs1SignMask
       h_rs1_sign_mask_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterRs1SignMask js_afterRs2SignMask
@@ -325,7 +325,7 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx)
       h_final_add_succeeds]
     rfl
 
-  refine ⟨js_afterFinalAdd, v1, v2, h_read_rs1, h_read_rs2, h_program_succeeds, ?_⟩
+  refine ⟨js_afterFinalAdd, h_program_succeeds, ?_⟩
 
   -- The instruction trace leaves `rd` containing the Jolt MULH value.
   have h_final_jolt_value :
@@ -348,13 +348,26 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx)
 
 /-- Main program-level theorem: interpreting the Jolt ISA `MULH` expansion has
 the same projected architectural result as Sail's `MULH` semantics. -/
-theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx) (hrd : rd ≠ regidx.Regidx 0)
-    (js : SailJoltState) (hwf : WellFormed js) :
+theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx)
+    (js : SailJoltState)
+    (v1 v2 : BitVec 64)
+    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
+    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js) =
     (execute_MUL rs2 rs1 rd mulhOp).run js.sail := by
-  obtain ⟨js_afterFinalAdd, v1, v2, h_read_rs1, h_read_rs2,
-      h_program_succeeds, h_final_sail⟩ :=
-    mulhProgram_concrete rs2 rs1 rd hrd js hwf
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.mulhProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    rw [execute_MULH_factored rs2 rs1 (regidx.Regidx 0)]
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    simp only [h_read_rs1, h_read_rs2]
+    simp only [wX_bits_regidx_zero]
+
+  obtain ⟨js_afterFinalAdd, h_program_succeeds, h_final_sail⟩ :=
+    mulhProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
 
   rw [h_program_succeeds]
   simp only [projectResult, project]
