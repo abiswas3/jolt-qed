@@ -1,5 +1,6 @@
 import JoltBytecode.JoltISA.Semantics
 import JoltBytecode.JoltISA.Expansions.ALU
+import JoltBytecode.JoltISA.VirtualRegisters
 
 /-!
 # Load-family Jolt expansion programs
@@ -23,73 +24,90 @@ open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
 
+/-- Rust load `v0`: effective address, then byte/halfword/word shift amount. -/
+def loadV0 : VReg := inlineTmp0
+
+/-- Rust load `v1`: aligned doubleword address, then loaded/shifted doubleword. -/
+def loadV1 : VReg := inlineTmp1
+
+/-- Recursive `SLL`/`SRL` scratch while Rust load `v0,v1` guards are live. -/
+def loadInlineTmp : VReg := inlineTmp2
+
+/-- Rust load allocation layout on RV64: top-level `v0`, `v1`, then the
+recursive shift helper's scratch while both guards are live. -/
+theorem load_allocate_layout :
+    allocateInstructionRegister [] = some (loadV0, [0]) ∧
+    allocateInstructionRegister [0] = some (loadV1, [1, 0]) ∧
+    allocateInstructionRegister [1, 0] = some (loadInlineTmp, [2, 1, 0]) := by
+  decide
+
 /-- Rust's RV64 `LB::inline_sequence`. -/
 def lbProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-  .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
-  .instr (.XORI (.vreg 0) (.vreg 0) 7) <|
-  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
-  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
-  .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiBitmask (56 : BitVec 6))) <|
+  .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
+  .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
+  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.XORI (.vreg loadV0) (.vreg loadV0) 7) <|
+  slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
+  sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
+  .instr (.VirtualSRAI (.xreg rd) (.vreg loadV1) (sraiBitmask (56 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LBU::inline_sequence`. -/
 def lbuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-  .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
-  .instr (.XORI (.vreg 0) (.vreg 0) 7) <|
-  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
-  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
-  .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (srliBitmask (56 : BitVec 6))) <|
+  .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
+  .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
+  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.XORI (.vreg loadV0) (.vreg loadV0) 7) <|
+  slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
+  sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
+  .instr (.VirtualSRLI (.xreg rd) (.vreg loadV1) (srliBitmask (56 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LH::inline_sequence`. -/
 def lhProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
-  .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-  .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
-  .instr (.XORI (.vreg 0) (.vreg 0) 6) <|
-  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
-  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
-  .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiBitmask (48 : BitVec 6))) <|
+  .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
+  .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
+  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.XORI (.vreg loadV0) (.vreg loadV0) 6) <|
+  slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
+  sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
+  .instr (.VirtualSRAI (.xreg rd) (.vreg loadV1) (sraiBitmask (48 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LHU::inline_sequence`. -/
 def lhuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
-  .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-  .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
-  .instr (.XORI (.vreg 0) (.vreg 0) 6) <|
-  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
-  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
-  .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (srliBitmask (48 : BitVec 6))) <|
+  .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
+  .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
+  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.XORI (.vreg loadV0) (.vreg loadV0) 6) <|
+  slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
+  sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
+  .instr (.VirtualSRLI (.xreg rd) (.vreg loadV1) (srliBitmask (48 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LW::inline_sequence`. -/
 def lwProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
-  .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-  .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
-  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
-  srlBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 1)) <|
+  .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
+  .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
+  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
+  srlBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg loadV1)) <|
   .done RETIRE_SUCCESS
 
 /-- Rust's RV64 `LWU::inline_sequence`. -/
 def lwuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
-  .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-  .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg 1) (.vreg 1) 0) <|
-  .instr (.XORI (.vreg 0) (.vreg 0) 4) <|
-  slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
-  sllBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : VReg) <|
-  .instr (.VirtualSRLI (.xreg rd) (.vreg 1) (srliBitmask (32 : BitVec 6))) <|
+  .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
+  .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
+  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.XORI (.vreg loadV0) (.vreg loadV0) 4) <|
+  slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
+  sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
+  .instr (.VirtualSRLI (.xreg rd) (.vreg loadV1) (srliBitmask (32 : BitVec 6))) <|
   .done RETIRE_SUCCESS
 
 end JoltISA

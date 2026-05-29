@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Semantics
+import JoltBytecode.JoltISA.VirtualRegisters
 
 /-!
 # System-instruction Jolt expansion programs
@@ -6,7 +7,7 @@ import JoltBytecode.JoltISA.Semantics
 These are literal transcriptions of the Rust expansion layer in
 `crates/jolt-program/src/expand/control_flow/{ecall,ebreak}.rs`.
 
-The reserved virtual registers follow `ExpansionAllocator`:
+The reserved virtual registers follow `tracer/src/utils/virtual_registers.rs`:
 
 * `v34`: trap handler / `mtvec`
 * `v36`: `mepc`
@@ -20,12 +21,8 @@ open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
 
-def trapHandlerVReg : VReg := 34
-def mepcVReg : VReg := 36
-def mcauseVReg : VReg := 37
-def mtvalVReg : VReg := 38
-def mstatusVReg : VReg := 39
-def systemScratchVReg : VReg := 40
+/-- Rust's first `allocate()` result for system expansions. -/
+def systemScratchVReg : VReg := inlineTmp0
 
 /-- Rust `expand_ecall`: materialize virtual trap CSRs and jump to `mtvec`. -/
 def ecallProgram : Program :=

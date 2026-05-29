@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Instruction
+import JoltBytecode.JoltISA.VirtualRegisters
 
 /-!
 # Jolt ISA ALU expansions
@@ -8,15 +9,57 @@ expansions.  They are intentionally close to the Rust `inline_sequence`
 methods: each constructor below corresponds to one emitted Jolt instruction,
 and temporary virtual registers are written explicitly.
 
-The fixed temporary convention used here matches the existing hand proofs:
-`v0` is the first scratch register and `v1` is the second scratch register.
-Later Rust-to-Lean extraction should replace these handwritten programs, but
-the theorem statements should not need to change.
+The fixed temporary convention used here follows Rust's allocator:
+`inlineTmp0` is virtual register 40, `inlineTmp1` is virtual register 41, and
+so on.
 -/
 
 open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
+
+/-- Rust `v_pow2` for `SLL` and `SLLW`. -/
+abbrev aluPow2VReg : VReg := inlineTmp0
+
+/-- Rust `v_bitmask` for `SRL` and `SRA`. -/
+abbrev aluBitmaskVReg : VReg := inlineTmp0
+
+/-- Rust `v_bitmask` for `SRLW`. -/
+abbrev srlwBitmaskVReg : VReg := inlineTmp0
+
+/-- Rust `v_rs1` for `SRLW`. -/
+abbrev srlwRs1VReg : VReg := inlineTmp1
+
+/-- Rust `v_rs1` for `SRAW`. -/
+abbrev srawRs1VReg : VReg := inlineTmp0
+
+/-- Rust `v_bitmask` for `SRAW`. -/
+abbrev srawBitmaskVReg : VReg := inlineTmp1
+
+/-- Rust `v_rs1` for `SRLIW` and `SRAIW`. -/
+abbrev shiftImmediateWordRs1VReg : VReg := inlineTmp0
+
+/-- One top-level Rust `allocate()` call from an empty instruction-local live
+set produces the single-scratch ALU shift guard. -/
+theorem aluSingleScratch_allocate_layout :
+    allocateInstructionRegister [] = some (aluPow2VReg, [0]) ∧
+    allocateInstructionRegister [] = some (aluBitmaskVReg, [0]) ∧
+    allocateInstructionRegister [] = some (shiftImmediateWordRs1VReg, [0]) := by
+  decide
+
+/-- Two top-level Rust `allocate()` calls from an empty instruction-local live
+set produce `SRLW`'s `v_bitmask`, `v_rs1` guards. -/
+theorem srlw_allocate_layout :
+    allocateInstructionRegister [] = some (srlwBitmaskVReg, [0]) ∧
+    allocateInstructionRegister [0] = some (srlwRs1VReg, [1, 0]) := by
+  decide
+
+/-- Two top-level Rust `allocate()` calls from an empty instruction-local live
+set produce `SRAW`'s `v_rs1`, `v_bitmask` guards. -/
+theorem sraw_allocate_layout :
+    allocateInstructionRegister [] = some (srawRs1VReg, [0]) ∧
+    allocateInstructionRegister [0] = some (srawBitmaskVReg, [1, 0]) := by
+  decide
 
 /-- Bitmask immediate used by RV64 `VirtualSRLI` for `SRLI`.  Its trailing-zero
 count is the six-bit shift amount. -/
@@ -73,11 +116,12 @@ def srlBlock (dst : Dst) (value shift : Src) (scratch : VReg)
   .instr (.VirtualShiftRightBitmask (.vreg scratch) shift) <|
   .instr (.VirtualSRL dst value (.vreg scratch)) tail
 
-/-- `SLL`: compute `2 ^ rs2[5:0]` in `v0`, then multiply `rs1` by it. -/
+/-- `SLL`: compute `2 ^ rs2[5:0]` in Rust's first scratch register, then
+multiply `rs1` by it. -/
 def sllProgram (rs2 rs1 rd : regidx) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualPow2 (.vreg 0) (.xreg rs2)) <|
-  .instr (.MUL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
+  .instr (.VirtualPow2 (.vreg inlineTmp0) (.xreg rs2)) <|
+  .instr (.MUL (.xreg rd) (.xreg rs1) (.vreg inlineTmp0)) <|
   .done RETIRE_SUCCESS
 
 /-- `SLLI`: multiply `rs1` by the immediate power of two. -/
@@ -86,11 +130,12 @@ def slliProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
   slliBlock (.xreg rd) (.xreg rs1) shamt <|
   .done RETIRE_SUCCESS
 
-/-- `SRL`: compute a right-shift bitmask in `v0`, then run `VirtualSRL`. -/
+/-- `SRL`: compute a right-shift bitmask in Rust's first scratch register,
+then run `VirtualSRL`. -/
 def srlProgram (rs2 rs1 rd : regidx) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualShiftRightBitmask (.vreg 0) (.xreg rs2)) <|
-  .instr (.VirtualSRL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
+  .instr (.VirtualShiftRightBitmask (.vreg inlineTmp0) (.xreg rs2)) <|
+  .instr (.VirtualSRL (.xreg rd) (.xreg rs1) (.vreg inlineTmp0)) <|
   .done RETIRE_SUCCESS
 
 /-- `SRLI`: run `VirtualSRLI` with the statically encoded bitmask. -/
@@ -99,11 +144,12 @@ def srliProgram (shamt : BitVec 6) (rs1 rd : regidx) : Program :=
   .instr (.VirtualSRLI (.xreg rd) (.xreg rs1) (srliBitmask shamt)) <|
   .done RETIRE_SUCCESS
 
-/-- `SRA`: compute a right-shift bitmask in `v0`, then run `VirtualSRA`. -/
+/-- `SRA`: compute a right-shift bitmask in Rust's first scratch register,
+then run `VirtualSRA`. -/
 def sraProgram (rs2 rs1 rd : regidx) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualShiftRightBitmask (.vreg 0) (.xreg rs2)) <|
-  .instr (.VirtualSRA (.xreg rd) (.xreg rs1) (.vreg 0)) <|
+  .instr (.VirtualShiftRightBitmask (.vreg inlineTmp0) (.xreg rs2)) <|
+  .instr (.VirtualSRA (.xreg rd) (.xreg rs1) (.vreg inlineTmp0)) <|
   .done RETIRE_SUCCESS
 
 /-- `SRAI`: run `VirtualSRAI` with the statically encoded bitmask. -/
@@ -137,11 +183,12 @@ def mulwProgram (rs2 rs1 rd : regidx) : Program :=
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
-/-- `SLLW`: compute `2 ^ rs2[4:0]` in `v0`, multiply, then sign-extend. -/
+/-- `SLLW`: compute `2 ^ rs2[4:0]` in Rust's first scratch register,
+multiply, then sign-extend. -/
 def sllwProgram (rs2 rs1 rd : regidx) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualPow2W (.vreg 0) (.xreg rs2)) <|
-  .instr (.MUL (.xreg rd) (.xreg rs1) (.vreg 0)) <|
+  .instr (.VirtualPow2W (.vreg inlineTmp0) (.xreg rs2)) <|
+  .instr (.MUL (.xreg rd) (.xreg rs1) (.vreg inlineTmp0)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
@@ -149,21 +196,22 @@ def sllwProgram (rs2 rs1 rd : regidx) : Program :=
 bitmask, logically shift right, then sign-extend. -/
 def srlwProgram (rs2 rs1 rd : regidx) : Program :=
   pureWritebackTraceProgram rd <|
-  slliBlock (.vreg 0) (.xreg rs1) (32 : BitVec 6) <|
-  .instr (.ORI (.vreg 1) (.xreg rs2) (32 : BitVec 12)) <|
-  .instr (.VirtualShiftRightBitmask (.vreg 1) (.vreg 1)) <|
-  .instr (.VirtualSRL (.xreg rd) (.vreg 0) (.vreg 1)) <|
+  slliBlock (.vreg inlineTmp1) (.xreg rs1) (32 : BitVec 6) <|
+  .instr (.ORI (.vreg inlineTmp0) (.xreg rs2) (32 : BitVec 12)) <|
+  .instr (.VirtualShiftRightBitmask (.vreg inlineTmp0) (.vreg inlineTmp0)) <|
+  .instr (.VirtualSRL (.xreg rd) (.vreg inlineTmp1) (.vreg inlineTmp0)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
-/-- `SRAW`: sign-extend the low word into `v0`, mask the shift amount in `v1`,
-encode that mask as a bitmask, arithmetically shift right, then sign-extend. -/
+/-- `SRAW`: sign-extend the low word into Rust's first scratch register, mask
+the shift amount in Rust's second scratch register, encode that mask in place as a
+bitmask, arithmetically shift right, then sign-extend. -/
 def srawProgram (rs2 rs1 rd : regidx) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualSignExtendWord (.vreg 0) (.xreg rs1)) <|
-  .instr (.ANDI (.vreg 1) (.xreg rs2) (0x1f : BitVec 12)) <|
-  .instr (.VirtualShiftRightBitmask (.vreg 1) (.vreg 1)) <|
-  .instr (.VirtualSRA (.xreg rd) (.vreg 0) (.vreg 1)) <|
+  .instr (.VirtualSignExtendWord (.vreg inlineTmp0) (.xreg rs1)) <|
+  .instr (.ANDI (.vreg inlineTmp1) (.xreg rs2) (0x1f : BitVec 12)) <|
+  .instr (.VirtualShiftRightBitmask (.vreg inlineTmp1) (.vreg inlineTmp1)) <|
+  .instr (.VirtualSRA (.xreg rd) (.vreg inlineTmp0) (.vreg inlineTmp1)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
@@ -185,17 +233,18 @@ def slliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
 encoded immediate bitmask, then sign-extend. -/
 def srliwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
   pureWritebackTraceProgram rd <|
-  slliBlock (.vreg 0) (.xreg rs1) (32 : BitVec 6) <|
-  .instr (.VirtualSRLI (.xreg rd) (.vreg 0) (srliwBitmask shamt)) <|
+  slliBlock (.vreg inlineTmp0) (.xreg rs1) (32 : BitVec 6) <|
+  .instr (.VirtualSRLI (.xreg rd) (.vreg inlineTmp0) (srliwBitmask shamt)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
-/-- `SRAIW`: sign-extend `rs1[31:0]` into `v1`, arithmetically shift right by
-the encoded immediate bitmask, then sign-extend again. -/
+/-- `SRAIW`: sign-extend `rs1[31:0]` into Rust's first scratch register,
+arithmetically shift right by the encoded immediate bitmask, then sign-extend
+again. -/
 def sraiwProgram (shamt : BitVec 5) (rs1 rd : regidx) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualSignExtendWord (.vreg 1) (.xreg rs1)) <|
-  .instr (.VirtualSRAI (.xreg rd) (.vreg 1) (sraiwBitmask shamt)) <|
+  .instr (.VirtualSignExtendWord (.vreg inlineTmp0) (.xreg rs1)) <|
+  .instr (.VirtualSRAI (.xreg rd) (.vreg inlineTmp0) (sraiwBitmask shamt)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
   .done RETIRE_SUCCESS
 
