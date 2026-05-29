@@ -3,7 +3,7 @@ import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.StoreDefUtils
 import JoltBytecode.InstructionEquivalence.StoreFamily.ProgramBlocks
-import JoltBytecode.InstructionEquivalence.StoreFamily.Splice
+import JoltBytecode.InstructionEquivalence.StoreFamily.Assumptions
 
 /-!
 # SH: top-down store-halfword equivalence
@@ -74,15 +74,15 @@ theorem shProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
           (compute_aligned_dword_base_address rs1_val imm)
           (shSplicedDword imm rs1_val rs2_val js.sail) := by
   let writeTail : JoltISA.Program :=
-    .instr (.SD (.vreg 1) (.vreg 2) 0) <| .done RETIRE_SUCCESS
+    .instr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0) <| .done RETIRE_SUCCESS
   let spliceTail : JoltISA.Program :=
-    JoltISA.slliBlock (.vreg 3) (.vreg 0) (3 : BitVec 6) <|
-    .instr (.LUI (.vreg 0) (0xffff : BitVec 64)) <|
-    JoltISA.sllBlock (.vreg 0) (.vreg 0) (.vreg 3) (4 : JoltISA.VReg) <|
-    JoltISA.sllBlock (.vreg 3) (.xreg rs2) (.vreg 3) (4 : JoltISA.VReg) <|
-    .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 3)) <|
-    .instr (.AND (.vreg 3) (.vreg 3) (.vreg 0)) <|
-    .instr (.XOR (.vreg 2) (.vreg 2) (.vreg 3)) <|
+    JoltISA.slliBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
+    .instr (.LUI (.vreg JoltISA.inlineTmp0) (0xffff : BitVec 64)) <|
+    JoltISA.sllBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp3) JoltISA.inlineTmp4 <|
+    JoltISA.sllBlock (.vreg JoltISA.inlineTmp3) (.xreg rs2) (.vreg JoltISA.inlineTmp3) JoltISA.inlineTmp4 <|
+    .instr (.XOR (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
+    .instr (.AND (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
     writeTail
   let base := compute_aligned_dword_base_address rs1_val imm
   let dword_new := shSplicedDword imm rs1_val rs2_val js.sail
@@ -94,7 +94,7 @@ theorem shProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   rcases StoreProgramBlocks.halfwordSpliceBlock writeTail imm rs2 js js_load
       rs1_val rs2_val hsetup hload_sail hload_v0 hload_v1 hload_v2 hrs2 with
     ⟨js_splice, hsplice_run, hsplice_sail, hsplice_v1, hsplice_v2⟩
-  have hdword_new : js_splice.vregs 2 = dword_new := by
+  have hdword_new : js_splice.vregs JoltISA.inlineTmp2 = dword_new := by
     simpa [dword_new, shSplicedDword] using hsplice_v2
   have hwrite_for_sd :
       vmem_write_addr (Virtaddr base) 8 dword_new
@@ -231,12 +231,21 @@ theorem shProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (rs1_val rs2_val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (hsetup : StoreSplice.HalfwordStoreSetup
+    (hmem : StoreFamily.StoreMemoryAssumptions
       (load_effective_address rs1_val imm)
-      (compute_aligned_dword_base_address rs1_val imm))
-    (h_dword_phys :
-      FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
-    (hwrite_dword :
+      (compute_aligned_dword_base_address rs1_val imm) 2 js.sail)
+    (halign : load_effective_address rs1_val imm &&& (1 : BitVec 64) = 0) :
+    projectResult ((JoltISA.execProgram (JoltISA.shProgram imm rs2 rs1)).run js) =
+      (execute_STORE imm rs2 rs1 2).run js.sail := by
+  have hsetup : StoreSplice.HalfwordStoreSetup
+      (load_effective_address rs1_val imm)
+      (compute_aligned_dword_base_address rs1_val imm) :=
+    StoreFamily.halfwordStoreSetup_of_effective_address
+      rs1_val imm halign
+  have h_dword_phys :
+      FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail :=
+    hmem.jolt_load_mem
+  have hwrite_dword :
       vmem_write_addr
         (Virtaddr (compute_aligned_dword_base_address rs1_val imm)) 8
         (shSplicedDword imm rs1_val rs2_val js.sail)
@@ -244,17 +253,21 @@ theorem shProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
       .ok (Ok true)
         (state_after_dword_store js.sail
           (compute_aligned_dword_base_address rs1_val imm)
-          (shSplicedDword imm rs1_val rs2_val js.sail)))
-    (hwrite_halfword :
+          (shSplicedDword imm rs1_val rs2_val js.sail)) :=
+    StoreFamily.vmem_write_addr_store_dword_base_reduces
+      rs1_val imm (shSplicedDword imm rs1_val rs2_val js.sail)
+      js.sail hcfg hmem
+  have hwrite_halfword :
       vmem_write rs1 (sign_extend (m := 64) imm) 2
         (Sail.BitVec.extractLsb rs2_val 15 0)
         (Store Data) false false false js.sail =
       .ok (Ok true)
         (state_after_halfword_store js.sail
           (load_effective_address rs1_val imm)
-          (Sail.BitVec.extractLsb rs2_val 15 0))) :
-    projectResult ((JoltISA.execProgram (JoltISA.shProgram imm rs2 rs1)).run js) =
-      (execute_STORE imm rs2 rs1 2).run js.sail := by
+          (Sail.BitVec.extractLsb rs2_val 15 0)) :=
+    StoreFamily.vmem_write_halfword_store_reduces imm rs1 js.sail hcfg
+      rs1_val hrs1 (Sail.BitVec.extractLsb rs2_val 15 0)
+      halign hmem.sail_store_mem
   rcases shProgram_concrete_aligned imm rs2 rs1 js hcfg rs1_val rs2_val
       hrs1 hrs2 hsetup h_dword_phys hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
@@ -277,17 +290,17 @@ theorem shProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
         (Virtaddr (load_effective_address rs1_val imm),
           ExceptionType.E_SAMO_Addr_Align ())) js := by
   let tail : JoltISA.Program :=
-    .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-    .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-    .instr (.LD (.vreg 2) (.vreg 1) 0) <|
-    JoltISA.slliBlock (.vreg 3) (.vreg 0) (3 : BitVec 6) <|
-    .instr (.LUI (.vreg 0) (0xffff : BitVec 64)) <|
-    JoltISA.sllBlock (.vreg 0) (.vreg 0) (.vreg 3) (4 : JoltISA.VReg) <|
-    JoltISA.sllBlock (.vreg 3) (.xreg rs2) (.vreg 3) (4 : JoltISA.VReg) <|
-    .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 3)) <|
-    .instr (.AND (.vreg 3) (.vreg 3) (.vreg 0)) <|
-    .instr (.XOR (.vreg 2) (.vreg 2) (.vreg 3)) <|
-    .instr (.SD (.vreg 1) (.vreg 2) 0) <|
+    .instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
+    .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
+    .instr (.LD (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp1) 0) <|
+    JoltISA.slliBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
+    .instr (.LUI (.vreg JoltISA.inlineTmp0) (0xffff : BitVec 64)) <|
+    JoltISA.sllBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp3) JoltISA.inlineTmp4 <|
+    JoltISA.sllBlock (.vreg JoltISA.inlineTmp3) (.xreg rs2) (.vreg JoltISA.inlineTmp3) JoltISA.inlineTmp4 <|
+    .instr (.XOR (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
+    .instr (.AND (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
+    .instr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0) <|
     .done RETIRE_SUCCESS
   have h := StoreProgramBlocks.assertHalfwordBlockMisaligned tail
     imm rs1 js rs1_val hrs1 hmis
@@ -342,6 +355,27 @@ theorem shProgram_eq_sail_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
   simp only [projectResult, project]
   symm
   exact hsail
+
+/-- **Main public SH theorem.**
+
+The caller supplies only the compact memory bundle. The proof cases on the
+halfword alignment guard and reuses the aligned or misaligned branch theorem. -/
+theorem shProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (rs1_val rs2_val : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
+    (hmem : StoreFamily.StoreMemoryAssumptions
+      (load_effective_address rs1_val imm)
+      (compute_aligned_dword_base_address rs1_val imm) 2 js.sail) :
+    projectResult ((JoltISA.execProgram (JoltISA.shProgram imm rs2 rs1)).run js) =
+      (execute_STORE imm rs2 rs1 2).run js.sail := by
+  by_cases halign :
+      load_effective_address rs1_val imm &&& (1 : BitVec 64) = 0
+  · exact shProgram_eq_sail_aligned imm rs2 rs1 js hcfg rs1_val rs2_val
+      hrs1 hrs2 hmem halign
+  · exact shProgram_eq_sail_misaligned imm rs2 rs1 js rs1_val rs2_val
+      hrs1 hrs2 halign
 
 end SH_main
 
