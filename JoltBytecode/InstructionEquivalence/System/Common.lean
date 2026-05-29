@@ -1407,7 +1407,63 @@ theorem ecallMachineTrapHandlerTail_run
       some (ecallTrapTarget js)) :
     (ecallMachineTrapHandlerTail pc).run (systemProject js) =
       .ok (ecallTrapTarget js) (systemProject (ecallAfterMstatus js pc)) := by
-  sorry
+  have hBridge :
+      ecallMachineTrapHandlerTail pc =
+        (do
+          ecallMachineTrapCsrWrites pc
+          track_trap Privilege.Machine
+          prepare_trap_vector Privilege.Machine (← Sail.readReg Register.mcause)) := by
+    unfold ecallMachineTrapHandlerTail ecallMachineTrapCsrWrites
+    simp only [bind_assoc]
+  rw [hBridge]
+  have hCsr := ecallMachineTrapCsrWrites_run js pc hpriv hmstatus
+  change ecallMachineTrapCsrWrites pc (systemProject js) =
+    .ok () (systemProject (ecallAfterMstatus js pc)) at hCsr
+  have hMstatusFinal :
+      (systemProject (ecallAfterMstatus js pc)).regs.get? Register.mstatus =
+        some (zeroOSMstatus : RegisterType Register.mstatus) := by
+    rw [systemProject_mstatus_read]
+    rw [ecallAfterMstatus_mstatus]
+  have hMcauseFinal :
+      (systemProject (ecallAfterMstatus js pc)).regs.get? Register.mcause =
+        some (ecallMachineCause : RegisterType Register.mcause) := by
+    rw [systemProject_mcause_read]
+    rw [ecallAfterMstatus_mcause]
+  have hMtvalFinal :
+      (systemProject (ecallAfterMstatus js pc)).regs.get? Register.mtval =
+        some (0#64 : RegisterType Register.mtval) := by
+    rw [systemProject_mtval_read]
+    rw [ecallAfterMstatus_mtval]
+  have hMepcFinal :
+      (systemProject (ecallAfterMstatus js pc)).regs.get? Register.mepc =
+        some (pc : RegisterType Register.mepc) := by
+    rw [systemProject_mepc_read]
+    rw [ecallAfterMstatus_mepc]
+  have hTrack := track_trap_machine_run
+    (systemProject (ecallAfterMstatus js pc))
+    zeroOSMstatus ecallMachineCause (0#64) pc
+    hMstatusFinal hMcauseFinal hMtvalFinal hMepcFinal
+  have hReadMcause := sail_readReg_run
+    (systemProject (ecallAfterMstatus js pc))
+    Register.mcause ecallMachineCause hMcauseFinal
+  have hvecAfter :
+      tvec_addr ((ecallAfterMstatus js pc).vregs JoltISA.trapHandlerVReg)
+          ecallMachineCause =
+        some (ecallTrapTarget (ecallAfterMstatus js pc)) := by
+    rw [ecallAfterMstatus_trapHandler]
+    rw [ecallTrapTarget_after_mstatus]
+    exact hvec
+  have hPrepare := prepare_trap_vector_machine_ecall_run
+    (ecallAfterMstatus js pc) hvecAfter
+  simp only [bind, EStateM.bind, EStateM.run]
+  rw [hCsr]
+  simp only
+  rw [hTrack]
+  simp only
+  rw [hReadMcause]
+  simp only
+  rw [hPrepare]
+  rw [ecallTrapTarget_after_mstatus]
 
 /-- Sail's machine trap handler for ECALL reaches the projected Jolt ECALL trap
 state and returns the same trap target used by the final Jolt `JALR`. -/

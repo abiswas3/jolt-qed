@@ -8,7 +8,7 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 
 
-**Overall:** ![closed](https://img.shields.io/badge/closed-58-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-5-lightgrey) — **63 provable instructions total**; ![unprovable](https://img.shields.io/badge/unprovable-4-red) tracked separately
+**Overall:** ![closed](https://img.shields.io/badge/closed-59-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-4-lightgrey) — **63 provable instructions total**; ![unprovable](https://img.shields.io/badge/unprovable-4-red) tracked separately
 
 
 ## ALU — I-type shifts
@@ -159,11 +159,11 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 ## System
 
-![closed](https://img.shields.io/badge/closed-0-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-5-lightgrey)
+![closed](https://img.shields.io/badge/closed-1-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-4-lightgrey)
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| ECALL | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
+| ECALL | ![closed](https://img.shields.io/badge/closed-2026--05--29-brightgreen) | [`System/Ecall.lean#L180`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/System/Ecall.lean#L180) |
 | EBREAK | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
 | MRET | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
 | CSRRW | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |

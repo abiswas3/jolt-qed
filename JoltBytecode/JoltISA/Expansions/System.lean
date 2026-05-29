@@ -5,7 +5,7 @@ import JoltBytecode.JoltISA.VirtualRegisters
 # System-instruction Jolt expansion programs
 
 These are literal transcriptions of the Rust `inline_sequence` implementations
-in `tracer/src/instruction/{ecall,ebreak}.rs`.
+in `tracer/src/instruction/{ecall,ebreak,mret}.rs`.
 
 The reserved virtual registers follow `tracer/src/utils/virtual_registers.rs`:
 
@@ -52,6 +52,15 @@ def ecallProgram : Program :=
 /-- Rust `expand_ebreak`: emit `JAL scratch, 0`, a self-loop termination marker. -/
 def ebreakProgram : Program :=
   .instr (.JAL (.vreg systemScratchVReg) (0 : BitVec 21)) <|
+  .done RETIRE_SUCCESS
+
+/-- Rust `MRET::inline_sequence`: jump through virtual `mepc`.
+
+Rust allocates one instruction-local scratch register for the `JALR` destination
+and discards the link value. The architectural return target is read directly
+from the reserved virtual `mepc` register, v36. -/
+def mretProgram : Program :=
+  .instr (.JALR (.vreg systemScratchVReg) (.vreg mepcVReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 end JoltISA
