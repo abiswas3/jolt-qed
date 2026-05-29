@@ -1,12 +1,14 @@
 # Bytecode Expansion Status
 
 
-Below is a summary of all the instructions that have passing theorems. 
+Below is a summary of all tracked bytecode-expansion instructions: passing
+theorems, current work, remaining todo items, and instructions marked
+`unprovable` against the current generated Sail model.
 The corresponding `rust` code for all these jolt instructions can be found at: https://github.com/a16z/jolt/tree/main/tracer/src/instruction.
 
 
 
-**Overall:** ![closed](https://img.shields.io/badge/closed-58-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-9-lightgrey) — **67 instructions total**
+**Overall:** ![closed](https://img.shields.io/badge/closed-59-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-4-lightgrey) — **63 provable instructions total**; ![unprovable](https://img.shields.io/badge/unprovable-4-red) tracked separately
 
 
 ## ALU — I-type shifts
@@ -104,12 +106,12 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 ## Load-reserved
 
-![closed](https://img.shields.io/badge/closed-0-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-2-lightgrey)
+![closed](https://img.shields.io/badge/closed-0-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![unprovable](https://img.shields.io/badge/unprovable-2-red) ![todo](https://img.shields.io/badge/todo-0-lightgrey)
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| LR.W | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
-| LR.D | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
+| LR.W | ![unprovable](https://img.shields.io/badge/unprovable-red) | _blocked by opaque Sail reservation hook_; see [`LoadReservedFamily/Lrw.lean`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadReservedFamily/Lrw.lean) |
+| LR.D | ![unprovable](https://img.shields.io/badge/unprovable-red) | _blocked by opaque Sail reservation hook_; see [`LoadReservedFamily/Lrd.lean`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/LoadReservedFamily/Lrd.lean) |
 
 ## Stores
 
@@ -123,12 +125,12 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 ## Store-conditional
 
-![closed](https://img.shields.io/badge/closed-0-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-2-lightgrey)
+![closed](https://img.shields.io/badge/closed-0-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![unprovable](https://img.shields.io/badge/unprovable-2-red) ![todo](https://img.shields.io/badge/todo-0-lightgrey)
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| SC.W | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
-| SC.D | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
+| SC.W | ![unprovable](https://img.shields.io/badge/unprovable-red) | _blocked by opaque Sail reservation hooks_; see [`StoreConditionalFamily/Scw.lean`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/StoreConditionalFamily/Scw.lean) |
+| SC.D | ![unprovable](https://img.shields.io/badge/unprovable-red) | _blocked by opaque Sail reservation hooks_; see [`StoreConditionalFamily/Scd.lean`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/StoreConditionalFamily/Scd.lean) |
 
 ## Atomics
 
@@ -157,11 +159,11 @@ The corresponding `rust` code for all these jolt instructions can be found at: h
 
 ## System
 
-![closed](https://img.shields.io/badge/closed-0-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-5-lightgrey)
+![closed](https://img.shields.io/badge/closed-1-brightgreen) ![in progress](https://img.shields.io/badge/in_progress-0-yellow) ![todo](https://img.shields.io/badge/todo-4-lightgrey)
 
 | Instruction | Status | Main theorem |
 | --- | --- | --- |
-| ECALL | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
+| ECALL | ![closed](https://img.shields.io/badge/closed-2026--05--29-brightgreen) | [`System/Ecall.lean#L180`](https://github.com/abiswas3/jolt-qed/blob/jolt-isa/JoltBytecode/InstructionEquivalence/System/Ecall.lean#L180) |
 | EBREAK | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
 | MRET | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |
 | CSRRW | ![todo](https://img.shields.io/badge/todo-lightgrey) | _not yet stated_ |

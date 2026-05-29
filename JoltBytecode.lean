@@ -91,6 +91,10 @@ import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxuw
 import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Lrw
 import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Lrd
 
+-- Store Conditional
+import JoltBytecode.InstructionEquivalence.StoreConditionalFamily.Scw
+import JoltBytecode.InstructionEquivalence.StoreConditionalFamily.Scd
+
 -- ============================================================================
 -- Instruction proofs — Advice / System / CSR
 -- ============================================================================
@@ -103,6 +107,6 @@ import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelw  -- advice load
 -- System : Shuld be easy, I'll close when we get to it.
 import JoltBytecode.InstructionEquivalence.System.Ecall
 import JoltBytecode.InstructionEquivalence.System.Ebreak
+import JoltBytecode.InstructionEquivalence.System.Mret
 -- import JoltBytecode.InstructionEquivalence.Csrrs     -- TODO: CSR read-set
 -- import JoltBytecode.InstructionEquivalence.Csrrw     -- TODO: CSR read-write
--- import JoltBytecode.InstructionEquivalence.Mret      -- TODO: machine return

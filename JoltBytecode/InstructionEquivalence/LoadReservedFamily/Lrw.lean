@@ -1,32 +1,41 @@
 import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Common
 
-set_option linter.unusedVariables false
-set_option mvcgen.warning false
-
-open Sail PreSail LeanRV64D.Functions
-open virtaddr
-
-set_option autoImplicit true
-
-noncomputable section
-
-namespace LoadReservedFamily
-
 /-!
-# LR.W top-level equivalence statement
+# LR.W proof boundary
 
-This file intentionally only states the public theorem. The proof will later
-split the Rust-faithful Jolt trace into the reservation-register prefix, the
-ordinary `LW` load tail, and the bridge from Sail's reserved-load RAM read to
-the ordinary Jolt load read.
--/
+There is intentionally no `lrwProgram_eq_sail` theorem in this file.
 
-/-- Main public theorem for `LR.W`.
+The Rust-faithful Jolt expansion for `LR.W` is concrete:
 
-The theorem has no explicit alignment or overflow hypothesis. The alignment
-case split belongs inside the proof, as in the load and atomic families. The
-Jolt program includes the Rust reservation-register writes before the `LW`
-tail. -/
+1. write `rs1` into `reservation_w`;
+2. clear `reservation_d`;
+3. run the ordinary Jolt `LW` expansion.
+
+The generated Lean Sail semantics is not just an ordinary word load. `LR.W` runs
+`execute_LOADRES`, which performs the memory read and then calls
+`load_reservation (bits_of_physaddr paddr) 4`.
+
+That hook is an opaque axiom:
+
+```
+axiom load_reservation : Arch.pa -> Nat -> SailM Unit
+```
+
+The Sail state has no visible reservation field in `SequentialState`, and the
+`regs` map is keyed only by the generated architectural `Register` enum. There
+is no `Register` key for LR/SC reservation state. The related query hooks
+`match_reservation` and `valid_reservation` are pure `Bool` functions, so they
+cannot inspect the Sail state either.
+
+As a result, this equivalence is not currently provable as a closed theorem.
+Assuming `load_reservation p 4 s = .ok () s` would collapse Sail `LR.W` to an
+ordinary `LW`, but that would be an external trust assumption and would not prove
+the reservation behavior that Jolt models with virtual registers.
+
+The intended theorem shape is left here, commented out, so the API target is
+visible without introducing a `sorry` warning in `lake build`.
+
+```
 theorem lrwProgram_eq_sail
     (rs1 rd : regidx) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
@@ -37,7 +46,20 @@ theorem lrwProgram_eq_sail
     projectResult ((JoltISA.execProgram
       (JoltISA.lrwProgram rs1 rd)).run js) =
       (execute_LOADRES false false rs1 4 rd).run js.sail := by
-  sorry
+  -- Not provable without a trusted reservation-state contract for Sail.
+```
+-/
+
+set_option linter.unusedVariables false
+
+open Sail PreSail LeanRV64D.Functions
+open virtaddr
+
+set_option autoImplicit true
+
+noncomputable section
+
+namespace LoadReservedFamily
 
 end LoadReservedFamily
 
