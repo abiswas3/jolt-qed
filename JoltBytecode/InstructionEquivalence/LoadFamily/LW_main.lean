@@ -217,10 +217,10 @@ theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
         (sign_extend (m := 64)
           (loaded_word_at js.sail (load_effective_address val imm))) := by
   let writeTail : JoltISA.Program :=
-    .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 1)) (.done RETIRE_SUCCESS)
+    .instr (.VirtualSignExtendWord (.xreg rd) (.vreg JoltISA.inlineTmp1)) (.done RETIRE_SUCCESS)
   let logicTail : JoltISA.Program :=
-    JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
-    JoltISA.srlBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) writeTail
+    JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
+    JoltISA.srlBlock (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp2 writeTail
   rcases LoadProgramBlocks.assertWordSetupBlockAligned logicTail
       imm rs1 js hcfg val hrx halign h_dword_phys with
     ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
@@ -233,9 +233,9 @@ theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
   · unfold JoltISA.lwProgram
     change (JoltISA.execProgram
       (.instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
-       .instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-       .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-       .instr (.LD (.vreg 1) (.vreg 1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
+       .instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
+       .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
+       .instr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
     rw [hload_run, hlogic_run, hwrite_run]
   · rw [hwrite_sail, hlogic_val]
     exact congrArg (stateAfterWrite js.sail rd)
@@ -260,12 +260,12 @@ theorem lwProgram_concrete_misaligned (imm : BitVec 12) (rs1 rd : regidx)
   unfold JoltISA.lwProgram
   simpa [e] using
     (LoadProgramBlocks.assertWordBlockMisaligned
-      (.instr (.ADDI (.vreg 0) (.xreg rs1) imm) <|
-       .instr (.ANDI (.vreg 1) (.vreg 0) (-8 : BitVec 12)) <|
-       .instr (.LD (.vreg 1) (.vreg 1) 0) <|
-       JoltISA.slliBlock (.vreg 0) (.vreg 0) (3 : BitVec 6) <|
-       JoltISA.srlBlock (.vreg 1) (.vreg 1) (.vreg 0) (2 : JoltISA.VReg) <|
-       .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 1)) <|
+      (.instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
+       .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
+       .instr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) <|
+       JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
+       JoltISA.srlBlock (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp2 <|
+       .instr (.VirtualSignExtendWord (.xreg rd) (.vreg JoltISA.inlineTmp1)) <|
        .done RETIRE_SUCCESS)
       imm rs1 js val hrx h_align)
 
