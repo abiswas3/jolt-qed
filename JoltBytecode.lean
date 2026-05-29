@@ -61,9 +61,9 @@ import JoltBytecode.InstructionEquivalence.LoadFamily.LWU_main    -- DONE: LWU  
 -- ============================================================================
 -- Instruction proofs — Memory (store)
 -- ============================================================================
--- Store proofs live under `InstructionEquivalence.StoreFamily`.
--- They are not imported here until the duplicate memory-helper names shared
--- with LoadFamily are reconciled.
+import JoltBytecode.InstructionEquivalence.StoreFamily.Sb_main     -- DONE: SB   (width=1)
+import JoltBytecode.InstructionEquivalence.StoreFamily.Sh_main     -- DONE: SH   (width=2)
+import JoltBytecode.InstructionEquivalence.StoreFamily.Sw_main     -- DONE: SW   (width=4)
 
 -- ============================================================================
 -- Instruction proofs — Atomic (AMO)
@@ -88,7 +88,8 @@ import JoltBytecode.InstructionEquivalence.AtomicFamily.Amominuw
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxuw
 
 -- Load Reserved
--- LR/SC theorem statements are not yet stated.
+import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Lrw
+import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Lrd
 
 -- ============================================================================
 -- Instruction proofs — Advice / System / CSR

@@ -130,23 +130,27 @@ theorem mulhBlockValue_eq_mulhs (x y : BitVec 64) :
       simp
       exact mulh_corr_neg_neg_arith x.toNat y.toNat
 
-/-- The lowered `MULH v3, v0, v2` block used by DIV/REM writes the signed-high
-product to `v3`, preserves the advice/divisor registers `v0`, `v1`, `v2`, and
-runs any continuation from that checkpoint.  The scratch registers `v4`, `v5`,
-and `v6` are the allocator outputs Rust consumes inside the nested `MULH`. -/
+/-- The lowered `MULH` block used by signed DIV/REM writes the signed-high
+product to Rust's `t1` register, preserves the advice/divisor registers, and
+runs any continuation from that checkpoint.
+
+At the recursive call site Rust already holds `a2`, `a3`, `t0`, and `t1`, so
+the nested `MULH` allocation consumes `inlineTmp4`, `inlineTmp5`, and
+`inlineTmp6`. -/
 theorem exists_state_after_div_rem_mulh_block_run
     (js : SailJoltState) :
     ∃ js',
       js'.sail = js.sail ∧
-      js'.vregs 0 = js.vregs 0 ∧
-      js'.vregs 1 = js.vregs 1 ∧
-      js'.vregs 2 = js.vregs 2 ∧
-      js'.vregs 3 = mulhs (js.vregs 0) (js.vregs 2) ∧
+      js'.vregs inlineTmp0 = js.vregs inlineTmp0 ∧
+      js'.vregs inlineTmp1 = js.vregs inlineTmp1 ∧
+      js'.vregs inlineTmp2 = js.vregs inlineTmp2 ∧
+      js'.vregs inlineTmp3 = mulhs (js.vregs inlineTmp0) (js.vregs inlineTmp2) ∧
       ∀ tail,
-        (execProgram (mulhBlock 4 5 6 (.vreg 3) (.vreg 0) (.vreg 2) tail)).run js =
+        (execProgram (mulhBlock inlineTmp4 inlineTmp5 inlineTmp6
+            (.vreg inlineTmp3) (.vreg inlineTmp0) (.vreg inlineTmp2) tail)).run js =
           (execProgram tail).run js' := by
-  let lhs := js.vregs (0 : VReg)
-  let rhs := js.vregs (2 : VReg)
+  let lhs := js.vregs inlineTmp0
+  let rhs := js.vregs inlineTmp2
   let lhsSign := jolt_movsign_value lhs
   let rhsSign := jolt_movsign_value rhs
   let lhsCorrection := lhsSign * rhs
@@ -154,86 +158,87 @@ theorem exists_state_after_div_rem_mulh_block_run
   let unsignedHigh := jolt_mulhu_value lhs rhs
   let highWithLhsCorrection := unsignedHigh + lhsCorrection
 
-  -- Block row 1: `VirtualMovsign v4, v0`.
+  -- Block row 1: nested `VirtualMovsign inlineTmp4, inlineTmp0`.
   obtain ⟨s1, h1_sail, h1_v4, h1_pres, h1_succeeds⟩ :=
     exists_state_after_movsign_run_vreg_vreg
-      (4 : VReg) (0 : VReg) js lhs rfl
+      inlineTmp4 inlineTmp0 js lhs rfl
 
-  -- Block row 2: `VirtualMovsign v5, v2`.
-  have h1_v2 : s1.vregs (2 : VReg) = rhs :=
-    (h1_pres (2 : VReg) (by decide)).trans rfl
+  -- Block row 2: nested `VirtualMovsign inlineTmp5, inlineTmp2`.
+  have h1_v2 : s1.vregs inlineTmp2 = rhs :=
+    (h1_pres inlineTmp2 (by decide)).trans rfl
   obtain ⟨s2, h2_sail, h2_v5, h2_pres, h2_succeeds⟩ :=
     exists_state_after_movsign_run_vreg_vreg
-      (5 : VReg) (2 : VReg) s1 rhs h1_v2
+      inlineTmp5 inlineTmp2 s1 rhs h1_v2
 
-  -- Block row 3: `MUL v4, v4, v2`.
-  have h2_v4 : s2.vregs (4 : VReg) = lhsSign :=
-    (h2_pres (4 : VReg) (by decide)).trans h1_v4
-  have h2_v2 : s2.vregs (2 : VReg) = rhs :=
-    (h2_pres (2 : VReg) (by decide)).trans h1_v2
+  -- Block row 3: nested `MUL inlineTmp4, inlineTmp4, inlineTmp2`.
+  have h2_v4 : s2.vregs inlineTmp4 = lhsSign :=
+    (h2_pres inlineTmp4 (by decide)).trans h1_v4
+  have h2_v2 : s2.vregs inlineTmp2 = rhs :=
+    (h2_pres inlineTmp2 (by decide)).trans h1_v2
   obtain ⟨s3, h3_sail, h3_v4, h3_pres, h3_succeeds⟩ :=
     exists_state_after_mul_run_vreg_vreg_vreg
-      (4 : VReg) (4 : VReg) (2 : VReg) s2 lhsSign rhs h2_v4 h2_v2
+      inlineTmp4 inlineTmp4 inlineTmp2 s2 lhsSign rhs h2_v4 h2_v2
 
-  -- Block row 4: `MUL v5, v5, v0`.
-  have h3_v5 : s3.vregs (5 : VReg) = rhsSign :=
-    (h3_pres (5 : VReg) (by decide)).trans h2_v5
-  have h3_v0 : s3.vregs (0 : VReg) = lhs :=
-    (h3_pres (0 : VReg) (by decide)).trans
-      ((h2_pres (0 : VReg) (by decide)).trans (h1_pres (0 : VReg) (by decide)))
+  -- Block row 4: nested `MUL inlineTmp5, inlineTmp5, inlineTmp0`.
+  have h3_v5 : s3.vregs inlineTmp5 = rhsSign :=
+    (h3_pres inlineTmp5 (by decide)).trans h2_v5
+  have h3_v0 : s3.vregs inlineTmp0 = lhs :=
+    (h3_pres inlineTmp0 (by decide)).trans
+      ((h2_pres inlineTmp0 (by decide)).trans (h1_pres inlineTmp0 (by decide)))
   obtain ⟨s4, h4_sail, h4_v5, h4_pres, h4_succeeds⟩ :=
     exists_state_after_mul_run_vreg_vreg_vreg
-      (5 : VReg) (5 : VReg) (0 : VReg) s3 rhsSign lhs h3_v5 h3_v0
+      inlineTmp5 inlineTmp5 inlineTmp0 s3 rhsSign lhs h3_v5 h3_v0
 
-  -- Block row 5: `MULHU v6, v0, v2`.
-  have h4_v0 : s4.vregs (0 : VReg) = lhs :=
-    (h4_pres (0 : VReg) (by decide)).trans h3_v0
-  have h4_v2 : s4.vregs (2 : VReg) = rhs :=
-    (h4_pres (2 : VReg) (by decide)).trans
-      ((h3_pres (2 : VReg) (by decide)).trans h2_v2)
+  -- Block row 5: nested `MULHU inlineTmp6, inlineTmp0, inlineTmp2`.
+  have h4_v0 : s4.vregs inlineTmp0 = lhs :=
+    (h4_pres inlineTmp0 (by decide)).trans h3_v0
+  have h4_v2 : s4.vregs inlineTmp2 = rhs :=
+    (h4_pres inlineTmp2 (by decide)).trans
+      ((h3_pres inlineTmp2 (by decide)).trans h2_v2)
   obtain ⟨s5, h5_sail, h5_v6, h5_pres, h5_succeeds⟩ :=
     exists_state_after_mulhu_run_vreg_vreg_vreg
-      (6 : VReg) (0 : VReg) (2 : VReg) s4 lhs rhs h4_v0 h4_v2
+      inlineTmp6 inlineTmp0 inlineTmp2 s4 lhs rhs h4_v0 h4_v2
 
-  -- Block row 6: `ADD v6, v6, v4`.
-  have h5_v4 : s5.vregs (4 : VReg) = lhsCorrection :=
-    (h5_pres (4 : VReg) (by decide)).trans
-      ((h4_pres (4 : VReg) (by decide)).trans h3_v4)
+  -- Block row 6: nested `ADD inlineTmp6, inlineTmp6, inlineTmp4`.
+  have h5_v4 : s5.vregs inlineTmp4 = lhsCorrection :=
+    (h5_pres inlineTmp4 (by decide)).trans
+      ((h4_pres inlineTmp4 (by decide)).trans h3_v4)
   obtain ⟨s6, h6_sail, h6_v6, h6_pres, h6_succeeds⟩ :=
     exists_state_after_add_run_vreg_vreg_vreg
-      (6 : VReg) (6 : VReg) (4 : VReg) s5 unsignedHigh lhsCorrection
+      inlineTmp6 inlineTmp6 inlineTmp4 s5 unsignedHigh lhsCorrection
       h5_v6 h5_v4
 
-  -- Block row 7: `ADD v3, v6, v5`.
-  have h6_v5 : s6.vregs (5 : VReg) = rhsCorrection :=
-    (h6_pres (5 : VReg) (by decide)).trans
-      ((h5_pres (5 : VReg) (by decide)).trans h4_v5)
+  -- Block row 7: nested `ADD inlineTmp3, inlineTmp6, inlineTmp5`.
+  have h6_v5 : s6.vregs inlineTmp5 = rhsCorrection :=
+    (h6_pres inlineTmp5 (by decide)).trans
+      ((h5_pres inlineTmp5 (by decide)).trans h4_v5)
   obtain ⟨s7, h7_sail, h7_v3, h7_pres, h7_succeeds⟩ :=
     exists_state_after_add_run_vreg_vreg_vreg
-      (3 : VReg) (6 : VReg) (5 : VReg) s6 highWithLhsCorrection rhsCorrection
+      inlineTmp3 inlineTmp6 inlineTmp5 s6 highWithLhsCorrection rhsCorrection
       h6_v6 h6_v5
 
   have h7_sail_orig : s7.sail = js.sail :=
     h7_sail.trans (h6_sail.trans (h5_sail.trans (h4_sail.trans
       (h3_sail.trans (h2_sail.trans h1_sail)))))
-  have h7_v0 : s7.vregs (0 : VReg) = js.vregs (0 : VReg) :=
-    (h7_pres (0 : VReg) (by decide)).trans
-      ((h6_pres (0 : VReg) (by decide)).trans
-        ((h5_pres (0 : VReg) (by decide)).trans
-          ((h4_pres (0 : VReg) (by decide)).trans h3_v0)))
-  have h7_v1 : s7.vregs (1 : VReg) = js.vregs (1 : VReg) :=
-    (h7_pres (1 : VReg) (by decide)).trans
-      ((h6_pres (1 : VReg) (by decide)).trans
-        ((h5_pres (1 : VReg) (by decide)).trans
-          ((h4_pres (1 : VReg) (by decide)).trans
-            ((h3_pres (1 : VReg) (by decide)).trans
-              ((h2_pres (1 : VReg) (by decide)).trans
-                (h1_pres (1 : VReg) (by decide)))))))
-  have h7_v2 : s7.vregs (2 : VReg) = js.vregs (2 : VReg) :=
-    (h7_pres (2 : VReg) (by decide)).trans
-      ((h6_pres (2 : VReg) (by decide)).trans
-        ((h5_pres (2 : VReg) (by decide)).trans h4_v2))
-  have h7_v3_mulhs : s7.vregs (3 : VReg) = mulhs (js.vregs 0) (js.vregs 2) := by
+  have h7_v0 : s7.vregs inlineTmp0 = js.vregs inlineTmp0 :=
+    (h7_pres inlineTmp0 (by decide)).trans
+      ((h6_pres inlineTmp0 (by decide)).trans
+        ((h5_pres inlineTmp0 (by decide)).trans
+          ((h4_pres inlineTmp0 (by decide)).trans h3_v0)))
+  have h7_v1 : s7.vregs inlineTmp1 = js.vregs inlineTmp1 :=
+    (h7_pres inlineTmp1 (by decide)).trans
+      ((h6_pres inlineTmp1 (by decide)).trans
+        ((h5_pres inlineTmp1 (by decide)).trans
+          ((h4_pres inlineTmp1 (by decide)).trans
+            ((h3_pres inlineTmp1 (by decide)).trans
+              ((h2_pres inlineTmp1 (by decide)).trans
+                (h1_pres inlineTmp1 (by decide)))))))
+  have h7_v2 : s7.vregs inlineTmp2 = js.vregs inlineTmp2 :=
+    (h7_pres inlineTmp2 (by decide)).trans
+      ((h6_pres inlineTmp2 (by decide)).trans
+        ((h5_pres inlineTmp2 (by decide)).trans h4_v2))
+  have h7_v3_mulhs :
+      s7.vregs inlineTmp3 = mulhs (js.vregs inlineTmp0) (js.vregs inlineTmp2) := by
     rw [h7_v3]
     change mulhBlockValue lhs rhs = mulhs lhs rhs
     exact mulhBlockValue_eq_mulhs lhs rhs

@@ -32,27 +32,27 @@ loaded into `v0`, and the absolute remainder loaded into `v1`.
 def remwProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice 0 quotient) <|
-  .instr (.VirtualAdvice 1 remAbs) <|
-  .instr (.VirtualSignExtendWord (.vreg 6) (.xreg rs1)) <|
-  .instr (.VirtualSignExtendWord (.vreg 5) (.xreg rs2)) <|
-  .instr (.VirtualAssertValidDiv0V 5 0) <|
-  .instr (.VirtualChangeDivisorW 2 6 5) <|
-  .instr (.VirtualSignExtendWord (.vreg 3) (.vreg 0)) <|
-  .instr (.VirtualAssertEQ 3 0) <|
-  sraiBlock (.vreg 4) (.vreg 1) (32 : BitVec 6) <|
-  .instr (.VirtualAssertEQReal 4 (regidx.Regidx 0)) <|
-  sraiBlock (.vreg 4) (.vreg 6) (31 : BitVec 6) <|
-  .instr (.XOR (.vreg 5) (.vreg 1) (.vreg 4)) <|
-  .instr (.SUB (.vreg 5) (.vreg 5) (.vreg 4)) <|
-  .instr (.MUL (.vreg 3) (.vreg 0) (.vreg 2)) <|
-  .instr (.ADD (.vreg 3) (.vreg 3) (.vreg 5)) <|
-  .instr (.VirtualAssertEQ 3 6) <|
-  sraiBlock (.vreg 4) (.vreg 2) (31 : BitVec 6) <|
-  .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 4)) <|
-  .instr (.SUB (.vreg 3) (.vreg 3) (.vreg 4)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder 1 3) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 5)) <|
+  .instr (.VirtualAdvice Remw.a2VReg quotient) <|
+  .instr (.VirtualAdvice Remw.a3VReg remAbs) <|
+  .instr (.VirtualSignExtendWord (.vreg Remw.t4VReg) (.xreg rs1)) <|
+  .instr (.VirtualSignExtendWord (.vreg Remw.t3VReg) (.xreg rs2)) <|
+  .instr (.VirtualAssertValidDiv0V Remw.t3VReg Remw.a2VReg) <|
+  .instr (.VirtualChangeDivisorW Remw.t0VReg Remw.t4VReg Remw.t3VReg) <|
+  .instr (.VirtualSignExtendWord (.vreg Remw.t1VReg) (.vreg Remw.a2VReg)) <|
+  .instr (.VirtualAssertEQ Remw.t1VReg Remw.a2VReg) <|
+  sraiBlock (.vreg Remw.t2VReg) (.vreg Remw.a3VReg) (32 : BitVec 6) <|
+  .instr (.VirtualAssertEQReal Remw.t2VReg (regidx.Regidx 0)) <|
+  sraiBlock (.vreg Remw.t2VReg) (.vreg Remw.t4VReg) (31 : BitVec 6) <|
+  .instr (.XOR (.vreg Remw.t3VReg) (.vreg Remw.a3VReg) (.vreg Remw.t2VReg)) <|
+  .instr (.SUB (.vreg Remw.t3VReg) (.vreg Remw.t3VReg) (.vreg Remw.t2VReg)) <|
+  .instr (.MUL (.vreg Remw.t1VReg) (.vreg Remw.a2VReg) (.vreg Remw.t0VReg)) <|
+  .instr (.ADD (.vreg Remw.t1VReg) (.vreg Remw.t1VReg) (.vreg Remw.t3VReg)) <|
+  .instr (.VirtualAssertEQ Remw.t1VReg Remw.t4VReg) <|
+  sraiBlock (.vreg Remw.t2VReg) (.vreg Remw.t0VReg) (31 : BitVec 6) <|
+  .instr (.XOR (.vreg Remw.t1VReg) (.vreg Remw.t0VReg) (.vreg Remw.t2VReg)) <|
+  .instr (.SUB (.vreg Remw.t1VReg) (.vreg Remw.t1VReg) (.vreg Remw.t2VReg)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder Remw.a3VReg Remw.t1VReg) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg Remw.t3VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `remwProgram`. -/
@@ -137,7 +137,7 @@ theorem remwProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       h3_v0 h3_v1 h3_v2 h3_v6 hguard_quotient_product
 
   have h4_sail_orig : js₄.sail = js.sail := h4_sail.trans h3_sail_orig
-  have h4_v5_signed : js₄.vregs 5 = signedRem := by
+  have h4_v5_signed : js₄.vregs Remw.t3VReg = signedRem := by
     unfold signedRem
     exact h4_v5
   obtain ⟨js₅, hrun5, h5_v5, h5_sail⟩ :=
@@ -273,7 +273,7 @@ theorem remwProgram_sound (rs2 rs1 rd : regidx)
       sextDividend sextDivisor h3_v0 h3_v1 h3_v2 h3_v6 hp4
 
   have h4_sail_orig : js₄.sail = js.sail := h4_sail.trans h3_sail_orig
-  have h4_v5_signed : js₄.vregs 5 = signedRem := by
+  have h4_v5_signed : js₄.vregs Remw.t3VReg = signedRem := by
     unfold signedRem
     exact h4_v5
   obtain ⟨hguard5, h5_v5, h5_sail⟩ :=

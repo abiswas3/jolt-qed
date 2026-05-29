@@ -140,14 +140,14 @@ theorem sraiwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJol
       h_source_sign_extend_keeps_sail, h_source_sign_extend_writes_signedSource,
       _, h_source_sign_extend_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_sign_extend_word_run_vreg_xreg
-      (1 : JoltISA.VReg) rs1 js v h_read_rs1
+      JoltISA.inlineTmp0 rs1 js v h_read_rs1
 
   -- Instruction 2: `VirtualSRAI rd, v1, sraiwBitmask shamt` writes the shifted result.
   let bitmask := JoltISA.sraiwBitmask shamt
   let shiftedResult := jolt_virtual_srai_value signedSource bitmask
   obtain ⟨js_afterSrai, h_srai_writes_shiftedResult, h_srai_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_srai_run_xreg_vreg_of_value
-      rd (1 : JoltISA.VReg) bitmask js_afterSourceSignExtend js.sail signedSource
+      rd JoltISA.inlineTmp0 bitmask js_afterSourceSignExtend js.sail signedSource
       h_source_sign_extend_keeps_sail h_source_sign_extend_writes_signedSource
 
   -- Instruction 3: `VirtualSignExtendWord rd, rd` writes the SRAIW result.

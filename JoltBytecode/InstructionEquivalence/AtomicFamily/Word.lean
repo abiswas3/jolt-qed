@@ -203,7 +203,7 @@ theorem amo_word_pre64_misaligned_run
       (JoltISA.amoPre64Program rs1 old dword shift tail)).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js := by
-  unfold JoltISA.amoPre64Program
+  unfold JoltISA.amoPre64Program JoltISA.amoPre64ProgramWithScratch
   exact amo_word_assert_prefix_misaligned_run rs1 _ js addr hrs1 h_align
 
 /-- The low six bits of the `.W` AMO shift value are exactly the byte-lane
@@ -1223,7 +1223,7 @@ theorem amo_word_pre64_aligned_run
       .ok RETIRE_SUCCESS js_pre := by
     exact hsrl
   refine ⟨js_pre, ?_, ?_, ?_, ?_, ?_⟩
-  · unfold JoltISA.amoPre64Program
+  · unfold JoltISA.amoPre64Program JoltISA.amoPre64ProgramWithScratch
     rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_base hbase_run]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_base js_load hld_named]
@@ -2274,7 +2274,7 @@ theorem amo_word_post64_vreg_aligned_run
     amo_word_writeback_old_run rd js_store js.sail addr wordResult old
       hstore_sail_word hstore_old hold_writeback
   refine ⟨jsf, ?_, ?_⟩
-  · unfold JoltISA.amoPost64Program
+  · unfold JoltISA.amoPost64Program JoltISA.amoPost64ProgramWithScratch
     rw [hmask_tail]
     rw [hshift_mask_tail]
     rw [hshift_new_tail]
@@ -4027,7 +4027,7 @@ theorem amo_word_post64_amoswap_aligned_run
     amo_word_writeback_old_run rd js_store js.sail addr wordResult old
       hstore_sail_word hstore_old hold_writeback
   refine ⟨jsf, ?_, ?_⟩
-  · unfold JoltISA.amoPost64Program
+  · unfold JoltISA.amoPost64Program JoltISA.amoPost64ProgramWithScratch
     rw [hmask_tail]
     rw [hshift_mask_tail]
     rw [hshift_new_tail]

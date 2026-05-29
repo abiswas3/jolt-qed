@@ -187,7 +187,7 @@ private lemma virtual_srlw_value_eq
   simp only [shift_bits_left]
   rfl
 
-private theorem vreg0_ne_vreg1 : (0 : JoltISA.VReg) ≠ (1 : JoltISA.VReg) := by
+private theorem inlineTmp0_ne_inlineTmp1 : JoltISA.inlineTmp1 ≠ JoltISA.inlineTmp0 := by
   decide
 
 /-- Program-level concrete theorem for `SRLW`.
@@ -213,33 +213,33 @@ theorem srlwProgram_concrete
   obtain ⟨js_afterLeftShift, h_left_shift_reads_rs1, h_left_shift_keeps_sail,
       h_left_shift_writes_leftShiftedSource, _, h_left_shift_block_succeeds⟩ :=
     JoltISA.exists_state_after_slli_block_run_vreg_xreg
-      (0 : JoltISA.VReg) rs1 (32 : BitVec 6) js v1 h_read_rs1
+      JoltISA.inlineTmp1 rs1 (32 : BitVec 6) js v1 h_read_rs1
 
   -- Instruction 2: `ORI v1, rs2, 32` writes the encoded shift amount to `v1`.
   let encodedShift := v2 ||| sign_extend (m := 64) (32 : BitVec 12)
   obtain ⟨js_afterOri, h_ori_reads_rs2, h_ori_keeps_sail,
       h_ori_writes_encodedShift, h_ori_preserves_leftShiftedSource, h_ori_succeeds⟩ :=
     JoltISA.exists_state_after_ori_run_vreg_xreg_preserving_value
-      (1 : JoltISA.VReg) (0 : JoltISA.VReg) rs2 (32 : BitVec 12)
+      JoltISA.inlineTmp0 JoltISA.inlineTmp1 rs2 (32 : BitVec 12)
       js_afterLeftShift js.sail v2 leftShiftedSource
       h_left_shift_keeps_sail h_read_rs2 h_left_shift_writes_leftShiftedSource
-      vreg0_ne_vreg1
+      inlineTmp0_ne_inlineTmp1
 
   -- Instruction 3: `VirtualShiftRightBitmask v1, v1` writes the shift bitmask to `v1`.
   let shiftBitmask := jolt_virtual_shift_right_bitmask_value encodedShift
   obtain ⟨js_afterBitmask, h_bitmask_keeps_sail, h_bitmask_writes_shiftBitmask,
       h_bitmask_preserves_leftShiftedSource, h_bitmask_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_shift_right_bitmask_run_vreg_vreg_preserving_value
-      (1 : JoltISA.VReg) (1 : JoltISA.VReg) (0 : JoltISA.VReg)
+      JoltISA.inlineTmp0 JoltISA.inlineTmp0 JoltISA.inlineTmp1
       js_afterOri js.sail encodedShift leftShiftedSource
       h_ori_keeps_sail h_ori_writes_encodedShift h_ori_preserves_leftShiftedSource
-      vreg0_ne_vreg1
+      inlineTmp0_ne_inlineTmp1
 
   -- Instruction 4: `VirtualSRL rd, v0, v1` writes the shifted result to `rd`.
   let shiftedResult := jolt_virtual_srl_value leftShiftedSource shiftBitmask
   obtain ⟨js_afterSrl, h_srl_writes_shiftedResult, h_srl_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_srl_run_xreg_vreg_vreg_of_values
-      rd (0 : JoltISA.VReg) (1 : JoltISA.VReg) js_afterBitmask js.sail
+      rd JoltISA.inlineTmp1 JoltISA.inlineTmp0 js_afterBitmask js.sail
       leftShiftedSource shiftBitmask h_bitmask_keeps_sail
       h_bitmask_preserves_leftShiftedSource h_bitmask_writes_shiftBitmask
 

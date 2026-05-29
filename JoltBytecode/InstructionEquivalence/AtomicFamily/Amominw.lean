@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.AtomicFamily.Word
+import JoltBytecode.InstructionEquivalence.AtomicFamily.WordSelectRust
 
 set_option linter.unusedVariables false
 
@@ -53,19 +53,19 @@ theorem amominwProgram_concrete_aligned
   change
     ∃ jsf : SailJoltState,
       (JoltISA.execProgram
-        (JoltISA.amoWordSelectProgram
+        (JoltISA.amoWordSelectRustProgram
           (fun dst src => .VirtualSignExtendWord dst src)
           (fun dst lhs rhs => .SLT dst lhs rhs)
-          (.vreg JoltISA.amoNewVReg) (.vreg JoltISA.amoMaskVReg)
+          (.vreg JoltISA.amoWordSelectNewVReg) (.vreg JoltISA.amoWordSelectMaskVReg)
           rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS jsf ∧
       jsf.sail = amominwFinalSailState rd js.sail addr rs2Val
   exact
-    amo_word_select_program_concrete_aligned
+    amo_word_rust_select_program_concrete_aligned
       amoop.AMOMIN
       (fun dst src => .VirtualSignExtendWord dst src)
       (fun dst lhs rhs => .SLT dst lhs rhs)
-      (.vreg JoltISA.amoNewVReg) (.vreg JoltISA.amoMaskVReg)
+      (.vreg JoltISA.amoWordSelectNewVReg) (.vreg JoltISA.amoWordSelectMaskVReg)
       rs2 rs1 rd js hcfg addr
       (if (zopz0zI_s
           (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
@@ -82,7 +82,7 @@ theorem amominwProgram_concrete_aligned
         loaded_word_at js.sail addr)
       hrs1 h_mem h_align
       (amo_word_min_result_extract_eq js.sail addr rs2Val h_align)
-      (amo_word_min_middle_after_pre rs2 js addr rs2Val hrs2)
+      (amo_word_rust_select_min_middle_after_pre rs2 js addr rs2Val hrs2)
 
 /-- Sail-side aligned concrete execution for native `AMOMIN.W`. -/
 theorem execute_AMOMINW_reduces_aligned
@@ -126,18 +126,18 @@ theorem amominwProgram_eq_sail_aligned
       (execute_AMO amoop.AMOMIN false false rs2 rs1 4 rd).run js.sail := by
   change
     projectResult ((JoltISA.execProgram
-      (JoltISA.amoWordSelectProgram
+      (JoltISA.amoWordSelectRustProgram
         (fun dst src => .VirtualSignExtendWord dst src)
         (fun dst lhs rhs => .SLT dst lhs rhs)
-        (.vreg JoltISA.amoNewVReg) (.vreg JoltISA.amoMaskVReg)
+        (.vreg JoltISA.amoWordSelectNewVReg) (.vreg JoltISA.amoWordSelectMaskVReg)
         rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOMIN false false rs2 rs1 4 rd).run js.sail
   exact
-    amo_word_select_program_eq_sail_aligned
+    amo_word_rust_select_program_eq_sail_aligned
       amoop.AMOMIN
       (fun dst src => .VirtualSignExtendWord dst src)
       (fun dst lhs rhs => .SLT dst lhs rhs)
-      (.vreg JoltISA.amoNewVReg) (.vreg JoltISA.amoMaskVReg)
+      (.vreg JoltISA.amoWordSelectNewVReg) (.vreg JoltISA.amoWordSelectMaskVReg)
       rs2 rs1 rd js hcfg addr rs2Val
       (if (zopz0zI_s
           (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
@@ -155,7 +155,7 @@ theorem amominwProgram_eq_sail_aligned
       hrs1 hrs2 hrd h_mem h_align
       (by decide)
       (amo_word_min_result_extract_eq js.sail addr rs2Val h_align)
-      (amo_word_min_middle_after_pre rs2 js addr rs2Val hrs2)
+      (amo_word_rust_select_min_middle_after_pre rs2 js addr rs2Val hrs2)
       (amominw_sail_result rs2Val (loaded_word_at js.sail addr))
 
 /-- Main public theorem for `AMOMIN.W`. -/
@@ -173,18 +173,18 @@ theorem amominwProgram_eq_sail
       (execute_AMO amoop.AMOMIN false false rs2 rs1 4 rd).run js.sail := by
   change
     projectResult ((JoltISA.execProgram
-      (JoltISA.amoWordSelectProgram
+      (JoltISA.amoWordSelectRustProgram
         (fun dst src => .VirtualSignExtendWord dst src)
         (fun dst lhs rhs => .SLT dst lhs rhs)
-        (.vreg JoltISA.amoNewVReg) (.vreg JoltISA.amoMaskVReg)
+        (.vreg JoltISA.amoWordSelectNewVReg) (.vreg JoltISA.amoWordSelectMaskVReg)
         rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOMIN false false rs2 rs1 4 rd).run js.sail
   exact
-    amo_word_select_program_eq_sail
+    amo_word_rust_select_program_eq_sail
       amoop.AMOMIN
       (fun dst src => .VirtualSignExtendWord dst src)
       (fun dst lhs rhs => .SLT dst lhs rhs)
-      (.vreg JoltISA.amoNewVReg) (.vreg JoltISA.amoMaskVReg)
+      (.vreg JoltISA.amoWordSelectNewVReg) (.vreg JoltISA.amoWordSelectMaskVReg)
       rs2 rs1 rd js hcfg addr rs2Val
       (if (zopz0zI_s
           (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
@@ -202,7 +202,7 @@ theorem amominwProgram_eq_sail
       hrs1 hrs2 hrd h_mem
       (by decide)
       (fun h_align => amo_word_min_result_extract_eq js.sail addr rs2Val h_align)
-      (amo_word_min_middle_after_pre rs2 js addr rs2Val hrs2)
+      (amo_word_rust_select_min_middle_after_pre rs2 js addr rs2Val hrs2)
       (amominw_sail_result rs2Val (loaded_word_at js.sail addr))
 
 end AtomicFamily

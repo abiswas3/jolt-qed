@@ -32,27 +32,27 @@ loaded into `v0`, and the absolute remainder loaded into `v1`.
 def divwProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice 0 quotient) <|
-  .instr (.VirtualAdvice 1 remAbs) <|
-  .instr (.VirtualSignExtendWord (.vreg 6) (.xreg rs1)) <|
-  .instr (.VirtualSignExtendWord (.vreg 5) (.xreg rs2)) <|
-  .instr (.VirtualAssertValidDiv0V 5 0) <|
-  .instr (.VirtualChangeDivisorW 2 6 5) <|
-  .instr (.VirtualSignExtendWord (.vreg 3) (.vreg 0)) <|
-  .instr (.VirtualAssertEQ 3 0) <|
-  sraiBlock (.vreg 4) (.vreg 1) (32 : BitVec 6) <|
-  .instr (.VirtualAssertEQReal 4 (regidx.Regidx 0)) <|
-  sraiBlock (.vreg 4) (.vreg 6) (31 : BitVec 6) <|
-  .instr (.XOR (.vreg 5) (.vreg 1) (.vreg 4)) <|
-  .instr (.SUB (.vreg 5) (.vreg 5) (.vreg 4)) <|
-  .instr (.MUL (.vreg 3) (.vreg 0) (.vreg 2)) <|
-  .instr (.ADD (.vreg 3) (.vreg 3) (.vreg 5)) <|
-  .instr (.VirtualAssertEQ 3 6) <|
-  sraiBlock (.vreg 4) (.vreg 2) (31 : BitVec 6) <|
-  .instr (.XOR (.vreg 3) (.vreg 2) (.vreg 4)) <|
-  .instr (.SUB (.vreg 3) (.vreg 3) (.vreg 4)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder 1 3) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 0)) <|
+  .instr (.VirtualAdvice Divw.a2VReg quotient) <|
+  .instr (.VirtualAdvice Divw.a3VReg remAbs) <|
+  .instr (.VirtualSignExtendWord (.vreg Divw.t4VReg) (.xreg rs1)) <|
+  .instr (.VirtualSignExtendWord (.vreg Divw.t3VReg) (.xreg rs2)) <|
+  .instr (.VirtualAssertValidDiv0V Divw.t3VReg Divw.a2VReg) <|
+  .instr (.VirtualChangeDivisorW Divw.t0VReg Divw.t4VReg Divw.t3VReg) <|
+  .instr (.VirtualSignExtendWord (.vreg Divw.t1VReg) (.vreg Divw.a2VReg)) <|
+  .instr (.VirtualAssertEQ Divw.t1VReg Divw.a2VReg) <|
+  sraiBlock (.vreg Divw.t2VReg) (.vreg Divw.a3VReg) (32 : BitVec 6) <|
+  .instr (.VirtualAssertEQReal Divw.t2VReg (regidx.Regidx 0)) <|
+  sraiBlock (.vreg Divw.t2VReg) (.vreg Divw.t4VReg) (31 : BitVec 6) <|
+  .instr (.XOR (.vreg Divw.t3VReg) (.vreg Divw.a3VReg) (.vreg Divw.t2VReg)) <|
+  .instr (.SUB (.vreg Divw.t3VReg) (.vreg Divw.t3VReg) (.vreg Divw.t2VReg)) <|
+  .instr (.MUL (.vreg Divw.t1VReg) (.vreg Divw.a2VReg) (.vreg Divw.t0VReg)) <|
+  .instr (.ADD (.vreg Divw.t1VReg) (.vreg Divw.t1VReg) (.vreg Divw.t3VReg)) <|
+  .instr (.VirtualAssertEQ Divw.t1VReg Divw.t4VReg) <|
+  sraiBlock (.vreg Divw.t2VReg) (.vreg Divw.t0VReg) (31 : BitVec 6) <|
+  .instr (.XOR (.vreg Divw.t1VReg) (.vreg Divw.t0VReg) (.vreg Divw.t2VReg)) <|
+  .instr (.SUB (.vreg Divw.t1VReg) (.vreg Divw.t1VReg) (.vreg Divw.t2VReg)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder Divw.a3VReg Divw.t1VReg) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg Divw.a2VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `divwProgram`. -/
