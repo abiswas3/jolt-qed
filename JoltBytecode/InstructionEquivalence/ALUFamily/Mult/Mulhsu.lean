@@ -423,32 +423,32 @@ theorem execute_MULHSU_factored (rs2 rs1 rd : regidx) :
       pure RETIRE_SUCCESS) := by
   simp [execute_MUL, mulhsuOp, mulhsu_eq_sail_mulhsu_value, bind_pure_comp]
 
-private theorem vreg0_ne_vreg1 :
-    (0 : JoltISA.VReg) ≠ (1 : JoltISA.VReg) := by decide
+private theorem inlineTmp0_ne_inlineTmp1 :
+    JoltISA.inlineTmp0 ≠ JoltISA.inlineTmp1 := by decide
 
-private theorem vreg0_ne_vreg2 :
-    (0 : JoltISA.VReg) ≠ (2 : JoltISA.VReg) := by decide
+private theorem inlineTmp0_ne_inlineTmp2 :
+    JoltISA.inlineTmp0 ≠ JoltISA.inlineTmp2 := by decide
 
-private theorem vreg0_ne_vreg3 :
-    (0 : JoltISA.VReg) ≠ (3 : JoltISA.VReg) := by decide
+private theorem inlineTmp0_ne_inlineTmp3 :
+    JoltISA.inlineTmp0 ≠ JoltISA.inlineTmp3 := by decide
 
-private theorem vreg1_ne_vreg2 :
-    (1 : JoltISA.VReg) ≠ (2 : JoltISA.VReg) := by decide
+private theorem inlineTmp1_ne_inlineTmp2 :
+    JoltISA.inlineTmp1 ≠ JoltISA.inlineTmp2 := by decide
 
-private theorem vreg1_ne_vreg3 :
-    (1 : JoltISA.VReg) ≠ (3 : JoltISA.VReg) := by decide
+private theorem inlineTmp1_ne_inlineTmp3 :
+    JoltISA.inlineTmp1 ≠ JoltISA.inlineTmp3 := by decide
 
-private theorem vreg2_ne_vreg0 :
-    (2 : JoltISA.VReg) ≠ (0 : JoltISA.VReg) := by decide
+private theorem inlineTmp2_ne_inlineTmp0 :
+    JoltISA.inlineTmp2 ≠ JoltISA.inlineTmp0 := by decide
 
-private theorem vreg2_ne_vreg3 :
-    (2 : JoltISA.VReg) ≠ (3 : JoltISA.VReg) := by decide
+private theorem inlineTmp2_ne_inlineTmp3 :
+    JoltISA.inlineTmp2 ≠ JoltISA.inlineTmp3 := by decide
 
-private theorem vreg3_ne_vreg0 :
-    (3 : JoltISA.VReg) ≠ (0 : JoltISA.VReg) := by decide
+private theorem inlineTmp3_ne_inlineTmp0 :
+    JoltISA.inlineTmp3 ≠ JoltISA.inlineTmp0 := by decide
 
-private theorem vreg3_ne_vreg2 :
-    (3 : JoltISA.VReg) ≠ (2 : JoltISA.VReg) := by decide
+private theorem inlineTmp3_ne_inlineTmp2 :
+    JoltISA.inlineTmp3 ≠ JoltISA.inlineTmp2 := by decide
 
 /-- Program-level concrete theorem for `MULHSU`.
 
@@ -471,20 +471,20 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       h_rs1_sign_mask_keeps_sail, h_rs1_sign_mask_writes_rs1SignMask,
       h_rs1_sign_mask_preserves, h_rs1_sign_mask_succeeds⟩ :=
     JoltISA.exists_state_after_movsign_run_vreg_xreg
-      (0 : JoltISA.VReg) rs1 js js.sail v1 rfl h_read_rs1
+      JoltISA.inlineTmp0 rs1 js js.sail v1 rfl h_read_rs1
 
   -- Instruction 2: `ANDI v1, v0, 1` extracts the low bit of the sign mask.
   let signBit := rs1SignMask &&& sign_extend (m := 64) (1#12 : BitVec 12)
   obtain ⟨js_afterSignBit, h_sign_bit_keeps_sail, h_sign_bit_writes_signBit,
       h_sign_bit_preserves, h_sign_bit_succeeds⟩ :=
     JoltISA.exists_state_after_andi_run_vreg_vreg
-      (1 : JoltISA.VReg) (0 : JoltISA.VReg) (1 : BitVec 12)
+      JoltISA.inlineTmp1 JoltISA.inlineTmp0 (1 : BitVec 12)
       js_afterRs1SignMask rs1SignMask h_rs1_sign_mask_writes_rs1SignMask
   have h_sign_bit_sail : js_afterSignBit.sail = js.sail := by
     rw [h_sign_bit_keeps_sail, h_rs1_sign_mask_keeps_sail]
   have h_sign_bit_preserves_rs1SignMask :
-      js_afterSignBit.vregs (0 : JoltISA.VReg) = rs1SignMask :=
-    (h_sign_bit_preserves (0 : JoltISA.VReg) vreg0_ne_vreg1).trans
+      js_afterSignBit.vregs JoltISA.inlineTmp0 = rs1SignMask :=
+    (h_sign_bit_preserves JoltISA.inlineTmp0 inlineTmp0_ne_inlineTmp1).trans
       h_rs1_sign_mask_writes_rs1SignMask
 
   -- Instruction 3: `XOR v2, rs1, v0` starts the absolute-value computation.
@@ -493,17 +493,17 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       h_abs_xor_writes_absoluteValueXor, h_abs_xor_preserves,
       h_abs_xor_succeeds⟩ :=
     JoltISA.exists_state_after_xor_run_vreg_xreg_vreg
-      (2 : JoltISA.VReg) rs1 (0 : JoltISA.VReg) js_afterSignBit js.sail
+      JoltISA.inlineTmp2 rs1 JoltISA.inlineTmp0 js_afterSignBit js.sail
       v1 rs1SignMask h_sign_bit_sail h_read_rs1 h_sign_bit_preserves_rs1SignMask
   have h_abs_xor_sail : js_afterAbsXor.sail = js.sail := by
     rw [h_abs_xor_keeps_sail]
   have h_abs_xor_preserves_rs1SignMask :
-      js_afterAbsXor.vregs (0 : JoltISA.VReg) = rs1SignMask :=
-    (h_abs_xor_preserves (0 : JoltISA.VReg) vreg0_ne_vreg2).trans
+      js_afterAbsXor.vregs JoltISA.inlineTmp0 = rs1SignMask :=
+    (h_abs_xor_preserves JoltISA.inlineTmp0 inlineTmp0_ne_inlineTmp2).trans
       h_sign_bit_preserves_rs1SignMask
   have h_abs_xor_preserves_signBit :
-      js_afterAbsXor.vregs (1 : JoltISA.VReg) = signBit :=
-    (h_abs_xor_preserves (1 : JoltISA.VReg) vreg1_ne_vreg2).trans
+      js_afterAbsXor.vregs JoltISA.inlineTmp1 = signBit :=
+    (h_abs_xor_preserves JoltISA.inlineTmp1 inlineTmp1_ne_inlineTmp2).trans
       h_sign_bit_writes_signBit
 
   -- Instruction 4: `ADD v2, v2, v1` finishes the absolute-value computation.
@@ -512,18 +512,18 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       h_absolute_rs1_writes_absoluteRs1, h_absolute_rs1_preserves,
       h_absolute_rs1_succeeds⟩ :=
     JoltISA.exists_state_after_add_run_vreg_vreg_vreg
-      (2 : JoltISA.VReg) (2 : JoltISA.VReg) (1 : JoltISA.VReg) js_afterAbsXor
+      JoltISA.inlineTmp2 JoltISA.inlineTmp2 JoltISA.inlineTmp1 js_afterAbsXor
       absoluteValueXor signBit h_abs_xor_writes_absoluteValueXor
       h_abs_xor_preserves_signBit
   have h_absolute_rs1_sail : js_afterAbsoluteRs1.sail = js.sail := by
     rw [h_absolute_rs1_keeps_sail, h_abs_xor_sail]
   have h_absolute_rs1_preserves_rs1SignMask :
-      js_afterAbsoluteRs1.vregs (0 : JoltISA.VReg) = rs1SignMask :=
-    (h_absolute_rs1_preserves (0 : JoltISA.VReg) vreg0_ne_vreg2).trans
+      js_afterAbsoluteRs1.vregs JoltISA.inlineTmp0 = rs1SignMask :=
+    (h_absolute_rs1_preserves JoltISA.inlineTmp0 inlineTmp0_ne_inlineTmp2).trans
       h_abs_xor_preserves_rs1SignMask
   have h_absolute_rs1_preserves_signBit :
-      js_afterAbsoluteRs1.vregs (1 : JoltISA.VReg) = signBit :=
-    (h_absolute_rs1_preserves (1 : JoltISA.VReg) vreg1_ne_vreg2).trans
+      js_afterAbsoluteRs1.vregs JoltISA.inlineTmp1 = signBit :=
+    (h_absolute_rs1_preserves JoltISA.inlineTmp1 inlineTmp1_ne_inlineTmp2).trans
       h_abs_xor_preserves_signBit
 
   -- Instruction 5: `MULHU v3, v2, rs2` writes the unsigned high product.
@@ -531,22 +531,22 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
   obtain ⟨js_afterMulhu, h_mulhu_reads_rs2, h_mulhu_keeps_sail,
       h_mulhu_writes_unsignedHighProduct, h_mulhu_preserves, h_mulhu_succeeds⟩ :=
     JoltISA.exists_state_after_mulhu_run_vreg_vreg_xreg
-      (3 : JoltISA.VReg) (2 : JoltISA.VReg) rs2 js_afterAbsoluteRs1 js.sail
+      JoltISA.inlineTmp3 JoltISA.inlineTmp2 rs2 js_afterAbsoluteRs1 js.sail
       absoluteRs1 v2 h_absolute_rs1_sail h_absolute_rs1_writes_absoluteRs1
       h_read_rs2
   have h_mulhu_sail : js_afterMulhu.sail = js.sail := by
     rw [h_mulhu_keeps_sail]
   have h_mulhu_preserves_rs1SignMask :
-      js_afterMulhu.vregs (0 : JoltISA.VReg) = rs1SignMask :=
-    (h_mulhu_preserves (0 : JoltISA.VReg) vreg0_ne_vreg3).trans
+      js_afterMulhu.vregs JoltISA.inlineTmp0 = rs1SignMask :=
+    (h_mulhu_preserves JoltISA.inlineTmp0 inlineTmp0_ne_inlineTmp3).trans
       h_absolute_rs1_preserves_rs1SignMask
   have h_mulhu_preserves_signBit :
-      js_afterMulhu.vregs (1 : JoltISA.VReg) = signBit :=
-    (h_mulhu_preserves (1 : JoltISA.VReg) vreg1_ne_vreg3).trans
+      js_afterMulhu.vregs JoltISA.inlineTmp1 = signBit :=
+    (h_mulhu_preserves JoltISA.inlineTmp1 inlineTmp1_ne_inlineTmp3).trans
       h_absolute_rs1_preserves_signBit
   have h_mulhu_preserves_absoluteRs1 :
-      js_afterMulhu.vregs (2 : JoltISA.VReg) = absoluteRs1 :=
-    (h_mulhu_preserves (2 : JoltISA.VReg) vreg2_ne_vreg3).trans
+      js_afterMulhu.vregs JoltISA.inlineTmp2 = absoluteRs1 :=
+    (h_mulhu_preserves JoltISA.inlineTmp2 inlineTmp2_ne_inlineTmp3).trans
       h_absolute_rs1_writes_absoluteRs1
 
   -- Instruction 6: `MUL v2, v2, rs2` writes the low product.
@@ -554,21 +554,21 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
   obtain ⟨js_afterMulLow, h_low_mul_reads_rs2, h_low_mul_keeps_sail,
       h_low_mul_writes_lowProduct, h_low_mul_preserves, h_low_mul_succeeds⟩ :=
     JoltISA.exists_state_after_mul_run_vreg_vreg_xreg
-      (2 : JoltISA.VReg) (2 : JoltISA.VReg) rs2 js_afterMulhu js.sail
+      JoltISA.inlineTmp2 JoltISA.inlineTmp2 rs2 js_afterMulhu js.sail
       absoluteRs1 v2 h_mulhu_sail h_mulhu_preserves_absoluteRs1 h_read_rs2
   have h_low_mul_sail : js_afterMulLow.sail = js.sail := by
     rw [h_low_mul_keeps_sail]
   have h_low_mul_preserves_rs1SignMask :
-      js_afterMulLow.vregs (0 : JoltISA.VReg) = rs1SignMask :=
-    (h_low_mul_preserves (0 : JoltISA.VReg) vreg0_ne_vreg2).trans
+      js_afterMulLow.vregs JoltISA.inlineTmp0 = rs1SignMask :=
+    (h_low_mul_preserves JoltISA.inlineTmp0 inlineTmp0_ne_inlineTmp2).trans
       h_mulhu_preserves_rs1SignMask
   have h_low_mul_preserves_signBit :
-      js_afterMulLow.vregs (1 : JoltISA.VReg) = signBit :=
-    (h_low_mul_preserves (1 : JoltISA.VReg) vreg1_ne_vreg2).trans
+      js_afterMulLow.vregs JoltISA.inlineTmp1 = signBit :=
+    (h_low_mul_preserves JoltISA.inlineTmp1 inlineTmp1_ne_inlineTmp2).trans
       h_mulhu_preserves_signBit
   have h_low_mul_preserves_unsignedHighProduct :
-      js_afterMulLow.vregs (3 : JoltISA.VReg) = unsignedHighProduct :=
-    (h_low_mul_preserves (3 : JoltISA.VReg) vreg3_ne_vreg2).trans
+      js_afterMulLow.vregs JoltISA.inlineTmp3 = unsignedHighProduct :=
+    (h_low_mul_preserves JoltISA.inlineTmp3 inlineTmp3_ne_inlineTmp2).trans
       h_mulhu_writes_unsignedHighProduct
 
   -- Instruction 7: `XOR v3, v3, v0` corrects the high half.
@@ -577,22 +577,22 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       h_high_correction_xor_writes_correctedHighProduct,
       h_high_correction_xor_preserves, h_high_correction_xor_succeeds⟩ :=
     JoltISA.exists_state_after_xor_run_vreg_vreg_vreg
-      (3 : JoltISA.VReg) (3 : JoltISA.VReg) (0 : JoltISA.VReg) js_afterMulLow
+      JoltISA.inlineTmp3 JoltISA.inlineTmp3 JoltISA.inlineTmp0 js_afterMulLow
       unsignedHighProduct rs1SignMask h_low_mul_preserves_unsignedHighProduct
       h_low_mul_preserves_rs1SignMask
   have h_high_correction_xor_sail : js_afterHighCorrectionXor.sail = js.sail := by
     rw [h_high_correction_xor_keeps_sail, h_low_mul_sail]
   have h_high_correction_xor_preserves_rs1SignMask :
-      js_afterHighCorrectionXor.vregs (0 : JoltISA.VReg) = rs1SignMask :=
-    (h_high_correction_xor_preserves (0 : JoltISA.VReg) vreg0_ne_vreg3).trans
+      js_afterHighCorrectionXor.vregs JoltISA.inlineTmp0 = rs1SignMask :=
+    (h_high_correction_xor_preserves JoltISA.inlineTmp0 inlineTmp0_ne_inlineTmp3).trans
       h_low_mul_preserves_rs1SignMask
   have h_high_correction_xor_preserves_signBit :
-      js_afterHighCorrectionXor.vregs (1 : JoltISA.VReg) = signBit :=
-    (h_high_correction_xor_preserves (1 : JoltISA.VReg) vreg1_ne_vreg3).trans
+      js_afterHighCorrectionXor.vregs JoltISA.inlineTmp1 = signBit :=
+    (h_high_correction_xor_preserves JoltISA.inlineTmp1 inlineTmp1_ne_inlineTmp3).trans
       h_low_mul_preserves_signBit
   have h_high_correction_xor_preserves_lowProduct :
-      js_afterHighCorrectionXor.vregs (2 : JoltISA.VReg) = lowProduct :=
-    (h_high_correction_xor_preserves (2 : JoltISA.VReg) vreg2_ne_vreg3).trans
+      js_afterHighCorrectionXor.vregs JoltISA.inlineTmp2 = lowProduct :=
+    (h_high_correction_xor_preserves JoltISA.inlineTmp2 inlineTmp2_ne_inlineTmp3).trans
       h_low_mul_writes_lowProduct
 
   -- Instruction 8: `XOR v2, v2, v0` corrects the low half.
@@ -601,19 +601,19 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       h_low_correction_xor_writes_correctedLowProduct,
       h_low_correction_xor_preserves, h_low_correction_xor_succeeds⟩ :=
     JoltISA.exists_state_after_xor_run_vreg_vreg_vreg
-      (2 : JoltISA.VReg) (2 : JoltISA.VReg) (0 : JoltISA.VReg)
+      JoltISA.inlineTmp2 JoltISA.inlineTmp2 JoltISA.inlineTmp0
       js_afterHighCorrectionXor lowProduct rs1SignMask
       h_high_correction_xor_preserves_lowProduct
       h_high_correction_xor_preserves_rs1SignMask
   have h_low_correction_xor_sail : js_afterLowCorrectionXor.sail = js.sail := by
     rw [h_low_correction_xor_keeps_sail, h_high_correction_xor_sail]
   have h_low_correction_xor_preserves_signBit :
-      js_afterLowCorrectionXor.vregs (1 : JoltISA.VReg) = signBit :=
-    (h_low_correction_xor_preserves (1 : JoltISA.VReg) vreg1_ne_vreg2).trans
+      js_afterLowCorrectionXor.vregs JoltISA.inlineTmp1 = signBit :=
+    (h_low_correction_xor_preserves JoltISA.inlineTmp1 inlineTmp1_ne_inlineTmp2).trans
       h_high_correction_xor_preserves_signBit
   have h_low_correction_xor_preserves_correctedHighProduct :
-      js_afterLowCorrectionXor.vregs (3 : JoltISA.VReg) = correctedHighProduct :=
-    (h_low_correction_xor_preserves (3 : JoltISA.VReg) vreg3_ne_vreg2).trans
+      js_afterLowCorrectionXor.vregs JoltISA.inlineTmp3 = correctedHighProduct :=
+    (h_low_correction_xor_preserves JoltISA.inlineTmp3 inlineTmp3_ne_inlineTmp2).trans
       h_high_correction_xor_writes_correctedHighProduct
 
   -- Instruction 9: `ADD v0, v2, v1` computes the carry candidate.
@@ -622,19 +622,19 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       h_carry_candidate_writes_carryCandidate, h_carry_candidate_preserves,
       h_carry_candidate_succeeds⟩ :=
     JoltISA.exists_state_after_add_run_vreg_vreg_vreg
-      (0 : JoltISA.VReg) (2 : JoltISA.VReg) (1 : JoltISA.VReg)
+      JoltISA.inlineTmp0 JoltISA.inlineTmp2 JoltISA.inlineTmp1
       js_afterLowCorrectionXor correctedLowProduct signBit
       h_low_correction_xor_writes_correctedLowProduct
       h_low_correction_xor_preserves_signBit
   have h_carry_candidate_sail : js_afterCarryCandidate.sail = js.sail := by
     rw [h_carry_candidate_keeps_sail, h_low_correction_xor_sail]
   have h_carry_candidate_preserves_correctedLowProduct :
-      js_afterCarryCandidate.vregs (2 : JoltISA.VReg) = correctedLowProduct :=
-    (h_carry_candidate_preserves (2 : JoltISA.VReg) vreg2_ne_vreg0).trans
+      js_afterCarryCandidate.vregs JoltISA.inlineTmp2 = correctedLowProduct :=
+    (h_carry_candidate_preserves JoltISA.inlineTmp2 inlineTmp2_ne_inlineTmp0).trans
       h_low_correction_xor_writes_correctedLowProduct
   have h_carry_candidate_preserves_correctedHighProduct :
-      js_afterCarryCandidate.vregs (3 : JoltISA.VReg) = correctedHighProduct :=
-    (h_carry_candidate_preserves (3 : JoltISA.VReg) vreg3_ne_vreg0).trans
+      js_afterCarryCandidate.vregs JoltISA.inlineTmp3 = correctedHighProduct :=
+    (h_carry_candidate_preserves JoltISA.inlineTmp3 inlineTmp3_ne_inlineTmp0).trans
       h_low_correction_xor_preserves_correctedHighProduct
 
   -- Instruction 10: `SLTU v0, v0, v2` computes the carry correction.
@@ -642,15 +642,15 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
   obtain ⟨js_afterCarry, h_carry_keeps_sail, h_carry_writes_carryCorrection,
       h_carry_preserves, h_carry_succeeds⟩ :=
     JoltISA.exists_state_after_sltu_run_vreg_vreg_vreg
-      (0 : JoltISA.VReg) (0 : JoltISA.VReg) (2 : JoltISA.VReg)
+      JoltISA.inlineTmp0 JoltISA.inlineTmp0 JoltISA.inlineTmp2
       js_afterCarryCandidate carryCandidate correctedLowProduct
       h_carry_candidate_writes_carryCandidate
       h_carry_candidate_preserves_correctedLowProduct
   have h_carry_sail : js_afterCarry.sail = js.sail := by
     rw [h_carry_keeps_sail, h_carry_candidate_sail]
   have h_carry_preserves_correctedHighProduct :
-      js_afterCarry.vregs (3 : JoltISA.VReg) = correctedHighProduct :=
-    (h_carry_preserves (3 : JoltISA.VReg) vreg3_ne_vreg0).trans
+      js_afterCarry.vregs JoltISA.inlineTmp3 = correctedHighProduct :=
+    (h_carry_preserves JoltISA.inlineTmp3 inlineTmp3_ne_inlineTmp0).trans
       h_carry_candidate_preserves_correctedHighProduct
 
   -- Instruction 11: `ADD rd, v3, v0` writes the final Jolt `MULHSU` value.
@@ -658,7 +658,7 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
   obtain ⟨js_afterFinalAdd, h_final_add_writes_mulhsuJoltResult,
       h_final_add_succeeds⟩ :=
     JoltISA.exists_state_after_add_run_xreg_vreg_vreg
-      rd (3 : JoltISA.VReg) (0 : JoltISA.VReg) js_afterCarry js.sail
+      rd JoltISA.inlineTmp3 JoltISA.inlineTmp0 js_afterCarry js.sail
       correctedHighProduct carryCorrection h_carry_sail
       h_carry_preserves_correctedHighProduct h_carry_writes_carryCorrection
 

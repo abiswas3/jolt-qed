@@ -25,14 +25,14 @@ namespace JoltISA
 /-- Jolt ISA program for RV64 `DIVU`. The quotient advice is explicit. -/
 def divuProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice 0 quotient) <|
-  .instr (.VirtualAssertValidDiv0 rs2 0) <|
-  .instr (.VirtualAssertMulUNoOverflow 0 rs2) <|
-  .instr (.MUL (.vreg 1) (.vreg 0) (.xreg rs2)) <|
-  .instr (.VirtualAssertLTEReal 1 rs1) <|
-  .instr (.SUB (.vreg 1) (.xreg rs1) (.vreg 1)) <|
-  .instr (.VirtualAssertValidUnsignedRemainderReal 1 rs2) <|
-  .instr (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) <|
+  .instr (.VirtualAdvice Divu.v0VReg quotient) <|
+  .instr (.VirtualAssertValidDiv0 rs2 Divu.v0VReg) <|
+  .instr (.VirtualAssertMulUNoOverflow Divu.v0VReg rs2) <|
+  .instr (.MUL (.vreg Divu.v1VReg) (.vreg Divu.v0VReg) (.xreg rs2)) <|
+  .instr (.VirtualAssertLTEReal Divu.v1VReg rs1) <|
+  .instr (.SUB (.vreg Divu.v1VReg) (.xreg rs1) (.vreg Divu.v1VReg)) <|
+  .instr (.VirtualAssertValidUnsignedRemainderReal Divu.v1VReg rs2) <|
+  .instr (.ADDI (.xreg rd) (.vreg Divu.v0VReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `divuProgram`. -/

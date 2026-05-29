@@ -26,15 +26,15 @@ namespace JoltISA
 /-- Jolt ISA program for RV64 `REMUW`. The quotient advice is explicit. -/
 def remuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualZeroExtendWord (.vreg 0) (.xreg rs1)) <|
-  .instr (.VirtualZeroExtendWord (.vreg 1) (.xreg rs2)) <|
-  .instr (.VirtualAdvice 2 quotient) <|
-  .instr (.VirtualAssertMulUNoOverflowV 2 1) <|
-  .instr (.MUL (.vreg 3) (.vreg 2) (.vreg 1)) <|
-  .instr (.VirtualAssertLTE 3 0) <|
-  .instr (.SUB (.vreg 3) (.vreg 0) (.vreg 3)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder 3 1) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg 3)) <|
+  .instr (.VirtualZeroExtendWord (.vreg Remuw.rs1VReg) (.xreg rs1)) <|
+  .instr (.VirtualZeroExtendWord (.vreg Remuw.rs2VReg) (.xreg rs2)) <|
+  .instr (.VirtualAdvice Remuw.vTmpVReg quotient) <|
+  .instr (.VirtualAssertMulUNoOverflowV Remuw.vTmpVReg Remuw.rs2VReg) <|
+  .instr (.MUL (.vreg Remuw.vTmpVReg) (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs2VReg)) <|
+  .instr (.VirtualAssertLTE Remuw.tempVReg Remuw.rs1VReg) <|
+  .instr (.SUB (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs1VReg) (.vreg Remuw.vTmpVReg)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder Remuw.vTmpVReg Remuw.rs2VReg) <|
+  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg Remuw.vTmpVReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `remuwProgram`. -/
@@ -86,17 +86,17 @@ theorem remuwProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     Remuw.phase_setup_run rs1 rs2 q js dividend divisor
       hrs1 hrs2 hguard_no_overflow
 
-  obtain ⟨js₂, hrun2, h2_v0, h2_v1, h2_v2, h2_v3, h2_sail⟩ :=
+  obtain ⟨js₂, hrun2, h2_v0, h2_v1, h2_v3, h2_sail⟩ :=
     Remuw.phase_quotient_product_run js₁ q zd zv
       h1_v0 h1_v1 h1_v2 hguard_lte
 
   have h2_sail_orig : js₂.sail = js.sail := h2_sail.trans h1_sail
   obtain ⟨js₃, hrun3, h3_v3, h3_sail⟩ :=
     Remuw.phase_remainder_bound_run js₂ q zd zv
-      h2_v0 h2_v1 h2_v2 h2_v3 hguard_rem_bound
+      h2_v0 h2_v1 h2_v3 hguard_rem_bound
 
   have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
-  have h3_v3_rem : js₃.vregs 3 = rem := by
+  have h3_v3_rem : js₃.vregs Remuw.tempVReg = rem := by
     unfold rem
     exact h3_v3
   obtain ⟨js₄, hrun4, h4_sail⟩ :=
@@ -199,13 +199,13 @@ theorem remuwProgram_sound (rs2 rs1 rd : regidx)
     Remuw.phase_setup_run_sound rs1 rs2 q js js₁ dividend divisor
       hrs1 hrs2 hp1
 
-  obtain ⟨hguard2, h2_v0, h2_v1, h2_v2, h2_v3, h2_sail⟩ :=
+  obtain ⟨hguard2, h2_v0, h2_v1, h2_v3, h2_sail⟩ :=
     Remuw.phase_quotient_product_run_sound js₁ js₂ q zd zv
       h1_v0 h1_v1 h1_v2 hp2
 
   obtain ⟨hguard3, h3_v3, h3_sail⟩ :=
     Remuw.phase_remainder_bound_run_sound js₂ js₃ q zd zv
-      h2_v0 h2_v1 h2_v2 h2_v3 hp3
+      h2_v0 h2_v1 h2_v3 hp3
 
   have h3_sail_orig : js₃.sail = js.sail :=
     h3_sail.trans (h2_sail.trans h1_sail)
@@ -215,7 +215,7 @@ theorem remuwProgram_sound (rs2 rs1 rd : regidx)
     unfold rem
     exact signExtend_remainder_eq_sail_remw_of_guards_uw dividend divisor q
       hguard1 hguard2 hguard3
-  have h3_v3_rem : js₃.vregs 3 = rem := by
+  have h3_v3_rem : js₃.vregs Remuw.tempVReg = rem := by
     unfold rem
     exact h3_v3
   have hwrite :=

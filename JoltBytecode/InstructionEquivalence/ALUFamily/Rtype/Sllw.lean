@@ -118,13 +118,13 @@ theorem sllwProgram_concrete
   obtain ⟨js_afterPow2, h_pow2_reads_rs2, h_pow2_keeps_sail,
       h_pow2_writes_pow2, _, h_pow2_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_pow2w_run_vreg_xreg
-      (0 : JoltISA.VReg) rs2 js v2 h_read_rs2
+      JoltISA.inlineTmp0 rs2 js v2 h_read_rs2
 
   -- Instruction 2: `MUL rd, rs1, v0` writes the shifted word product to `rd`.
   let product := v1 * pow2
   obtain ⟨js_afterMul, h_mul_reads_rs1, h_mul_writes_product, h_mul_succeeds⟩ :=
     JoltISA.exists_state_after_mul_run_xreg_xreg_vreg_of_value
-      rd rs1 (0 : JoltISA.VReg) js_afterPow2 js.sail v1 pow2
+      rd rs1 JoltISA.inlineTmp0 js_afterPow2 js.sail v1 pow2
       h_pow2_keeps_sail h_read_rs1 h_pow2_writes_pow2
 
   -- Instruction 3: `VirtualSignExtendWord rd, rd` writes the SLLW result.

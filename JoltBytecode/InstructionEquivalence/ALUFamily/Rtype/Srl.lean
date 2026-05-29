@@ -81,14 +81,14 @@ theorem srlProgram_concrete
   obtain ⟨js_afterBitmask, h_bitmask_reads_rs2, h_bitmask_keeps_sail,
       h_bitmask_writes_shiftBitmask, _, h_bitmask_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_shift_right_bitmask_run_vreg_xreg
-      (0 : JoltISA.VReg) rs2 js v2 h_read_rs2
+      JoltISA.inlineTmp0 rs2 js v2 h_read_rs2
 
   -- Instruction 2: `VirtualSRL rd, rs1, v0` writes the shifted result to `rd`.
   let jolt_val := srl_jolt_val v1 v2
   obtain ⟨js_afterSrl, h_virtual_srl_reads_rs1, h_virtual_srl_writes_jolt_val,
       h_virtual_srl_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_srl_run_xreg_xreg_vreg_of_value
-      rd rs1 (0 : JoltISA.VReg) js_afterBitmask js.sail v1 shiftBitmask
+      rd rs1 JoltISA.inlineTmp0 js_afterBitmask js.sail v1 shiftBitmask
       h_bitmask_keeps_sail h_read_rs1 h_bitmask_writes_shiftBitmask
 
   have h_program_succeeds :

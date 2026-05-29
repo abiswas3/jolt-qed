@@ -26,13 +26,13 @@ namespace JoltISA
 /-- Jolt ISA program for RV64 `REMU`. The quotient advice is explicit. -/
 def remuProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice 0 quotient) <|
-  .instr (.VirtualAssertMulUNoOverflow 0 rs2) <|
-  .instr (.MUL (.vreg 0) (.vreg 0) (.xreg rs2)) <|
-  .instr (.VirtualAssertLTEReal 0 rs1) <|
-  .instr (.SUB (.vreg 0) (.xreg rs1) (.vreg 0)) <|
-  .instr (.VirtualAssertValidUnsignedRemainderReal 0 rs2) <|
-  .instr (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) <|
+  .instr (.VirtualAdvice Remu.v0VReg quotient) <|
+  .instr (.VirtualAssertMulUNoOverflow Remu.v0VReg rs2) <|
+  .instr (.MUL (.vreg Remu.v0VReg) (.vreg Remu.v0VReg) (.xreg rs2)) <|
+  .instr (.VirtualAssertLTEReal Remu.v0VReg rs1) <|
+  .instr (.SUB (.vreg Remu.v0VReg) (.xreg rs1) (.vreg Remu.v0VReg)) <|
+  .instr (.VirtualAssertValidUnsignedRemainderReal Remu.v0VReg rs2) <|
+  .instr (.ADDI (.xreg rd) (.vreg Remu.v0VReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `remuProgram`. -/
@@ -104,7 +104,7 @@ theorem remuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       hrs1_js3 hrs2_js3 h3_v0 hguard_rem_bound
 
   have h4_sail_orig : js₄.sail = js.sail := h4_sail.trans h3_sail_orig
-  have h4_v0_rem : js₄.vregs 0 = rem := by
+  have h4_v0_rem : js₄.vregs Remu.v0VReg = rem := by
     unfold rem
     exact h4_v0
   obtain ⟨js₅, hrun5, h5_sail⟩ :=
@@ -236,7 +236,7 @@ theorem remuProgram_sound (rs2 rs1 rd : regidx)
     unfold rem
     exact remainder_eq_sail_rem_of_guards_u dividend divisor q
       hguard1 hguard2 hguard3
-  have h4_v0_rem : js₄.vregs 0 = rem := by
+  have h4_v0_rem : js₄.vregs Remu.v0VReg = rem := by
     unfold rem
     exact h4_v0
   have hwrite :=

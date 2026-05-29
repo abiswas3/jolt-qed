@@ -127,14 +127,14 @@ theorem srliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJol
   obtain ⟨js_afterLeftShift, h_left_shift_reads_rs1, h_left_shift_keeps_sail,
       h_left_shift_writes_leftShiftedSource, _, h_left_shift_block_succeeds⟩ :=
     JoltISA.exists_state_after_slli_block_run_vreg_xreg
-      (0 : JoltISA.VReg) rs1 (32 : BitVec 6) js v h_read_rs1
+      JoltISA.inlineTmp0 rs1 (32 : BitVec 6) js v h_read_rs1
 
   -- Instruction 2: `VirtualSRLI rd, v0, srliwBitmask shamt` writes the shifted result.
   let bitmask := JoltISA.srliwBitmask shamt
   let shiftedResult := jolt_virtual_srli_value leftShiftedSource bitmask
   obtain ⟨js_afterSrli, h_srli_writes_shiftedResult, h_srli_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_srli_run_xreg_vreg_of_value
-      rd (0 : JoltISA.VReg) bitmask js_afterLeftShift js.sail leftShiftedSource
+      rd JoltISA.inlineTmp0 bitmask js_afterLeftShift js.sail leftShiftedSource
       h_left_shift_keeps_sail h_left_shift_writes_leftShiftedSource
 
   -- Instruction 3: `VirtualSignExtendWord rd, rd` writes the SRLIW result.

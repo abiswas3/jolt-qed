@@ -27,17 +27,17 @@ namespace JoltISA
 /-- Jolt ISA program for RV64 `DIVUW`. The quotient advice is explicit. -/
 def divuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualZeroExtendWord (.vreg 0) (.xreg rs1)) <|
-  .instr (.VirtualZeroExtendWord (.vreg 1) (.xreg rs2)) <|
-  .instr (.VirtualAdvice 2 quotient) <|
-  .instr (.VirtualAssertMulUNoOverflowV 2 1) <|
-  .instr (.MUL (.vreg 3) (.vreg 2) (.vreg 1)) <|
-  .instr (.VirtualAssertLTE 3 0) <|
-  .instr (.SUB (.vreg 3) (.vreg 0) (.vreg 3)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder 3 1) <|
-  .instr (.VirtualSignExtendWord (.vreg 3) (.vreg 2)) <|
-  .instr (.VirtualAssertValidDiv0V 1 3) <|
-  .instr (.ADDI (.xreg rd) (.vreg 3) (0 : BitVec 12)) <|
+  .instr (.VirtualZeroExtendWord (.vreg Divuw.rs1VReg) (.xreg rs1)) <|
+  .instr (.VirtualZeroExtendWord (.vreg Divuw.rs2VReg) (.xreg rs2)) <|
+  .instr (.VirtualAdvice Divuw.quoVReg quotient) <|
+  .instr (.VirtualAssertMulUNoOverflowV Divuw.quoVReg Divuw.rs2VReg) <|
+  .instr (.MUL (.vreg Divuw.tempVReg) (.vreg Divuw.quoVReg) (.vreg Divuw.rs2VReg)) <|
+  .instr (.VirtualAssertLTE Divuw.tempVReg Divuw.rs1VReg) <|
+  .instr (.SUB (.vreg Divuw.tempVReg) (.vreg Divuw.rs1VReg) (.vreg Divuw.tempVReg)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder Divuw.tempVReg Divuw.rs2VReg) <|
+  .instr (.VirtualSignExtendWord (.vreg Divuw.tempVReg) (.vreg Divuw.quoVReg)) <|
+  .instr (.VirtualAssertValidDiv0V Divuw.rs2VReg Divuw.tempVReg) <|
+  .instr (.ADDI (.xreg rd) (.vreg Divuw.tempVReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `divuwProgram`. -/

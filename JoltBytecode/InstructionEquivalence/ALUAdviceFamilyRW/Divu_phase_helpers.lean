@@ -169,32 +169,45 @@ theorem vreg_assert_valid_unsigned_remainder_real_run_err
 
 namespace Divu
 
+/-- Rust `v0`: quotient advice returned by the allocator. -/
+abbrev v0VReg : JoltISA.VReg := JoltISA.inlineTmp0
+
+/-- Rust `v1`: temporary product/remainder register. -/
+abbrev v1VReg : JoltISA.VReg := JoltISA.inlineTmp1
+
+/-- Two top-level Rust `allocate()` calls from an empty instruction-local live
+set produce DIVU's `v0` and `v1` guards. -/
+theorem allocate_layout :
+    JoltISA.allocateInstructionRegister [] = some (v0VReg, [0]) ∧
+    JoltISA.allocateInstructionRegister [0] = some (v1VReg, [1, 0]) := by
+  decide
+
 /-- Phase 1 — advice load + div-by-zero assert. -/
 def phase_setup (rs2 : regidx) (quotient : BitVec 64) : JoltISA.Program :=
-  .instr (.VirtualAdvice 0 quotient) <|
-  .instr (.VirtualAssertValidDiv0 rs2 0) <|
+  .instr (.VirtualAdvice v0VReg quotient) <|
+  .instr (.VirtualAssertValidDiv0 rs2 v0VReg) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 2 — assert that `q * divisor` does not overflow 64 bits unsigned. -/
 def phase_overflow_check (rs2 : regidx) : JoltISA.Program :=
-  .instr (.VirtualAssertMulUNoOverflow 0 rs2) <|
+  .instr (.VirtualAssertMulUNoOverflow v0VReg rs2) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 3 — compute `q * divisor` into v1, then assert `v1 <= rs1` unsigned. -/
 def phase_quotient_product (rs1 rs2 : regidx) : JoltISA.Program :=
-  .instr (.MUL (.vreg 1) (.vreg 0) (.xreg rs2)) <|
-  .instr (.VirtualAssertLTEReal 1 rs1) <|
+  .instr (.MUL (.vreg v1VReg) (.vreg v0VReg) (.xreg rs2)) <|
+  .instr (.VirtualAssertLTEReal v1VReg rs1) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 4 — compute `rs1 - q * divisor` into v1, then check the remainder bound. -/
 def phase_remainder_bound (rs1 rs2 : regidx) : JoltISA.Program :=
-  .instr (.SUB (.vreg 1) (.xreg rs1) (.vreg 1)) <|
-  .instr (.VirtualAssertValidUnsignedRemainderReal 1 rs2) <|
+  .instr (.SUB (.vreg v1VReg) (.xreg rs1) (.vreg v1VReg)) <|
+  .instr (.VirtualAssertValidUnsignedRemainderReal v1VReg rs2) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 5 — move the quotient advice from v0 into real register rd. -/
 def phase_writeback (rd : regidx) : JoltISA.Program :=
-  .instr (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) <|
+  .instr (.ADDI (.xreg rd) (.vreg v0VReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 theorem phase_setup_run
@@ -204,26 +217,26 @@ theorem phase_setup_run
     (hguard_div0 : ¬ (divisor = 0#64 ∧ q ≠ (-1 : BitVec 64))) :
     ∃ js',
       (JoltISA.execProgram (phase_setup rs2 q)).run js = .ok RETIRE_SUCCESS js' ∧
-      js'.vregs 0 = q ∧
+      js'.vregs v0VReg = q ∧
       js'.sail = js.sail := by
   unfold phase_setup
   let s1 : SailJoltState :=
     { sail := js.sail
-      vregs := fun r => if r = (0 : BitVec 7) then q else js.vregs r }
-  have h1 : (JoltISA.execInstr (.VirtualAdvice 0 q)).run js =
+      vregs := fun r => if r = v0VReg then q else js.vregs r }
+  have h1 : (JoltISA.execInstr (.VirtualAdvice v0VReg q)).run js =
       .ok RETIRE_SUCCESS s1 :=
-    vreg_advice_run 0 q js
-  have hs1_v0 : s1.vregs 0 = q := by
-    show (if (0 : BitVec 7) = 0 then q else js.vregs 0) = q
+    vreg_advice_run v0VReg q js
+  have hs1_v0 : s1.vregs v0VReg = q := by
+    show (if v0VReg = v0VReg then q else js.vregs v0VReg) = q
     rw [if_pos rfl]
   have hs1_sail : s1.sail = js.sail := rfl
   have hrs2_s1 : rX_bits rs2 s1.sail = .ok divisor s1.sail := hs1_sail.symm ▸ hrs2
-  have hguard_s1 : ¬ (divisor = 0#64 ∧ s1.vregs 0 ≠ (-1 : BitVec 64)) := by
+  have hguard_s1 : ¬ (divisor = 0#64 ∧ s1.vregs v0VReg ≠ (-1 : BitVec 64)) := by
     rw [hs1_v0]
     exact hguard_div0
-  have h2 : (JoltISA.execInstr (.VirtualAssertValidDiv0 rs2 0)).run s1 =
+  have h2 : (JoltISA.execInstr (.VirtualAssertValidDiv0 rs2 v0VReg)).run s1 =
       .ok RETIRE_SUCCESS s1 :=
-    vreg_assert_valid_div0_run_ok rs2 0 s1 divisor hrs2_s1 hguard_s1
+    vreg_assert_valid_div0_run_ok rs2 v0VReg s1 divisor hrs2_s1 hguard_s1
   refine ⟨s1, ?_, hs1_v0, hs1_sail⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js s1 h1]
   rw [JoltISA.execProgram_instr_run_retire _ _ s1 s1 h2]
@@ -232,18 +245,18 @@ theorem phase_setup_run
 theorem phase_overflow_check_run
     (rs2 : regidx) (js : SailJoltState) (q divisor : BitVec 64)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
-    (h_v0 : js.vregs 0 = q)
+    (h_v0 : js.vregs v0VReg = q)
     (hguard_no_overflow : q.toNat * divisor.toNat < 2^64) :
     ∃ js',
       (JoltISA.execProgram (phase_overflow_check rs2)).run js =
         .ok RETIRE_SUCCESS js' ∧
-      js'.vregs 0 = q ∧
+      js'.vregs v0VReg = q ∧
       js'.sail = js.sail := by
   unfold phase_overflow_check
-  have hguard : (js.vregs 0).toNat * divisor.toNat < 2^64 := h_v0 ▸ hguard_no_overflow
-  have h1 : (JoltISA.execInstr (.VirtualAssertMulUNoOverflow 0 rs2)).run js =
+  have hguard : (js.vregs v0VReg).toNat * divisor.toNat < 2^64 := h_v0 ▸ hguard_no_overflow
+  have h1 : (JoltISA.execInstr (.VirtualAssertMulUNoOverflow v0VReg rs2)).run js =
       .ok RETIRE_SUCCESS js :=
-    vreg_assert_mulu_no_overflow_run_ok 0 rs2 js divisor hrs2 hguard
+    vreg_assert_mulu_no_overflow_run_ok v0VReg rs2 js divisor hrs2 hguard
   refine ⟨js, ?_, h_v0, rfl⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js h1]
   rfl
@@ -253,26 +266,26 @@ theorem phase_quotient_product_run
     (q dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
-    (h_v0 : js.vregs 0 = q)
+    (h_v0 : js.vregs v0VReg = q)
     (hguard_lte : (q * divisor).toNat ≤ dividend.toNat) :
     ∃ js',
       (JoltISA.execProgram (phase_quotient_product rs1 rs2)).run js =
         .ok RETIRE_SUCCESS js' ∧
-      js'.vregs 0 = q ∧
-      js'.vregs 1 = q * divisor ∧
+      js'.vregs v0VReg = q ∧
+      js'.vregs v1VReg = q * divisor ∧
       js'.sail = js.sail := by
   unfold phase_quotient_product
   obtain ⟨s1, h1, hs1_v1, hs1_pres, hs1_sail⟩ :=
-    vreg_MUL_from_real_vs2_run_ex 1 0 rs2 js divisor hrs2
-  have hs1_v0 : s1.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
-  have hs1_v1_eq : s1.vregs 1 = q * divisor := by rw [hs1_v1, h_v0]
+    vreg_MUL_from_real_vs2_run_ex v1VReg v0VReg rs2 js divisor hrs2
+  have hs1_v0 : s1.vregs v0VReg = q := (hs1_pres v0VReg (by decide)).trans h_v0
+  have hs1_v1_eq : s1.vregs v1VReg = q * divisor := by rw [hs1_v1, h_v0]
   have hrs1_s1 : rX_bits rs1 s1.sail = .ok dividend s1.sail := hs1_sail.symm ▸ hrs1
-  have hguard : (s1.vregs 1).toNat ≤ dividend.toNat := by
+  have hguard : (s1.vregs v1VReg).toNat ≤ dividend.toNat := by
     rw [hs1_v1_eq]
     exact hguard_lte
-  have h2 : (JoltISA.execInstr (.VirtualAssertLTEReal 1 rs1)).run s1 =
+  have h2 : (JoltISA.execInstr (.VirtualAssertLTEReal v1VReg rs1)).run s1 =
       .ok RETIRE_SUCCESS s1 :=
-    vreg_assert_lte_real_run_ok 1 rs1 s1 dividend hrs1_s1 hguard
+    vreg_assert_lte_real_run_ok v1VReg rs1 s1 dividend hrs1_s1 hguard
   refine ⟨s1, ?_, hs1_v0, hs1_v1_eq, hs1_sail⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js s1 h1]
   rw [JoltISA.execProgram_instr_run_retire _ _ s1 s1 h2]
@@ -283,27 +296,27 @@ theorem phase_remainder_bound_run
     (q dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
-    (h_v0 : js.vregs 0 = q)
-    (h_v1 : js.vregs 1 = q * divisor)
+    (h_v0 : js.vregs v0VReg = q)
+    (h_v1 : js.vregs v1VReg = q * divisor)
     (hguard_rem_bound :
       divisor = 0#64 ∨ (dividend - q * divisor).toNat < divisor.toNat) :
     ∃ js',
       (JoltISA.execProgram (phase_remainder_bound rs1 rs2)).run js =
         .ok RETIRE_SUCCESS js' ∧
-      js'.vregs 0 = q ∧
+      js'.vregs v0VReg = q ∧
       js'.sail = js.sail := by
   unfold phase_remainder_bound
   obtain ⟨s1, h1, hs1_v1, hs1_pres, hs1_sail⟩ :=
-    vreg_SUB_from_real_vs1_run_ex 1 rs1 1 js dividend hrs1
-  have hs1_v0 : s1.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
-  have hs1_v1_eq : s1.vregs 1 = dividend - q * divisor := by rw [hs1_v1, h_v1]
+    vreg_SUB_from_real_vs1_run_ex v1VReg rs1 v1VReg js dividend hrs1
+  have hs1_v0 : s1.vregs v0VReg = q := (hs1_pres v0VReg (by decide)).trans h_v0
+  have hs1_v1_eq : s1.vregs v1VReg = dividend - q * divisor := by rw [hs1_v1, h_v1]
   have hrs2_s1 : rX_bits rs2 s1.sail = .ok divisor s1.sail := hs1_sail.symm ▸ hrs2
-  have hguard : divisor = 0#64 ∨ (s1.vregs 1).toNat < divisor.toNat := by
+  have hguard : divisor = 0#64 ∨ (s1.vregs v1VReg).toNat < divisor.toNat := by
     rw [hs1_v1_eq]
     exact hguard_rem_bound
-  have h2 : (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainderReal 1 rs2)).run s1 =
+  have h2 : (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainderReal v1VReg rs2)).run s1 =
       .ok RETIRE_SUCCESS s1 :=
-    vreg_assert_valid_unsigned_remainder_real_run_ok 1 rs2 s1 divisor hrs2_s1 hguard
+    vreg_assert_valid_unsigned_remainder_real_run_ok v1VReg rs2 s1 divisor hrs2_s1 hguard
   refine ⟨s1, ?_, hs1_v0, hs1_sail⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js s1 h1]
   rw [JoltISA.execProgram_instr_run_retire _ _ s1 s1 h2]
@@ -313,19 +326,19 @@ theorem phase_writeback_run
     (rd : regidx)
     (js : SailJoltState) (js_ref : SailState)
     (q : BitVec 64)
-    (h_v0 : js.vregs 0 = q)
+    (h_v0 : js.vregs v0VReg = q)
     (h_sail : js.sail = js_ref) :
     ∃ js',
       (JoltISA.execProgram (phase_writeback rd)).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js_ref rd q := by
   unfold phase_writeback
-  have hq : js.vregs (0 : BitVec 7) + sign_extend (m := 64) (0 : BitVec 12) = q := by
+  have hq : js.vregs v0VReg + sign_extend (m := 64) (0 : BitVec 12) = q := by
     rw [h_v0]
     have hz : sign_extend (m := 64) (0 : BitVec 12) = 0#64 := by decide
     rw [hz, BitVec.add_zero]
   obtain ⟨s', hw⟩ := wX_shape rd q js.sail
   refine ⟨{ sail := s', vregs := js.vregs }, ?_, ?_⟩
-  · have hrun := vreg_ADDI_to_real_run rd 0 0 js s' (by rw [hq]; exact hw)
+  · have hrun := vreg_ADDI_to_real_run rd v0VReg 0 js s' (by rw [hq]; exact hw)
     rw [JoltISA.execProgram_instr_run_retire _ _ js { sail := s', vregs := js.vregs } hrun]
     rfl
   · show s' = stateAfterWrite js_ref rd q
@@ -340,12 +353,12 @@ theorem phase_setup_run_sound
     (hp : (JoltISA.execProgram (phase_setup rs2 q)).run js =
       .ok RETIRE_SUCCESS js₁) :
     ¬ (divisor = 0#64 ∧ q ≠ (-1 : BitVec 64)) ∧
-    js₁.vregs 0 = q ∧
+    js₁.vregs v0VReg = q ∧
     js₁.sail = js.sail := by
   unfold phase_setup at hp
   obtain ⟨s₁, hrun1, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s₁, hrun1_ex, hs1_v0, _hs1_pres, hs1_sail⟩ := vreg_advice_run_ex 0 q js
+  obtain ⟨s₁, hrun1_ex, hs1_v0, _hs1_pres, hs1_sail⟩ := vreg_advice_run_ex v0VReg q js
   rw [hrun1_ex] at hrun1
   cases hrun1
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=
@@ -353,12 +366,12 @@ theorem phase_setup_run_sound
   simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure] at hdone
   cases hdone
   have hrs2_s1 : rX_bits rs2 s₁.sail = .ok divisor s₁.sail := hs1_sail.symm ▸ hrs2
-  by_cases hguard : (divisor = 0#64 ∧ s₁.vregs 0 ≠ (-1 : BitVec 64))
+  by_cases hguard : (divisor = 0#64 ∧ s₁.vregs v0VReg ≠ (-1 : BitVec 64))
   · exfalso
-    have herr := vreg_assert_valid_div0_run_err rs2 0 s₁ divisor hrs2_s1 hguard
+    have herr := vreg_assert_valid_div0_run_err rs2 v0VReg s₁ divisor hrs2_s1 hguard
     rw [herr] at hrun2
     cases hrun2
-  · have hok := vreg_assert_valid_div0_run_ok rs2 0 s₁ divisor hrs2_s1 hguard
+  · have hok := vreg_assert_valid_div0_run_ok rs2 v0VReg s₁ divisor hrs2_s1 hguard
     rw [hok] at hrun2
     cases hrun2
     refine ⟨?_, hs1_v0, hs1_sail⟩
@@ -370,24 +383,24 @@ theorem phase_overflow_check_run_sound
     (js js₁ : SailJoltState)
     (q divisor : BitVec 64)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
-    (h_v0 : js.vregs 0 = q)
+    (h_v0 : js.vregs v0VReg = q)
     (hp : (JoltISA.execProgram (phase_overflow_check rs2)).run js =
       .ok RETIRE_SUCCESS js₁) :
     q.toNat * divisor.toNat < 2^64 ∧
-    js₁.vregs 0 = q ∧
+    js₁.vregs v0VReg = q ∧
     js₁.sail = js.sail := by
   unfold phase_overflow_check at hp
   obtain ⟨js_afterAssert, hrun1, hdone⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure] at hdone
   cases hdone
-  by_cases hguard : (js.vregs 0).toNat * divisor.toNat < 2^64
-  · have hok := vreg_assert_mulu_no_overflow_run_ok 0 rs2 js divisor hrs2 hguard
+  by_cases hguard : (js.vregs v0VReg).toNat * divisor.toNat < 2^64
+  · have hok := vreg_assert_mulu_no_overflow_run_ok v0VReg rs2 js divisor hrs2 hguard
     rw [hok] at hrun1
     cases hrun1
     exact ⟨h_v0 ▸ hguard, h_v0, rfl⟩
   · exfalso
-    have herr := vreg_assert_mulu_no_overflow_run_err 0 rs2 js divisor hrs2 hguard
+    have herr := vreg_assert_mulu_no_overflow_run_err v0VReg rs2 js divisor hrs2 hguard
     rw [herr] at hrun1
     cases hrun1
 
@@ -397,34 +410,34 @@ theorem phase_quotient_product_run_sound
     (q dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
-    (h_v0 : js.vregs 0 = q)
+    (h_v0 : js.vregs v0VReg = q)
     (hp : (JoltISA.execProgram (phase_quotient_product rs1 rs2)).run js =
       .ok RETIRE_SUCCESS js₁) :
     (q * divisor).toNat ≤ dividend.toNat ∧
-    js₁.vregs 0 = q ∧
-    js₁.vregs 1 = q * divisor ∧
+    js₁.vregs v0VReg = q ∧
+    js₁.vregs v1VReg = q * divisor ∧
     js₁.sail = js.sail := by
   unfold phase_quotient_product at hp
   obtain ⟨s₁, hrun1, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s₁, hrun1_ex, hs1_v1, hs1_pres, hs1_sail⟩ :=
-    vreg_MUL_from_real_vs2_run_ex 1 0 rs2 js divisor hrs2
+    vreg_MUL_from_real_vs2_run_ex v1VReg v0VReg rs2 js divisor hrs2
   rw [hrun1_ex] at hrun1
   cases hrun1
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure] at hdone
   cases hdone
-  have hs1_v0 : s₁.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
-  have hs1_v1_eq : s₁.vregs 1 = q * divisor := by rw [hs1_v1, h_v0]
+  have hs1_v0 : s₁.vregs v0VReg = q := (hs1_pres v0VReg (by decide)).trans h_v0
+  have hs1_v1_eq : s₁.vregs v1VReg = q * divisor := by rw [hs1_v1, h_v0]
   have hrs1_s1 : rX_bits rs1 s₁.sail = .ok dividend s₁.sail := hs1_sail.symm ▸ hrs1
-  by_cases hguard : (s₁.vregs 1).toNat ≤ dividend.toNat
-  · have hok := vreg_assert_lte_real_run_ok 1 rs1 s₁ dividend hrs1_s1 hguard
+  by_cases hguard : (s₁.vregs v1VReg).toNat ≤ dividend.toNat
+  · have hok := vreg_assert_lte_real_run_ok v1VReg rs1 s₁ dividend hrs1_s1 hguard
     rw [hok] at hrun2
     cases hrun2
     exact ⟨hs1_v1_eq ▸ hguard, hs1_v0, hs1_v1_eq, hs1_sail⟩
   · exfalso
-    have herr := vreg_assert_lte_real_run_err 1 rs1 s₁ dividend hrs1_s1 hguard
+    have herr := vreg_assert_lte_real_run_err v1VReg rs1 s₁ dividend hrs1_s1 hguard
     rw [herr] at hrun2
     cases hrun2
 
@@ -434,30 +447,30 @@ theorem phase_remainder_bound_run_sound
     (q dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
-    (h_v0 : js.vregs 0 = q)
-    (h_v1 : js.vregs 1 = q * divisor)
+    (h_v0 : js.vregs v0VReg = q)
+    (h_v1 : js.vregs v1VReg = q * divisor)
     (hp : (JoltISA.execProgram (phase_remainder_bound rs1 rs2)).run js =
       .ok RETIRE_SUCCESS js₁) :
     (divisor = 0#64 ∨ (dividend - q * divisor).toNat < divisor.toNat) ∧
-    js₁.vregs 0 = q ∧
+    js₁.vregs v0VReg = q ∧
     js₁.sail = js.sail := by
   unfold phase_remainder_bound at hp
   obtain ⟨s₁, hrun1, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s₁, hrun1_ex, hs1_v1, hs1_pres, hs1_sail⟩ :=
-    vreg_SUB_from_real_vs1_run_ex 1 rs1 1 js dividend hrs1
+    vreg_SUB_from_real_vs1_run_ex v1VReg rs1 v1VReg js dividend hrs1
   rw [hrun1_ex] at hrun1
   cases hrun1
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure] at hdone
   cases hdone
-  have hs1_v0 : s₁.vregs 0 = q := (hs1_pres 0 (by decide)).trans h_v0
-  have hs1_v1_eq : s₁.vregs 1 = dividend - q * divisor := by rw [hs1_v1, h_v1]
+  have hs1_v0 : s₁.vregs v0VReg = q := (hs1_pres v0VReg (by decide)).trans h_v0
+  have hs1_v1_eq : s₁.vregs v1VReg = dividend - q * divisor := by rw [hs1_v1, h_v1]
   have hrs2_s1 : rX_bits rs2 s₁.sail = .ok divisor s₁.sail := hs1_sail.symm ▸ hrs2
-  by_cases hguard : divisor = 0#64 ∨ (s₁.vregs 1).toNat < divisor.toNat
+  by_cases hguard : divisor = 0#64 ∨ (s₁.vregs v1VReg).toNat < divisor.toNat
   · have hok :=
-      vreg_assert_valid_unsigned_remainder_real_run_ok 1 rs2 s₁ divisor hrs2_s1 hguard
+      vreg_assert_valid_unsigned_remainder_real_run_ok v1VReg rs2 s₁ divisor hrs2_s1 hguard
     rw [hok] at hrun2
     cases hrun2
     refine ⟨?_, hs1_v0, hs1_sail⟩
@@ -469,7 +482,7 @@ theorem phase_remainder_bound_run_sound
       exact hlt
   · exfalso
     have herr :=
-      vreg_assert_valid_unsigned_remainder_real_run_err 1 rs2 s₁ divisor hrs2_s1 hguard
+      vreg_assert_valid_unsigned_remainder_real_run_err v1VReg rs2 s₁ divisor hrs2_s1 hguard
     rw [herr] at hrun2
     cases hrun2
 
@@ -477,7 +490,7 @@ theorem phase_writeback_run_sound
     (rd : regidx)
     (js js₁ : SailJoltState) (js_ref : SailState)
     (q : BitVec 64)
-    (h_v0 : js.vregs 0 = q)
+    (h_v0 : js.vregs v0VReg = q)
     (h_sail : js.sail = js_ref)
     (hp : (JoltISA.execProgram (phase_writeback rd)).run js =
       .ok RETIRE_SUCCESS js₁) :
@@ -487,15 +500,15 @@ theorem phase_writeback_run_sound
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure] at hdone
   cases hdone
-  have hq : js.vregs (0 : BitVec 7) + sign_extend (m := 64) (0 : BitVec 12) = q := by
+  have hq : js.vregs v0VReg + sign_extend (m := 64) (0 : BitVec 12) = q := by
     rw [h_v0]
     have hz : sign_extend (m := 64) (0 : BitVec 12) = 0#64 := by decide
     rw [hz, BitVec.add_zero]
   obtain ⟨s', hw⟩ := wX_shape rd q js.sail
   have hp_concrete :
-      (JoltISA.execInstr (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12))).run js =
+      (JoltISA.execInstr (.ADDI (.xreg rd) (.vreg v0VReg) (0 : BitVec 12))).run js =
       .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } :=
-    vreg_ADDI_to_real_run rd 0 0 js s' (by rw [hq]; exact hw)
+    vreg_ADDI_to_real_run rd v0VReg 0 js s' (by rw [hq]; exact hw)
   rw [hp_concrete] at hrun
   cases hrun
   show s' = stateAfterWrite js_ref rd q

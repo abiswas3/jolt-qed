@@ -33,24 +33,25 @@ parameters supplied by the oracle. -/
 def remProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice 0 quotient) <|
-  .instr (.VirtualAdvice 1 remAbs) <|
-  .instr (.VirtualAssertValidDiv0 rs2 0) <|
-  .instr (.VirtualChangeDivisor 2 rs1 rs2) <|
-  mulhBlock 4 5 6 (.vreg 3) (.vreg 0) (.vreg 2) <|
-  .instr (.MUL (.vreg 7) (.vreg 0) (.vreg 2)) <|
-  sraiBlock (.vreg 8) (.vreg 7) (63 : BitVec 6) <|
-  .instr (.VirtualAssertEQ 3 8) <|
-  sraiBlock (.vreg 3) (.xreg rs1) (63 : BitVec 6) <|
-  .instr (.XOR (.vreg 8) (.vreg 1) (.vreg 3)) <|
-  .instr (.SUB (.vreg 8) (.vreg 8) (.vreg 3)) <|
-  .instr (.ADD (.vreg 7) (.vreg 7) (.vreg 8)) <|
-  .instr (.VirtualAssertEQReal 7 rs1) <|
-  sraiBlock (.vreg 3) (.vreg 2) (63 : BitVec 6) <|
-  .instr (.XOR (.vreg 7) (.vreg 2) (.vreg 3)) <|
-  .instr (.SUB (.vreg 7) (.vreg 7) (.vreg 3)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder 1 7) <|
-  .instr (.ADDI (.xreg rd) (.vreg 8) (0 : BitVec 12)) <|
+  .instr (.VirtualAdvice Rem.a2VReg quotient) <|
+  .instr (.VirtualAdvice Rem.a3VReg remAbs) <|
+  .instr (.VirtualAssertValidDiv0 rs2 Rem.a2VReg) <|
+  .instr (.VirtualChangeDivisor Rem.t0VReg rs1 rs2) <|
+  mulhBlock Div.t2VReg Div.t3VReg Div.t4VReg
+    (.vreg Rem.t1VReg) (.vreg Rem.a2VReg) (.vreg Rem.t0VReg) <|
+  .instr (.MUL (.vreg Rem.t2VReg) (.vreg Rem.a2VReg) (.vreg Rem.t0VReg)) <|
+  sraiBlock (.vreg Rem.t3VReg) (.vreg Rem.t2VReg) (63 : BitVec 6) <|
+  .instr (.VirtualAssertEQ Rem.t1VReg Rem.t3VReg) <|
+  sraiBlock (.vreg Rem.t1VReg) (.xreg rs1) (63 : BitVec 6) <|
+  .instr (.XOR (.vreg Rem.t3VReg) (.vreg Rem.a3VReg) (.vreg Rem.t1VReg)) <|
+  .instr (.SUB (.vreg Rem.t3VReg) (.vreg Rem.t3VReg) (.vreg Rem.t1VReg)) <|
+  .instr (.ADD (.vreg Rem.t2VReg) (.vreg Rem.t2VReg) (.vreg Rem.t3VReg)) <|
+  .instr (.VirtualAssertEQReal Rem.t2VReg rs1) <|
+  sraiBlock (.vreg Rem.t1VReg) (.vreg Rem.t0VReg) (63 : BitVec 6) <|
+  .instr (.XOR (.vreg Rem.t2VReg) (.vreg Rem.t0VReg) (.vreg Rem.t1VReg)) <|
+  .instr (.SUB (.vreg Rem.t2VReg) (.vreg Rem.t2VReg) (.vreg Rem.t1VReg)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder Rem.a3VReg Rem.t2VReg) <|
+  .instr (.ADDI (.xreg rd) (.vreg Rem.t3VReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `remProgram`. The canonical program
@@ -125,7 +126,7 @@ theorem remProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     Rem.phase_quotient_product_run rs1 js₂ q rem adj dividend
       hrs1_js2 h2_v0 h2_v1 h2_v2 h2_v7 hguard_quotient_product
   have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
-  have h3_v8_signed : js₃.vregs 8 = signedRem := by
+  have h3_v8_signed : js₃.vregs Rem.t3VReg = signedRem := by
     unfold signedRem
     exact h3_v8
   obtain ⟨js₄, hrun4, h4_v8, h4_sail⟩ :=
@@ -252,7 +253,7 @@ theorem remProgram_sound (rs2 rs1 rd : regidx)
     Rem.phase_quotient_product_run_sound rs1 js₂ js₃ q rem adj dividend
       hrs1_2 h2_v0 h2_v1 h2_v2 h2_v7 hp3
   have h3_sail_orig : js₃.sail = js.sail := h3_sail.trans h2_sail_orig
-  have h3_v8_signed : js₃.vregs 8 = signedRem := by
+  have h3_v8_signed : js₃.vregs Rem.t3VReg = signedRem := by
     unfold signedRem
     exact h3_v8
   obtain ⟨hguard4, h4_v8, h4_sail⟩ :=

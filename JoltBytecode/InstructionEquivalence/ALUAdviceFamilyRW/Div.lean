@@ -37,24 +37,25 @@ inputs: quotient and absolute remainder. -/
 def divProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice 0 quotient) <|
-  .instr (.VirtualAdvice 1 remAbs) <|
-  .instr (.VirtualAssertValidDiv0 rs2 0) <|
-  .instr (.VirtualChangeDivisor 2 rs1 rs2) <|
-  mulhBlock 4 5 6 (.vreg 3) (.vreg 0) (.vreg 2) <|
-  .instr (.MUL (.vreg 7) (.vreg 0) (.vreg 2)) <|
-  sraiBlock (.vreg 8) (.vreg 7) (63 : BitVec 6) <|
-  .instr (.VirtualAssertEQ 3 8) <|
-  sraiBlock (.vreg 3) (.xreg rs1) (63 : BitVec 6) <|
-  .instr (.XOR (.vreg 8) (.vreg 1) (.vreg 3)) <|
-  .instr (.SUB (.vreg 8) (.vreg 8) (.vreg 3)) <|
-  .instr (.ADD (.vreg 7) (.vreg 7) (.vreg 8)) <|
-  .instr (.VirtualAssertEQReal 7 rs1) <|
-  sraiBlock (.vreg 3) (.vreg 2) (63 : BitVec 6) <|
-  .instr (.XOR (.vreg 8) (.vreg 2) (.vreg 3)) <|
-  .instr (.SUB (.vreg 8) (.vreg 8) (.vreg 3)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder 1 8) <|
-  .instr (.ADDI (.xreg rd) (.vreg 0) (0 : BitVec 12)) <|
+  .instr (.VirtualAdvice Div.a2VReg quotient) <|
+  .instr (.VirtualAdvice Div.a3VReg remAbs) <|
+  .instr (.VirtualAssertValidDiv0 rs2 Div.a2VReg) <|
+  .instr (.VirtualChangeDivisor Div.t0VReg rs1 rs2) <|
+  mulhBlock Div.t2VReg Div.t3VReg Div.t4VReg
+    (.vreg Div.t1VReg) (.vreg Div.a2VReg) (.vreg Div.t0VReg) <|
+  .instr (.MUL (.vreg Div.t2VReg) (.vreg Div.a2VReg) (.vreg Div.t0VReg)) <|
+  sraiBlock (.vreg Div.t3VReg) (.vreg Div.t2VReg) (63 : BitVec 6) <|
+  .instr (.VirtualAssertEQ Div.t1VReg Div.t3VReg) <|
+  sraiBlock (.vreg Div.t1VReg) (.xreg rs1) (63 : BitVec 6) <|
+  .instr (.XOR (.vreg Div.t3VReg) (.vreg Div.a3VReg) (.vreg Div.t1VReg)) <|
+  .instr (.SUB (.vreg Div.t3VReg) (.vreg Div.t3VReg) (.vreg Div.t1VReg)) <|
+  .instr (.ADD (.vreg Div.t2VReg) (.vreg Div.t2VReg) (.vreg Div.t3VReg)) <|
+  .instr (.VirtualAssertEQReal Div.t2VReg rs1) <|
+  sraiBlock (.vreg Div.t1VReg) (.vreg Div.t0VReg) (63 : BitVec 6) <|
+  .instr (.XOR (.vreg Div.t3VReg) (.vreg Div.t0VReg) (.vreg Div.t1VReg)) <|
+  .instr (.SUB (.vreg Div.t3VReg) (.vreg Div.t3VReg) (.vreg Div.t1VReg)) <|
+  .instr (.VirtualAssertValidUnsignedRemainder Div.a3VReg Div.t3VReg) <|
+  .instr (.ADDI (.xreg rd) (.vreg Div.a2VReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `divProgram`. The canonical program
