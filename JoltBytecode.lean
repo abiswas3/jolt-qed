@@ -91,6 +91,10 @@ import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxuw
 import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Lrw
 import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Lrd
 
+-- Store Conditional
+import JoltBytecode.InstructionEquivalence.StoreConditionalFamily.Scw
+import JoltBytecode.InstructionEquivalence.StoreConditionalFamily.Scd
+
 -- ============================================================================
 -- Instruction proofs — Advice / System / CSR
 -- ============================================================================
