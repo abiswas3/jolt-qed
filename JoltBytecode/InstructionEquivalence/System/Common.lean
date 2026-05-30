@@ -186,6 +186,51 @@ theorem systemProject_get_unmodified
     hmscratch, hmtvec, Bool.false_eq_true]
   repeat rw [dif_neg (by intro h; cases h)]
 
+/-- `systemProject` preserves architectural integer-register reads: it overlays
+only machine CSR registers, never `x0`-`x31`. -/
+theorem systemProject_rX_bits
+    (js : SailJoltState) (rs : regidx) (value : BitVec 64)
+    (h_read : rX_bits rs js.sail = .ok value js.sail) :
+    rX_bits rs (systemProject js) = .ok value (systemProject js) := by
+  unfold rX_bits rX regval_from_reg at h_read ⊢
+  simp only [Sail.BitVec.toNatInt, Int.ofNat_eq_natCast, Int.toNat_natCast,
+    bind, EStateM.bind, pure, EStateM.pure] at h_read ⊢
+  obtain ⟨i⟩ := rs
+  have hi : i.toNat < 32 := i.isLt
+  have hcases : i.toNat = 0 ∨ i.toNat = 1 ∨ i.toNat = 2 ∨ i.toNat = 3 ∨
+      i.toNat = 4 ∨ i.toNat = 5 ∨ i.toNat = 6 ∨ i.toNat = 7 ∨
+      i.toNat = 8 ∨ i.toNat = 9 ∨ i.toNat = 10 ∨ i.toNat = 11 ∨
+      i.toNat = 12 ∨ i.toNat = 13 ∨ i.toNat = 14 ∨ i.toNat = 15 ∨
+      i.toNat = 16 ∨ i.toNat = 17 ∨ i.toNat = 18 ∨ i.toNat = 19 ∨
+      i.toNat = 20 ∨ i.toNat = 21 ∨ i.toNat = 22 ∨ i.toNat = 23 ∨
+      i.toNat = 24 ∨ i.toNat = 25 ∨ i.toNat = 26 ∨ i.toNat = 27 ∨
+      i.toNat = 28 ∨ i.toNat = 29 ∨ i.toNat = 30 ∨ i.toNat = 31 := by
+    omega
+  rcases hcases with hidx | hidx | hidx | hidx | hidx | hidx | hidx | hidx |
+      hidx | hidx | hidx | hidx | hidx | hidx | hidx | hidx |
+      hidx | hidx | hidx | hidx | hidx | hidx | hidx | hidx |
+      hidx | hidx | hidx | hidx | hidx | hidx | hidx | hidx
+  · simp only [hidx] at h_read ⊢
+    cases h_read
+    rfl
+  all_goals
+    simp only [hidx] at h_read ⊢
+    unfold Sail.readReg PreSail.readReg at h_read ⊢
+    simp only [bind, EStateM.bind, get, getThe, MonadStateOf.get,
+      EStateM.get, pure] at h_read ⊢
+    rw [systemProject_get_unmodified]
+    · generalize hget : js.sail.regs.get? _ = lookup at h_read ⊢
+      cases lookup with
+      | none =>
+          simp only [throw, throwThe, MonadExceptOf.throw,
+            EStateM.throw] at h_read
+          cases h_read
+      | some regVal =>
+          simp only at h_read ⊢
+          cases h_read
+          rfl
+    all_goals native_decide
+
 /-- `systemProject` preserves the architectural `PC` read. -/
 theorem systemProject_pc_read
     (js : SailJoltState) (pc : BitVec 64)
