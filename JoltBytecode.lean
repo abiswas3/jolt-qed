@@ -108,5 +108,5 @@ import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelw  -- advice load
 import JoltBytecode.InstructionEquivalence.System.Ecall
 import JoltBytecode.InstructionEquivalence.System.Ebreak
 import JoltBytecode.InstructionEquivalence.System.Mret
--- import JoltBytecode.InstructionEquivalence.Csrrs     -- TODO: CSR read-set
--- import JoltBytecode.InstructionEquivalence.Csrrw     -- TODO: CSR read-write
+import JoltBytecode.InstructionEquivalence.System.Csrrw
+-- import JoltBytecode.InstructionEquivalence.System.Csrrs     -- TODO: CSR read-set

@@ -5,11 +5,14 @@ import JoltBytecode.JoltISA.VirtualRegisters
 # System-instruction Jolt expansion programs
 
 These are literal transcriptions of the Rust `inline_sequence` implementations
-in `tracer/src/instruction/{ecall,ebreak,mret}.rs`.
+in `tracer/src/instruction/{ecall,ebreak,mret,csrrw,csrrs}.rs`.
 
 The reserved virtual registers follow `tracer/src/utils/virtual_registers.rs`:
 
+* `v32`: word reservation address
+* `v33`: doubleword reservation address
 * `v34`: trap handler / `mtvec`
+* `v35`: `mscratch`
 * `v36`: `mepc`
 * `v37`: `mcause`
 * `v38`: `mtval`
@@ -23,6 +26,61 @@ namespace JoltISA
 
 /-- Rust's first `allocate()` result for system expansions. -/
 def systemScratchVReg : VReg := inlineTmp0
+
+/-- Machine-mode CSRs supported by Rust's virtual-register system expansion
+whitelist. Unsupported CSR immediates are not valid Jolt expansion targets:
+Rust returns a `NoOp` only for default-constructed CSR `0`, and panics for other
+unsupported CSRs. -/
+inductive SystemCSR where
+  | mstatus
+  | mtvec
+  | mscratch
+  | mepc
+  | mcause
+  | mtval
+  deriving Repr, DecidableEq
+
+namespace SystemCSR
+
+/-- Rust CSR address used by the decoded SYSTEM instruction. -/
+def address : SystemCSR → BitVec 12
+  | .mstatus => 0x300
+  | .mtvec => 0x305
+  | .mscratch => 0x340
+  | .mepc => 0x341
+  | .mcause => 0x342
+  | .mtval => 0x343
+
+/-- Reserved virtual register used as the proof/trace source of truth for a CSR. -/
+def vreg : SystemCSR → VReg
+  | .mstatus => mstatusVReg
+  | .mtvec => trapHandlerVReg
+  | .mscratch => mscratchVReg
+  | .mepc => mepcVReg
+  | .mcause => mcauseVReg
+  | .mtval => mtvalVReg
+
+end SystemCSR
+
+/-- Rust `VirtualRegisterAllocator::csr_to_virtual_register` for the supported
+ZeroOS CSR whitelist. A `none` result is not a supported proof target: Rust
+emits `NoOp` for default-constructed CSR `0` and panics for other unsupported
+CSRs. -/
+def systemCSR? (csr : BitVec 12) : Option SystemCSR :=
+  if csr = SystemCSR.address .mstatus then some .mstatus
+  else if csr = SystemCSR.address .mtvec then some .mtvec
+  else if csr = SystemCSR.address .mscratch then some .mscratch
+  else if csr = SystemCSR.address .mepc then some .mepc
+  else if csr = SystemCSR.address .mcause then some .mcause
+  else if csr = SystemCSR.address .mtval then some .mtval
+  else none
+
+/-- Boolean architectural-register equality used by Rust's `rd == rs1` CSR
+clobber cases. The generated `regidx` wrapper does not provide a direct
+`DecidableEq` instance. -/
+def sameXReg (lhs rhs : regidx) : Bool :=
+  match lhs, rhs with
+  | regidx.Regidx l, regidx.Regidx r => decide (l = r)
 
 /-- Rust `expand_ecall`: materialize virtual trap CSRs and jump to `mtvec`. -/
 def ecallProgram : Program :=
@@ -62,5 +120,67 @@ from the reserved virtual `mepc` register, v36. -/
 def mretProgram : Program :=
   .instr (.JALR (.vreg systemScratchVReg) (.vreg mepcVReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
+
+/-- Rust `CSRRW::inline_sequence` for the supported virtual CSR whitelist.
+
+Cases match Rust exactly:
+
+* `rd = x0`: write `rs1` directly to the CSR virtual register.
+* `rd = rs1`: preserve `rs1` in the first instruction-local scratch register,
+  then read the old CSR and write the preserved value back to the CSR.
+* otherwise: read the old CSR into `rd`, then write `rs1` to the CSR. -/
+def csrrwProgram (csr : SystemCSR) (rs1 rd : regidx) : Program :=
+  let vr := SystemCSR.vreg csr
+  if isX0 rd then
+    .instr (.ADDI (.vreg vr) (.xreg rs1) (0 : BitVec 12)) <|
+    .done RETIRE_SUCCESS
+  else if sameXReg rd rs1 then
+    .instr (.ADDI (.vreg systemScratchVReg) (.xreg rs1) (0 : BitVec 12)) <|
+    .instr (.ADDI (.xreg rd) (.vreg vr) (0 : BitVec 12)) <|
+    .instr (.ADDI (.vreg vr) (.vreg systemScratchVReg) (0 : BitVec 12)) <|
+    .done RETIRE_SUCCESS
+  else
+    .instr (.ADDI (.xreg rd) (.vreg vr) (0 : BitVec 12)) <|
+    .instr (.ADDI (.vreg vr) (.xreg rs1) (0 : BitVec 12)) <|
+    .done RETIRE_SUCCESS
+
+/-- Rust `CSRRW::inline_sequence` after decoding a supported raw CSR immediate. -/
+def csrrwProgram? (csr : BitVec 12) (rs1 rd : regidx) : Option Program :=
+  match systemCSR? csr with
+  | some supported => some (csrrwProgram supported rs1 rd)
+  | none => none
+
+/-- Rust `CSRRS::inline_sequence` for the supported virtual CSR whitelist.
+
+Cases match Rust exactly:
+
+* `rs1 = x0`: read the CSR virtual register into `rd`.
+* `rs1 != x0`, `rd = x0`: set the CSR virtual register with `OR`.
+* `rd = rs1`: preserve `rs1` in the first instruction-local scratch register,
+  then read the old CSR and set using the preserved value.
+* otherwise: read the old CSR into `rd`, then set using `rs1`. -/
+def csrrsProgram (csr : SystemCSR) (rs1 rd : regidx) : Program :=
+  let vr := SystemCSR.vreg csr
+  if isX0 rs1 then
+    .instr (.ADDI (.xreg rd) (.vreg vr) (0 : BitVec 12)) <|
+    .done RETIRE_SUCCESS
+  else if isX0 rd then
+    .instr (.OR (.vreg vr) (.vreg vr) (.xreg rs1)) <|
+    .done RETIRE_SUCCESS
+  else if sameXReg rd rs1 then
+    .instr (.ADDI (.vreg systemScratchVReg) (.xreg rs1) (0 : BitVec 12)) <|
+    .instr (.ADDI (.xreg rd) (.vreg vr) (0 : BitVec 12)) <|
+    .instr (.OR (.vreg vr) (.vreg vr) (.vreg systemScratchVReg)) <|
+    .done RETIRE_SUCCESS
+  else
+    .instr (.ADDI (.xreg rd) (.vreg vr) (0 : BitVec 12)) <|
+    .instr (.OR (.vreg vr) (.vreg vr) (.xreg rs1)) <|
+    .done RETIRE_SUCCESS
+
+/-- Rust `CSRRS::inline_sequence` after decoding a supported raw CSR immediate. -/
+def csrrsProgram? (csr : BitVec 12) (rs1 rd : regidx) : Option Program :=
+  match systemCSR? csr with
+  | some supported => some (csrrsProgram supported rs1 rd)
+  | none => none
 
 end JoltISA
