@@ -1,6 +1,7 @@
 import JoltBytecode.InstructionEquivalence.AdviceFamily.Advice
+import JoltBytecode.JoltISA.Expansions.Advice
+import JoltBytecode.JoltISA.Semantics.Instructions
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 set_option mvcgen.warning false
 
@@ -16,16 +17,55 @@ def execute_ADVICELD (rd : regidx) (advice : BitVec 64) : SailM ExecutionResult 
   wX_bits rd advice
   pure RETIRE_SUCCESS
 
-/-- Jolt inline for `ADVICELD`: `VirtualAdviceLoad rd, 8`. -/
-def jolt_adviceld (rd : regidx) (advice : BitVec 64) : JoltMonad ExecutionResult := do
-  jolt_virtual_advice_load rd advice
-  pure RETIRE_SUCCESS
+/-- Program-level execution for `ADVICELD`. -/
+theorem adviceldProgram_concrete (rd : regidx) (advice : BitVec 64)
+    (js : SailJoltState)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    ∃ (js' : SailJoltState),
+      (JoltISA.execProgram (JoltISA.adviceldProgram rd advice)).run js =
+        .ok RETIRE_SUCCESS js' ∧
+      js'.sail = stateAfterWrite js.sail rd advice := by
+  obtain ⟨js_afterAdvice, h_advice_sail, _h_advice_vregs,
+      h_advice_succeeds⟩ :=
+    JoltISA.exists_state_after_virtual_advice_load_run_xreg rd advice js
 
-theorem jolt_adviceld_eq_inline
+  have h_program_succeeds :
+      (JoltISA.execProgram (JoltISA.adviceldProgram rd advice)).run js =
+        .ok RETIRE_SUCCESS js_afterAdvice := by
+    unfold JoltISA.adviceldProgram
+    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterAdvice
+      h_advice_succeeds]
+    rfl
+
+  exact ⟨js_afterAdvice, h_program_succeeds, h_advice_sail⟩
+
+/-- Main program-level theorem for `ADVICELD`. -/
+theorem adviceldProgram_eq_sail
     (rd : regidx) (advice : BitVec 64) (js : SailJoltState) :
-    projectResult ((jolt_adviceld rd advice).run js) =
+    projectResult ((JoltISA.execProgram (JoltISA.adviceldProgram rd advice)).run js) =
       (execute_ADVICELD rd advice).run js.sail := by
-  simpa [jolt_adviceld, jolt_virtual_advice_load, execute_ADVICELD] using
-    (projectResult_liftSail_seq1 (wX_bits rd advice) js)
+  by_cases hrd_zero : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.adviceldProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [projectResult, project]
+    unfold execute_ADVICELD
+    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+    rw [wX_bits_regidx_zero]
+
+  obtain ⟨js', h_program_succeeds, h_final_sail⟩ :=
+    adviceldProgram_concrete rd advice js hrd_zero
+
+  rw [h_program_succeeds]
+  simp only [projectResult, project]
+  rw [h_final_sail]
+
+  simp only [execute_ADVICELD, EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+  obtain ⟨s', h_write⟩ := wX_shape rd advice js.sail
+  simp only [h_write]
+  congr 1
+  exact (wX_bits_eq_stateAfterWrite rd advice js.sail s' h_write).symm
 
 end

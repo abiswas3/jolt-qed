@@ -183,12 +183,12 @@ theorem execute_DIVW_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
   congr 1
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
-/-- Honest advice makes `divwProgram` match Sail DIVW. -/
-theorem divwProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
+/-- Core proof that honest advice makes `divwProgram` match Sail DIVW. -/
+theorem divwProgram_eq_sail_core (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
-    projectResult ((execProgram (divwProgram rs2 rs1 rd
+    projectResult ((JoltISA.execProgram (JoltISA.divwProgram rs2 rs1 rd
                       (sail_divw_value dividend divisor false)
                       (bv_abs (sail_remw_value dividend divisor false)))).run js) =
     (execute_DIVW rs2 rs1 rd false).run js.sail := by
@@ -272,5 +272,16 @@ theorem divwProgram_sound (rs2 rs1 rd : regidx)
     hguard1 hguard2 hguard3 hguard4 hguard5
 
 end JoltISA
+
+/-- Main program-level equivalence for `DIVW` with honest advice. -/
+theorem divwProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    projectResult ((JoltISA.execProgram (JoltISA.divwProgram rs2 rs1 rd
+                      (sail_divw_value dividend divisor false)
+                      (bv_abs (sail_remw_value dividend divisor false)))).run js) =
+    (execute_DIVW rs2 rs1 rd false).run js.sail := by
+  exact JoltISA.divwProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
 
 end

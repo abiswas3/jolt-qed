@@ -7,7 +7,6 @@ Instruction-specific proof files should import this module when they need
 facts about the generic interpreter rather than unfolding it ad hoc.
 -/
 
-set_option maxHeartbeats 1_000_000_000
 
 open Sail PreSail LeanRV64D.Functions
 open virtaddr MemoryAccessType mem_payload

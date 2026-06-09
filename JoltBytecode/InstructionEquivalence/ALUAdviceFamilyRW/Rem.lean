@@ -176,12 +176,12 @@ theorem execute_REM_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
   congr 1
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
-/-- **Completeness.** Honest advice makes `remProgram` match Sail REM. -/
-theorem remProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
+/-- Core proof that honest advice makes `remProgram` match Sail REM. -/
+theorem remProgram_eq_sail_core (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
-    projectResult ((execProgram (remProgram rs2 rs1 rd
+    projectResult ((JoltISA.execProgram (JoltISA.remProgram rs2 rs1 rd
                       (sail_div_value dividend divisor false)
                       (bv_abs (sail_rem_value dividend divisor false)))).run js) =
     (execute_REM rs2 rs1 rd false).run js.sail := by
@@ -275,5 +275,16 @@ theorem remProgram_sound (rs2 rs1 rd : regidx)
   exact hwrite
 
 end JoltISA
+
+/-- Main program-level equivalence for `REM` with honest advice. -/
+theorem remProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    projectResult ((JoltISA.execProgram (JoltISA.remProgram rs2 rs1 rd
+                      (sail_div_value dividend divisor false)
+                      (bv_abs (sail_rem_value dividend divisor false)))).run js) =
+    (execute_REM rs2 rs1 rd false).run js.sail := by
+  exact JoltISA.remProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
 
 end

@@ -12,7 +12,6 @@ Sometimes it's also helpful to have mini theorems about this computations.
 It helps while proving things.
 -/
 
-/- set_option maxHeartbeats 1_000_000_000 -/
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions

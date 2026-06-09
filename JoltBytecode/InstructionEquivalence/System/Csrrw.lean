@@ -1,5 +1,7 @@
 import JoltBytecode.InstructionEquivalence.System.Common
 
+set_option linter.unusedSimpArgs false
+
 open Sail PreSail LeanRV64D.Functions
 
 set_option autoImplicit true
