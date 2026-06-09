@@ -9,7 +9,6 @@ input state to an output state; these lemmas compose those phase proofs without
 unfolding the whole program into one long instruction chain.
 -/
 
-set_option maxHeartbeats 1_000_000_000
 
 open Sail PreSail LeanRV64D.Functions
 

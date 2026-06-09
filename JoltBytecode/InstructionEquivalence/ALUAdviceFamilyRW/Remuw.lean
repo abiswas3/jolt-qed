@@ -141,12 +141,12 @@ theorem execute_REMUW_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
   congr 1
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
-/-- Honest quotient advice makes `remuwProgram` match Sail REMUW. -/
-theorem remuwProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
+/-- Core proof that honest quotient advice makes `remuwProgram` match Sail REMUW. -/
+theorem remuwProgram_eq_sail_core (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
-    projectResult ((execProgram (remuwProgram rs2 rs1 rd
+    projectResult ((JoltISA.execProgram (JoltISA.remuwProgram rs2 rs1 rd
                       (sail_divuw_advice dividend divisor))).run js) =
     (execute_REMW rs2 rs1 rd true).run js.sail := by
   by_cases hrd : rd = regidx.Regidx 0
@@ -225,5 +225,15 @@ theorem remuwProgram_sound (rs2 rs1 rd : regidx)
   exact hwrite
 
 end JoltISA
+
+/-- Main program-level equivalence for `REMUW` with honest advice. -/
+theorem remuwProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    projectResult ((JoltISA.execProgram (JoltISA.remuwProgram rs2 rs1 rd
+                      (sail_divuw_advice dividend divisor))).run js) =
+    (execute_REMW rs2 rs1 rd true).run js.sail := by
+  exact JoltISA.remuwProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
 
 end

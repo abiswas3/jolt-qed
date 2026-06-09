@@ -1,19 +1,22 @@
-# Roadmap
+# Jolt ISA Correctness Roadmap
 
-This is the current bytecode-expansion roadmap after the June 2026 risk audit.
+This is the current roadmap after the June 2026 bytecode-expansion risk audit.
 It intentionally excludes lookup-table verification.
 
-The primary target is Jolt as a formal/conceptual bytecode-expansion model, not
-a full verification of the current Rust implementation. Rust code is useful as
-design evidence and implementation context, but exact Rust conformance is a
-separate downstream claim.
+The primary target is the correctness of the Jolt ISA as a formal/conceptual
+instruction set. The Lean model is not, in this version, a full verification of
+the current Rust implementation. Rust code is useful as design evidence and
+implementation context, but exact Rust conformance is a separate downstream
+claim.
 
 The core object is the Lean Jolt ISA: a final-row instruction set that is partly
 ordinary RISC-V-style rows and partly Jolt-specific virtual rows. Sail is the
 trusted RISC-V reference semantics. The main theorem shape is:
 
 ```text
-formal Jolt ISA expansion semantics = Sail architectural instruction semantics
+formal Jolt ISA semantics, with explicit advice inputs where needed
+  =
+Sail architectural instruction semantics
 ```
 
 We should not axiomatize Jolt runtime/device memory as equal to Sail memory. That
@@ -44,7 +47,8 @@ source-expansion sketch:
 | --- | --- |
 | `CSRRS` | ![User will fix](https://img.shields.io/badge/status-user_will_fix-brightgreen) |
 | Side-effecting `rd = x0` | ![Open](https://img.shields.io/badge/status-open-red) Accepted as a real in-scope issue |
-| Advice tape | ![Needs feedback](https://img.shields.io/badge/status-not_yet_settled-yellow) |
+| Formal advice values | ![Reclassified](https://img.shields.io/badge/status-reclassified-blue) In scope as explicit Jolt ISA inputs/oracles |
+| Rust byte advice tape | ![Out of scope](https://img.shields.io/badge/status-out_of_scope-lightgrey) Implementation-conformance layer |
 | Trap/failure boundary | ![Needs feedback](https://img.shields.io/badge/status-not_yet_settled-yellow) |
 | Trace metadata | ![Needs feedback](https://img.shields.io/badge/status-not_yet_settled-yellow) Non-blocking for semantic equivalence |
 | LR/SC reservation semantics | ![Deferred](https://img.shields.io/badge/status-deferred-lightgrey) Not provable against current Sail hooks |
@@ -89,6 +93,20 @@ The roadmap entry saying atomics were missing is stale. The root build imports
 the current AMO word/dword theorem files. The separate LR/SC family is still
 open because it depends on reservation semantics; see below.
 
+### Advice Values
+
+Status: reclassified for the core theorem.
+
+For the Jolt ISA correctness theorem, advice is an explicit input/oracle to
+Jolt-specific rows. That is not itself a semantic gap. The in-scope obligation
+is that the advice-backed row sequence, with its guards and assumptions, has the
+same architectural effect as the trusted Sail instruction.
+
+The Rust byte FIFO tape is a different claim: it would show that the current
+Rust implementation supplies the same advice values, with the same packing,
+cursor movement, depletion, and underflow behavior. That belongs to exact Rust
+implementation conformance, not to the core formal Jolt ISA theorem.
+
 ## Remaining Lean-Side Risks
 
 ### Ordinary Sail-Memory Envelope
@@ -130,14 +148,6 @@ Pure writeback-only instructions can use Rust's no-op replacement path. The
 remaining issue is side-effecting instructions where Rust remaps the writeback
 to a virtual register so side effects still occur.
 
-### Advice Tape
-
-Status: not yet settled.
-
-Lean advice-load theorems use explicit advice values. Rust reads bytes from a
-mutable FIFO advice tape. The tape cursor, byte packing, depletion, and underflow
-behavior are not yet modeled.
-
 ### Trap/Failure Boundary
 
 Status: not yet settled.
@@ -177,3 +187,12 @@ Rust source in order to establish the conceptual Jolt expansion theorem.
 If exact implementation conformance later becomes a goal, that requires
 Rust-side support such as a generated expansion manifest, golden tests, or an
 exported pure expansion API. That is not a Lean-side risk for this version.
+
+### Rust Byte Advice Tape
+
+Status: out of scope for the core Lean theorem.
+
+The byte tape is part of the Rust implementation's way of providing advice. The
+formal Jolt ISA theorem can quantify over explicit advice values instead. A
+future implementation-conformance layer can prove that Rust's tape bytes,
+cursor, packing, depletion, and underflow behavior supply exactly those values.

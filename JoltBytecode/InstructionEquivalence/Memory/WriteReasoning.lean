@@ -3,6 +3,8 @@ import JoltBytecode.InstructionEquivalence.Memory.Utils
 import Mathlib.Tactic.IntervalCases
 
 set_option linter.unusedVariables false
+set_option linter.unusedSimpArgs false
+set_option linter.unusedTactic false
 set_option mvcgen.warning false
 
 open Sail PreSail LeanRV64D.Functions

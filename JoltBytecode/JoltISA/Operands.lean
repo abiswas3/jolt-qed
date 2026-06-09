@@ -8,7 +8,6 @@ register file or the virtual-register file.  The typed source/destination
 operands here make those flavours explicit.
 -/
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions

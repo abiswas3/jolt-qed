@@ -1,6 +1,5 @@
 import JoltBytecode.JoltISA.Environment
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 set_option mvcgen.warning false
 

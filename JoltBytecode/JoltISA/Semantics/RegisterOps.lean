@@ -7,7 +7,6 @@ These lemmas are about SailState operations (wX_bits, rX_bits).
 They don't reference SailJoltState at all.
 -/
 
-set_option maxHeartbeats 1_000_000_000
 set_option maxRecDepth 1_000_000
 set_option linter.unusedVariables false
 set_option match.ignoreUnusedAlts true

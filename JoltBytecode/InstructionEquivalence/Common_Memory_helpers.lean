@@ -3,7 +3,6 @@ import JoltBytecode.InstructionEquivalence.Memory.Utils
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.ProofSupport
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 set_option mvcgen.warning false
 

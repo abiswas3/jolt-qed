@@ -27,7 +27,6 @@ it scales to generated programs because the theorem follows the interpreter
 rather than an ad hoc do-block.
 -/
 
-set_option maxHeartbeats 1_000_000_000
 set_option linter.unusedVariables false
 set_option mvcgen.warning false
 

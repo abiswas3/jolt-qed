@@ -1,13 +1,14 @@
-# Current Bytecode-Expansion Risk Audit
+# Current Jolt ISA Correctness Risk Audit
 
-This note records the current Lean-side bytecode-expansion risks after the June
-2026 audit. It supersedes the older audit language that described recursive
-expansion, virtual-register allocation, stores, and word-shift bridge lemmas as
-open Lean proof risks.
+This note records the current Lean-side risks after the June 2026
+bytecode-expansion audit. It supersedes the older audit language that described
+recursive expansion, virtual-register allocation, stores, and word-shift bridge
+lemmas as open Lean proof risks.
 
-The project is primarily about Jolt as a formal/conceptual bytecode-expansion
-model. It is not, in this version, a proof that the current Rust implementation
-matches the Lean definitions line-for-line.
+The project is primarily about correctness of the formal/conceptual Jolt ISA.
+Bytecode expansion is the mechanism being proved. This is not, in this version,
+a proof that the current Rust implementation matches the Lean definitions
+line-for-line.
 
 The core object is the Lean Jolt ISA: a final-row instruction set that is partly
 ordinary RISC-V-style rows and partly Jolt-specific virtual rows. Sail is the
@@ -80,6 +81,20 @@ Status: mostly closed.
 
 The root build imports the current AMO word/dword theorem files. This does not
 cover LR/SC reservation behavior, which remains separate and open.
+
+### Advice Values / Rust Advice Tape
+
+Status: reclassified for the core theorem.
+
+The formal Jolt ISA may take advice as explicit values/oracles for Jolt-specific
+rows. That is not itself a Lean-side correctness gap. The in-scope obligation is
+to prove that the advice-backed row sequence, under its guards and assumptions,
+matches the trusted Sail architectural instruction.
+
+Rust's mutable byte FIFO advice tape is a separate implementation-conformance
+claim. Modeling its byte packing, cursor movement, depletion, and underflow
+behavior would help prove that the current Rust implementation supplies the same
+advice values, but it is not required for the conceptual Jolt ISA theorem.
 
 ## Remaining Lean-Side Risks
 
@@ -163,21 +178,7 @@ Required Lean-side work:
 - add theorem fronts for side-effecting remap cases;
 - avoid theorem statements that silently assume away Rust dispatch behavior.
 
-### 4. Advice Tape
-
-Status: not yet settled.
-
-Current issue: Lean advice-load theorems use explicit advice values, while Rust
-reads little-endian bytes from a mutable FIFO advice tape.
-
-Required Lean-side work:
-
-- model advice bytes and an advice cursor;
-- define little-endian tape reads with underflow behavior;
-- prove that the current explicit-advice theorems are recovered when the tape
-  contains the expected bytes.
-
-### 5. Trap / Failure Boundary
+### 4. Trap / Failure Boundary
 
 Status: not yet settled.
 
@@ -195,7 +196,7 @@ Required decision:
 - or restrict the main theorem to an aligned, non-trapping ordinary Sail-memory
   subset and handle rejected traces separately.
 
-### 6. CSR Coverage
+### 5. CSR Coverage
 
 Status: ![User will fix](https://img.shields.io/badge/status-user_will_fix-brightgreen)
 
@@ -207,7 +208,7 @@ Required Lean-side work:
 - prove and root-import the `CSRRS` equivalence theorem if CSRRS is in the
   bytecode-expansion scope.
 
-### 7. Trace Metadata
+### 6. Trace Metadata
 
 Status: not yet settled; non-blocking for semantic equivalence.
 
@@ -238,12 +239,24 @@ for example:
 This is not a Lean proof obligation for the conceptual Jolt theorem and should
 not be described as a remaining virtual-register modeling risk.
 
+### Rust Byte Advice Tape
+
+The Rust byte tape is an implementation mechanism for supplying advice. The
+core theorem can quantify over explicit advice values as part of the formal Jolt
+ISA semantics.
+
+If exact Rust conformance becomes a target, then the Rust-side layer should
+prove that tape bytes, cursor state, packing, depletion, and underflow behavior
+produce the same advice values assumed by the Lean theorem. That is not a
+required Lean-side risk for this version.
+
 ## Current Claim Stack
 
 The current Lean work proves the conceptual bytecode-expansion theorem:
 
 ```text
-formal final-row Jolt expansion semantics
+formal final-row Jolt ISA semantics
+  with explicit advice values/oracles where needed
   =
 Sail architectural instruction semantics
 ```

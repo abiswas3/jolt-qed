@@ -143,12 +143,12 @@ theorem execute_DIVU_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
   congr 1
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
-/-- Honest quotient advice makes `divuProgram` match Sail DIVU. -/
-theorem divuProgram_complete (rs2 rs1 rd : regidx) (js : SailJoltState)
+/-- Core proof that honest quotient advice makes `divuProgram` match Sail DIVU. -/
+theorem divuProgram_eq_sail_core (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
-    projectResult ((execProgram (divuProgram rs2 rs1 rd
+    projectResult ((JoltISA.execProgram (JoltISA.divuProgram rs2 rs1 rd
                       (sail_div_value dividend divisor true))).run js) =
     (execute_DIV rs2 rs1 rd true).run js.sail := by
   by_cases hrd : rd = regidx.Regidx 0
@@ -226,5 +226,15 @@ theorem divuProgram_sound (rs2 rs1 rd : regidx)
     hguard1 hguard2 hguard3 hguard4
 
 end JoltISA
+
+/-- Main program-level equivalence for `DIVU` with honest advice. -/
+theorem divuProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (dividend divisor : BitVec 64)
+    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    projectResult ((JoltISA.execProgram (JoltISA.divuProgram rs2 rs1 rd
+                      (sail_div_value dividend divisor true))).run js) =
+    (execute_DIV rs2 rs1 rd true).run js.sail := by
+  exact JoltISA.divuProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
 
 end

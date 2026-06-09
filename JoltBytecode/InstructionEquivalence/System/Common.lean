@@ -3,6 +3,10 @@ import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Semantics.Instructions.ADDI
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualMULI
 
+set_option linter.unusedSimpArgs false
+set_option linter.unusedTactic false
+set_option linter.unreachableTactic false
+
 /-!
 # Shared system-instruction proof surface
 

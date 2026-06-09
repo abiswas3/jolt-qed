@@ -575,10 +575,9 @@ structure MretSystemAssumptions (js : SailJoltState) : Prop where
 
 /-- MRET equivalence under the system CSR projection.
 
-This is intentionally stated before the proof is filled in. The proof should
-follow ECALL's final-`JALR` shape for the Jolt side, then unfold Sail's xret
-postlude and extend `MretSystemAssumptions` only with the concrete facts that
-the proof actually needs. -/
+The theorem follows ECALL's final-`JALR` shape for the Jolt side, then unfolds
+Sail's xret postlude under the concrete facts recorded in
+`MretSystemAssumptions`. -/
 theorem mretProgram_eq_sail
     (js : SailJoltState)
     (h_sys : MretSystemAssumptions js) :
