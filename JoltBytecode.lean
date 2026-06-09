@@ -24,7 +24,7 @@ import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Sra                  
 -- Multiplication
 import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Mulw                        -- DONE: MULW (MUL + VSEW)
 import JoltBytecode.InstructionEquivalence.ALUFamily.Mult.Mulh                         -- DONE: MULH (Rust inline sequence)
--- import JoltBytecode.InstructionEquivalence.Mulhsu    -- TODO: execute_MUL, signed×unsigned
+import JoltBytecode.InstructionEquivalence.ALUFamily.Mult.Mulhsu                       -- DONE: MULHSU (Rust inline sequence)
 
 -- Divide / Remainder [Advice Family RW]
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div

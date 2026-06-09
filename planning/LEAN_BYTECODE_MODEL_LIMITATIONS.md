@@ -1,492 +1,265 @@
-# Notes for Ari: Current Lean Model vs. Rust Bytecode Expansion
+# Current Bytecode-Expansion Risk Audit
 
-This is a short audit note on the current `JoltBytecode/EmbeddedSailJoltState`
-formalization on `ari/sail-to-jolt`, compared against the checked-out Rust Jolt
-tree at `/Users/quang.dao/Documents/SNARKs/jolt`.
+This note records the current Lean-side bytecode-expansion risks after the June
+2026 audit. It supersedes the older audit language that described recursive
+expansion, virtual-register allocation, stores, and word-shift bridge lemmas as
+open Lean proof risks.
 
-The main takeaway is positive but important to state precisely: the current Lean
-model is strongest as a semantic/source-expansion model. It is not yet a fully
-faithful model of the final Rust bytecode rows produced after recursive inline
-expansion.
+The project is primarily about Jolt as a formal/conceptual bytecode-expansion
+model. It is not, in this version, a proof that the current Rust implementation
+matches the Lean definitions line-for-line.
 
-## What Looks Faithful
+The core object is the Lean Jolt ISA: a final-row instruction set that is partly
+ordinary RISC-V-style rows and partly Jolt-specific virtual rows. Sail is the
+trusted RISC-V reference semantics. The main theorem compares this formal Jolt
+ISA semantics with Sail, instruction by instruction.
 
-The recent ALU advice-family work looks closely aligned with the current Rust
-source-level `emit_*` sequences:
+We should not add an axiom saying Jolt runtime/device memory equals Sail memory.
+That would defeat the point of the theorem by assuming away a separate
+runtime/device correctness problem.
 
-- `DIV`, `DIVU`, `DIVW`, `DIVUW`
-- `REM`, `REMU`, `REMW`, `REMUW`
+This document intentionally excludes lookup-table verification.
 
-In particular, the current Rust `DIVW`/`REMW` code now uses the `SRAI ..., 32`
-remainder-canonicality check, matching the Lean model. The older bug report that
-describes `SRAI ..., 31` appears stale relative to the current Rust tree.
+## Build Status
 
-The theorem shape is also sensible:
+`lake build JoltBytecode` succeeds.
 
-- completeness: honest advice makes the Jolt sequence run successfully and match
-  Sail;
-- soundness for `DIV`/`DIVU`/`DIVW`: successful arbitrary advice pins down the
-  honest advice;
-- soundness for `DIVUW` and the `REM*` family: successful arbitrary advice pins
-  down the architectural writeback state, even when raw advice uniqueness is too
-  strong.
+There are no active `sorry` or `admit` holes in
+`JoltBytecode/InstructionEquivalence`; the only hits are comments describing
+intentionally omitted theorem fronts.
 
-That last weakening is especially appropriate for `DIVUW`, where non-canonical
-64-bit quotient advice can share the same low 32 bits and still produce the
-correct architectural writeback.
+`JoltBytecode.InstructionEquivalence.ALUFamily.Mult.Mulhsu` is included in the
+root build.
 
-## The Main Limitation: Recursive Expansion
+## Closed Or Reclassified Risks
 
-Rust inline expansion is recursive. Inside `InstrAssembler::add_to_sequence`, an
-emitted instruction is not appended directly; instead Rust appends
-`inst.inline_sequence(...)`.
+### Recursive Expansion / Final Rows
 
-So a source-level expansion like:
+Status: closed for the current Lean model.
 
-```text
-SLLI v0, v0, 3
-SLL  v1, v1, v0
-SRAI rd, v1, 56
-```
+The current Jolt ISA programs use final trace-row instructions and expansion
+blocks for recursively inlined source instructions. The old concern that Lean
+only proved source-level `emit_*` sequences is no longer the right description
+of the root proof surface.
 
-does not necessarily appear as those three final bytecode rows. In the current
-Rust tree:
+### Virtual Registers
 
-- `SLLI` lowers to `VirtualMULI`;
-- `SLL` lowers to `VirtualPow2; MUL`;
-- `SRAI` lowers to `VirtualSRAI` with a computed bitmask.
+Status: closed for Lean-side modeling.
 
-For example, RV64 `LB` source expansion emits:
+Lean models Rust's absolute virtual-register layout in
+`JoltBytecode.JoltISA.VirtualRegisters`:
 
-```text
-ADDI v0, rs1, imm
-ANDI v1, v0, -8
-LD   v1, v1, 0
-XORI v0, v0, 7
-SLLI v0, v0, 3
-SLL  v1, v1, v0
-SRAI rd, v1, 56
-```
+- registers `32..39` are reserved persistent virtual registers;
+- registers `40..47` are Rust's instruction-local `allocate()` scratch pool;
+- registers `48..` are Rust's larger inline allocation pool.
 
-The Lean model mirrors this source-level sequence using helpers such as
-`vreg_SLLI`, `vreg_SLL`, and `vreg_SRAI_to_real`. That is likely semantically
-right, but it is not a proof about the final recursively expanded bytecode rows.
+The modeled expansions use these absolute Rust register numbers directly, so a
+generic renaming theorem is not the planned Lean-side fix.
 
-This gap matters because bugs can live in the recursive lowering layer:
+Exact Rust provenance is not part of the core theorem. If later work wants to
+prove that the Rust implementation emits exactly these rows, that belongs to a
+separate Rust-side conformance layer, not to the Lean virtual-register model.
 
-- an incorrect lowering of `SLLI`, `SLL`, `SRAI`, etc.;
-- incorrect temporary virtual-register allocation during recursive expansion;
-- incorrect `virtual_sequence_remaining` metadata;
-- mismatch between source-level helper semantics and final virtual primitive
-  semantics;
-- operand or writeback differences that preserve final architectural state but
-  differ from the actual bytecode trace.
+### Ordinary Stores
 
-The gap is largest for loads, stores, advice loads, and any expansion containing
-shift operations. The ALU advice-family division/remainder files are closer to
-the Rust source expansion, but they still inherit any mismatch in emitted
-sub-instructions that recursively lower further.
+Status: closed.
 
-## Other Important Boundaries
+`SB`, `SH`, and `SW` equivalence proofs are in the root build. The old store
+proof-hole language is stale.
 
-### `rd = x0`
+### Word Shifts
 
-Many Lean equivalence theorems assume `rd != x0`. Rust has special handling for
-`rd = x0`, including replacing no-side-effect instructions with a no-op or
-remapping side-effecting writes to temporary virtual registers. That behavior is
-mostly outside the current Lean theorem boundary.
+Status: closed in the root build.
 
-### Virtual Register Allocation
+`SLLW` and `SRLW` are imported by `JoltBytecode.lean`, and the instruction
+equivalence tree has no active proof holes.
 
-Lean commonly hardcodes virtual register names such as `0`, `1`, `2`, etc. Rust
-uses an allocator with reserved virtual-register ranges and inline temporaries.
-This is probably semantically harmless when registers are fresh and disjoint,
-but the formal connection needs either:
+### Atomics
 
-- parameterized Lean expansions over allocator outputs; or
-- a renaming-invariance theorem connecting the hardcoded Lean names to Rust's
-  allocated names.
+Status: mostly closed.
 
-### Memory, Traps, and Alignment
+The root build imports the current AMO word/dword theorem files. This does not
+cover LR/SC reservation behavior, which remains separate and open.
 
-The load proofs assume a flat, well-behaved memory setup through predicates such
-as `JoltConfig`, `BareTranslation`, and `FlatPhysMem`. Rust's tracer has MMU,
-device ranges, advice regions, panic/output/termination mappings, and trap
-behavior.
+## Remaining Lean-Side Risks
 
-There is also an operational mismatch around misalignment: Lean sometimes models
-misaligned loads as an architectural memory exception, while Rust inline
-sequences use virtual assertion instructions that panic/fail the trace.
+### 1. Ordinary Sail-Memory Envelope
 
-### Advice Tape
+Status: discussed; cleanup optional.
 
-Lean treats advice as explicit `BitVec` parameters. Rust `VirtualAdviceLoad`
-reads little-endian bytes from a mutable advice tape and can fail if insufficient
-bytes are present. Tape ordering, byte packing, depletion, and width
-canonicality are not currently part of the Lean model.
+Current issue: the memory theorem boundary is still too implicit in naming.
 
-### Store Proofs and Remaining Holes
+The load/store/AMO proofs assume a flat, populated, machine-mode memory setting
+through predicates such as `JoltConfig`, `BareTranslation`, and `FlatPhysMem`.
+Rust/Jolt also has device-like regions for input, trusted advice, untrusted
+advice, output, panic, termination, and zero-padding behavior.
 
-Stores are not yet at the same maturity level as the division/remainder advice
-family. `SB` and `SH` still have top-level proof holes, and `SW` has partial
-store-pipeline obligations remaining.
+Special memory regions are out of scope for this version. The in-scope work is
+only to state the ordinary Sail-memory envelope explicitly.
 
-Known proof holes also remain in the word-shift bridge lemmas for `SLLW` and
-`SRLW`.
+This is not a proof that Rust/Jolt's memory implementation is correct. The
+intended theorem is conditional: if the formal Jolt ISA expansion reaches
+ordinary memory rows such as `LD`/`SD`, and Sail treats the same bytes as
+ordinary non-MMIO memory in `SailState`, then the expansion is equivalent to the
+trusted Sail instruction.
 
-## Suggested Path Forward
+Required Lean-side work:
 
-It would help to split the Rust code so bytecode expansion is independently
-verifiable:
+- define a central ordinary Sail-memory access predicate;
+- use it consistently in load/store/AMO theorem statements;
+- clearly distinguish ordinary memory from Jolt special regions;
+- state that special-region equivalence is not part of this version.
 
-1. A small base crate for instruction formats, normalized instructions, virtual
-   registers, and expansion metadata.
-2. A pure bytecode-expansion crate:
+See `planning/JOLT_SPECIAL_MEMORY_REGION_PLAN.md`.
 
-   ```text
-   expand(instr, xlen, allocator_state) -> Result<ExpandedSequence, ExpansionError>
-   ```
+### 2. LR/SC Reservation Semantics
 
-   This crate should avoid CPU mutation, MMU behavior, advice tape reads,
-   tracing side effects, and panic-based control flow.
+Status: deferred.
 
-3. A tracer crate that consumes expanded bytecode and handles CPU state, memory,
-   MMU, advice tape, host I/O, and trace side effects.
+`LR.W`, `LR.D`, `SC.W`, and `SC.D` do not have active closed equivalence theorem
+fronts.
 
-With that split, the proof story can become layered:
-
-- verify the bytecode expander, possibly with Hax or Aeneas, against a Lean
-  expansion spec;
-- prove the final primitive bytecode rows implement the intended source-level
-  expansion semantics;
-- connect those source-level semantics to Sail architectural semantics, where
-  the current Lean work already provides a strong start.
-
-In the short term, a mechanical coverage table would be very useful:
+The Rust-faithful Jolt expansions model reservations concretely with virtual
+registers and advised success bits. The generated Sail model uses opaque hooks:
 
 ```text
-Rust instruction
-  -> source inline sequence
-  -> final recursively expanded bytecode rows
-  -> Lean definition
-  -> theorem status
+load_reservation
+match_reservation
+valid_reservation
+cancel_reservation
 ```
 
-That table would make it much easier to distinguish "semantically proven",
-"source-expansion proven", "final-bytecode proven", and "not yet covered".
+Those hooks do not expose reservation state through `SequentialState`, so the
+current Sail model does not provide enough visible state to prove the Jolt
+reservation model equivalent.
 
-## Making the Formalization More Realistic
+These cannot be proved against the current Sail model. Closing them would
+require one of:
 
-This section sketches concrete fixes for the limitations above. Some are fairly
-local proof-engineering tasks; others are better treated as Rust architecture
-work before trying to verify them.
+- either add a trusted reservation-state contract relating Sail hooks to Jolt
+  reservation virtual registers;
+- or use a Sail model where reservation state is visible enough to reason about.
 
-### 1. Model Recursive Expansion Explicitly
+Until then, LR/SC should be listed as a deferred proof-boundary exception, not as
+in-scope Lean work for this version.
 
-Current issue: many Lean definitions model the source-level `emit_*` sequence,
-while Rust recursively lowers each emitted instruction through
-`inst.inline_sequence(...)`.
+### 3. `rd = x0` Policy For Side-Effecting Instructions
 
-Path forward:
+Status: open; accepted as a real in-scope issue.
 
-- Introduce two Lean levels:
-  - `sourceInline : Instr -> List Instr`, mirroring the human-written Rust
-    `emit_*` sequence.
-  - `lowerInline : Instr -> List PrimitiveInstr`, recursively expanding until
-    only final bytecode primitives remain.
-- Prove a lowering theorem:
+Current issue: the pure writeback-only case is handled, but side-effecting cases
+remain and are a real in-scope issue.
 
-  ```text
-  denote (lowerInline instr) = denote (sourceInline instr)
-  ```
+Rust treats `rd = x0` specially:
 
-  for each instruction whose source sequence contains recursively lowered
-  sub-instructions.
-- For shift-heavy code, add focused theorems for the recursive pieces first:
-  - `SLLI` lowers to `VirtualMULI`;
-  - `SLL` lowers to `VirtualPow2; MUL`;
-  - `SRAI` lowers to `VirtualSRAI` with the computed bitmask;
-  - similarly for `SRLI`, `SRA`, `SRL`, and word variants.
+- pure writeback-only instructions can be replaced by a no-op;
+- side-effecting instructions still need to perform their effects, so Rust may
+  remap the destination to a temporary virtual register and discard the final
+  architectural writeback.
 
-This is a clear path and should be tractable, but it is not tiny. The first
-useful milestone would be to make `LB` or `LW` fully final-bytecode faithful,
-because those exercise recursive shift lowering and memory access together.
+Required Lean-side work:
 
-### 2. Generate an Expansion Manifest From Rust
+- classify remaining instructions by Rust `rd = x0` behavior;
+- add theorem fronts for side-effecting remap cases;
+- avoid theorem statements that silently assume away Rust dispatch behavior.
 
-Current issue: the correspondence between Rust and Lean is checked manually.
+### 4. Advice Tape
 
-Path forward:
+Status: not yet settled.
 
-- Add a Rust test/tool that serializes, for each instruction and representative
-  operand shape:
+Current issue: Lean advice-load theorems use explicit advice values, while Rust
+reads little-endian bytes from a mutable FIFO advice tape.
 
-  ```text
-  instruction name
-  xlen
-  source operands
-  source inline sequence
-  final recursively expanded sequence
-  virtual_sequence_remaining metadata
-  allocated virtual registers
-  ```
+Required Lean-side work:
 
-- Commit the output as a golden manifest, or generate it in CI.
-- In Lean, either:
-  - consume the manifest as data and prove semantic facts about the listed rows;
-    or
-  - generate Lean definitions from the manifest.
+- model advice bytes and an advice cursor;
+- define little-endian tape reads with underflow behavior;
+- prove that the current explicit-advice theorems are recovered when the tape
+  contains the expected bytes.
 
-This is one of the highest-leverage near-term fixes. Even before full formal
-verification, it would expose drift immediately when Rust expansion changes.
+### 5. Trap / Failure Boundary
 
-### 3. Parameterize Virtual Register Allocation
+Status: not yet settled.
 
-Current issue: Lean hardcodes virtual registers like `0`, `1`, `2`, while Rust
-uses an allocator with reserved ranges and inline temporaries.
+Current issue: theorem statements need to be explicit about the kind of failure
+being compared.
 
-Path forward:
+Some Lean memory proofs compare Jolt failures with Sail architectural memory
+exceptions. Rust inline sequences can also use virtual assertions that fail the
+trace. Those are not automatically the same semantic object.
 
-- Define a Lean `AllocatorState` and make expansions take explicit allocated
-  registers:
+Required decision:
 
-  ```text
-  jolt_lb (temps : LBTemps) ...
-  ```
+- prove architectural exception equivalence;
+- prove trace accept/reject behavior;
+- or restrict the main theorem to an aligned, non-trapping ordinary Sail-memory
+  subset and handle rejected traces separately.
 
-  where `LBTemps` contains fields such as `v0`, `v1`, plus freshness/disjointness
-  proofs.
-- Alternatively, keep the current hardcoded definitions but prove a general
-  virtual-register renaming theorem:
+### 6. CSR Coverage
 
-  ```text
-  if rho is injective on the registers touched by program p,
-  then running rename(rho, p) is equivalent to running p under renamed vregs.
-  ```
+Status: ![User will fix](https://img.shields.io/badge/status-user_will_fix-brightgreen)
 
-The renaming theorem is elegant and would preserve the current readable proofs.
-Parameterizing every definition is more mechanical but may make proofs noisier.
-The best route is probably to prove renaming once and then use the current
-hardcoded programs as canonical templates.
+Current issue: `CSRRW` is proved, but `CSRRS` is still commented out in
+`JoltBytecode.lean`. It is expected to be added soon.
 
-### 4. Cover `rd = x0`
+Required Lean-side work:
 
-Current issue: many Lean theorems assume `rd != x0`, while Rust has explicit
-special handling for `rd = x0`.
+- prove and root-import the `CSRRS` equivalence theorem if CSRRS is in the
+  bytecode-expansion scope.
 
-Path forward:
+### 7. Trace Metadata
 
-- First classify instructions by Rust behavior when `rd = x0`:
-  - pure no-side-effect instructions lowered to no-op;
-  - side-effecting instructions whose destination is remapped to a virtual
-    register so the side effects still occur;
-  - instructions where `rd` is not meaningful.
-- Add a Lean wrapper theorem for the Rust dispatch layer:
+Status: not yet settled; non-blocking for semantic equivalence.
 
-  ```text
-  expandWithX0Policy instr = ...
-  ```
+Current issue: the semantic instruction-equivalence theorems do not prove exact
+trace-row metadata agreement with Rust.
 
-- Prove per-class lemmas:
-  - no-op replacement preserves architectural state for pure writeback-only
-    instructions;
-  - remapping preserves side effects while discarding the architectural writeback.
+This is not a blocker for architectural semantic equivalence, but it remains a
+separate trace-format theorem layer.
 
-This is conceptually straightforward, but it touches many instructions. A useful
-first pass is a coverage table showing which Lean theorem currently depends on
-`rd != x0` and what Rust does in that case.
+See `planning/JOLT_TRACE_METADATA_PLAN.md`.
 
-### 5. Separate Trace Failure From Architectural Traps
+## Out-Of-Scope Implementation Claims
 
-Current issue: some Lean load proofs model misalignment as a Sail
-`Memory_Exception`, while Rust inline sequences often use virtual assertions
-that panic/fail the trace.
+### Exact Rust Expansion Provenance
 
-Path forward:
+Lean proves semantic facts about the Lean expansion definitions as the formal
+Jolt bytecode-expansion model. It does not, in this version, prove that the
+current Rust implementation emits exactly those definitions.
 
-- Decide and document the target semantics for bytecode expansion:
-  - architectural equivalence including traps; or
-  - prover/tracer accept-reject behavior; or
-  - equivalence only under preconditions excluding traps and assertion failures.
-- If the target is accept-reject behavior, add a Lean result type that
-  distinguishes:
+If exact Rust conformance becomes a target, it will require Rust-side support,
+for example:
 
-  ```text
-  RetireSuccess
-  ArchitecturalException
-  AssertionFailure
-  HostFailure
-  ```
+- a generated expansion manifest;
+- golden tests that dump final expanded rows;
+- a pure Rust expansion API that Lean tooling can consume;
+- CI that detects when Rust expansion output changes without updating Lean.
 
-- If the target is only well-formed Jolt executions, strengthen theorem
-  preconditions to exclude misalignment, MMIO/device regions, and other trap
-  cases, then remove the misleading appearance of proving those cases.
+This is not a Lean proof obligation for the conceptual Jolt theorem and should
+not be described as a remaining virtual-register modeling risk.
 
-The shortest realistic path is probably preconditioned equivalence for now:
-prove final bytecode matches Sail on the flat, aligned, non-trapping subset.
-Later, add a separate theorem about rejected traces.
+## Current Claim Stack
 
-### 6. Make Memory Assumptions an Explicit Semantic Envelope
+The current Lean work proves the conceptual bytecode-expansion theorem:
 
-Current issue: Lean assumes a flat, populated, machine-mode memory setting, but
-Rust has MMU/device/advice/host regions.
-
-Path forward:
-
-- Create a single documented predicate, perhaps:
-
-  ```lean
-  JoltFlatMemoryEnvelope s addr width
-  ```
-
-  bundling:
-  - machine mode;
-  - MPRV disabled;
-  - bare translation;
-  - non-device RAM;
-  - populated bytes;
-  - alignment/no-overflow requirements;
-  - no host/advice/panic/termination special region.
-- Use that predicate consistently in load/store theorem statements.
-- Add tests in Rust that generate states satisfying the envelope and compare
-  direct instruction execution with expanded bytecode execution.
-
-This is mostly organization plus proof plumbing. It would make the claims much
-clearer and reduce accidental overclaiming.
-
-### 7. Model Advice Tape Behavior
-
-Current issue: Lean models advice as explicit values; Rust `VirtualAdviceLoad`
-reads bytes from a mutable FIFO tape.
-
-Path forward:
-
-- Extend `SailJoltState` or a separate execution state with:
-
-  ```lean
-  adviceBytes : List UInt8
-  adviceCursor : Nat
-  ```
-
-- Define `readAdvice n` with little-endian packing and failure on underflow.
-- Prove that existing explicit-advice theorems are recovered when the tape
-  contains exactly the expected bytes.
-- Add width/canonicality lemmas for `ADVICELB/LH/LW/LD`.
-
-This is a clear and fairly self-contained extension. It is especially useful if
-the formalization is meant to cover the tracer, not just advice-parametric
-instruction semantics.
-
-### 8. Finish Store Proofs Against Current Rust
-
-Current issue: `SB`, `SH`, and parts of `SW` remain incomplete, and stores are
-where memory-envelope issues become most painful.
-
-Path forward:
-
-- Start with `SW`, since it is closest to the existing word-store helper work.
-- Prove the read-modify-write splice lemma independently:
-
-  ```text
-  load aligned dword;
-  replace selected word/half/byte;
-  store aligned dword
+```text
+formal final-row Jolt expansion semantics
   =
-  architectural store of width w
-  ```
+Sail architectural instruction semantics
+```
 
-- Then instantiate for `SW`, `SH`, `SB`.
-- Keep misalignment out of scope initially via explicit preconditions, then add
-  assertion-failure behavior later.
+for the covered instructions and under the theorem assumptions.
 
-This is substantial but direct. The proof should become much easier if the
-memory envelope and byte/dword splice lemmas are centralized.
+The remaining work is to make the theorem envelope explicit. Exact Rust
+implementation conformance is a separate optional layer:
 
-### 9. Close Shift Bridge Holes
+```text
+formal final-row Jolt expansion semantics
+  = proved in Lean
+Sail architectural semantics
+  = trusted imported Sail model
 
-Current issue: `SLLW` and `SRLW` depend on sorried bridge lemmas around
-bitvector arithmetic/bitmask behavior.
-
-Path forward:
-
-- Isolate each bridge lemma in a small math-only file with no monadic state.
-- Add exhaustive bounded tests in Rust/Lean for the corresponding 32-bit
-  relation to catch statement mistakes.
-- Prove the bitvector identities once, then reuse them in both source-level and
-  recursive-lowering proofs.
-
-This is pure proof work. It is probably frustrating but not conceptually murky.
-
-### 10. Split Rust Expansion From Tracing
-
-Current issue: bytecode expansion, tracing, CPU execution, advice reads, and
-virtual instruction behavior are tightly coupled.
-
-Path forward:
-
-- Extract a pure expansion crate with a small API:
-
-  ```rust
-  pub fn expand_instruction(
-      instr: DecodedInstruction,
-      xlen: Xlen,
-      allocator: AllocatorState,
-      policy: ExpansionPolicy,
-  ) -> Result<ExpandedSequence, ExpansionError>
-  ```
-
-- Keep this crate free of:
-  - CPU state;
-  - memory/MMU;
-  - advice tape;
-  - host I/O;
-  - terminal behavior;
-  - trace mutation.
-- Make recursive lowering explicit:
-
-  ```rust
-  expand_source(instr) -> SourceSequence
-  lower_to_primitives(SourceSequence) -> PrimitiveSequence
-  annotate_sequence_metadata(PrimitiveSequence) -> ExpandedSequence
-  ```
-
-- Put shared definitions in a small base crate only if needed.
-- Let the tracer consume `ExpandedSequence` rather than owning expansion logic.
-
-This is the architectural change that would make Hax/Aeneas much more plausible.
-The verified surface would be mostly pure functions over enums, lists, small
-integers, and allocator state, instead of a tracer entangled with emulator
-effects.
-
-### 11. Define the Claim Stack Explicitly
-
-The final proof stack should probably be layered as:
-
-1. Rust expansion determinism:
-
-   ```text
-   expand_instruction produces the manifest/final rows claimed.
-   ```
-
-2. Recursive lowering correctness:
-
-   ```text
-   final primitive rows denote the same behavior as source inline sequence.
-   ```
-
-3. Source expansion correctness:
-
-   ```text
-   source inline sequence denotes the same architectural behavior as Sail.
-   ```
-
-4. Envelope theorem:
-
-   ```text
-   under JoltFlatMemoryEnvelope / advice assumptions / rd policy,
-   Rust-expanded bytecode is equivalent to Sail for covered instructions.
-   ```
-
-The current Lean work is strongest at layer 3 for selected instruction families.
-The main missing work is layers 1, 2, and the precise envelope theorem in layer
-4.
+optional later:
+Rust expansion output
+  = formal final-row Jolt expansion definitions
+```
