@@ -39,7 +39,7 @@ explicit, and CI-enforced is itself a workstream (W7).
 | # | Trusted element | Kind | Notes |
 | --- | --- | --- | --- |
 | T1 | Lean kernel + standard axioms (`propext`, `Classical.choice`, `Quot.sound`) | unavoidable | acceptable; just enumerate |
-| T2 | `Lean.ofReduceBool` via `native_decide` | reducible | compiler + `Decidable` eval; ~100 sites, heaviest in `System/`. Investigated as fully removable (W7); no fundamental blocker, only compile time |
+| T2 | Native-evaluation axioms (`*._native.native_decide.ax_*` / `*._native.bv_decide.ax_*`; the `Lean.ofReduceBool` trust class) | reducible | 104 `native_decide` sites + 163 `bv_decide` sites (SAT-path uses native eval too — verified June 2026). Removable via kernel `decide` (W7); no fundamental blocker, only compile time |
 | T3 | `LeanRV64D/` Sail-generated RISC-V semantics | reference spec | trusted by design, but must be provably the genuine upstream output (W5) |
 | T4 | `plat_enable_misaligned_access := false` edit to T3 | base edit | load-bearing for the misaligned branch of SH/SW/AMO; a faithfulness modeling choice to justify and isolate, not remove (W5, W6) |
 | T5 | Faithfulness of `execInstr` to Rust per-row `cpu_exec` semantics | unproven | drift risk (W1) |
@@ -68,11 +68,12 @@ These are settled for handoff; update this section when they change.
    doubleword alignment assertion. This may be semantically equivalent on the
    failing path, but it is not row-for-row conformance.
 
-4. **Memory inhabitance is an investigation, not a checkbox.** `JoltConfig`
-   currently assumes `∀ addr : Nat, s.mem.get? addr ≠ none` over Sail's
-   `Std.ExtHashMap Nat (BitVec 8)`. W2 must either prove a genuine witness for
-   that model or replace the assumption with a finite footprint contract for the
-   bytes each theorem actually touches.
+4. **Memory inhabitance — investigation concluded (June 2026 deep audit).**
+   `JoltConfig.mem_populated` (`∀ addr : Nat, s.mem.get? addr ≠ none` over
+   Sail's finite `Std.ExtHashMap Nat (BitVec 8)`) is unsatisfiable; no witness
+   exists. W2's only path is the finite footprint contract for the bytes each
+   theorem actually touches (≤ 8 consecutive bytes per consumer; see unknown 1
+   resolution for the migration surface).
 
 ## Workstreams
 
@@ -159,10 +160,11 @@ trusted transcription to generated-and-checked.
 - Reuse / widen the existing golden corpus so the same operand cases are checked
   on both sides. The existing hash fixtures are intentionally narrow
   regression fixtures, not a boundary sweep.
-- Decide explicitly whether metadata (`virtual_sequence_remaining`,
-  `is_first_in_sequence`, `is_compressed`) is ignored by semantic conformance,
-  checked separately, or reflected in Lean. Today `JoltISA.Program` models
-  instruction semantics, not trace metadata.
+- Metadata decision (resolved by the June 2026 deep audit, unknown 4): all
+  three fields (`virtual_sequence_remaining`, `is_first_in_sequence`,
+  `is_compressed`) are consumed by the constraint system / PC mapping, so the
+  manifest diff must check them — sequence position against Lean `Program`
+  structure, `is_compressed` carried as out-of-Lean-model but diffed.
 
 Acceptance criteria: a CI job asserting `RustEmitted(opcode, operands) ==
 LeanProgram(opcode, operands)` as data, for a documented operand sample
@@ -190,7 +192,11 @@ recommended primary investment given full Rust malleability.
 
 ### W2 — Anti-vacuity: inhabitance witnesses (VACUITY)
 
-**Status: not-started. Effort: M. Recommended first.**
+**Status: not-started, but the central question is now answered. Effort: M.
+Recommended first — escalated to urgent by the June 2026 deep audit:
+`mem_populated` is confirmed unsatisfiable (see unknown 1 resolution), so the
+~219 `JoltConfig`-hypothesized theorems are vacuous as stated until the
+finite-footprint migration lands.**
 
 Goal: prove every assumption bundle is satisfiable, so no family's theorems are
 vacuously true.
@@ -214,11 +220,11 @@ Tasks:
 - Prefer a single realistic `initialJoltState` builder from which the bundles
   are *jointly* derivable, so co-satisfiability (not just per-predicate
   satisfiability) is demonstrated.
-- Treat `JoltConfig.mem_populated` as the central unknown. It is currently a
-  universal population assumption over all natural-number memory addresses. If
-  that cannot be witnessed for Sail's map representation, replace it with a
-  finite memory-footprint assumption and migrate the memory lemmas that consume
-  it.
+- `JoltConfig.mem_populated` is **resolved: unwitnessable** (finite
+  `Std.ExtHashMap` vs `∀ addr : Nat`; unknown 1 resolution has the full
+  consumer list). Replace it with a finite memory-footprint assumption and
+  migrate the `readBytes_*_eq_loaded_*` bottleneck (`Memory/Utils.lean:381–435`)
+  and the store-splice/AMO consumers; public statements keep their shape.
 
 Acceptance criteria: a file (for example
 `JoltBytecode/InstructionEquivalence/AssumptionsAreSatisfiable.lean`) containing
@@ -339,6 +345,14 @@ Tasks:
   version, and Lean toolchain that generated `LeanRV64D/`. Today the repo pins
   the Lean toolchain and `lean-sail` dependency, but does not record the
   sail-riscv generation commit or a regeneration command.
+- June 2026 audit facts to build on: `LeanRV64D/` was imported in commit
+  `c3bceb3` (2026-03-23) and has exactly one post-import edit, `b9bcdf5`
+  (2026-04-18, the `PlatformConfig.lean:206` flip) — git-verified. The
+  generation inputs are *not* recoverable from the repo: generated files have
+  no provenance headers and the upstream generator
+  (`LayerZero-Research/sail-riscv-lean`) clones unpinned sail-riscv and Sail in
+  CI. First task: match the imported tree against sail-riscv-lean history to
+  identify the generation snapshot, then pin upstream.
 - Add a reproducible regeneration script for `LeanRV64D/`.
 - After regeneration works locally, add CI that regenerates `LeanRV64D/` and
   diffs against the checked-in tree, allowing exactly one reviewed patch:
@@ -390,7 +404,9 @@ Tasks:
   accesses are rejected rather than split, so the flag value is the faithful
   no-split model and not just the convenient one. Record evidence from the Rust
   MMU alignment assertions, virtual alignment assertion rows, and ACT4 Sail
-  config.
+  config. (June 2026 audit confirmed the MMU side: `load_doubleword` /
+  `store_doubleword` hard-panic via `assert_eq!(ea % 8, 0)` at
+  `tracer/src/emulator/mmu.rs:362,470` — rejects, never splits.)
 - State the layer distinction explicitly: Sail with the flag disabled raises an
   architectural alignment exception; Lean `execInstr` models the virtual
   alignment rows as `Memory_Exception`; Rust host execution generally reaches
@@ -438,11 +454,13 @@ Tasks:
   fundamental obstruction. The sites fall into four decidable buckets:
   - **A. BitVec value facts** (`sign_extend (0:BitVec 21) = 0#64`,
     `privLevel_to_bits .Machine = 0b11`, `jolt_virtual_muli_value 3 2048 =
-    zeroOSMstatus`, `ecallMachineCause = 11#64`): replace with `bv_decide`. This
-    is the main TCB win, replacing `Lean.ofReduceBool` with a kernel-checked
-    proof.
+    zeroOSMstatus`, `ecallMachineCause = 11#64`): replace with kernel `decide`
+    — **not `bv_decide`** (see the empirical resolution of unknown 7: the
+    `bv_decide` SAT path introduces a `*._native.bv_decide.ax_*` axiom, same
+    trust class as `native_decide`). Verified on the pinned toolchain that
+    `decide` closes the real ProgramBlocks goals with `[propext]` only, fast.
   - **B. VReg (`BitVec 7`) distinctness** (`trapHandlerVReg ≠ mstatusVReg`,
-    many): `decide` / `bv_decide`, trivial.
+    many): `decide`, trivial.
   - **C. `Register` enum distinctness and map-key `≠`** (`Register.nextPC ≠
     Register.mtvec`, `(Register.mstatus == reg) = false`): `decide` via derived
     `DecidableEq`. The `Register` enum has ~180 constructors
@@ -456,16 +474,22 @@ Tasks:
   helpers (`privLevel_to_bits`, `trapCause_bits_forwards`) that must be
   structurally reducible for `decide` (they appear to be; if any hides an opaque
   or well-founded def, give it a manual unfolding lemma).
-- **Verify, do not assume**, that `bv_decide` in the pinned toolchain
-  (`v4.29.0-rc4`) emits a purely kernel-checked LRAT proof and does not itself
-  reintroduce `Lean.ofReduceBool`. Use the axiom gate to confirm after the first
-  conversion.
+- **Verified June 2026 (experiment on v4.29.0-rc4):** `bv_decide` is *not*
+  kernel-only. When `bv_normalize` closes the goal it adds no extra axioms
+  (`[propext, Quot.sound]`), but when the SAT/LRAT path runs the proof depends
+  on a generated `<decl>._native.bv_decide.ax_*` axiom — same trust class as
+  `native_decide`, which itself appears in this toolchain as
+  `<decl>._native.native_decide.ax_*` rather than bare `Lean.ofReduceBool`.
+  Therefore: the axiom gate must flag generated `*._native.*` axioms by
+  pattern, and the 163 existing `bv_decide` sites in `JoltBytecode/` must be
+  audited alongside the 104 `native_decide` sites.
 
 Acceptance criteria: the axiom gate shows every closed public equivalence
 theorem depends only on the expected standard axioms, with no
-`Lean.ofReduceBool`; explicit deferred-hook axioms are listed separately and do
-not silently enter closed theorem dependencies; zero `native_decide` in
-`JoltBytecode/`; documented build-time impact.
+`Lean.ofReduceBool` and no generated `*._native.*` axioms (from either
+`native_decide` or `bv_decide`'s SAT path); explicit deferred-hook axioms are
+listed separately and do not silently enter closed theorem dependencies; zero
+`native_decide` in `JoltBytecode/`; documented build-time impact.
 
 Dependencies: none. Build the axiom gate first; it measures the removal.
 
@@ -550,49 +574,142 @@ Dependency-ordered, optimized for early certainty per unit of agent runtime:
 7. **W8 after the source-opcode universe is chosen.** It is small only after the
    Rust or Lean opcode manifest exists.
 
-## Focused unknowns for the next audit
+## Focused unknowns — resolutions (June 2026 deep audit)
 
-These are the places where the June 2026 review found enough smoke to change the
-plan, but not enough detail to settle the design. A follow-up audit should focus
-here rather than rechecking the already-established high-level risks.
+The follow-up audit (June 11, 2026; both repos plus toolchain experiments) has
+resolved or sharply narrowed all ten unknowns. Findings below supersede the
+original questions; each item records the evidence and the action it implies.
 
-1. **Can `JoltConfig.mem_populated` actually be witnessed?** Sail memory is an
-   `Std.ExtHashMap Nat (BitVec 8)`. Determine whether a concrete state can prove
-   `∀ addr : Nat, s.mem.get? addr ≠ none`; if not, design the finite footprint
-   replacement and list every lemma that must migrate.
-2. **What is the right AMO.D conformance target?** Rust doubleword AMO expansion
-   relies on MMU alignment assertions, while Lean inserts an explicit
-   `VirtualAssertDwordAlignment` row. Decide whether Lean should match Rust rows,
-   Rust should emit an explicit row, or W1 conformance should compare a semantic
-   projection that intentionally hides this locus difference.
-3. **How much Rust `exec()` vs trace drift matters for T5?** The central expander
-   controls trace rows, but native `exec()` methods still exist and may have
-   different failure behavior. Identify which correctness claim actually depends
-   on `exec()` and which depends only on trace expansion.
-4. **What metadata belongs in conformance?** Rust rows carry
-   `virtual_sequence_remaining`, `is_first_in_sequence`, and `is_compressed`.
-   Lean `Program` does not. Decide whether W1 checks metadata separately,
-   ignores it as out of semantic scope, or extends the Lean artifact.
-5. **Which advice paths need differential coverage?** DIV/REM advice, SC success
-   advice, registered-inline `build_advice`, and advice-load instructions have
-   different runtime mechanisms. Build the inventory before writing W1b tests.
-6. **What is the authoritative source-opcode universe?** W8 needs a closed list
-   from Rust `SourceInstructionKind` or a generated manifest before any Lean
-   exhaustiveness check can mean anything.
-7. **Can `bv_decide` in the pinned Lean toolchain stay out of the TCB?** Verify
-   with the proposed axiom gate that replacing `native_decide` removes
-   `Lean.ofReduceBool` and does not introduce another non-kernel trust path.
-8. **What exactly generated `LeanRV64D/`?** Find or reconstruct the sail-riscv
-   commit, lean-sail invocation, and patch stack. Until then, W5 cannot prove
-   `PlatformConfig.lean` is the only edit.
-9. **Are system/CSR assumptions jointly satisfiable?** Check
-   `EcallSystemAssumptions`, `CsrrwSystemAssumptions`, and MRET assumptions
-   against one shared state, especially trap target alignment and
-   `zeroOSMstatus` constraints.
-10. **Where do local scratch-register invariants actually need proof?** Audit
-    only expansion blocks whose theorem statements rely on scratch behavior
-    beyond `projectResult`; do not accidentally turn W4 into a global SSA
-    project.
+1. **`JoltConfig.mem_populated` — RESOLVED: unsatisfiable.** Sail memory is
+   `Std.ExtHashMap Nat (BitVec 8)` (lean-sail `Sail/Sail.lean:470`), a finite
+   map; no concrete state can satisfy `∀ addr : Nat, s.mem.get? addr ≠ none`
+   (`JoltBytecode/JoltISA/Environment.lean:77`). Every theorem hypothesizing
+   `JoltConfig` (~219 by grep) is therefore vacuous as stated today. The fix is
+   mechanical, not structural: all 16 direct consumers (the
+   `readBytes_*_eq_loaded_*` bottleneck at `Memory/Utils.lean:381–435` and its
+   `mem_read_*` clients, the store-splice lemmas in `StoreFamily/S{b,h,w}_main.lean`,
+   and the AMO bridging lemmas) touch at most 8 consecutive bytes around one
+   base address, so a finite-footprint hypothesis
+   (`∀ k, base ≤ k < base + w → s.mem.get? k ≠ none`) suffices, and the public
+   statements already carry local `FlatPhysMem`-style envelopes. W2 is hereby
+   escalated from investigation to urgent trust repair.
+2. **AMO.D conformance target — RESOLVED: real drift; fix Rust, not Lean.**
+   Verified in source: `expand_amo_d`
+   (`crates/jolt-program/src/expand/memory/shared.rs:182`) emits LD / op / SD /
+   ADDI with no assert row (`expand_amoswapd`: LD/SD/ADDI,
+   `expand/memory/amoswapd.rs:8`); misalignment instead hits
+   `assert_eq!(ea % 8, 0)` host panics in `tracer/src/emulator/mmu.rs:362,470`
+   — a tracer panic, not a provable trap. Lean
+   (`JoltISA/Expansions/Atomics.lean:192,271`) prepends
+   `VirtualAssertDwordAlignment`. AMO.W carries the explicit
+   `VirtualAssertWordAlignment` row on *both* sides (`shared.rs:413`,
+   `Atomics.lean:145`), so AMO.D is the inconsistency inside Rust, not Lean
+   inventiveness. Recommendation: Rust emits the explicit dword-assert row —
+   consistent with AMO.W, consistent with W6's "faults, not splits" model, and
+   it gives the misaligned path provable trap semantics. Dropping the Lean row
+   instead would orphan the `*_eq_sail_misaligned` theorems. Secondary check
+   for the first W1a manifest: the audit saw slightly different AMO.W
+   pre64/post64 row counts on the two sides; confirm row-for-row.
+3. **Rust `exec()` vs trace drift — RESOLVED.** The prover never consumes
+   source-instruction `exec()`. Proof semantics are defined by the expansion
+   path (`inline_sequence`, `tracer/src/instruction/mod.rs:706`) plus the
+   lookup/constraint definitions (`crates/jolt-lookup-tables/src/instructions/`);
+   `exec()` is the emulator fast path only, and no existing test compares the
+   two paths, so they can diverge silently. T5's conformance target is the
+   per-row semantics of Jolt rows plus their lookup tables — not source
+   `exec()`. One candidate divergence to triage upstream: SC.D `exec()` vs
+   `trace()` reservation-clearing behavior (`tracer/src/instruction/scd.rs`,
+   ~line 40 vs 69). A cheap Rust-side exec-vs-expansion differential harness is
+   a natural W1b companion.
+4. **Metadata in conformance — RESOLVED: all three fields are semantic.**
+   `virtual_sequence_remaining` feeds the bytecode PC mapping consumed by the
+   constraint system (`crates/jolt-program/src/preprocess/bytecode.rs:57–65,106–112`);
+   `is_first_in_sequence` and `is_compressed` gate constraints
+   (`crates/jolt-riscv/src/lib.rs`). Row type: `JoltInstructionRow`
+   (`crates/jolt-riscv/src/row.rs:74–81`). W1 conformance must therefore check
+   them rather than ignore them: verify structural position in the Lean
+   `Program` matches `virtual_sequence_remaining` ordering, derive
+   `is_first_in_sequence` from position, and carry `is_compressed` in the
+   manifest as out-of-Lean-model but diffed.
+5. **Advice-path inventory — RESOLVED.** (a) DIV/REM ×8 via
+   `fill_virtual_advice` (`tracer/src/instruction/mod.rs:167–181`): quotient +
+   remainder advice constrained by AssertValidDiv0 /
+   AssertValidUnsignedRemainder / recomposition rows
+   (`expand/division/shared.rs`). (b) SC.W/D success boolean patched into
+   `VirtualAdvice` (`tracer/src/instruction/scd.rs:44–71`). (c)
+   Registered-inline `build_advice`: only the big-int field ops use it
+   (secp256k1/p256/grumpkin `mulq_advice`,
+   `jolt-inlines/sdk/src/host.rs:106–159`); SHA-2/Keccak/Blake are
+   deterministic with no advice. (d) AdviceLB/LH/LW/LD read the advice tape and
+   expand to `VirtualAdviceLoad` (`expand/memory/shared.rs:146–174`). (e)
+   `VirtualAdviceLen` is unconstrained/informational. Structural fact that
+   scopes W1b: the `VirtualAdvice` row itself is only range-checked — all
+   soundness lives in the downstream assert rows, which are exactly the value
+   primitives Lean encodes. W1b fuzz targets: each assert-row value function
+   plus each generator above.
+6. **Source-opcode universe — RESOLVED.** Authoritative:
+   `for_each_instruction_kind!` (`crates/jolt-riscv/src/lib.rs:20–162`), 135
+   source kinds (enum `SourceInstruction`, 138 variants incl.
+   Noop/Unimpl/InlineDispatch): 67 map 1:1 to `JoltInstructionKind`, 68 expand,
+   1 inline dispatch. `SourceInstructionKind::ALL` and canonical-name
+   serialization already exist, so the W8 manifest is generable today with a
+   small exporter and no new enum infrastructure. Compressed instructions are
+   normalized before the enum (`uncompress.rs`), tracked by `is_compressed`.
+   Known fixture gap to enumerate during W1a: the main expand fixtures cover 66
+   unique opcodes vs 68 expanded kinds.
+7. **`bv_decide` TCB — RESOLVED empirically; the W7 bucket-A guidance was
+   wrong as originally written.** Experiment on the pinned v4.29.0-rc4: kernel
+   `decide` proves the real `native_decide` goals (e.g.
+   `StoreFamily/ProgramBlocks.lean:196,201`) with axioms `[propext]`, and
+   180-constructor enum distinctness with *no* axioms, in negligible time.
+   `bv_decide` adds no extra axiom only when `bv_normalize` closes the goal;
+   when the SAT/LRAT path runs, the theorem depends on a generated
+   `<decl>._native.bv_decide.ax_*` axiom — the same trust class as
+   `native_decide` (which in this toolchain likewise appears as
+   `<decl>._native.native_decide.ax_*`, not as bare `Lean.ofReduceBool`).
+   Consequences: (i) replace `native_decide` with `decide`, not `bv_decide`;
+   (ii) the axiom gate must flag `*._native.*` generated axioms, not only
+   `Lean.ofReduceBool`; (iii) the **163 existing `bv_decide` sites** in
+   `JoltBytecode/` need auditing — any that hit the SAT path already carry
+   native axioms today. Current counts: 104 `native_decide`, 163 `bv_decide`.
+   Stale `NoExtraAxioms.olean` / `RV64IMAC.olean` build artifacts with no
+   surviving sources suggest a previous axiom-gate experiment was deleted;
+   resurrect it under version control.
+8. **`LeanRV64D/` provenance — RESOLVED as a negative result with a
+   reconstruction path.** Git-verified: imported in commit `c3bceb3`
+   (2026-03-23, 154 files); exactly one post-import edit, `b9bcdf5`
+   (2026-04-18), flipping `PlatformConfig.lean:206` `true → false` with a
+   WARNING comment; nothing since. So "exactly one edit *since import*" is now
+   established. What cannot be established: the generation inputs — generated
+   files carry no provenance headers, and the upstream generator
+   (`LayerZero-Research/sail-riscv-lean`) clones unpinned latest sail-riscv and
+   Sail in its CI. W5 bootstrap: match the imported tree against
+   sail-riscv-lean commit history to identify the generation snapshot, then pin
+   sail-riscv + Sail revisions upstream and record them in-repo.
+9. **System/CSR joint satisfiability — PARTIALLY RESOLVED; one real
+   composition gap.** Each bundle (`EcallSystemAssumptions`,
+   `System/Common.lean:1657`; `CsrrwSystemAssumptions`, `Csrrw.lean:335`;
+   `MretSystemAssumptions`, `Mret.lean:542`) appears individually satisfiable —
+   W2 should construct the witnesses. But ECALL leaves the mstatus vreg at
+   `zeroOSMstatus = 0x1800` (MPIE=0, MIE=0; `Common.lean:36`), while MRET
+   assumes `MPIE = 1` and `MIE = MPIE` (`Mret.lean:563–567`) precisely so that
+   Sail's xret mstatus update is a no-op. The modeled ECALL → handler → MRET
+   round trip is therefore *not* covered by composing the two theorems unless
+   the handler rewrites mstatus (e.g. CSRRW) in between. Action: check what
+   ZeroOS actually executes between trap entry and `mret`; either document the
+   required intermediate mstatus write as part of the environment contract, or
+   rework the MRET assumptions / Jolt mstatus modeling. Relatedly, ECALL's
+   `trap_vector_matches_jalr` and `trap_target_fetch_aligned` are loader-time
+   environment invariants and belong in a documented ZeroOS contract (W4/W2).
+10. **Scratch-register invariants — RESOLVED: no global work needed.** No
+    public theorem exposes vregs: `projectResult` (`JoltISA/Core.lean:51`)
+    discards all vregs; `systemProjectResult` (`System/Common.lean:78`)
+    overlays only the persistent CSR vregs; `EbreakResultRelation`
+    (`Ebreak.lean:165`) is intentionally a relation. Cross-row temporaries
+    (ECALL scratch, CSRRW `rd = rs1` save/restore, DIV `t0–t4` phases,
+    load/store address temps) are already discharged inside existing
+    phase/block proofs. W4 reduces to its documentation deliverable plus the
+    systemProject off-CSR-key lemma.
 
 ## Definition of "more trustworthy" (exit criteria)
 
