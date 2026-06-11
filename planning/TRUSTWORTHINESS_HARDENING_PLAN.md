@@ -39,12 +39,27 @@ explicit, and CI-enforced is itself a workstream (W7).
 | # | Trusted element | Kind | Notes |
 | --- | --- | --- | --- |
 | T1 | Lean kernel + standard axioms (`propext`, `Classical.choice`, `Quot.sound`) | unavoidable | acceptable; just enumerate |
-| T2 | `Lean.ofReduceBool` via `native_decide` | reducible | compiler + `Decidable` eval; ~100 sites, heaviest in `System/`. Target for reduction (W7) |
+| T2 | `Lean.ofReduceBool` via `native_decide` | reducible | compiler + `Decidable` eval; ~100 sites, heaviest in `System/`. Investigated as fully removable (W7); no fundamental blocker, only compile time |
 | T3 | `LeanRV64D/` Sail-generated RISC-V semantics | reference spec | trusted by design, but must be provably the genuine upstream output (W5) |
-| T4 | `plat_enable_misaligned_access := false` edit to T3 | base edit | a real semantic narrowing; isolate or eliminate (W5, W6) |
+| T4 | `plat_enable_misaligned_access := false` edit to T3 | base edit | load-bearing for the misaligned branch of SH/SW/AMO; a faithfulness modeling choice to justify and isolate, not remove (W5, W6) |
 | T5 | Faithfulness of `execInstr` to Rust per-row `cpu_exec` semantics | unproven | drift risk (W1) |
 | T6 | Faithfulness of `xProgram` definitions to Rust `inline_sequence` emission | unproven | drift risk; cheapest to check because `Program` is first-order data (W1) |
 | T7 | Toolchain mismatch: `v4.29.0-rc4` vs lean-sail's target nightly | environment | documented in `README.md`; keep pinned and reproducible (W5) |
+
+## Recorded decisions (June 2026)
+
+These are settled for handoff; update this section when they change.
+
+1. **Hand-written `xProgram` vs generated output (W1c).** No upfront policy to
+   replace hand-written `JoltISA/Expansions/*.lean` definitions outright or to
+   only check equality against them. Clean up per opcode or family as W1c rolls
+   out: either path is fine case by case.
+
+2. **Extractor delivery (W1c).** **Pinned artifact in `jolt-qed` for now.** The
+   Rust side (extractor or export tool) produces a versioned expansion artifact;
+   `jolt-qed` checks in or imports that pinned output and CI diffs it against
+   the hand-written `xProgram`s (or adopts generated definitions where we choose
+   to). Rust repo CI does not gate on `jolt-qed` equivalence yet.
 
 ## Workstreams
 
@@ -64,49 +79,80 @@ together carry most of the residual risk.
 
 Rationale: every proof below T5/T6 is conditional on a transcription no machine
 checks. Because `JoltISA.Program` is a concrete inductive (a list of `Instr`),
-the expansion half (T6) can be checked structurally without extraction or a Rust
-verifier. This is unusually high leverage.
+the expansion half (T6) can be checked structurally without a Rust verifier.
 
-#### W1a — Bytecode structural conformance harness
+#### Existing Rust-side state (June 2026 audit)
 
-- Emit Rust's `inline_sequence` output (the final `Vec` of trace-row
-  instructions) for every covered opcode across a structured/random sweep of
-  operands.
-- Serialize to a stable format (JSON manifest).
-- Compare row-for-row against the corresponding Lean `xProgram`
-  (`JoltISA/Expansions/*.lean`), including the `pureWritebackTraceProgram`
-  `rd = x0` branch.
-- Run in CI; fail on any structural mismatch.
+The Rust repo (`/Users/quang.dao/Documents/snarks/jolt`) already has, after PRs
+around #1490/#1518/#1522/#1533:
 
-Acceptance criteria: a CI job that, for each opcode in the coverage table,
-asserts `RustEmitted(opcode, operands) == LeanProgram(opcode, operands)` as
-data, for a documented operand sample including `rd = x0` and boundary shifts.
+- A single source of truth for expansion recipes in
+  `crates/jolt-program/src/expand/` using an `ExpansionBuilder` / `ExpansionOp`
+  grammar; `tracer/src/instruction/*.rs` are thin callers of
+  `Instruction::inline_sequence`.
+- Internal golden regression tests (SHA256 over serialized
+  `JoltInstructionRow`s): `expand/fixtures/main_expand_parity_hashes.json`
+  (360 source-only cases) and
+  `jolt-inlines/fixtures/.../registered_inline_expand_parity_hashes.jsonl`
+  (92 registered-inline cases). Both run in CI (`test-crates`, `test-inlines`).
+- `zklean-extractor`: a working Rust to Lean extractor, but it targets the
+  ZkLean proof frontend (R1CS constraints, lookup tables, sumchecks), not the
+  bytecode-expansion recipes, and its CI step that would `lake build` the
+  extracted Lean is commented out.
+
+What this means: drift is well-controlled *inside Rust* against a past Rust
+baseline, but **nothing connects Rust to `jolt-qed`**, golden tests are hashes
+rather than structural data, and the existing extractor is a different Lean
+universe. So T6 (and T5) are still unguarded with respect to the Sail-equivalence
+Lean repo.
+
+Rust is fully under our control and freely modifiable, which makes the
+single-source approach (W1c) the recommended target rather than an aspiration.
+
+#### W1c — Single source of truth for expansions (RECOMMENDED PRIMARY)
+
+- Extend `zklean-extractor` (or add a sibling) to emit each opcode's
+  `jolt-qed` `JoltISA.Program` (or a structural manifest) from the
+  `jolt-program::expand` recipes, reusing the proven extraction pattern.
+- **Delivery (recorded decision):** pin the emitted artifact in `jolt-qed`; CI
+  here diffs against hand-written `xProgram`s or adopts generated definitions
+  per family as we clean up. Rust CI does not gate on this yet.
+- **Replace vs check-equal (recorded decision):** no global choice; evolve per
+  opcode or family (see Recorded decisions above).
+
+Acceptance criteria: for at least one family, a pinned artifact from
+`jolt-program::expand` is checked in `jolt-qed` and CI enforces conformance to
+the hand-written or adopted `xProgram` (including `pureWritebackTraceProgram`
+`rd = x0` where applicable); extended to all covered opcodes thereafter. This
+collapses T6 from trusted transcription to generated-and-checked.
+
+#### W1a — Bytecode structural conformance harness (interim safety net)
+
+- Until W1c covers everything, emit Rust's `inline_sequence` rows per opcode
+  across an operand sweep as a structural manifest (not just a hash), and diff
+  row-for-row against the Lean `xProgram`.
+- Reuse / widen the existing golden corpus so the same operand cases are checked
+  on both sides.
+
+Acceptance criteria: a CI job asserting `RustEmitted(opcode, operands) ==
+LeanProgram(opcode, operands)` as data, for a documented operand sample
+including `rd = x0` and boundary shifts, for opcodes not yet covered by W1c.
 
 #### W1b — Value-primitive differential fuzzing
 
 - The pure value functions (`jolt_virtual_pow2_value`, `change_divisor_value`,
   `jolt_mulhu_value`, `jolt_virtual_srl_value`, ...) encode Jolt's
-  lookup-table/constraint semantics.
-- Cross-check each against its Rust implementation on randomized inputs through
-  the same harness.
+  lookup-table/constraint semantics (the T5 side).
+- Cross-check each against its Rust implementation on randomized inputs.
+- Note: advice-dependent expansions (DIV etc.) inject advice at tracer runtime
+  (`fill_virtual_advice`), which the static golden corpus does not cover; the
+  differential harness should exercise the advice path explicitly.
 
 Acceptance criteria: a fuzz target per primitive with a documented input
 distribution and iteration count, green in CI.
 
-#### W1c — Single source of truth for expansions (durable fix)
-
-- Generate both the Rust `inline_sequence` and the Lean `Program` definitions
-  from one declarative table/DSL, so drift becomes structurally impossible
-  rather than tested-against.
-- See `planning/JOLT_EXPANSION_DSL_DESIGN.md`; promote it from design note to
-  artifact.
-
-Acceptance criteria: at least one instruction family whose Lean `xProgram` and
-Rust `inline_sequence` are both generated from a shared spec, with W1a passing
-trivially for that family.
-
-Dependencies: W1a/W1b are independent and should land first as the interim
-safety net. W1c is the long-term replacement.
+Dependencies: W1a/W1b are the interim net; W1c is the durable fix and the
+recommended primary investment given full Rust malleability.
 
 ---
 
@@ -151,20 +197,30 @@ Rationale: the most direct answer to "could the spec be wrong and the proof
 still pass." If a deliberately corrupted `xProgram` still satisfies its
 `*_eq_sail` theorem, the statement is too weak.
 
-Tasks:
+Approach (decided June 2026): do the **lightweight version first**. One
+hand-picked mutant per instruction family (swap two operands, drop a
+sign-extend row, change an immediate, flip a scratch register), confirm each
+breaks its theorem, done as a one-time teeth-check. Only build the full
+automated harness if a spot-check reveals a surviving mutant (a too-weak
+theorem), since that is the signal that systematic coverage is worth the cost.
 
-- Build a harness that injects a catalogue of mutations into each `xProgram`
-  (swap two operands, drop a sign-extend row, change an immediate, flip a
-  scratch register) and confirms the build *breaks*.
+Tasks (lightweight):
+
+- For each family, corrupt the `xProgram` once and confirm the `*_eq_sail`
+  theorem no longer compiles.
 - A mutation that leaves the build green is a finding: the theorem is too weak
   or the mutation is semantically inert (document which).
-- Run as an offline/nightly job, not on the critical path.
 
-Acceptance criteria: a documented mutation catalogue with a report of
-kill rate per instruction family, and a triage note for any surviving mutant.
+Tasks (full, only if triggered):
 
-Dependencies: none, but most informative once W2 rules out vacuity (a vacuous
-theorem trivially "survives" all mutations).
+- A harness that injects a mutation catalogue and reports kill rate per family,
+  run as an offline/nightly job, not on the critical path.
+
+Acceptance criteria (lightweight): a short report showing one killed mutant per
+family, with triage notes for any survivor.
+
+Dependencies: most informative once W2 rules out vacuity (a vacuous theorem
+trivially "survives" all mutations).
 
 ---
 
@@ -232,28 +288,41 @@ Dependencies: none. Enables W6.
 
 ---
 
-### W6 — Eliminate the misaligned-flag edit via reachability (BAD BASE)
+### W6 — Validate the misaligned-flag edit (BAD BASE)
 
-**Status: not-started. Effort: M. Optional but removes a trusted delta.**
+**Status: investigated; reframed. Effort: M.**
 
-Goal: remove T4 entirely by proving it is irrelevant on the modeled subset.
+Original hypothesis (eliminate the edit via reachability) is **withdrawn**. The
+edit is load-bearing, not a convenience.
 
-Rationale: Jolt's inline memory sequences emit leading alignment-assert rows
-(`VirtualAssertWordAlignment`, etc.). If those asserts dominate, the misaligned
-Sail path is never reached, and the value of `plat_enable_misaligned_access`
-does not affect the proved equivalence. Proving this lets us drop the base edit.
+Finding (June 2026): the store/AMO expansions do lead with alignment asserts
+(`VirtualAssertWordAlignment` in `Expansions/Store.lean`, `VirtualAssertD/Word`
+in the AMO programs), but those asserts do **not** make the misaligned Sail path
+unreachable. They make the *Jolt* side fault. The proofs include explicit
+misaligned-branch theorems, e.g. `swProgram_eq_sail_misaligned`
+(`StoreFamily/Sw_main.lean:411`), whose Sail side
+(`execute_SW_misaligned`, `Sw_main.lean:377`) depends on
+`access_causes_misaligned_exception (Virtaddr ea) 4 false = true`. With
+`plat_enable_misaligned_access := true`, Sail would split the access instead of
+faulting and that theorem would break. So T4 is required for the misaligned
+branch of SH/SW/AMO to match.
+
+Reframed goal: the flag is a *faithfulness modeling choice* (Jolt faults on
+misalignment, it does not split), so the work is to justify and isolate it, not
+remove it.
 
 Tasks:
 
-- Show that for each memory expansion, a misaligned effective address makes the
-  alignment-assert row return a `Memory_Exception` before any `vmem_*` call.
-- Show the comparison holds for both flag settings on the reachable subset, or
-  that the misaligned branch is unreachable given the asserts.
+- Confirm against the Rust/Jolt platform that misaligned ordinary accesses
+  actually fault rather than split, so the flag value is the faithful model and
+  not just the convenient one. Record the evidence.
+- Ensure the edit is isolated as the single reviewed patch guarded by W5.
 
-Acceptance criteria: either the equivalence theorems no longer depend on the
-flag value, or a documented argument for why the edit is still required.
+Acceptance criteria: a written, evidence-backed justification that
+`plat_enable_misaligned_access := false` matches Jolt's real platform behavior,
+referenced from `README.md`, plus the W5 diff guard allowing exactly this patch.
 
-Dependencies: W5 (so the base is locked before reasoning about its edits).
+Dependencies: W5.
 
 ---
 
@@ -269,18 +338,40 @@ Tasks:
 - Add `#print axioms` for every public `*_eq_sail` / `*_rel_sail` theorem and
   assert the axiom set is exactly the expected one. This simultaneously catches
   accidental `sorry`, new `axiom`s, and `native_decide` (`Lean.ofReduceBool`)
-  leaking into theorems where it was not intended.
-- Inventory all `native_decide` sites (heaviest in `System/Common.lean`,
-  `System/Mret.lean`, `System/Csrrw.lean`, `StoreFamily/ProgramBlocks.lean`).
-  Convert register-key distinctness and similar facts to `decide` or structural
-  lemmas where feasible; isolate the irreducible remainder so the trust surface
-  is small and listed.
+  leaking into theorems where it was not intended. This gate is also the meter
+  for the `native_decide` removal below.
+- Remove `native_decide` from `JoltBytecode/`. Investigated June 2026: no
+  fundamental obstruction. The sites fall into four decidable buckets:
+  - **A. BitVec value facts** (`sign_extend (0:BitVec 21) = 0#64`,
+    `privLevel_to_bits .Machine = 0b11`, `jolt_virtual_muli_value 3 2048 =
+    zeroOSMstatus`, `ecallMachineCause = 11#64`): replace with `bv_decide`. This
+    is the main TCB win, replacing `Lean.ofReduceBool` with a kernel-checked
+    proof.
+  - **B. VReg (`BitVec 7`) distinctness** (`trapHandlerVReg ≠ mstatusVReg`,
+    many): `decide` / `bv_decide`, trivial.
+  - **C. `Register` enum distinctness and map-key `≠`** (`Register.nextPC ≠
+    Register.mtvec`, `(Register.mstatus == reg) = false`): `decide` via derived
+    `DecidableEq`. The `Register` enum has ~180 constructors
+    (`LeanRV64D/Defs.lean:1526`), so the only real risk is **compile time**, not
+    possibility; mitigate with a one-time fast distinctness helper via a tag
+    projection (`toCtorIdx` injectivity) instead of full `decide` per pair.
+  - **D. small-enum `BEq`** (`CSRAccessType`): `decide`, trivial.
+- Two caveats, both practical not fundamental: (1) kernel `decide` / `bv_decide`
+  is slower than compiled `native_decide`, so watch build time, especially
+  bucket C and 64-bit BitVec goals; (2) a few facts route through generated Sail
+  helpers (`privLevel_to_bits`, `trapCause_bits_forwards`) that must be
+  structurally reducible for `decide` (they appear to be; if any hides an opaque
+  or well-founded def, give it a manual unfolding lemma).
+- **Verify, do not assume**, that `bv_decide` in the pinned toolchain
+  (`v4.29.0-rc4`) emits a purely kernel-checked LRAT proof and does not itself
+  reintroduce `Lean.ofReduceBool`. Use the axiom gate to confirm after the first
+  conversion.
 
-Acceptance criteria: a CI gate asserting the per-theorem axiom set, and a
-documented, minimized inventory of remaining `native_decide` uses with
-justification.
+Acceptance criteria: the axiom gate shows every public theorem depends only on
+`{propext, Classical.choice, Quot.sound}` with no `Lean.ofReduceBool`; zero
+`native_decide` in `JoltBytecode/`; documented build-time impact.
 
-Dependencies: none.
+Dependencies: none. Build the axiom gate first; it measures the removal.
 
 ---
 
@@ -353,7 +444,7 @@ The effort has materially improved trust when:
 - each projection has a written faithfulness justification and the scratch-state
   scope is explicit (W4);
 - the trusted Sail base is provably genuine upstream plus one named patch (W5),
-  ideally with that patch shown irrelevant (W6);
+  with that patch justified as faithful to Jolt's real platform behavior (W6);
 - Lean and Rust expansions are continuously cross-checked, ideally generated
   from one source (W1).
 
