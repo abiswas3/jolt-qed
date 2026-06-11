@@ -220,6 +220,56 @@ separate trace-format theorem layer.
 
 See `planning/JOLT_TRACE_METADATA_PLAN.md`.
 
+### 7. Claim Boundary: Post-Decode Only
+
+Status: real, must be stated (June 2026 deep audit).
+
+Every equivalence theorem operates at Sail's post-decode `execute_*` level.
+Verified directly: nothing in `JoltBytecode/` references `LeanRV64D/Step.lean`
+(Sail's step loop: `dispatchInterrupt`, fetch, `tick_pc`) or Sail's decoder
+(`encdec`). Four things therefore sit outside the proven envelope and are
+currently checked by nothing:
+
+- **Decode equivalence.** No check confirms the Rust decoder and Sail `encdec`
+  agree on bits → (opcode, rd, rs1, rs2, imm). S/B-type immediate scrambling is
+  the classic silent-divergence point. This is differentially testable; see
+  W1d in `TRUSTWORTHINESS_HARDENING_PLAN.md`.
+- **Fetch, interrupts, PC-step protocol.** The proofs handle `nextPC` within an
+  instruction, but the `PC := nextPC` advance and interrupt dispatch live in the
+  unreferenced step loop.
+- **Row sequencing.** Lean executes expansion rows by structural recursion; real
+  Jolt enforces row order through the PC/bytecode-address constraint chain (the
+  `virtual_sequence_remaining` machinery). The "rows execute in this order"
+  claim belongs to the constraint layer (ZkLean), and the hand-off is currently
+  unstated.
+
+This is a legitimate scope, but it should be named here rather than implied.
+
+### 8. Proof-Shaped System Assumptions
+
+Status: open (June 2026 deep audit). Tracked as W10 in
+`TRUSTWORTHINESS_HARDENING_PLAN.md`.
+
+8 of ~30 fields across `CsrrwSystemAssumptions`, `EcallSystemAssumptions`, and
+`MretSystemAssumptions` assume the Sail↔Jolt correspondence the theorem is meant
+to establish (CSR read/write equal the raw vreg, hiding Sail legalization; the
+four MRET mstatus fields make Sail's xret postlude a no-op). The proofs are
+valid; the system-family guarantee is weaker than the theorem names imply. A
+comment at `System/Csrrw.lean:326` already flags these as provisional. Either
+discharge them from genuine ZeroOS environment invariants or reclassify each as
+a named trusted contract.
+
+### 9. No Frame / Composition Layer
+
+Status: open (June 2026 deep audit). Tracked as W11 in
+`TRUSTWORTHINESS_HARDENING_PLAN.md`.
+
+No lemma proves a non-system expansion preserves `JoltConfig`, leaves the
+persistent CSR vregs (v32–v39) untouched, or leaves memory outside its footprint
+unchanged. Because `projectResult` discards all vregs, an expansion that
+clobbered `mstatusVReg` would satisfy its own theorem while silently breaking
+every later system theorem. No two per-instruction results can be chained today.
+
 ## Out-Of-Scope Implementation Claims
 
 ### Exact Rust Expansion Provenance

@@ -13,8 +13,8 @@ effort, dependencies, and code pointers.
 
 The Lean kernel already guarantees that every proof in this repository is valid.
 So no effort here goes toward "checking the proofs." A *valid* proof can still
-fail to deliver a meaningful guarantee in exactly four ways, and every item
-below targets one of them:
+fail to deliver a meaningful guarantee in six ways, and every item below targets
+one of them:
 
 1. **Drift.** The Lean specification (`execInstr` per-row semantics, and the
    `xProgram` expansions) is hand-transcribed from Rust and only *asserted*
@@ -22,7 +22,8 @@ below targets one of them:
    This is the dominant risk.
 2. **Vacuity.** If an assumption bundle (`JoltConfig`, `EcallSystemAssumptions`,
    the memory predicates) is internally contradictory, every theorem about it is
-   vacuously true. Nothing currently rules this out.
+   vacuously true. The June 2026 deep audit confirmed `JoltConfig.mem_populated`
+   is genuinely unsatisfiable (W2), so this is not hypothetical.
 3. **Weak statement.** A theorem can be true but under-constrain the result: a
    loose postcondition, a projection that discards exactly the bits that differ,
    or a comparison against the wrong Sail function.
@@ -30,6 +31,20 @@ below targets one of them:
    at least one deliberate edit, and parts of the proof trust `native_decide`
    (compiler + decision-procedure evaluation), which is a larger trusted base
    than the kernel.
+5. **Assumed conclusion.** A hypothesis bundle can contain the very
+   correspondence the theorem is meant to establish. The June 2026 deep audit
+   found this in the system family: 8 of ~30 fields across
+   `CsrrwSystemAssumptions`/`EcallSystemAssumptions`/`MretSystemAssumptions`
+   assume Sail and Jolt already agree (CSR read/write match the vreg, the four
+   MRET mstatus fields make Sail's xret postlude a no-op). The proofs are valid
+   but the system-family guarantee is weaker than the theorem names imply (W10).
+6. **Non-composition.** Every public theorem is per-instruction and assumes a
+   fresh start-state bundle; nothing proves an expansion *preserves* the
+   invariants the next instruction needs (`JoltConfig`, the persistent CSR
+   vregs, untouched memory). Because `projectResult` discards all vregs, an
+   expansion that clobbered `mstatusVReg` would satisfy its own theorem while
+   silently breaking every later system theorem. No two per-instruction results
+   can be chained today (W11).
 
 ## Trusted Computing Base (TCB) ledger
 
@@ -42,9 +57,12 @@ explicit, and CI-enforced is itself a workstream (W7).
 | T2 | Native-evaluation axioms (`*._native.native_decide.ax_*` / `*._native.bv_decide.ax_*`; the `Lean.ofReduceBool` trust class) | reducible | 104 `native_decide` sites + 163 `bv_decide` sites (SAT-path uses native eval too — verified June 2026). Removable via kernel `decide` (W7); no fundamental blocker, only compile time |
 | T3 | `LeanRV64D/` Sail-generated RISC-V semantics | reference spec | trusted by design, but must be provably the genuine upstream output (W5) |
 | T4 | `plat_enable_misaligned_access := false` edit to T3 | base edit | load-bearing for the misaligned branch of SH/SW/AMO; a faithfulness modeling choice to justify and isolate, not remove (W5, W6) |
-| T5 | Faithfulness of `execInstr` to Rust per-row `cpu_exec` semantics | unproven | drift risk (W1) |
+| T5 | Faithfulness of `execInstr` to Rust per-row `cpu_exec` semantics | unproven | drift risk (W1). Sharpest for single-row native instructions (ADD, MUL, MULHU, ANDN, branches, JAL, FENCE) whose `execInstr` case has **no equivalence theorem at all** — a transcription typo there is currently unfalsifiable (W8 must classify these) |
 | T6 | Faithfulness of `xProgram` definitions to Rust `inline_sequence` emission | unproven | drift risk; already has at least one row-level mismatch to triage in AMO.D alignment handling (W1) |
 | T7 | Toolchain mismatch: `v4.29.0-rc4` vs lean-sail's target nightly | environment | documented in `README.md`; keep pinned and reproducible (W5) |
+| T8 | lean-sail runtime (`Sail` package: `SequentialState`, BitVec/`shift_bits_right` helpers, memory primitives, the `EStateM` monad) | reference runtime | trusted by everything, pinned at tag `v3`; distinct from generated `LeanRV64D/` (T3) and not previously enumerated. Add to W5 provenance/pinning and W7 axiom scope |
+| T9 | jolt-qed's own `sailReadByte`/`sailReadWord`/`sailReadDword` (`Environment.lean:28–45`) | bridge definition | trusted Lean definitions, proven equal to Sail's `vmem_read` only *under* `JoltConfig` (`Environment.lean:86–122`). Justify in the W4 projection doc |
+| T10 | Decode/encode: Rust decoder vs Sail `encdec`, and PC-step/fetch/interrupt loop (`LeanRV64D/Step.lean`) | out of model | every theorem is at the post-decode `execute_*` level; decode agreement and the step loop are checked by *nothing*, in this plan or W1. See the claim-boundary note in `LEAN_BYTECODE_MODEL_LIMITATIONS.md` and the decode-differential addition to W1 |
 
 ## Recorded decisions (June 2026)
 
@@ -185,8 +203,25 @@ including `rd = x0` and boundary shifts, for opcodes not yet covered by W1c.
 Acceptance criteria: a fuzz target per primitive with a documented input
 distribution and iteration count, green in CI.
 
+#### W1d — Decode differential (NEW, June 2026 deep audit)
+
+- Every conformance check above and every Lean theorem operates on *already
+  decoded* operands. Neither this plan nor W1a–c checks that the Rust decoder
+  and Sail's `encdec` agree on the bits → (opcode, rd, rs1, rs2, imm) mapping.
+  S-type and B-type immediate scrambling is the classic place this silently
+  diverges, and it sits entirely below T10.
+- Add a differential fuzz target: random 32-bit (and 16-bit compressed) words →
+  Rust decode vs Sail `encdec_backwards`/decoder → compare the normalized
+  operand tuple. Compressed forms should be checked both directly and through
+  Rust's `uncompress_rv64_instruction` normalization.
+
+Acceptance criteria: a decode-differential fuzz target, green in CI, with a
+documented word distribution covering each RV64IMAC encoding format and the
+compressed set.
+
 Dependencies: W1a/W1b are the interim net; W1c is the durable fix and the
-recommended primary investment given full Rust malleability.
+recommended primary investment given full Rust malleability. W1d is independent
+and closes part of T10.
 
 ---
 
@@ -512,8 +547,19 @@ Tasks:
   should come from a generated Rust manifest or an explicitly maintained Lean
   inductive that is checked against Rust.
 - Once the universe exists, bind every opcode to exactly one of `{proved,
-  proved-under-assumptions, advice, deferred, out-of-scope}`, mechanically (an
-  exhaustiveness check or a checked table).
+  proved-under-assumptions, advice, single-row-native-unproven, deferred,
+  out-of-scope}`, mechanically (an exhaustiveness check or a checked table). The
+  `single-row-native-unproven` bucket is from the June 2026 deep audit: ADD,
+  MUL, MULHU, ANDN, the branches, JAL-as-source, FENCE, and similar 1:1-mapped
+  rows have an `execInstr` case but **no `*_eq_sail` theorem**, so they are
+  neither "proved" nor "deferred" today and must not be silently counted as
+  covered. Each is a near-trivial theorem (`execInstr .ADD` vs `execute_ADD`);
+  the classification should make the debt visible and ideally drive closing it.
+- Extend the same map to a constructor-coverage view of `execInstr`: every
+  `Instr` constructor is `proved` / `indirectly-exercised` (used inside a closed
+  expansion proof, so a wrong case would break it) / `dead` (used by no
+  `xProgram` and no proof). Dead constructors are latent hazards the moment W1c
+  generates a program that uses one — flag, do not ignore.
 - Reconcile the classification with imports. Deferred LR/SC files are imported
   for boundary documentation, while CSRRS is deferred and not in the root build;
   the coverage table should make that distinction explicit.
@@ -550,6 +596,114 @@ ordinary-memory predicate used across memory families.
 Dependencies: coordinate with the memory-envelope cleanup in
 `LEAN_BYTECODE_MODEL_LIMITATIONS.md`.
 
+---
+
+### W10 — Discharge proof-shaped system assumptions (ASSUMED CONCLUSION)
+
+**Status: not-started, new in June 2026 deep audit. Effort: L. Highest
+system-family value.**
+
+Goal: convert the system-family assumption bundles from "assume Sail and Jolt
+agree" to "prove they agree from genuine environment invariants," so the
+ECALL/MRET/CSRRW theorems claim what their names imply.
+
+Rationale: the deep audit found 8 of ~30 fields across
+`CsrrwSystemAssumptions` (`Csrrw.lean:335`), `EcallSystemAssumptions`
+(`System/Common.lean:1657`), and `MretSystemAssumptions` (`Mret.lean:542`) are
+*correspondence assumptions*: they hypothesize the very Sail↔Jolt equality the
+theorem exists to establish. A comment at `Csrrw.lean:326` already records that
+these are provisional and "should be discharged from concrete ZeroOS
+invariants"; nothing tracks that debt today. This is distinct from vacuity (the
+bundles are satisfiable) — the theorems are valid but under-claim.
+
+The eight red-flag fields:
+
+- `CsrrwSystemAssumptions.csr_read_matches`, `csr_write_matches` — assume Sail's
+  `read_CSR`/`write_CSR` return exactly the raw Jolt vreg value, which assumes
+  away Sail's CSR **legalization** (`legalize_mstatus` etc.), the one place a
+  raw vreg and an architecturally-legalized CSR can differ.
+- `EcallSystemAssumptions.mstatus_matches_zeroOS_trap`, `trap_vector_matches_jalr`
+  — assume Sail's trap mstatus update is already idempotent and Sail's
+  `tvec_addr` already equals the Jolt JALR target.
+- `MretSystemAssumptions.mstatus_{mie_matches_mpie, mpie_one, mpp_machine,
+  mpelp_zero}` — four fields that collectively make Sail's entire xret mstatus
+  postlude a no-op (helper lemmas `mretMstatus_*_write_eq_self` exist only to
+  prove the writes do nothing under these hypotheses). The current MRET theorem
+  therefore proves the jump target and **nothing about mstatus handling**.
+
+Note the ECALL↔MRET cycle (unknown 9): ECALL assumes mstatus is already in
+trap-safe form, MRET assumes field values ECALL does not produce. Discharging
+one constrains the other; resolve them together against the real ZeroOS
+trap-entry/return path.
+
+Tasks:
+
+- For each red-flag field, decide: provable from genuine initial-state
+  environment invariants (privilege, ZeroOS CSR whitelist, loader-set trap
+  vector), or hiding a real Sail-vs-Jolt mismatch (legalization). The W2 witness
+  construction is the forcing function: building a concrete witness for each
+  bundle *requires proving* these fields for a concrete state, which immediately
+  separates the dischargeable from the genuinely-assumed.
+- Prove the CSR legalization lemmas for the ZeroOS-whitelisted CSRs (`mstatus`,
+  `mtvec`, `mepc`, `mscratch`, `mcause`, `mtval`): Sail's read/write applied to a
+  Jolt-written raw value returns the value Jolt expects (or document the exact
+  legalized delta and fold it into the projection).
+- Replace the idempotence assumptions with a proved environment contract for the
+  initial mstatus / trap-vector vregs, shared between ECALL and MRET.
+
+Acceptance criteria: each of the eight fields is either proved from a documented
+environment invariant and removed from the bundle, or explicitly reclassified in
+`LEAN_BYTECODE_MODEL_LIMITATIONS.md` as a named trusted ZeroOS contract with the
+reason it cannot be discharged against the current Sail model. No correspondence
+field silently remains in a public theorem's hypotheses.
+
+Dependencies: pairs with W2 (witness construction surfaces these) and W3
+(mutation testing is blind to a CSR row whose correspondence is hypothesized).
+
+---
+
+### W11 — Frame conditions and composition (NON-COMPOSITION)
+
+**Status: not-started, new in June 2026 deep audit. Effort: L.**
+
+Goal: make the per-instruction theorems chainable by proving each expansion
+preserves what the next instruction assumes, and demonstrate one multi-row
+composition.
+
+Rationale: the deep audit found **no preservation or frame lemmas anywhere**.
+Nothing proves a non-system expansion preserves `JoltConfig`, leaves the
+persistent CSR vregs (v32–v39) untouched, or leaves memory outside its footprint
+unchanged. Combined with `projectResult` discarding all vregs
+(`JoltISA/Core.lean:51`), an ALU/load/store expansion that clobbered
+`mstatusVReg` would satisfy its own `*_eq_sail` theorem perfectly and silently
+invalidate every later system-instruction assumption — an invisible bug class.
+VReg disjointness is currently proven only for the one scratch register CSRRW
+uses (`systemScratch_ne_systemCSR_vreg`, `Csrrw.lean:75`); v41–v47 have no such
+facts. The per-instruction theorems are honest, but nothing licenses chaining
+even two of them, so no trace-level claim is reachable from the current surface.
+
+This subsumes and generalizes the W4 scratch-register concern: W4 documents the
+intra-instruction scratch scope; W11 proves the inter-instruction frame.
+
+Tasks:
+
+- Per non-system family, prove a frame lemma triple: executing the `xProgram`
+  (a) preserves `JoltConfig` (machine mode, MPRV=0, the finite memory footprint
+  from W2), (b) leaves vregs 32–39 unchanged, (c) for stores/AMOs, leaves
+  `s.mem` unchanged outside the written dword footprint.
+- Establish vreg disjointness for the full scratch pool (v40–v47) vs the
+  persistent CSR vregs (v32–v39), not just the single CSRRW scratch register.
+- Prove one concrete two-instruction composition theorem (e.g. an ALU op
+  followed by a store, or any op followed by ECALL) as the acceptance test that
+  the frame lemmas actually chain. A general n-instruction/trace theorem is a
+  larger follow-on, explicitly out of scope for the first pass.
+
+Acceptance criteria: frame lemmas (JoltConfig-preservation, CSR-vreg-invariance,
+memory-footprint-frame) in the root build for each non-system family; full
+scratch-vs-CSR vreg disjointness; one proved two-instruction composition.
+
+Dependencies: W2 (the finite-footprint memory contract is what gets framed).
+
 ## Sequencing
 
 Dependency-ordered, optimized for early certainty per unit of agent runtime:
@@ -573,6 +727,13 @@ Dependency-ordered, optimized for early certainty per unit of agent runtime:
    isolate the single misaligned-access patch.
 7. **W8 after the source-opcode universe is chosen.** It is small only after the
    Rust or Lean opcode manifest exists.
+8. **W10 with/after W2.** Constructing the system-bundle witnesses (W2) forces
+   the proof-shaped fields into the open; discharge them there. High value for
+   the system family specifically.
+9. **W11 after W2.** Frame lemmas frame the finite-footprint memory contract, so
+   W2 must land first. Independent of W10.
+10. **W1d (decode differential) anytime.** Independent of the rest; closes part
+    of T10 cheaply.
 
 ## Focused unknowns — resolutions (June 2026 deep audit)
 
@@ -711,6 +872,60 @@ original questions; each item records the evidence and the action it implies.
     phase/block proofs. W4 reduces to its documentation deliverable plus the
     systemProject off-CSR-key lemma.
 
+## Deep audit of the Lean formalization itself (June 11, 2026)
+
+A second pass looked *inside* the Lean development, assuming the Rust bridges and
+the ten unknowns above are resolved. It asked where a fully-checked proof tree
+could still under-deliver. Recorded so a future audit does not re-investigate
+the parts that checked out.
+
+**Checked out clean (do not re-audit without cause):**
+
+- **Advice is quantified soundly.** All 8 DIV/REM variants have both a soundness
+  theorem universally quantified over advice (`divProgram_sound` etc.: any
+  `q, rem` that let the guarded program succeed are pinned to the Sail values via
+  `advice_unique_of_guards`, `Div_math.lean:1145`) and an honest-advice
+  completeness theorem (`*_eq_sail`). The assert rows genuinely gate execution
+  with `Error.Assertion`. The malicious-prover direction is covered for DIV/REM;
+  the only advice family with no closed theorem is LR/SC, already deferred.
+- **Branch totality is explicit.** Stores, loads, and AMOs have dispatcher
+  theorems that `by_cases` on exact-negation alignment predicates
+  (`swProgram_eq_sail`, `Sw_main.lean:430`; loads and AMO word/dword similarly),
+  so no input region falls between the aligned/misaligned branches. CSRRW's
+  three-way split (rd=x0 / rd=rs1 / general) is exhaustive but only implicitly
+  via its `if/else`; a one-line cover lemma would make it auditable (no actual
+  gap).
+- **Mechanical conventions are sound.** x0 writes are proven discarded at the
+  Sail level (`wX_bits_regidx_zero`, `RegisterOps.lean:103`); `cycleCount` and
+  `choiceState` are inert (`trivialChoiceSource`, `α = Unit` — no hidden
+  nondeterminism); address wraparound is excluded by explicit `h_no_ovf`
+  hypotheses, not silently divergent.
+
+**New concerns folded into workstreams:**
+
+1. **Proof-shaped system assumptions → W10.** See the dedicated workstream; the
+   single largest hole in what is *proven* today.
+2. **No frame/composition layer → W11.** See the dedicated workstream; makes a
+   whole bug class (CSR-vreg clobber) invisible and blocks any trace claim.
+3. **Unproven single-row natives and dead constructors → W8.** The
+   classification gains `single-row-native-unproven` and a constructor-coverage
+   view.
+4. **Decode and the step loop are outside every check → W1d + T10.** Verified
+   directly: `JoltBytecode/` never references `LeanRV64D/Step.lean`
+   (`dispatchInterrupt`, fetch, `encdec`, `tick_pc`). The post-decode
+   `execute_*` scope is defensible but must be *stated*; decode agreement is
+   differentially testable (W1d) and the rest is a documented boundary.
+5. **TCB additions → T8/T9/T10.** The lean-sail runtime, jolt-qed's own memory
+   functions, and the decode/step boundary are now ledger entries.
+
+**Fault-row ordering (watch item, no workstream yet).** Error results compare
+post-fault state with no rollback (`projectResult`, `Core.lean:55`), which is
+only obviously correct because every current expansion places its assert rows
+*first*. If W1c ever generates a program with an assert *after* an architectural
+write, the error-branch comparison semantics become subtle. Add a one-line
+conformance check ("assert rows precede state-modifying rows") when W1c lands, or
+prove it structurally.
+
 ## Definition of "more trustworthy" (exit criteria)
 
 The effort has materially improved trust when:
@@ -724,7 +939,13 @@ The effort has materially improved trust when:
 - the trusted Sail base is provably genuine upstream plus one named patch (W5),
   with that patch justified as faithful to Jolt's real platform behavior (W6);
 - Lean and Rust expansions are continuously cross-checked, ideally generated
-  from one source (W1).
+  from one source (W1), and decode agreement is differentially tested (W1d);
+- no public theorem hypothesizes the Sail↔Jolt correspondence it claims to
+  prove; system-family assumptions are discharged or named as explicit trusted
+  contracts (W10);
+- expansions provably preserve the invariants the next instruction needs, vregs
+  are frame-protected, and at least one multi-instruction composition is proved
+  (W11).
 
 ## Cross-references
 
