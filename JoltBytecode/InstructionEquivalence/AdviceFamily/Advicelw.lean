@@ -13,7 +13,8 @@ set_option autoImplicit true
 
 noncomputable section
 
-/-- Sail-side spec for `ADVICELW`: write the sign-extended advised word to `rd`. -/
+/-- Reference semantics for the Jolt-only `ADVICELW`: write the sign-extended
+advised word to `rd`. -/
 def execute_ADVICELW (rd : regidx) (advice : BitVec 32) : SailM ExecutionResult := do
   wX_bits rd (sign_extend (m := 64) advice)
   pure RETIRE_SUCCESS

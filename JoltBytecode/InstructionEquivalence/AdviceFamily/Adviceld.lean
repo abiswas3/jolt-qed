@@ -12,7 +12,8 @@ set_option autoImplicit true
 
 noncomputable section
 
-/-- Sail-side spec for `ADVICELD`: write the advised dword to `rd`. -/
+/-- Reference semantics for the Jolt-only `ADVICELD`: write the advised dword to
+`rd`. -/
 def execute_ADVICELD (rd : regidx) (advice : BitVec 64) : SailM ExecutionResult := do
   wX_bits rd advice
   pure RETIRE_SUCCESS
