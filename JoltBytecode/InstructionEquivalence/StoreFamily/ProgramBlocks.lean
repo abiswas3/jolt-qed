@@ -196,21 +196,21 @@ private theorem wordSplice_eq_sequence
 private theorem shift_bits_right_allOnes_32 :
     shift_bits_right (-1 : BitVec 64) (32 : BitVec 6) =
       (0x00000000FFFFFFFF : BitVec 64) := by
-  native_decide
+  decide
 
 private theorem shift_bits_right_signExtend_neg_one_32 :
     shift_bits_right (sign_extend (m := 64) (-1 : BitVec 12)) (32 : BitVec 6) =
       (0x00000000FFFFFFFF : BitVec 64) := by
-  native_decide
+  decide
 
 private theorem shift_bits_right_signExtend_4095_32 :
     shift_bits_right (sign_extend (m := 64) (4095#12)) (32#6) =
       (0x00000000FFFFFFFF : BitVec 64) := by
-  native_decide
+  decide
 
 private theorem zero_or_signExtend_neg_one :
     (0#64) ||| sign_extend (m := 64) (-1 : BitVec 12) = (-1 : BitVec 64) := by
-  native_decide
+  decide
 
 /-!
 ## The `SW` mask prefix
