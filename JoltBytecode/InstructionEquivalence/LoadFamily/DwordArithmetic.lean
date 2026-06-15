@@ -344,6 +344,96 @@ theorem loaded_word_in_dword (s : SailState) (addr : BitVec 64)
 -- load sequence equals the expected `sign_extend (slice_of_dword d k)`. They
 -- are the pure bit-vector heart of each instruction's bridge lemma.
 
+private lemma addr_low_bit_eq_of_and7_toNat (addr : BitVec 64) {k i : Nat}
+    (hk : (addr &&& 7).toNat = k) (hi : i < 3) :
+    addr[i] = (BitVec.ofNat 64 k)[i] := by
+  have hk_eq : addr &&& 7 = BitVec.ofNat 64 k := by
+    apply BitVec.eq_of_toNat_eq
+    rw [BitVec.toNat_ofNat, hk]
+    have hk_lt : k < 8 := by
+      rw [← hk]
+      exact addr_and_seven_lt_eight addr
+    omega
+  have h := congrArg (fun x : BitVec 64 => x.getLsbD i) hk_eq
+  change (addr &&& 7).getLsbD i =
+    (BitVec.ofNat 64 k).getLsbD i at h
+  rw [BitVec.getLsbD_and] at h
+  have h7 : (7 : BitVec 64).getLsbD i = true := by
+    interval_cases i <;> decide
+  rw [h7, Bool.and_true] at h
+  simpa [BitVec.getLsbD_eq_getElem] using h
+
+private lemma sll_byte_shift_amount (addr : BitVec 64) (k : Nat)
+    (hk : (addr &&& 7).toNat = k) (hk_lt : k < 8) :
+    BitVec.extractLsb 5 0 ((addr ^^^ (7 : BitVec 64)) <<< 3) =
+      BitVec.ofNat 6 (8 * (7 - k)) := by
+  have hbit0 : addr[0] = (BitVec.ofNat 64 k)[0] :=
+    addr_low_bit_eq_of_and7_toNat addr hk (by omega)
+  have hbit1 : addr[1] = (BitVec.ofNat 64 k)[1] :=
+    addr_low_bit_eq_of_and7_toNat addr hk (by omega)
+  have hbit2 : addr[2] = (BitVec.ofNat 64 k)[2] :=
+    addr_low_bit_eq_of_and7_toNat addr hk (by omega)
+  interval_cases k <;>
+    apply BitVec.eq_of_getLsbD_eq <;>
+    intro i hi <;>
+    rw [BitVec.getLsbD_extractLsb, BitVec.getLsbD_shiftLeft,
+      BitVec.getLsbD_xor] <;>
+    interval_cases i <;>
+    simp [hbit0, hbit1, hbit2]
+
+private lemma sll_srli56_extracts_byte_k (d : BitVec 64) (k sh : Nat)
+    (hk : k < 8) (hsh : sh = 8 * (7 - k)) :
+    (d <<< (BitVec.ofNat 6 sh)) >>> (56 : Nat) =
+      zero_extend (m := 64) (byte_of_dword d k) := by
+  subst sh
+  have hshlt : 8 * (7 - k) < 64 := by omega
+  change (d <<< ((8 * (7 - k)) % 2 ^ 6)) >>> (56 : Nat) =
+      zero_extend (m := 64) (byte_of_dword d k)
+  simp only [Nat.reducePow, Nat.mod_eq_of_lt hshlt]
+  unfold zero_extend byte_of_dword Sail.BitVec.zeroExtend
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitVec.getLsbD_ushiftRight, BitVec.getLsbD_shiftLeft]
+  by_cases hi8 : i < 8
+  · have hsrc : 8 * (7 - k) ≤ 56 + i := by omega
+    have hlt64 : 56 + i < 64 := by omega
+    have hidx : 56 + i - 8 * (7 - k) = 8 * k + i := by omega
+    simp [hi, hi8, hlt64, hsrc, hidx, BitVec.getElem_setWidth]
+  · have hge64 : 64 ≤ 56 + i := by omega
+    simp [hi8, hge64]
+
+private lemma sll_srai56_extracts_byte_k (d : BitVec 64) (k sh : Nat)
+    (hk : k < 8) (hsh : sh = 8 * (7 - k)) :
+    BitVec.sshiftRight (d <<< (BitVec.ofNat 6 sh)) 56 =
+      sign_extend (m := 64) (byte_of_dword d k) := by
+  subst sh
+  have hshlt : 8 * (7 - k) < 64 := by omega
+  change BitVec.sshiftRight (d <<< ((8 * (7 - k)) % 2 ^ 6)) 56 =
+      sign_extend (m := 64) (byte_of_dword d k)
+  simp only [Nat.reducePow, Nat.mod_eq_of_lt hshlt]
+  unfold sign_extend byte_of_dword Sail.BitVec.signExtend
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitVec.getLsbD_sshiftRight, BitVec.getLsbD_signExtend]
+  by_cases hi8 : i < 8
+  · have hlt64 : 56 + i < 64 := by omega
+    have hnotlt : ¬56 + i < 8 * (7 - k) := by omega
+    have hidx : 56 + i - 8 * (7 - k) = 8 * k + i := by omega
+    rw [BitVec.getLsbD_shiftLeft]
+    simp [hi, hi8, hlt64, hnotlt, hidx, BitVec.getElem_setWidth]
+  · have hge64 : ¬56 + i < 64 := by omega
+    have hnot64 : ¬64 ≤ i := by omega
+    have hnotlt7 : ¬63 < 8 * (7 - k) := by omega
+    have hidx7 : 63 - 8 * (7 - k) = 8 * k + 7 := by omega
+    simp only [hi, hnot64, decide_false, Bool.not_false, Bool.true_and,
+      hge64, if_false, hi8]
+    rw [BitVec.msb_eq_getLsbD_last]
+    change (d <<< (8 * (7 - k))).getLsbD 63 =
+      (BitVec.setWidth 8 (d >>> (8 * k))).getLsbD 7
+    rw [BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+      BitVec.getLsbD_ushiftRight]
+    simp [hnotlt7, hidx7]
+
 /-- Byte-load arithmetic (signed): `XOR addr 7`, `SLL` by 3, `SLL` the dword
     by that, then **arithmetic**-shift right by 56, yields the
     sign-extended byte at offset `(addr & 7)` of the dword. Used by `LB`. -/
@@ -354,15 +444,15 @@ theorem sll_srai_extracts_byte (d : BitVec 64) (addr : BitVec 64) :
      let shifted   := shift_bits_left d shift_6
      shift_bits_right_arith shifted (56 : BitVec 6))
     = sign_extend (m := 64) (byte_of_dword d (addr &&& 7).toNat) := by
-  unfold byte_of_dword shift_bits_left shift_bits_right_arith sign_extend
-    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
-  have hk_lt : (addr &&& 7).toNat < 8 := addr_and_seven_lt_eight addr
-  set k := (addr &&& 7).toNat with hk_def
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 k := by
-    apply BitVec.eq_of_toNat_eq
-    rw [BitVec.toNat_ofNat, hk_def]
-    omega
-  interval_cases k <;> bv_decide
+  unfold shift_bits_left shift_bits_right_arith Sail.BitVec.extractLsb
+    Sail.BitVec.toNatInt
+  change BitVec.sshiftRight
+      (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (7 : BitVec 64)) <<< 3)) 56 =
+    sign_extend (m := 64) (byte_of_dword d (addr &&& 7).toNat)
+  rw [sll_byte_shift_amount addr (addr &&& 7).toNat rfl
+    (addr_and_seven_lt_eight addr)]
+  simpa using sll_srai56_extracts_byte_k d (addr &&& 7).toNat
+    (8 * (7 - (addr &&& 7).toNat)) (addr_and_seven_lt_eight addr) rfl
 
 /-- Byte-load arithmetic (unsigned): same setup as `sll_srai_extracts_byte`
     but with a **logical** right shift by 56 (zero-fill instead of
@@ -375,15 +465,14 @@ theorem sll_srli_extracts_byte (d : BitVec 64) (addr : BitVec 64) :
      let shifted   := shift_bits_left d shift_6
      shift_bits_right shifted (56 : BitVec 6))
     = zero_extend (m := 64) (byte_of_dword d (addr &&& 7).toNat) := by
-  unfold byte_of_dword shift_bits_left shift_bits_right zero_extend
-    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
-  have hk_lt : (addr &&& 7).toNat < 8 := addr_and_seven_lt_eight addr
-  set k := (addr &&& 7).toNat with hk_def
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 k := by
-    apply BitVec.eq_of_toNat_eq
-    rw [BitVec.toNat_ofNat, hk_def]
-    omega
-  interval_cases k <;> bv_decide
+  unfold shift_bits_left shift_bits_right Sail.BitVec.extractLsb
+  change (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (7 : BitVec 64)) <<< 3)) >>>
+      (56 : Nat) =
+    zero_extend (m := 64) (byte_of_dword d (addr &&& 7).toNat)
+  rw [sll_byte_shift_amount addr (addr &&& 7).toNat rfl
+    (addr_and_seven_lt_eight addr)]
+  simpa using sll_srli56_extracts_byte_k d (addr &&& 7).toNat
+    (8 * (7 - (addr &&& 7).toNat)) (addr_and_seven_lt_eight addr) rfl
 
 -- The halfword case-by-case helpers below are each `bv_decide` at a fixed
 -- offset. `interval_cases` on a 3-bit offset would work in principle but
