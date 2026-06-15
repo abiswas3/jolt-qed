@@ -49,79 +49,44 @@ private theorem shift6_eq_of_offset_byte (ea base : BitVec 64)
     Sail.BitVec.extractLsb (shift_bits_left ea (3 : BitVec 6)) 5 0 =
       BitVec.ofNat 6 (((ea - base).toNat) * 8) := by
   rw [← setWidth6_eq_extractLsb_5_0 (shift_bits_left ea (3 : BitVec 6))]
-  rcases hsetup.offset_cases with h0 | h1 | h2 | h3 | h4 | h5 | h6 | h7
-  · have hsub : ea - base = (0 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h0
-    have hea : ea = base := by
-      have := hsub
-      bv_decide
-    rw [h0, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (1 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h1
-    have hea : ea = base + (1 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h1, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (2 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h2
-    have hea : ea = base + (2 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h2, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (3 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h3
-    have hea : ea = base + (3 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h3, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (4 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h4
-    have hea : ea = base + (4 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h4, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (5 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h5
-    have hea : ea = base + (5 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h5, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (6 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h6
-    have hea : ea = base + (6 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h6, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (7 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h7
-    have hea : ea = base + (7 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h7, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
+  apply BitVec.eq_of_toNat_eq
+  simp only [shift_bits_left, BitVec.toNat_setWidth, BitVec.toNat_ofNat]
+  change (BitVec.shiftLeft ea 3).toNat % 2 ^ 6 =
+    (ea - base).toNat * 8 % 2 ^ 6
+  rw [show (BitVec.shiftLeft ea 3).toNat = ea.toNat <<< 3 % 2 ^ 64 by
+    exact BitVec.toNat_shiftLeft]
+  simp only [Nat.shiftLeft_eq]
+  norm_num
+  conv_lhs => rw [hsetup.ea_toNat]
+  have hbase8 : base &&& (7 : BitVec 64) = 0 := by
+    rw [hsetup.base_is_aligned]
+    exact align_down_8_and_7_eq_zero ea
+  have hbase_low : (base &&& (7 : BitVec 64)).toNat = base.toNat % 8 := by
+    rw [BitVec.toNat_and]
+    have h7 : (7 : BitVec 64).toNat = 7 := by decide
+    rw [h7, show (7 : Nat) = 2 ^ 3 - 1 by norm_num,
+      Nat.and_two_pow_sub_one_eq_mod]
+  have hbase_mod8 : base.toNat % 8 = 0 := by
+    have hzero := congrArg BitVec.toNat hbase8
+    rw [hbase_low] at hzero
+    simpa using hzero
+  have hmod :
+      ((base.toNat + (ea - base).toNat) * 8) % 64 =
+        ((ea - base).toNat * 8) % 64 := by
+    have hb_dvd : 8 ∣ base.toNat := Nat.dvd_of_mod_eq_zero hbase_mod8
+    rcases hb_dvd with ⟨q, hq⟩
+    rw [hq]
+    rw [show (8 * q + (ea - base).toNat) * 8 =
+        (ea - base).toNat * 8 + 64 * q by ring]
+    rw [Nat.add_mul_mod_self_left]
+  rw [hmod]
+  have hsub_toNat :
+      (18446744073709551616 - base.toNat + ea.toNat) %
+          18446744073709551616 =
+        (ea - base).toNat := by
+    rw [show 18446744073709551616 = 2 ^ 64 by norm_num]
+    exact (BitVec.toNat_sub ea base).symm
+  conv_rhs => rw [hsub_toNat]
 
 private theorem shift6_eq_of_offset_halfword (ea base : BitVec 64)
     (hsetup : StoreSplice.HalfwordStoreSetup ea base) :
