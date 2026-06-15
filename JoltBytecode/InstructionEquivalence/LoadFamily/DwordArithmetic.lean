@@ -80,7 +80,13 @@ theorem halfword_of_dword_eq_bytes (d : BitVec 64) (k : Nat)
     halfword_of_dword d k =
     byte_of_dword d (k + 1) ++ byte_of_dword d k := by
   unfold halfword_of_dword byte_of_dword
-  interval_cases k <;> bv_decide
+  interval_cases k <;>
+    apply BitVec.eq_of_getLsbD_eq <;>
+    intro i hi <;>
+    interval_cases i <;>
+    simp [BitVec.getLsbD_eq_getElem, BitVec.getElem_setWidth] <;>
+    rw [BitVec.getElem_append] <;>
+    simp [BitVec.getElem_setWidth]
 
 /-- The halfword starting at byte-offset `k` of the loaded dword at `V` is
     the same as the direct halfword load at `V + k`. Stated in the
@@ -474,10 +480,93 @@ theorem sll_srli_extracts_byte (d : BitVec 64) (addr : BitVec 64) :
   simpa using sll_srli56_extracts_byte_k d (addr &&& 7).toNat
     (8 * (7 - (addr &&& 7).toNat)) (addr_and_seven_lt_eight addr) rfl
 
--- The halfword case-by-case helpers below are each `bv_decide` at a fixed
--- offset. `interval_cases` on a 3-bit offset would work in principle but
--- blows up `bv_decide` if combined with arbitrary `k`; fixing `k` makes
--- each branch small.
+private lemma sll_halfword_shift_amount (addr : BitVec 64) (k : Nat)
+    (hk : (addr &&& 7).toNat = k) (hk_lt : k < 7) (hkeven : k % 2 = 0) :
+    BitVec.extractLsb 5 0 ((addr ^^^ (6 : BitVec 64)) <<< 3) =
+      BitVec.ofNat 6 (8 * (6 - k)) := by
+  have hbit0 : addr[0] = (BitVec.ofNat 64 k)[0] :=
+    addr_low_bit_eq_of_and7_toNat addr hk (by omega)
+  have hbit1 : addr[1] = (BitVec.ofNat 64 k)[1] :=
+    addr_low_bit_eq_of_and7_toNat addr hk (by omega)
+  have hbit2 : addr[2] = (BitVec.ofNat 64 k)[2] :=
+    addr_low_bit_eq_of_and7_toNat addr hk (by omega)
+  interval_cases k
+  · apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    rw [BitVec.getLsbD_extractLsb, BitVec.getLsbD_shiftLeft,
+      BitVec.getLsbD_xor]
+    interval_cases i <;> simp [hbit0, hbit1, hbit2]
+  · omega
+  · apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    rw [BitVec.getLsbD_extractLsb, BitVec.getLsbD_shiftLeft,
+      BitVec.getLsbD_xor]
+    interval_cases i <;> simp [hbit0, hbit1, hbit2]
+  · omega
+  · apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    rw [BitVec.getLsbD_extractLsb, BitVec.getLsbD_shiftLeft,
+      BitVec.getLsbD_xor]
+    interval_cases i <;> simp [hbit0, hbit1, hbit2]
+  · omega
+  · apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    rw [BitVec.getLsbD_extractLsb, BitVec.getLsbD_shiftLeft,
+      BitVec.getLsbD_xor]
+    interval_cases i <;> simp [hbit0, hbit1, hbit2]
+
+private lemma sll_srli48_extracts_halfword_k (d : BitVec 64) (k sh : Nat)
+    (hk : k < 7) (hsh : sh = 8 * (6 - k)) :
+    (d <<< (BitVec.ofNat 6 sh)) >>> (48 : Nat) =
+      zero_extend (m := 64) (halfword_of_dword d k) := by
+  subst sh
+  have hshlt : 8 * (6 - k) < 64 := by omega
+  change (d <<< ((8 * (6 - k)) % 2 ^ 6)) >>> (48 : Nat) =
+      zero_extend (m := 64) (halfword_of_dword d k)
+  simp only [Nat.reducePow, Nat.mod_eq_of_lt hshlt]
+  unfold zero_extend halfword_of_dword Sail.BitVec.zeroExtend
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitVec.getLsbD_ushiftRight, BitVec.getLsbD_shiftLeft]
+  by_cases hi16 : i < 16
+  · have hsrc : 8 * (6 - k) ≤ 48 + i := by omega
+    have hlt64 : 48 + i < 64 := by omega
+    have hidx : 48 + i - 8 * (6 - k) = 8 * k + i := by omega
+    simp [hi, hi16, hlt64, hsrc, hidx, BitVec.getElem_setWidth]
+  · have hge64 : 64 ≤ 48 + i := by omega
+    simp [hi16, hge64]
+
+private lemma sll_srai48_extracts_halfword_k (d : BitVec 64) (k sh : Nat)
+    (hk : k < 7) (hsh : sh = 8 * (6 - k)) :
+    BitVec.sshiftRight (d <<< (BitVec.ofNat 6 sh)) 48 =
+      sign_extend (m := 64) (halfword_of_dword d k) := by
+  subst sh
+  have hshlt : 8 * (6 - k) < 64 := by omega
+  change BitVec.sshiftRight (d <<< ((8 * (6 - k)) % 2 ^ 6)) 48 =
+      sign_extend (m := 64) (halfword_of_dword d k)
+  simp only [Nat.reducePow, Nat.mod_eq_of_lt hshlt]
+  unfold sign_extend halfword_of_dword Sail.BitVec.signExtend
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitVec.getLsbD_sshiftRight, BitVec.getLsbD_signExtend]
+  by_cases hi16 : i < 16
+  · have hlt64 : 48 + i < 64 := by omega
+    have hnotlt : ¬48 + i < 8 * (6 - k) := by omega
+    have hidx : 48 + i - 8 * (6 - k) = 8 * k + i := by omega
+    rw [BitVec.getLsbD_shiftLeft]
+    simp [hi, hi16, hlt64, hnotlt, hidx, BitVec.getElem_setWidth]
+  · have hge64 : ¬48 + i < 64 := by omega
+    have hnot64 : ¬64 ≤ i := by omega
+    have hnotlt15 : ¬63 < 8 * (6 - k) := by omega
+    have hidx15 : 63 - 8 * (6 - k) = 8 * k + 15 := by omega
+    simp only [hi, hnot64, decide_false, Bool.not_false, Bool.true_and,
+      hge64, if_false, hi16]
+    rw [BitVec.msb_eq_getLsbD_last]
+    change (d <<< (8 * (6 - k))).getLsbD 63 =
+      (BitVec.setWidth 16 (d >>> (8 * k))).getLsbD 15
+    rw [BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+      BitVec.getLsbD_ushiftRight]
+    simp [hnotlt15, hidx15]
 
 private lemma sll_srai_extracts_halfword_k0 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 0) :
@@ -487,11 +576,14 @@ private lemma sll_srai_extracts_halfword_k0 (d addr : BitVec 64)
      let shifted := shift_bits_left d shift_6
      shift_bits_right_arith shifted (48 : BitVec 6))
     = sign_extend (m := 64) (halfword_of_dword d 0) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
-    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 0 := by
-    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
-  bv_decide
+  unfold shift_bits_left shift_bits_right_arith Sail.BitVec.extractLsb
+    Sail.BitVec.toNatInt
+  change BitVec.sshiftRight
+      (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (6 : BitVec 64)) <<< 3)) 48 =
+    sign_extend (m := 64) (halfword_of_dword d 0)
+  rw [sll_halfword_shift_amount addr 0 hk (by omega) (by decide)]
+  simpa using sll_srai48_extracts_halfword_k d 0 (8 * (6 - 0))
+    (by omega) rfl
 
 private lemma sll_srai_extracts_halfword_k2 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 2) :
@@ -501,11 +593,14 @@ private lemma sll_srai_extracts_halfword_k2 (d addr : BitVec 64)
      let shifted := shift_bits_left d shift_6
      shift_bits_right_arith shifted (48 : BitVec 6))
     = sign_extend (m := 64) (halfword_of_dword d 2) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
-    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 2 := by
-    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
-  bv_decide
+  unfold shift_bits_left shift_bits_right_arith Sail.BitVec.extractLsb
+    Sail.BitVec.toNatInt
+  change BitVec.sshiftRight
+      (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (6 : BitVec 64)) <<< 3)) 48 =
+    sign_extend (m := 64) (halfword_of_dword d 2)
+  rw [sll_halfword_shift_amount addr 2 hk (by omega) (by decide)]
+  simpa using sll_srai48_extracts_halfword_k d 2 (8 * (6 - 2))
+    (by omega) rfl
 
 private lemma sll_srai_extracts_halfword_k4 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 4) :
@@ -515,11 +610,14 @@ private lemma sll_srai_extracts_halfword_k4 (d addr : BitVec 64)
      let shifted := shift_bits_left d shift_6
      shift_bits_right_arith shifted (48 : BitVec 6))
     = sign_extend (m := 64) (halfword_of_dword d 4) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
-    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 4 := by
-    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
-  bv_decide
+  unfold shift_bits_left shift_bits_right_arith Sail.BitVec.extractLsb
+    Sail.BitVec.toNatInt
+  change BitVec.sshiftRight
+      (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (6 : BitVec 64)) <<< 3)) 48 =
+    sign_extend (m := 64) (halfword_of_dword d 4)
+  rw [sll_halfword_shift_amount addr 4 hk (by omega) (by decide)]
+  simpa using sll_srai48_extracts_halfword_k d 4 (8 * (6 - 4))
+    (by omega) rfl
 
 private lemma sll_srai_extracts_halfword_k6 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 6) :
@@ -529,11 +627,14 @@ private lemma sll_srai_extracts_halfword_k6 (d addr : BitVec 64)
      let shifted := shift_bits_left d shift_6
      shift_bits_right_arith shifted (48 : BitVec 6))
     = sign_extend (m := 64) (halfword_of_dword d 6) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right_arith sign_extend
-    Sail.BitVec.signExtend Sail.BitVec.extractLsb Sail.BitVec.toNatInt
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 6 := by
-    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
-  bv_decide
+  unfold shift_bits_left shift_bits_right_arith Sail.BitVec.extractLsb
+    Sail.BitVec.toNatInt
+  change BitVec.sshiftRight
+      (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (6 : BitVec 64)) <<< 3)) 48 =
+    sign_extend (m := 64) (halfword_of_dword d 6)
+  rw [sll_halfword_shift_amount addr 6 hk (by omega) (by decide)]
+  simpa using sll_srai48_extracts_halfword_k d 6 (8 * (6 - 6))
+    (by omega) rfl
 
 /-- Halfword-load arithmetic (signed): `XOR addr 6`, `SLL` by 3, `SLL` the
     dword by that, then arithmetic-shift right by 48, yields the sign-
@@ -566,11 +667,13 @@ private lemma sll_srli_extracts_halfword_k0 (d addr : BitVec 64)
      let shifted := shift_bits_left d shift_6
      shift_bits_right shifted (48 : BitVec 6))
     = zero_extend (m := 64) (halfword_of_dword d 0) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right zero_extend
-    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 0 := by
-    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
-  bv_decide
+  unfold shift_bits_left shift_bits_right Sail.BitVec.extractLsb
+  change (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (6 : BitVec 64)) <<< 3)) >>>
+      (48 : Nat) =
+    zero_extend (m := 64) (halfword_of_dword d 0)
+  rw [sll_halfword_shift_amount addr 0 hk (by omega) (by decide)]
+  simpa using sll_srli48_extracts_halfword_k d 0 (8 * (6 - 0))
+    (by omega) rfl
 
 private lemma sll_srli_extracts_halfword_k2 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 2) :
@@ -580,11 +683,13 @@ private lemma sll_srli_extracts_halfword_k2 (d addr : BitVec 64)
      let shifted := shift_bits_left d shift_6
      shift_bits_right shifted (48 : BitVec 6))
     = zero_extend (m := 64) (halfword_of_dword d 2) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right zero_extend
-    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 2 := by
-    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
-  bv_decide
+  unfold shift_bits_left shift_bits_right Sail.BitVec.extractLsb
+  change (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (6 : BitVec 64)) <<< 3)) >>>
+      (48 : Nat) =
+    zero_extend (m := 64) (halfword_of_dword d 2)
+  rw [sll_halfword_shift_amount addr 2 hk (by omega) (by decide)]
+  simpa using sll_srli48_extracts_halfword_k d 2 (8 * (6 - 2))
+    (by omega) rfl
 
 private lemma sll_srli_extracts_halfword_k4 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 4) :
@@ -594,11 +699,13 @@ private lemma sll_srli_extracts_halfword_k4 (d addr : BitVec 64)
      let shifted := shift_bits_left d shift_6
      shift_bits_right shifted (48 : BitVec 6))
     = zero_extend (m := 64) (halfword_of_dword d 4) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right zero_extend
-    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 4 := by
-    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
-  bv_decide
+  unfold shift_bits_left shift_bits_right Sail.BitVec.extractLsb
+  change (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (6 : BitVec 64)) <<< 3)) >>>
+      (48 : Nat) =
+    zero_extend (m := 64) (halfword_of_dword d 4)
+  rw [sll_halfword_shift_amount addr 4 hk (by omega) (by decide)]
+  simpa using sll_srli48_extracts_halfword_k d 4 (8 * (6 - 4))
+    (by omega) rfl
 
 private lemma sll_srli_extracts_halfword_k6 (d addr : BitVec 64)
     (hk : (addr &&& 7).toNat = 6) :
@@ -608,11 +715,13 @@ private lemma sll_srli_extracts_halfword_k6 (d addr : BitVec 64)
      let shifted := shift_bits_left d shift_6
      shift_bits_right shifted (48 : BitVec 6))
     = zero_extend (m := 64) (halfword_of_dword d 6) := by
-  unfold halfword_of_dword shift_bits_left shift_bits_right zero_extend
-    Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
-  have hk_eq : addr &&& 7 = BitVec.ofNat 64 6 := by
-    apply BitVec.eq_of_toNat_eq; rw [BitVec.toNat_ofNat]; omega
-  bv_decide
+  unfold shift_bits_left shift_bits_right Sail.BitVec.extractLsb
+  change (d <<< BitVec.extractLsb 5 0 ((addr ^^^ (6 : BitVec 64)) <<< 3)) >>>
+      (48 : Nat) =
+    zero_extend (m := 64) (halfword_of_dword d 6)
+  rw [sll_halfword_shift_amount addr 6 hk (by omega) (by decide)]
+  simpa using sll_srli48_extracts_halfword_k d 6 (8 * (6 - 6))
+    (by omega) rfl
 
 /-- Halfword-load arithmetic (unsigned): same setup as
     `sll_srai_extracts_halfword` but with a **logical** right shift by 48,
