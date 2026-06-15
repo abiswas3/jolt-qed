@@ -233,7 +233,7 @@ theorem systemProject_rX_bits
           simp only at h_read ⊢
           cases h_read
           rfl
-    all_goals native_decide
+    all_goals decide
 
 /-- `systemProject` preserves the architectural `PC` read. -/
 theorem systemProject_pc_read
@@ -244,7 +244,7 @@ theorem systemProject_pc_read
       some (pc : RegisterType Register.PC) := by
   rw [systemProject_get_unmodified]
   exact hpc
-  all_goals native_decide
+  all_goals decide
 
 /-- `systemProject` preserves the architectural `nextPC` read. -/
 theorem systemProject_nextPC_read
@@ -255,7 +255,7 @@ theorem systemProject_nextPC_read
       some (nextPC : RegisterType Register.nextPC) := by
   rw [systemProject_get_unmodified]
   exact hnextPC
-  all_goals native_decide
+  all_goals decide
 
 /-- `systemProject` preserves the machine-mode privilege read. -/
 theorem systemProject_cur_privilege_read
@@ -266,7 +266,7 @@ theorem systemProject_cur_privilege_read
       some (Privilege.Machine : RegisterType Register.cur_privilege) := by
   rw [systemProject_get_unmodified]
   exact hpriv
-  all_goals native_decide
+  all_goals decide
 
 /-- `systemProject` preserves the `medeleg` read used by Sail delegation. -/
 theorem systemProject_medeleg_read
@@ -277,7 +277,7 @@ theorem systemProject_medeleg_read
       some (medeleg : RegisterType Register.medeleg) := by
   rw [systemProject_get_unmodified]
   exact hmedeleg
-  all_goals native_decide
+  all_goals decide
 
 /-- `systemProject` preserves the `misa` read used by Sail extension checks. -/
 theorem systemProject_misa_read
@@ -288,7 +288,7 @@ theorem systemProject_misa_read
       some (misa : RegisterType Register.misa) := by
   rw [systemProject_get_unmodified]
   exact hmisa
-  all_goals native_decide
+  all_goals decide
 
 /-- `systemProject` preserves the `elp = 0` read used by Zicfilp trap
 bookkeeping. -/
@@ -300,7 +300,7 @@ theorem systemProject_elp_read
       some (0#1 : RegisterType Register.elp) := by
   rw [systemProject_get_unmodified]
   exact help
-  all_goals native_decide
+  all_goals decide
 
 /-- `systemProject` materializes virtual `mstatus` at the Sail `mstatus` key. -/
 theorem systemProject_mstatus_read
@@ -316,11 +316,11 @@ theorem systemProject_mtvec_read
     (systemProject js).regs.get? Register.mtvec =
       some (js.vregs JoltISA.trapHandlerVReg : RegisterType Register.mtvec) := by
   unfold systemProject
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
   rw [Std.ExtDHashMap.get?_insert_self]
 
 /-- `systemProject` materializes virtual `mepc` at the Sail `mepc` key. -/
@@ -329,9 +329,9 @@ theorem systemProject_mepc_read
     (systemProject js).regs.get? Register.mepc =
       some (js.vregs JoltISA.mepcVReg : RegisterType Register.mepc) := by
   unfold systemProject
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
   rw [Std.ExtDHashMap.get?_insert_self]
 
 /-- `systemProject` materializes virtual `mcause` at the Sail `mcause` key. -/
@@ -340,8 +340,8 @@ theorem systemProject_mcause_read
     (systemProject js).regs.get? Register.mcause =
       some (js.vregs JoltISA.mcauseVReg : RegisterType Register.mcause) := by
   unfold systemProject
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
   rw [Std.ExtDHashMap.get?_insert_self]
 
 /-- `systemProject` materializes virtual `mtval` at the Sail `mtval` key. -/
@@ -350,7 +350,7 @@ theorem systemProject_mtval_read
     (systemProject js).regs.get? Register.mtval =
       some (js.vregs JoltISA.mtvalVReg : RegisterType Register.mtval) := by
   unfold systemProject
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
   rw [Std.ExtDHashMap.get?_insert_self]
 
 /-- If the machine-trap mstatus update already equals Jolt's ZeroOS value, then
@@ -408,9 +408,9 @@ theorem ecall_mcause_machine_write_value (old : BitVec 64) :
   have hcause63 : zero_extend (m := (64 -i 1))
       (trapCause_bits_forwards
         (TrapCause.Exception (ExceptionType.E_M_EnvCall ()))) = 11#63 := by
-    native_decide
+    decide
   have hcause64 : ecallMachineCause = 11#64 := by
-    native_decide
+    decide
   rw [hcause63, hcause64]
   unfold trapCause_is_interrupt bool_to_bit bool_bit_forwards
   unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
@@ -472,7 +472,7 @@ theorem systemProject_setNextPCState
             (m := js.sail.regs)
             (k1 := Register.nextPC) (k2 := Register.mtvec)
             (v1 := target) (v2 := js.vregs JoltISA.trapHandlerVReg)
-            (h := by native_decide)]
+            (h := by decide)]
     _ = (((((((js.sail.regs.insert Register.mtvec
                     (js.vregs JoltISA.trapHandlerVReg)).insert Register.mscratch
                   (js.vregs JoltISA.mscratchVReg)).insert Register.nextPC target).insert Register.mepc
@@ -485,7 +485,7 @@ theorem systemProject_setNextPCState
               (js.vregs JoltISA.trapHandlerVReg)))
             (k1 := Register.nextPC) (k2 := Register.mscratch)
             (v1 := target) (v2 := js.vregs JoltISA.mscratchVReg)
-            (h := by native_decide)]
+            (h := by decide)]
     _ = (((((((js.sail.regs.insert Register.mtvec
                     (js.vregs JoltISA.trapHandlerVReg)).insert Register.mscratch
                   (js.vregs JoltISA.mscratchVReg)).insert Register.mepc
@@ -499,7 +499,7 @@ theorem systemProject_setNextPCState
               (js.vregs JoltISA.mscratchVReg)))
             (k1 := Register.nextPC) (k2 := Register.mepc)
             (v1 := target) (v2 := js.vregs JoltISA.mepcVReg)
-            (h := by native_decide)]
+            (h := by decide)]
     _ = (((((((js.sail.regs.insert Register.mtvec
                     (js.vregs JoltISA.trapHandlerVReg)).insert Register.mscratch
                   (js.vregs JoltISA.mscratchVReg)).insert Register.mepc
@@ -514,7 +514,7 @@ theorem systemProject_setNextPCState
               (js.vregs JoltISA.mepcVReg)))
             (k1 := Register.nextPC) (k2 := Register.mcause)
             (v1 := target) (v2 := js.vregs JoltISA.mcauseVReg)
-            (h := by native_decide)]
+            (h := by decide)]
     _ = (((((((js.sail.regs.insert Register.mtvec
                     (js.vregs JoltISA.trapHandlerVReg)).insert Register.mscratch
                   (js.vregs JoltISA.mscratchVReg)).insert Register.mepc
@@ -530,7 +530,7 @@ theorem systemProject_setNextPCState
               (js.vregs JoltISA.mcauseVReg)))
             (k1 := Register.nextPC) (k2 := Register.mtval)
             (v1 := target) (v2 := js.vregs JoltISA.mtvalVReg)
-            (h := by native_decide)]
+            (h := by decide)]
     _ = (((((((js.sail.regs.insert Register.mtvec
                     (js.vregs JoltISA.trapHandlerVReg)).insert Register.mscratch
                   (js.vregs JoltISA.mscratchVReg)).insert Register.mepc
@@ -547,7 +547,7 @@ theorem systemProject_setNextPCState
               (js.vregs JoltISA.mtvalVReg)))
             (k1 := Register.nextPC) (k2 := Register.mstatus)
             (v1 := target) (v2 := js.vregs JoltISA.mstatusVReg)
-            (h := by native_decide)]
+            (h := by decide)]
 
 /-- Running generated Sail `set_next_pc` through `systemProject` is the same
 projected state as Jolt's final `JALR` Sail-state update. -/
@@ -602,18 +602,18 @@ def ecallJoltFinal (js : SailJoltState) (pc nextPC : BitVec 64) :
 /-- Machine ECALL's Sail cause is the same immediate used by the Rust row. -/
 theorem ecallMachineCause_eq_jolt_imm :
     sign_extend (m := 64) (11 : BitVec 12) = ecallMachineCause := by
-  native_decide
+  decide
 
 /-- The lowered `SLLI` multiplication row computes Jolt's ZeroOS mstatus. -/
 theorem virtualMuli_three_to_zeroOS :
     jolt_virtual_muli_value (3#64) (2048#64) = zeroOSMstatus := by
-  native_decide
+  decide
 
 /-- A zero AUIPC immediate contributes no offset. -/
 theorem auipc_zero_offset (pc : BitVec 64) :
     pc + sign_extend (m := 64) ((0 : BitVec 20) +++ 0#12) = pc := by
   have hoff : sign_extend (m := 64) ((0 : BitVec 20) +++ 0#12) = 0#64 := by
-    native_decide
+    decide
   rw [hoff]
   bv_decide
 
@@ -645,7 +645,7 @@ theorem vregWrite_other (vregs : BitVec 7 → BitVec 64)
 theorem addi_zero_value (x : BitVec 64) :
     x + sign_extend (m := 64) (0 : BitVec 12) = x := by
   have hzero : sign_extend (m := 64) (0 : BitVec 12) = 0#64 := by
-    native_decide
+    decide
   rw [hzero]
   bv_decide
 
@@ -667,32 +667,32 @@ theorem addi_ecall_machine_cause_value :
 /-- `ADDI x0, 3` produces the scratch value used by the lowered `SLLI`. -/
 theorem addi_three_value :
     0#64 + sign_extend (m := 64) (3 : BitVec 12) = 3#64 := by
-  native_decide
+  decide
 
 /-- The trap-handler virtual register is distinct from ECALL's scratch register. -/
 theorem trapHandler_ne_systemScratch :
     JoltISA.trapHandlerVReg ≠ JoltISA.systemScratchVReg := by
-  native_decide
+  decide
 
 /-- The trap-handler virtual register is distinct from virtual `mepc`. -/
 theorem trapHandler_ne_mepc :
     JoltISA.trapHandlerVReg ≠ JoltISA.mepcVReg := by
-  native_decide
+  decide
 
 /-- The trap-handler virtual register is distinct from virtual `mcause`. -/
 theorem trapHandler_ne_mcause :
     JoltISA.trapHandlerVReg ≠ JoltISA.mcauseVReg := by
-  native_decide
+  decide
 
 /-- The trap-handler virtual register is distinct from virtual `mtval`. -/
 theorem trapHandler_ne_mtval :
     JoltISA.trapHandlerVReg ≠ JoltISA.mtvalVReg := by
-  native_decide
+  decide
 
 /-- The trap-handler virtual register is distinct from virtual `mstatus`. -/
 theorem trapHandler_ne_mstatus :
     JoltISA.trapHandlerVReg ≠ JoltISA.mstatusVReg := by
-  native_decide
+  decide
 
 /-- The ECALL mstatus phase leaves the trap-handler virtual register untouched. -/
 theorem ecallAfterMstatus_trapHandler
@@ -723,11 +723,11 @@ theorem ecallAfterMstatus_mscratch
   unfold ecallAfterMstatus ecallAfterThree ecallAfterMtval
   unfold ecallAfterMcause ecallAfterMepc ecallAfterAuipc
   unfold joltSetVReg vregWrite
-  have h1 : JoltISA.mscratchVReg ≠ JoltISA.mstatusVReg := by native_decide
-  have h2 : JoltISA.mscratchVReg ≠ JoltISA.systemScratchVReg := by native_decide
-  have h3 : JoltISA.mscratchVReg ≠ JoltISA.mtvalVReg := by native_decide
-  have h4 : JoltISA.mscratchVReg ≠ JoltISA.mcauseVReg := by native_decide
-  have h5 : JoltISA.mscratchVReg ≠ JoltISA.mepcVReg := by native_decide
+  have h1 : JoltISA.mscratchVReg ≠ JoltISA.mstatusVReg := by decide
+  have h2 : JoltISA.mscratchVReg ≠ JoltISA.systemScratchVReg := by decide
+  have h3 : JoltISA.mscratchVReg ≠ JoltISA.mtvalVReg := by decide
+  have h4 : JoltISA.mscratchVReg ≠ JoltISA.mcauseVReg := by decide
+  have h5 : JoltISA.mscratchVReg ≠ JoltISA.mepcVReg := by decide
   simp only [h1, h2, h3, h4, h5, if_false]
 
 /-- ECALL's virtual CSR materialization writes `mepc = pc`. -/
@@ -737,10 +737,10 @@ theorem ecallAfterMstatus_mepc
   unfold ecallAfterMstatus ecallAfterThree ecallAfterMtval
   unfold ecallAfterMcause ecallAfterMepc ecallAfterAuipc
   unfold joltSetVReg vregWrite
-  have h1 : JoltISA.mepcVReg ≠ JoltISA.mstatusVReg := by native_decide
-  have h2 : JoltISA.mepcVReg ≠ JoltISA.systemScratchVReg := by native_decide
-  have h3 : JoltISA.mepcVReg ≠ JoltISA.mtvalVReg := by native_decide
-  have h4 : JoltISA.mepcVReg ≠ JoltISA.mcauseVReg := by native_decide
+  have h1 : JoltISA.mepcVReg ≠ JoltISA.mstatusVReg := by decide
+  have h2 : JoltISA.mepcVReg ≠ JoltISA.systemScratchVReg := by decide
+  have h3 : JoltISA.mepcVReg ≠ JoltISA.mtvalVReg := by decide
+  have h4 : JoltISA.mepcVReg ≠ JoltISA.mcauseVReg := by decide
   simp only [h1, h2, h3, h4, if_false, if_true]
 
 /-- ECALL's virtual CSR materialization writes the machine ECALL cause. -/
@@ -751,9 +751,9 @@ theorem ecallAfterMstatus_mcause
   unfold ecallAfterMstatus ecallAfterThree ecallAfterMtval
   unfold ecallAfterMcause ecallAfterMepc ecallAfterAuipc
   unfold joltSetVReg vregWrite
-  have h1 : JoltISA.mcauseVReg ≠ JoltISA.mstatusVReg := by native_decide
-  have h2 : JoltISA.mcauseVReg ≠ JoltISA.systemScratchVReg := by native_decide
-  have h3 : JoltISA.mcauseVReg ≠ JoltISA.mtvalVReg := by native_decide
+  have h1 : JoltISA.mcauseVReg ≠ JoltISA.mstatusVReg := by decide
+  have h2 : JoltISA.mcauseVReg ≠ JoltISA.systemScratchVReg := by decide
+  have h3 : JoltISA.mcauseVReg ≠ JoltISA.mtvalVReg := by decide
   simp only [h1, h2, h3, if_false, if_true]
 
 /-- ECALL's virtual CSR materialization writes `mtval = 0`. -/
@@ -763,8 +763,8 @@ theorem ecallAfterMstatus_mtval
   unfold ecallAfterMstatus ecallAfterThree ecallAfterMtval
   unfold ecallAfterMcause ecallAfterMepc ecallAfterAuipc
   unfold joltSetVReg vregWrite
-  have h1 : JoltISA.mtvalVReg ≠ JoltISA.mstatusVReg := by native_decide
-  have h2 : JoltISA.mtvalVReg ≠ JoltISA.systemScratchVReg := by native_decide
+  have h1 : JoltISA.mtvalVReg ≠ JoltISA.mstatusVReg := by decide
+  have h2 : JoltISA.mtvalVReg ≠ JoltISA.systemScratchVReg := by decide
   simp only [h1, h2, if_false, if_true]
 
 /-- ECALL's virtual CSR materialization writes the ZeroOS trap `mstatus`. -/
@@ -801,7 +801,7 @@ theorem ecallJoltFinal_mscratch
   unfold ecallJoltFinal ecallAfterJalr
   unfold joltSetVReg vregWrite
   have h : JoltISA.mscratchVReg ≠ JoltISA.systemScratchVReg := by
-    native_decide
+    decide
   simp only [h, if_false, ecallAfterMstatus_mscratch]
 
 /-- The final local scratch write does not change projected virtual `mepc`. -/
@@ -811,7 +811,7 @@ theorem ecallJoltFinal_mepc
   unfold ecallJoltFinal ecallAfterJalr
   unfold joltSetVReg vregWrite
   have h : JoltISA.mepcVReg ≠ JoltISA.systemScratchVReg := by
-    native_decide
+    decide
   simp only [h, if_false, ecallAfterMstatus_mepc]
 
 /-- The final local scratch write does not change projected virtual `mcause`. -/
@@ -822,7 +822,7 @@ theorem ecallJoltFinal_mcause
   unfold ecallJoltFinal ecallAfterJalr
   unfold joltSetVReg vregWrite
   have h : JoltISA.mcauseVReg ≠ JoltISA.systemScratchVReg := by
-    native_decide
+    decide
   simp only [h, if_false, ecallAfterMstatus_mcause]
 
 /-- The final local scratch write does not change projected virtual `mtval`. -/
@@ -832,7 +832,7 @@ theorem ecallJoltFinal_mtval
   unfold ecallJoltFinal ecallAfterJalr
   unfold joltSetVReg vregWrite
   have h : JoltISA.mtvalVReg ≠ JoltISA.systemScratchVReg := by
-    native_decide
+    decide
   simp only [h, if_false, ecallAfterMstatus_mtval]
 
 /-- The final local scratch write does not change projected virtual `mstatus`. -/
@@ -843,7 +843,7 @@ theorem ecallJoltFinal_mstatus
   unfold ecallJoltFinal ecallAfterJalr
   unfold joltSetVReg vregWrite
   have h : JoltISA.mstatusVReg ≠ JoltISA.systemScratchVReg := by
-    native_decide
+    decide
   simp only [h, if_false, ecallAfterMstatus_mstatus]
 
 /-- Projecting ECALL's final Jolt state is the same as projecting the
@@ -893,9 +893,9 @@ theorem jump_to_ecallTrapTarget_run
       .ok RETIRE_SUCCESS (setNextPCState js.sail (ecallTrapTarget js)) := by
   have hExtC := currentlyEnabled_Ext_C_run js.sail misa hmisa
   have hassert : (0#1 == 0#1) = true := by
-    native_decide
+    decide
   have hbit1 : bool_bit_backwards 0#1 = false := by
-    native_decide
+    decide
   unfold jump_to ext_control_check_pc SailME.run PreSail.PreSailME.run
   unfold currentlyEnabled hartSupports
   unfold set_next_pc setNextPCState sail_branch_announce redirect_callback
@@ -937,12 +937,12 @@ theorem exception_delegatee_machine_ecall_run
   · rw [if_pos hdeleg]
     have hlt : zopz0zI_u (privLevel_to_bits Privilege.Supervisor)
         (privLevel_to_bits Privilege.Machine) = true := by
-      native_decide
+      decide
     simp only [EStateM.bind, EStateM.pure, hlt, if_true]
   · rw [if_neg hdeleg]
     have hlt : zopz0zI_u (privLevel_to_bits Privilege.Machine)
         (privLevel_to_bits Privilege.Machine) = false := by
-      native_decide
+      decide
     simp only [EStateM.bind, EStateM.pure, hlt, Bool.false_eq_true, if_false]
 
 /-- In projected machine mode, generated Sail `execute_ECALL` produces the
@@ -1163,11 +1163,11 @@ theorem systemProject_ecallAfterMstatus_trap_csrs
   · subst a
     conv_lhs =>
       rw [extDHashMap_get?_insert_of_ne
-        (written := Register.mstatus) (read := Register.mepc) (h := by native_decide)]
+        (written := Register.mstatus) (read := Register.mepc) (h := by decide)]
       rw [extDHashMap_get?_insert_of_ne
-        (written := Register.mtval) (read := Register.mepc) (h := by native_decide)]
+        (written := Register.mtval) (read := Register.mepc) (h := by decide)]
       rw [extDHashMap_get?_insert_of_ne
-        (written := Register.mcause) (read := Register.mepc) (h := by native_decide)]
+        (written := Register.mcause) (read := Register.mepc) (h := by decide)]
       rw [Std.ExtDHashMap.get?_insert_self]
     conv_rhs =>
       rw [Std.ExtDHashMap.get?_insert_self]
@@ -1175,27 +1175,27 @@ theorem systemProject_ecallAfterMstatus_trap_csrs
     · subst a
       conv_lhs =>
         rw [extDHashMap_get?_insert_of_ne
-          (written := Register.mstatus) (read := Register.mcause) (h := by native_decide)]
+          (written := Register.mstatus) (read := Register.mcause) (h := by decide)]
         rw [extDHashMap_get?_insert_of_ne
-          (written := Register.mtval) (read := Register.mcause) (h := by native_decide)]
+          (written := Register.mtval) (read := Register.mcause) (h := by decide)]
         rw [Std.ExtDHashMap.get?_insert_self]
       conv_rhs =>
         rw [extDHashMap_get?_insert_of_ne
-          (written := Register.mepc) (read := Register.mcause) (h := by native_decide)]
+          (written := Register.mepc) (read := Register.mcause) (h := by decide)]
         rw [extDHashMap_get?_insert_of_ne
-          (written := Register.mtval) (read := Register.mcause) (h := by native_decide)]
+          (written := Register.mtval) (read := Register.mcause) (h := by decide)]
         rw [extDHashMap_get?_insert_of_ne
-          (written := Register.mstatus) (read := Register.mcause) (h := by native_decide)]
+          (written := Register.mstatus) (read := Register.mcause) (h := by decide)]
         rw [Std.ExtDHashMap.get?_insert_self]
     · by_cases hmtval : a = Register.mtval
       · subst a
         conv_lhs =>
           rw [extDHashMap_get?_insert_of_ne
-            (written := Register.mstatus) (read := Register.mtval) (h := by native_decide)]
+            (written := Register.mstatus) (read := Register.mtval) (h := by decide)]
           rw [Std.ExtDHashMap.get?_insert_self]
         conv_rhs =>
           rw [extDHashMap_get?_insert_of_ne
-            (written := Register.mepc) (read := Register.mtval) (h := by native_decide)]
+            (written := Register.mepc) (read := Register.mtval) (h := by decide)]
           rw [Std.ExtDHashMap.get?_insert_self]
       · by_cases hmstatus : a = Register.mstatus
         · subst a
@@ -1203,9 +1203,9 @@ theorem systemProject_ecallAfterMstatus_trap_csrs
             rw [Std.ExtDHashMap.get?_insert_self]
           conv_rhs =>
             rw [extDHashMap_get?_insert_of_ne
-              (written := Register.mepc) (read := Register.mstatus) (h := by native_decide)]
+              (written := Register.mepc) (read := Register.mstatus) (h := by decide)]
             rw [extDHashMap_get?_insert_of_ne
-              (written := Register.mtval) (read := Register.mstatus) (h := by native_decide)]
+              (written := Register.mtval) (read := Register.mstatus) (h := by decide)]
             rw [Std.ExtDHashMap.get?_insert_self]
         · conv_lhs =>
             rw [extDHashMap_get?_insert_of_ne
@@ -1272,10 +1272,10 @@ theorem ecallTrapCsrWrites_cur_privilege_insert_eq_self
           Register.mepc pc) := by
   have hCurPriv := systemProject_cur_privilege_read js hpriv
   apply extDHashMap_insert_eq_self_of_get?
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
-  rw [extDHashMap_get?_insert_of_ne (h := by native_decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
   exact hCurPriv
 
 /-- The ECALL virtual-CSR rows leave the projected trap target unchanged. -/
@@ -1300,15 +1300,15 @@ theorem ecallMachineTrapCsrWrites_run
   have hCurPriv := systemProject_cur_privilege_read js hpriv
   have hTrapShape := systemProject_ecallAfterMstatus_trap_csrs js pc
   have hMcauseSelf : (Register.mcause == Register.mcause) = true := by
-    native_decide
+    decide
   have hMstatusSelf : (Register.mstatus == Register.mstatus) = true := by
-    native_decide
+    decide
   have hMcauseMstatus : (Register.mcause == Register.mstatus) = false := by
-    native_decide
+    decide
   have hMstatusCurPriv : (Register.mstatus == Register.cur_privilege) = false := by
-    native_decide
+    decide
   have hMcauseCurPriv : (Register.mcause == Register.cur_privilege) = false := by
-    native_decide
+    decide
   unfold ecallMachineTrapCsrWrites
   unfold Sail.readReg PreSail.readReg Sail.writeReg PreSail.writeReg
   simp only [hMcause, hMstatus, hCurPriv, hmstatus,

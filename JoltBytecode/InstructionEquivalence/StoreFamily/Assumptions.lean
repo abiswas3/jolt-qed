@@ -86,7 +86,7 @@ theorem StoreMemoryAssumptions.jolt_store_mem
 theorem store_dword_base_aligns (val : BitVec 64) (imm : BitVec 12) :
     compute_aligned_dword_base_address val imm &&& (7 : BitVec 64) = 0 := by
   unfold compute_aligned_dword_base_address load_effective_address
-  bv_decide
+  exact align_down_8_and_7_eq_zero _
 
 /-- The enclosing dword base has room for all eight bytes in the 64-bit address
 space. -/
@@ -106,8 +106,8 @@ private theorem offset_sub_eq_low_three (ea : BitVec 64) :
     ea - (ea &&& (-8 : BitVec 64)) = ea &&& (7 : BitVec 64) := by
   have hsplit := addr_split_aligned_offset ea
   rw [offset_bv_eq_low_three ea] at hsplit
-  rw [← hsplit]
-  bv_decide
+  nth_rewrite 1 [← hsplit]
+  simp [add_comm]
 
 /-- An address equals the dword base plus its low-three-bit lane offset at the
 Nat level. -/
@@ -122,7 +122,7 @@ theorem store_ea_toNat_eq_base_plus_offset (ea : BitVec 64) :
   have hbase_no_ovf : base.toNat + 7 < 2 ^ 64 := by
     have hbase_align : base &&& (7 : BitVec 64) = 0 := by
       unfold base
-      bv_decide
+      exact align_down_8_and_7_eq_zero _
     exact aligned_addr_no_ovf_of_align base hbase_align
   have hsub_toNat : (ea - base).toNat = off := by
     unfold base off
@@ -453,6 +453,12 @@ private theorem bitvec_addInt_zero (addr : BitVec 64) :
   rw [show BitVec.ofInt 64 0 = (0 : BitVec 64) by decide]
   exact BitVec.add_zero addr
 
+private theorem extractLsb_full_width {w : Nat} (hpos : 0 < w)
+    (data : BitVec w) :
+    BitVec.extractLsb (w - 1) 0 data = data := by
+  ext i
+  simp
+
 /-- The computed enclosing dword base is an aligned Sail access address. -/
 theorem store_dword_base_aligned_access
     (val : BitVec 64) (imm : BitVec 12) :
@@ -485,8 +491,8 @@ private theorem byte_store_loop_data_eq (data : BitVec 8) :
           ((1 : Int), (1 : Int)).2 - 1).toNat
         (8 * (↑(((false, (0 : Nat), true).2.1) : Nat) : Int) *
           ((1 : Int), (1 : Int)).2).toNat) = data := by
-  unfold Sail.BitVec.extractLsb
-  bv_decide
+  simp [Sail.BitVec.extractLsb]
+  exact extractLsb_full_width (by omega) data
 
 /-- The one-iteration halfword-store loop passes the halfword payload through
 unchanged. -/
@@ -497,8 +503,8 @@ private theorem halfword_store_loop_data_eq (data : BitVec 16) :
           ((1 : Int), (2 : Int)).2 - 1).toNat
         (8 * (↑(((false, (0 : Nat), true).2.1) : Nat) : Int) *
           ((1 : Int), (2 : Int)).2).toNat) = data := by
-  unfold Sail.BitVec.extractLsb
-  bv_decide
+  simp [Sail.BitVec.extractLsb]
+  exact extractLsb_full_width (by omega) data
 
 /-- The one-iteration word-store loop passes the word payload through
 unchanged. -/
@@ -509,8 +515,8 @@ private theorem word_store_loop_data_eq (data : BitVec 32) :
           ((1 : Int), (4 : Int)).2 - 1).toNat
         (8 * (↑(((false, (0 : Nat), true).2.1) : Nat) : Int) *
           ((1 : Int), (4 : Int)).2).toNat) = data := by
-  unfold Sail.BitVec.extractLsb
-  bv_decide
+  simp [Sail.BitVec.extractLsb]
+  exact extractLsb_full_width (by omega) data
 
 /-- Collapse Sail's virtual byte-store pipeline once translation, effective
 address write, and physical value write have been reduced. -/

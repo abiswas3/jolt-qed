@@ -67,7 +67,6 @@ inductive Instr where
   | VirtualMovsign (dst : Dst) (src : Src)
   | VirtualAssertHalfwordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
   | VirtualAssertWordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
-  | VirtualAssertDwordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
   | LD (dst : Dst) (base : Src) (imm : BitVec 12)
   | SD (base value : Src) (imm : BitVec 12)
   | VirtualLW (dst : Dst) (base : Src) (imm : BitVec 12)

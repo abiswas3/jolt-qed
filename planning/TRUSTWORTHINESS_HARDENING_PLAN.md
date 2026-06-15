@@ -58,7 +58,7 @@ explicit, and CI-enforced is itself a workstream (W7).
 | T3 | `LeanRV64D/` Sail-generated RISC-V semantics | reference spec | trusted by design, but must be provably the genuine upstream output (W5) |
 | T4 | `plat_enable_misaligned_access := false` edit to T3 | base edit | load-bearing for the misaligned branch of SH/SW/AMO; a faithfulness modeling choice to justify and isolate, not remove (W5, W6) |
 | T5 | Faithfulness of `execInstr` to Rust per-row `cpu_exec` semantics | unproven | drift risk (W1). Sharpest for single-row native instructions (ADD, MUL, MULHU, ANDN, branches, JAL, FENCE) whose `execInstr` case has **no equivalence theorem at all** — a transcription typo there is currently unfalsifiable (W8 must classify these) |
-| T6 | Faithfulness of `xProgram` definitions to Rust `inline_sequence` emission | unproven | drift risk; already has at least one row-level mismatch to triage in AMO.D alignment handling (W1) |
+| T6 | Faithfulness of `xProgram` definitions to Rust `inline_sequence` emission | unproven | drift risk; the AMO.D row mismatch was repaired in Lean, but no general Rust-to-Lean expansion check exists yet (W1) |
 | T7 | Toolchain mismatch: `v4.29.0-rc4` vs lean-sail's target nightly | environment | documented in `README.md`; keep pinned and reproducible (W5) |
 | T8 | lean-sail runtime (`Sail` package: `SequentialState`, BitVec/`shift_bits_right` helpers, memory primitives, the `EStateM` monad) | reference runtime | trusted by everything, pinned at tag `v3`; distinct from generated `LeanRV64D/` (T3) and not previously enumerated. Add to W5 provenance/pinning and W7 axiom scope |
 | T9 | jolt-qed's own `sailReadByte`/`sailReadWord`/`sailReadDword` (`Environment.lean:28–45`) | bridge definition | trusted Lean definitions, proven equal to Sail's `vmem_read` only *under* `JoltConfig` (`Environment.lean:86–122`). Justify in the W4 projection doc |
@@ -80,11 +80,11 @@ These are settled for handoff; update this section when they change.
    to). Rust repo CI does not gate on `jolt-qed` equivalence yet.
 
 3. **June 2026 audit correction.** W1 is no longer a later cleanup item. The
-   Rust and Lean trees already disagree at row granularity for doubleword AMOs:
-   Lean AMO.D programs start with `VirtualAssertDwordAlignment`, while Rust's
-   `expand_amo_d` emits `LD` / op / `SD` / `ADDI` and relies on the MMU's
-   doubleword alignment assertion. This may be semantically equivalent on the
-   failing path, but it is not row-for-row conformance.
+   audit found a row-granularity AMO.D mismatch: Lean had a hallucinated
+   doubleword virtual assert row, while Rust's `expand_amo_d` emits
+   `LD` / op / `SD` / `ADDI` and `expand_amoswapd` emits `LD` / `SD` / `ADDI`.
+   The Lean ISA and AMO.D expansions now remove that row and model the dword
+   `LD`/`SD` row itself as the alignment boundary.
 
 4. **Memory inhabitance — investigation concluded (June 2026 deep audit).**
    `JoltConfig.mem_populated` (`∀ addr : Nat, s.mem.get? addr ≠ none` over
@@ -142,9 +142,9 @@ What this means: drift is well-controlled *inside Rust* against a past Rust
 baseline, but **nothing connects Rust to `jolt-qed`**, golden tests are hashes
 rather than structural data, and the existing extractor is a different Lean
 universe. So T6 (and T5) are still unguarded with respect to the Sail-equivalence
-Lean repo. The AMO.D alignment-row mismatch is the concrete warning shot: the
-current plan should treat W1 as near-term trust repair, not late process
-hardening.
+Lean repo. The repaired AMO.D alignment-row mismatch is the concrete warning
+shot: the current plan should treat W1 as near-term trust repair, not late
+process hardening.
 
 Rust is fully under our control and freely modifiable, which makes the
 single-source approach (W1c) the recommended target rather than an aspiration.
@@ -426,8 +426,8 @@ faulting and that theorem would break. So T4 is required for the misaligned
 branch of SH/SW/AMO to match.
 
 This W6 fact is separate from the W1 row-level drift finding: Rust doubleword
-AMO expansion currently relies on MMU alignment assertions rather than emitting
-the explicit `VirtualAssertDwordAlignment` row that Lean models.
+AMO expansion currently relies on the emitted dword memory row rather than a
+dedicated virtual assert row, and Lean now models the same row shape.
 
 Reframed goal: the flag is a *faithfulness modeling choice* (Jolt faults on
 misalignment, it does not split), so the work is to justify and isolate it, not
@@ -712,9 +712,9 @@ Dependency-ordered, optimized for early certainty per unit of agent runtime:
    `mem_populated` assumption is the largest vacuity unknown; either prove it
    inhabitably or replace it with a finite footprint contract before treating
    memory-family theorems as non-vacuous.
-2. **W1 next.** The AMO.D alignment-row mismatch shows expansion conformance is
-   already actionable. Start with W1a on a small structural manifest, then move
-   to W1c for a generated artifact.
+2. **W1 next.** The repaired AMO.D alignment-row mismatch shows expansion
+   conformance is already actionable. Start with W1a on a small structural
+   manifest, then move to W1c for a generated artifact.
 3. **W7 in parallel once theorem inventory is stable.** Build the axiom/declaration
    gate early, then use it to measure `native_decide` removal.
 4. **W3 after W2/W1 have stabilized the object under test.** Mutation testing is
@@ -754,22 +754,17 @@ original questions; each item records the evidence and the action it implies.
    (`∀ k, base ≤ k < base + w → s.mem.get? k ≠ none`) suffices, and the public
    statements already carry local `FlatPhysMem`-style envelopes. W2 is hereby
    escalated from investigation to urgent trust repair.
-2. **AMO.D conformance target — RESOLVED: real drift; fix Rust, not Lean.**
+2. **AMO.D conformance target — RESOLVED: real drift; Lean now matches Rust.**
    Verified in source: `expand_amo_d`
    (`crates/jolt-program/src/expand/memory/shared.rs:182`) emits LD / op / SD /
    ADDI with no assert row (`expand_amoswapd`: LD/SD/ADDI,
-   `expand/memory/amoswapd.rs:8`); misalignment instead hits
-   `assert_eq!(ea % 8, 0)` host panics in `tracer/src/emulator/mmu.rs:362,470`
-   — a tracer panic, not a provable trap. Lean
-   (`JoltISA/Expansions/Atomics.lean:192,271`) prepends
-   `VirtualAssertDwordAlignment`. AMO.W carries the explicit
-   `VirtualAssertWordAlignment` row on *both* sides (`shared.rs:413`,
-   `Atomics.lean:145`), so AMO.D is the inconsistency inside Rust, not Lean
-   inventiveness. Recommendation: Rust emits the explicit dword-assert row —
-   consistent with AMO.W, consistent with W6's "faults, not splits" model, and
-   it gives the misaligned path provable trap semantics. Dropping the Lean row
-   instead would orphan the `*_eq_sail_misaligned` theorems. Secondary check
-   for the first W1a manifest: the audit saw slightly different AMO.W
+   `expand/memory/amoswapd.rs:8`). Lean previously prepended a hallucinated
+   doubleword virtual assert row. The fix is to remove that row from the Lean
+   ISA/expansions and make the Lean `LD`/`SD` semantics expose the same
+   alignment boundary the Rust tracer reaches through `load_doubleword` /
+   `store_doubleword`. The AMO.D misaligned theorems now stop at the first
+   emitted `LD` and still match Sail's store/AMO alignment exception.
+   Secondary check for the first W1a manifest: the audit saw slightly different AMO.W
    pre64/post64 row counts on the two sides; confirm row-for-row.
 3. **Rust `exec()` vs trace drift — RESOLVED.** The prover never consumes
    source-instruction `exec()`. Proof semantics are defined by the expansion

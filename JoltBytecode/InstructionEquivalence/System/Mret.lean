@@ -75,9 +75,9 @@ theorem jump_to_mretReturnTarget_run
       .ok RETIRE_SUCCESS (setNextPCState js.sail (mretReturnTarget js)) := by
   have hExtC := currentlyEnabled_Ext_C_run js.sail misa hmisa
   have hassert : (0#1 == 0#1) = true := by
-    native_decide
+    decide
   have hbit1 : bool_bit_backwards 0#1 = false := by
-    native_decide
+    decide
   unfold jump_to ext_control_check_pc SailME.run PreSail.PreSailME.run
   unfold currentlyEnabled hartSupports
   unfold set_next_pc setNextPCState sail_branch_announce redirect_callback
@@ -140,7 +140,7 @@ theorem systemProject_mretAfterJalr
   unfold systemProject mretAfterJalr joltSetVReg vregWrite
   simp only
   repeat first
-    | rw [if_neg (by native_decide)]
+    | rw [if_neg (by decide)]
 
 /-- Under the machine-only MRET envelope, Sail's architectural `mstatus`
 postlude leaves the projected Jolt `mstatus` value unchanged. -/
@@ -153,7 +153,7 @@ theorem mretMstatusAfterMpp_machine_eq_self
     mretMstatusAfterMpp mstatus Privilege.Machine = mstatus := by
   have hPrivBits :
       privLevel_to_bits Privilege.Machine = (0b11 : BitVec 2) := by
-    native_decide
+    decide
   unfold mretMstatusAfterMpp mretMstatusAfterMpie mretMstatusAfterMie
   rw [hPrivBits] at h_mpp_machine ⊢
   unfold _get_Mstatus_MPIE
@@ -197,7 +197,7 @@ theorem mretMstatus_mpp_machine_write_eq_self
       mstatus := by
   have hPrivBits :
       privLevel_to_bits Privilege.Machine = (0b11 : BitVec 2) := by
-    native_decide
+    decide
   rw [hPrivBits] at h_mpp_machine ⊢
   unfold _get_Mstatus_MPP Sail.BitVec.extractLsb at h_mpp_machine
   unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
@@ -213,7 +213,7 @@ theorem mretMstatusAfterMpie_mpp_machine
       privLevel_to_bits Privilege.Machine := by
   have hPrivBits :
       privLevel_to_bits Privilege.Machine = (0b11 : BitVec 2) := by
-    native_decide
+    decide
   rw [hPrivBits] at h_mpp_machine ⊢
   unfold mretMstatusAfterMpie mretMstatusAfterMie
   unfold _get_Mstatus_MPP _get_Mstatus_MPIE
@@ -233,7 +233,7 @@ theorem privLevel_of_mretMstatusAfterMpie_machine_run
   have hBits := mretMstatusAfterMpie_mpp_machine mstatus h_mpp_machine
   have hPrivBits :
       privLevel_to_bits Privilege.Machine = (0b11 : BitVec 2) := by
-    native_decide
+    decide
   rw [hPrivBits] at hBits
   unfold privLevel_bits_forwards
   simp only [hBits]
@@ -248,7 +248,7 @@ theorem privLevel_bits_forwards_mstatus_machine_run
       .ok Privilege.Machine s := by
   have hPrivBits :
       privLevel_to_bits Privilege.Machine = (0b11 : BitVec 2) := by
-    native_decide
+    decide
   rw [hPrivBits] at h_mpp_machine
   unfold privLevel_bits_forwards
   simp only [h_mpp_machine]
@@ -265,7 +265,7 @@ theorem currentlyEnabled_Ext_U_disabled_run
   have hHartU : hartSupports extension.Ext_U = true := by
     rw [hartSupports]
   have hUDisabled : (0#1 == (1#1 : BitVec 1)) = false := by
-    native_decide
+    decide
   unfold currentlyEnabled Sail.readReg PreSail.readReg
   simp only [hmisa, hZicsr, hmisa_u, hHartU, hUDisabled, Bool.false_and,
     Bool.and_false, bind, EStateM.bind, pure, EStateM.pure,
@@ -303,7 +303,7 @@ theorem align_pc_mretReturnTarget_run
   have hClearLow := mretMepc_clear_low_two_eq_returnTarget js hfetch
   have hHartC : hartSupports extension.Ext_C = true := by
     repeat rw [hartSupports]
-    native_decide
+    decide
   have hHartZca : hartSupports extension.Ext_Zca = true := by
     rw [hartSupports]
   unfold align_pc currentlyEnabled
@@ -343,7 +343,7 @@ theorem systemProject_mseccfg_read
       some (mseccfg : RegisterType Register.mseccfg) := by
   rw [systemProject_get_unmodified]
   exact hmseccfg
-  all_goals native_decide
+  all_goals decide
 
 /-- If projected `mstatus.MPELP` is already zero, Zicfilp's MRET restore write
 to that field is state-neutral. -/

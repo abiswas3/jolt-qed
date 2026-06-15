@@ -75,7 +75,7 @@ supported virtual CSR register. -/
 theorem systemScratch_ne_systemCSR_vreg
     (csr : JoltISA.SystemCSR) :
     JoltISA.systemScratchVReg ≠ JoltISA.SystemCSR.vreg csr := by
-  cases csr <;> native_decide
+  cases csr <;> decide
 
 /-- Conversely, every supported virtual CSR register is distinct from the
 instruction-local system scratch register. -/
@@ -105,7 +105,7 @@ theorem beq_zreg_eq_true_of_isX0_eq_true
     (rd == zreg) = true := by
   rw [regidx_eq_zero_of_isX0_eq_true h]
   unfold zreg
-  native_decide
+  decide
 
 /-- Writing architectural `x0` is a no-op, phrased from the Jolt `isX0`
 guard so the main proof does not rewrite through indexed assumptions. -/
@@ -409,11 +409,11 @@ theorem execute_CSRReg_csrrw_system_run
     have hAccessWriteWrite :
         instBEqCSRAccessType.beq CSRAccessType.CSRWrite
             CSRAccessType.CSRWrite = true := by
-      native_decide
+      decide
     have hAccessWriteRead :
         instBEqCSRAccessType.beq CSRAccessType.CSRWrite
             CSRAccessType.CSRRead = false := by
-      native_decide
+      decide
     have hCallback :=
       csr_id_write_callback_systemCSR_run
         (systemProject (csrrwAfterCsrWrite js csr h_sys.rs1_val))
@@ -457,11 +457,11 @@ theorem execute_CSRReg_csrrw_system_run
     have hAccessReadWriteWrite :
         instBEqCSRAccessType.beq CSRAccessType.CSRReadWrite
             CSRAccessType.CSRWrite = false := by
-      native_decide
+      decide
     have hAccessReadWriteRead :
         instBEqCSRAccessType.beq CSRAccessType.CSRReadWrite
             CSRAccessType.CSRRead = false := by
-      native_decide
+      decide
     have hCallback :=
       csr_id_write_callback_systemCSR_run
         (systemProject (csrrwAfterCsrWrite js csr h_sys.rs1_val))

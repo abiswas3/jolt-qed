@@ -117,6 +117,8 @@ Jolt-ISA `LD` writes that dword to the destination virtual register and
 continues with `RETIRE_SUCCESS`. -/
 theorem ld_run_vreg_vreg_from_memory_read (vd base : VReg) (imm : BitVec 12)
     (js : SailJoltState) (value : BitVec 64)
+    (h_align :
+      (js.vregs base + sign_extend (m := 64) imm) &&& (7 : BitVec 64) = 0)
     (h :
       vmem_read_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 0 8
         (Load Data) false false false js.sail =
@@ -128,15 +130,22 @@ theorem ld_run_vreg_vreg_from_memory_read (vd base : VReg) (imm : BitVec 12)
   unfold execInstr readSrc writeDst readVReg liftSail writeVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
-  rw [h]
-  simp only [EStateM.bind, EStateM.pure, modify, modifyGet,
-    MonadStateOf.modifyGet, EStateM.modifyGet]
+  rw [if_pos h_align]
+  have h' :
+      vmem_read_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm))
+        (0#64) 8 (Load Data) false false false js.sail =
+        .ok (Ok value) js.sail := by
+    simpa using h
+  simp [EStateM.bind, h', modify, modifyGet, MonadStateOf.modifyGet]
+  rfl
 
 /-- Successful `SD`: if Sail's dword write pipeline returns success, then the
 Jolt-ISA `SD` retires with the produced Sail state and preserves virtual
 registers. -/
 theorem execInstr_sd_vreg_run_of_write (base value : VReg) (imm : BitVec 12)
     (js : SailJoltState) (s' : SailState)
+    (h_align :
+      (js.vregs base + sign_extend (m := 64) imm) &&& (7 : BitVec 64) = 0)
     (h :
       vmem_write_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 8
         (js.vregs value) (Store Data) false false false js.sail =
@@ -146,7 +155,8 @@ theorem execInstr_sd_vreg_run_of_write (base value : VReg) (imm : BitVec 12)
   unfold execInstr readSrc readVReg liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
-  rw [h]
+  rw [if_pos h_align]
+  simp [EStateM.bind, h]
   rfl
 
 /-- `MULHU` from two real sources to a virtual destination reads both real

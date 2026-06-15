@@ -62,7 +62,11 @@ private theorem or32_setWidth6_toNat (x : BitVec 64) :
     ((Riscv.ori x 32#64).setWidth 6).toNat = (x.setWidth 5).toNat + 32 := by
   have h : (Riscv.ori x 32#64).setWidth 6 = ((1#1) +++ x.setWidth 5) := by
     unfold Riscv.ori
-    bv_decide
+    apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    interval_cases i <;> simp
+    all_goals rw [BitVec.getElem_append]
+    all_goals simp [BitVec.getElem_setWidth]
   rw [h, BitVec.toNat_append]
   norm_num [Nat.shiftLeft_eq]
   change (2 ^ 5 ||| (x.setWidth 5).toNat) = (x.setWidth 5).toNat + 32

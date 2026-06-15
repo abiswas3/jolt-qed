@@ -121,7 +121,10 @@ inside the `2^64` range. -/
 private theorem xor_neg_one_toNat (x : BitVec 64) :
     (x ^^^ (-1 : BitVec 64)).toNat =
       18446744073709551616 - 1 - x.toNat := by
-  rw [show x ^^^ (-1 : BitVec 64) = ~~~x by bv_decide]
+  change (x ^^^ (-1#64 : BitVec 64)).toNat =
+    18446744073709551616 - 1 - x.toNat
+  rw [show (-1#64 : BitVec 64) = BitVec.allOnes 64 from by decide,
+    BitVec.xor_allOnes]
   rw [BitVec.toNat_not]
 /-- For a negative signed 64-bit word, `xor -1` followed by `+ 1` computes the
 magnitude `2^64 - x.toNat`. -/

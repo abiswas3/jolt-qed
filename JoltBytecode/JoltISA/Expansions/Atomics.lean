@@ -191,7 +191,6 @@ def amoPost64Program
 
 def amoDoubleBinopProgram
     (op : Dst → Src → Src → Instr) (rs2 rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertDwordAlignment rs1 (0 : BitVec 12) (ExceptionType.E_SAMO_Addr_Align ())) <|
   .instr (.LD (.vreg amoDoubleBinopOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
   .instr (op (.vreg amoDoubleBinopNewVReg) (.vreg amoDoubleBinopOldVReg) (.xreg rs2)) <|
   .instr (.SD (.xreg rs1) (.vreg amoDoubleBinopNewVReg) (0 : BitVec 12)) <|
@@ -201,7 +200,6 @@ def amoDoubleBinopProgram
 def amoDoubleSelectProgram
     (cmpInstr : Dst → Src → Src → Instr) (cmpLhs cmpRhs : Src)
     (rs2 rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertDwordAlignment rs1 (0 : BitVec 12) (ExceptionType.E_SAMO_Addr_Align ())) <|
   .instr (.LD (.vreg amoOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
   .instr (cmpInstr (.vreg amoNewVReg) cmpLhs cmpRhs) <|
   .instr (.SUB (.vreg amoTmpVReg) (.xreg rs2) (.vreg amoOldVReg)) <|
@@ -269,7 +267,6 @@ def amoxordProgram (rs2 rs1 rd : regidx) : Program :=
   amoDoubleBinopProgram (fun dst lhs rhs => .XOR dst lhs rhs) rs2 rs1 rd
 
 def amoswapdProgram (rs2 rs1 rd : regidx) : Program :=
-  .instr (.VirtualAssertDwordAlignment rs1 (0 : BitVec 12) (ExceptionType.E_SAMO_Addr_Align ())) <|
   .instr (.LD (.vreg amoOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
   .instr (.SD (.xreg rs1) (.xreg rs2) (0 : BitVec 12)) <|
   .instr (.ADDI (.xreg rd) (.vreg amoOldVReg) (0 : BitVec 12)) <|

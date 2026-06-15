@@ -98,10 +98,34 @@ theorem aligned_dword_addr_eq (v : BitVec 64) (imm : BitVec 12) :
 -- instruction file.
 
 /-- The Jolt inline-sequence base address is naturally 8-aligned. -/
+theorem align_down_8_and_7_eq_zero (x : BitVec 64) :
+    (x &&& (-8 : BitVec 64)) &&& (7 : BitVec 64) = 0 := by
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_and, BitVec.toNat_and]
+  have hneg8 : (-8 : BitVec 64).toNat = 2 ^ 64 - 8 := by decide
+  have h7 : (7 : BitVec 64).toNat = 7 := by decide
+  have h0 : (0 : BitVec 64).toNat = 0 := by decide
+  rw [hneg8, h7, h0]
+  apply Nat.eq_of_testBit_eq
+  intro i
+  rw [Nat.testBit_and, Nat.zero_testBit]
+  by_cases hlt : i < 3
+  · have hmask : (2 ^ 64 - 8).testBit i = false := by
+      interval_cases i <;> decide
+    norm_num at hmask
+    rw [Nat.testBit_and]
+    simp [hmask]
+  · have h7bit : (7 : Nat).testBit i = false := by
+      apply Nat.testBit_lt_two_pow
+      have : 3 ≤ i := by omega
+      exact lt_of_lt_of_le (by norm_num : 7 < 2 ^ 3)
+        (Nat.pow_le_pow_right (by norm_num : 0 < 2) this)
+    simp [h7bit]
+
 theorem aligned_dword_addr_aligns (val : BitVec 64) (imm : BitVec 12) :
     aligned_dword_addr val imm &&& 7 = 0 := by
   rw [aligned_dword_addr_eq]
-  bv_decide
+  exact align_down_8_and_7_eq_zero _
 
 /-- An 8-aligned 64-bit address, viewed as a natural number, has no overflow
     when we add 7. -/
@@ -170,9 +194,16 @@ theorem vreg_LD_run_of_dword_assumptions
       .ok (Ok (loaded_dword_at js.sail addr)) js.sail := by
     have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
     rw [hvs1, h0]
-    have haddr : addr + (0 : BitVec 64) = addr := by bv_decide
+    have haddr : addr + (0 : BitVec 64) = addr := by simp
     rw [haddr]
     exact aligned_dword_vmem_read_reduces addr js.sail hcfg hd
+  have halign :
+      (js.vregs vs1 + sign_extend (m := 64) (0 : BitVec 12)) &&& (7 : BitVec 64) = 0 := by
+    have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
+    rw [hvs1, h0]
+    have haddr : addr + (0 : BitVec 64) = addr := by simp
+    rw [haddr]
+    exact hd.aligned.align
   exact
     JoltISA.ld_run_vreg_vreg_from_memory_read
-      vd vs1 0 js (loaded_dword_at js.sail addr) hread
+      vd vs1 0 js (loaded_dword_at js.sail addr) halign hread

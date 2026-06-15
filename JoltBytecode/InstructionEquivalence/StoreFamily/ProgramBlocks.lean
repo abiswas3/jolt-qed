@@ -459,9 +459,21 @@ theorem setupBlock (rest : JoltISA.Program)
   have hld :
       (JoltISA.execInstr (.LD (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp1) 0)).run js1 =
         .ok RETIRE_SUCCESS js_load := by
+    have hld_align :
+        (js1.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12)) &&&
+            (7 : BitVec 64) =
+          0 := by
+      have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by
+        decide
+      have hv1 : js1.vregs JoltISA.inlineTmp1 = base := by
+        simp [js1]
+      have haddr0 : base + (0 : BitVec 64) = base := by
+        bv_decide
+      rw [hv1, h0, haddr0]
+      exact h_base_aligned.align
     simpa [js_load, dword] using
       (JoltISA.ld_run_vreg_vreg_from_memory_read JoltISA.inlineTmp2 JoltISA.inlineTmp1
-        (0 : BitVec 12) js1 dword hld_read)
+        (0 : BitVec 12) js1 dword hld_align hld_read)
   refine ⟨js_load, ?_, rfl, ?_, ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js js0 haddi]
     rw [JoltISA.execProgram_instr_run_retire _ _ js0 js1 handi]
@@ -1384,6 +1396,7 @@ theorem sdWriteBlock (rest : JoltISA.Program)
     (js_store : SailJoltState) (base dword_new : BitVec 64) (s' : SailState)
     (hbase : js_store.vregs JoltISA.inlineTmp1 = base)
     (hdword : js_store.vregs JoltISA.inlineTmp2 = dword_new)
+    (h_align : base &&& (7 : BitVec 64) = 0)
     (hwrite :
       vmem_write_addr (Virtaddr base) 8 dword_new
         (Store Data) false false false js_store.sail =
@@ -1406,12 +1419,18 @@ theorem sdWriteBlock (rest : JoltISA.Program)
       .ok (Ok true) s' := by
     rw [haddr, hdword]
     exact hwrite
+  have hsd_align :
+      (js_store.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12)) &&&
+          (7 : BitVec 64) =
+        0 := by
+    rw [haddr]
+    exact h_align
   have hsd :
       (JoltISA.execInstr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0)).run js_store =
         .ok RETIRE_SUCCESS js_write := by
     simpa [js_write] using
       (JoltISA.execInstr_sd_vreg_run_of_write
-        JoltISA.inlineTmp1 JoltISA.inlineTmp2 (0 : BitVec 12) js_store s' hwrite')
+        JoltISA.inlineTmp1 JoltISA.inlineTmp2 (0 : BitVec 12) js_store s' hsd_align hwrite')
   refine ⟨js_write, ?_, rfl, rfl⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js_store js_write hsd]
 

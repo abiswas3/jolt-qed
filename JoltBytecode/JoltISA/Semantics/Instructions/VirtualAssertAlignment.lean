@@ -3,8 +3,8 @@ import JoltBytecode.JoltISA.Semantics.Lemmas
 /-!
 # Virtual alignment assertion semantics
 
-Run lemmas for the Jolt ISA `VirtualAssertHalfwordAlignment`,
-`VirtualAssertWordAlignment`, and `VirtualAssertDwordAlignment` rows.
+Run lemmas for the Jolt ISA `VirtualAssertHalfwordAlignment` and
+`VirtualAssertWordAlignment` rows.
 -/
 
 open Sail PreSail LeanRV64D.Functions
@@ -77,39 +77,6 @@ theorem virtual_assert_word_alignment_run_misaligned
         (Virtaddr (baseValue + sign_extend (m := 64) imm), fault)) js := by
   have h_condition :
       (baseValue + sign_extend (m := 64) imm) &&& (3#64) ≠ 0#64 := by
-    simpa using h_misaligned
-  cases js
-  unfold execInstr liftSail
-  simp [h_read, h_condition, EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-
-/-- A dword-alignment assertion retires successfully when the effective address
-has its low three bits clear. -/
-theorem virtual_assert_dword_alignment_run_aligned
-    (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
-    (js : SailJoltState) (baseValue : BitVec 64)
-    (h_read : rX_bits base js.sail = .ok baseValue js.sail)
-    (h_aligned : (baseValue + sign_extend (m := 64) imm) &&& (7 : BitVec 64) = 0) :
-    (execInstr (.VirtualAssertDwordAlignment base imm fault)).run js =
-      .ok RETIRE_SUCCESS js := by
-  have h_condition :
-      (baseValue + sign_extend (m := 64) imm) &&& (7#64) = 0#64 := by
-    simpa using h_aligned
-  cases js
-  unfold execInstr liftSail
-  simp [h_read, h_condition, EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-
-/-- A dword-alignment assertion returns the supplied memory exception when the
-effective address has one of its low three bits set. -/
-theorem virtual_assert_dword_alignment_run_misaligned
-    (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
-    (js : SailJoltState) (baseValue : BitVec 64)
-    (h_read : rX_bits base js.sail = .ok baseValue js.sail)
-    (h_misaligned : (baseValue + sign_extend (m := 64) imm) &&& (7 : BitVec 64) ≠ 0) :
-    (execInstr (.VirtualAssertDwordAlignment base imm fault)).run js =
-      .ok (ExecutionResult.Memory_Exception
-        (Virtaddr (baseValue + sign_extend (m := 64) imm), fault)) js := by
-  have h_condition :
-      (baseValue + sign_extend (m := 64) imm) &&& (7#64) ≠ 0#64 := by
     simpa using h_misaligned
   cases js
   unfold execInstr liftSail

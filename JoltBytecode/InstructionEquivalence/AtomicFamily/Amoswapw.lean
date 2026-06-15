@@ -667,6 +667,12 @@ theorem amo_word_swap_sd_spliced_dword_run
   let js' : SailJoltState :=
     { sail := state_after_dword_store s (amoWordBase addr) dwordNew
       vregs := js.vregs }
+  have hsd_align :
+      (js.vregs JoltISA.amoWordSwapMaskVReg + sign_extend (m := 64) (0 : BitVec 12)) &&&
+          (7 : BitVec 64) =
+        0 := by
+    rw [h_base, amo_word_zero_offset_addr (amoWordBase addr)]
+    exact amo_word_base_aligned addr
   have hsd :
       (JoltISA.execInstr
         (.SD (.vreg JoltISA.amoWordSwapMaskVReg)
@@ -674,7 +680,7 @@ theorem amo_word_swap_sd_spliced_dword_run
         .ok RETIRE_SUCCESS js' :=
     JoltISA.execInstr_sd_vreg_run_of_write
       JoltISA.amoWordSwapMaskVReg JoltISA.amoWordSwapDwordVReg (0 : BitVec 12)
-      js (state_after_dword_store s (amoWordBase addr) dwordNew) hwrite_current
+      js (state_after_dword_store s (amoWordBase addr) dwordNew) hsd_align hwrite_current
   refine ⟨js', rfl, ?_, ?_⟩
   · exact h_old
   · intro tail
