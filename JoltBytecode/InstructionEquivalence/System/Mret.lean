@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.System.Common
+import Mathlib.Tactic.IntervalCases
 
 open Sail PreSail LeanRV64D.Functions
 
@@ -48,13 +49,49 @@ def mretMstatusAfterMpp (mstatus : BitVec 64) (basePriv : Privilege) :
   Sail.BitVec.updateSubrange (mretMstatusAfterMpie mstatus) 12 11
     (privLevel_to_bits basePriv)
 
+private theorem updateSubrange_extractLsb_self {w : Nat} (x : BitVec w)
+    (hi lo : Nat) (hlo : lo ≤ hi) :
+    Sail.BitVec.updateSubrange x hi lo (Sail.BitVec.extractLsb x hi lo) = x := by
+  change Sail.BitVec.updateSubrange' x lo (hi - lo + 1)
+      (Sail.BitVec.extractLsb x hi lo) = x
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hiw
+  unfold Sail.BitVec.updateSubrange' Sail.BitVec.extractLsb
+  rw [BitVec.getLsbD_or, BitVec.getLsbD_and, BitVec.getLsbD_not,
+    BitVec.getLsbD_shiftLeft, BitVec.getLsbD_shiftLeft]
+  by_cases hltlo : i < lo
+  · simp [hiw, hltlo]
+  · by_cases hlehi : i ≤ hi
+    · have hsubw : i - lo < w := by omega
+      have hsubadd : lo + (i - lo) = i := by omega
+      have hsub_len : i - lo < hi - lo + 1 := by omega
+      simp [hiw, hltlo, hsubw, hsubadd, hsub_len]
+    · have hsub_len : ¬ i - lo < hi - lo + 1 := by omega
+      have hnot_span : ¬ i ≤ hi - lo + lo := by omega
+      simp [hiw, hltlo, hsub_len, hnot_span]
+
+private theorem clear_low_two_eq_update_zero_of_bit1_zero (x : BitVec 64)
+    (hbit1 : x.getLsbD 1 = false) :
+    Sail.BitVec.updateSubrange x 1 0 (0#2 : BitVec 2) =
+      BitVec.update x 0 0#1 := by
+  have hbit1_elem : x[1] = false := by
+    simpa [BitVec.getLsbD_eq_getElem] using hbit1
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  unfold Sail.BitVec.update Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
+  rw [BitVec.getLsbD_or, BitVec.getLsbD_or, BitVec.getLsbD_and,
+    BitVec.getLsbD_and, BitVec.getLsbD_not, BitVec.getLsbD_not,
+    BitVec.getLsbD_shiftLeft, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_shiftLeft, BitVec.getLsbD_shiftLeft]
+  interval_cases i <;> simp [hbit1_elem]
+
 /-- MRET's return target already has bit 0 cleared by the JALR rule. -/
 theorem mretReturnTarget_bit0_zero (js : SailJoltState) :
     BitVec.access (mretReturnTarget js) 0 = 0#1 := by
   unfold mretReturnTarget
   unfold Sail.BitVec.access Sail.BitVec.update Sail.BitVec.updateSubrange'
   rw [getElem!_pos (h := by decide)]
-  bv_decide
+  simp
 
 /-- JALR with immediate zero computes the MRET return target. -/
 theorem mretJalrTarget_zero_imm (js : SailJoltState) :
@@ -142,29 +179,6 @@ theorem systemProject_mretAfterJalr
   repeat first
     | rw [if_neg (by decide)]
 
-/-- Under the machine-only MRET envelope, Sail's architectural `mstatus`
-postlude leaves the projected Jolt `mstatus` value unchanged. -/
-theorem mretMstatusAfterMpp_machine_eq_self
-    (mstatus : BitVec 64)
-    (h_mie_mpie : _get_Mstatus_MIE mstatus = _get_Mstatus_MPIE mstatus)
-    (h_mpie_one : _get_Mstatus_MPIE mstatus = 1#1)
-    (h_mpp_machine :
-      _get_Mstatus_MPP mstatus = privLevel_to_bits Privilege.Machine) :
-    mretMstatusAfterMpp mstatus Privilege.Machine = mstatus := by
-  have hPrivBits :
-      privLevel_to_bits Privilege.Machine = (0b11 : BitVec 2) := by
-    decide
-  unfold mretMstatusAfterMpp mretMstatusAfterMpie mretMstatusAfterMie
-  rw [hPrivBits] at h_mpp_machine ⊢
-  unfold _get_Mstatus_MPIE
-  unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
-  unfold _get_Mstatus_MIE _get_Mstatus_MPIE at h_mie_mpie
-  unfold _get_Mstatus_MPIE at h_mpie_one
-  unfold _get_Mstatus_MPP at h_mpp_machine
-  unfold Sail.BitVec.extractLsb
-  unfold Sail.BitVec.extractLsb at h_mie_mpie h_mpie_one h_mpp_machine
-  bv_decide
-
 /-- If `MIE` already equals `MPIE`, the first MRET mstatus write is
 state-neutral. -/
 theorem mretMstatus_mie_write_eq_self
@@ -172,20 +186,18 @@ theorem mretMstatus_mie_write_eq_self
     (h_mie_mpie : _get_Mstatus_MIE mstatus = _get_Mstatus_MPIE mstatus) :
     Sail.BitVec.updateSubrange mstatus 3 3 (_get_Mstatus_MPIE mstatus) =
       mstatus := by
-  unfold _get_Mstatus_MIE _get_Mstatus_MPIE at h_mie_mpie
-  unfold Sail.BitVec.extractLsb at h_mie_mpie
-  unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
-  unfold _get_Mstatus_MPIE Sail.BitVec.extractLsb
-  bv_decide
+  rw [← h_mie_mpie]
+  unfold _get_Mstatus_MIE
+  exact updateSubrange_extractLsb_self mstatus 3 3 (by omega)
 
 /-- If `MPIE` is already one, the second MRET mstatus write is state-neutral. -/
 theorem mretMstatus_mpie_write_eq_self
     (mstatus : BitVec 64)
     (h_mpie_one : _get_Mstatus_MPIE mstatus = 1#1) :
     Sail.BitVec.updateSubrange mstatus 7 7 1#1 = mstatus := by
-  unfold _get_Mstatus_MPIE Sail.BitVec.extractLsb at h_mpie_one
-  unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
-  bv_decide
+  rw [← h_mpie_one]
+  unfold _get_Mstatus_MPIE
+  exact updateSubrange_extractLsb_self mstatus 7 7 (by omega)
 
 /-- If `MPP` is already Machine, resetting it to Machine is state-neutral. -/
 theorem mretMstatus_mpp_machine_write_eq_self
@@ -199,9 +211,23 @@ theorem mretMstatus_mpp_machine_write_eq_self
       privLevel_to_bits Privilege.Machine = (0b11 : BitVec 2) := by
     decide
   rw [hPrivBits] at h_mpp_machine ⊢
-  unfold _get_Mstatus_MPP Sail.BitVec.extractLsb at h_mpp_machine
-  unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
-  bv_decide
+  rw [← h_mpp_machine]
+  unfold _get_Mstatus_MPP
+  exact updateSubrange_extractLsb_self mstatus 12 11 (by omega)
+
+/-- Under the machine-only MRET envelope, Sail's architectural `mstatus`
+postlude leaves the projected Jolt `mstatus` value unchanged. -/
+theorem mretMstatusAfterMpp_machine_eq_self
+    (mstatus : BitVec 64)
+    (h_mie_mpie : _get_Mstatus_MIE mstatus = _get_Mstatus_MPIE mstatus)
+    (h_mpie_one : _get_Mstatus_MPIE mstatus = 1#1)
+    (h_mpp_machine :
+      _get_Mstatus_MPP mstatus = privLevel_to_bits Privilege.Machine) :
+    mretMstatusAfterMpp mstatus Privilege.Machine = mstatus := by
+  unfold mretMstatusAfterMpp mretMstatusAfterMpie mretMstatusAfterMie
+  rw [mretMstatus_mie_write_eq_self mstatus h_mie_mpie]
+  rw [mretMstatus_mpie_write_eq_self mstatus h_mpie_one]
+  exact mretMstatus_mpp_machine_write_eq_self mstatus h_mpp_machine
 
 /-- The MRET `MIE`/`MPIE` updates do not change the `MPP` field used to select
 the return privilege. -/
@@ -215,12 +241,22 @@ theorem mretMstatusAfterMpie_mpp_machine
       privLevel_to_bits Privilege.Machine = (0b11 : BitVec 2) := by
     decide
   rw [hPrivBits] at h_mpp_machine ⊢
+  unfold _get_Mstatus_MPP at h_mpp_machine
+  have h11 : mstatus[11] = true := by
+    have h := congrArg (fun z : BitVec 2 => z.getLsbD 0) h_mpp_machine
+    simpa [Sail.BitVec.extractLsb, BitVec.getLsbD_eq_getElem] using h
+  have h12 : mstatus[12] = true := by
+    have h := congrArg (fun z : BitVec 2 => z.getLsbD 1) h_mpp_machine
+    simpa [Sail.BitVec.extractLsb, BitVec.getLsbD_eq_getElem] using h
   unfold mretMstatusAfterMpie mretMstatusAfterMie
   unfold _get_Mstatus_MPP _get_Mstatus_MPIE
-  unfold _get_Mstatus_MPP at h_mpp_machine
   unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
   unfold Sail.BitVec.extractLsb at h_mpp_machine ⊢
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  interval_cases i <;> simp at h_mpp_machine ⊢
+  · exact Or.inl h11
+  · exact Or.inl h12
 
 /-- The return privilege selected by the projected MRET `mstatus` is Machine. -/
 theorem privLevel_of_mretMstatusAfterMpie_machine_run
@@ -285,10 +321,12 @@ theorem mretMepc_clear_low_two_eq_returnTarget
     BitVec.update (js.vregs JoltISA.mepcVReg) 0 0#1
   unfold Sail.BitVec.access at hfetch
   unfold Sail.BitVec.update Sail.BitVec.updateSubrange' at hfetch
-  unfold Sail.BitVec.update Sail.BitVec.updateSubrange
-    Sail.BitVec.updateSubrange'
   rw [getElem!_pos (h := by decide)] at hfetch
-  bv_decide
+  have hbit1 : (js.vregs JoltISA.mepcVReg).getLsbD 1 = false := by
+    cases hx : (js.vregs JoltISA.mepcVReg)[1] <;>
+      simp [hx, BitVec.getLsbD_eq_getElem] at hfetch ⊢
+  exact clear_low_two_eq_update_zero_of_bit1_zero
+    (js.vregs JoltISA.mepcVReg) hbit1
 
 /-- Sail `align_pc` returns the same target as the MRET `JALR` row. -/
 theorem align_pc_mretReturnTarget_run
@@ -354,9 +392,9 @@ theorem mretMstatus_mpelp_write_eq_self
         (landing_pad_bits_backwards landing_pad_expectation.NO_LP_EXPECTED) =
       mstatus := by
   unfold landing_pad_bits_backwards
-  unfold _get_Mstatus_MPELP Sail.BitVec.extractLsb at h_mpelp_zero
-  unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
-  bv_decide
+  rw [← h_mpelp_zero]
+  unfold _get_Mstatus_MPELP
+  exact updateSubrange_extractLsb_self mstatus 41 41 (by omega)
 
 /-- For the MRET envelope, Sail's Zicfilp xret hook is state-neutral:
 `mstatus.MPELP` and `elp` are already zero. -/
