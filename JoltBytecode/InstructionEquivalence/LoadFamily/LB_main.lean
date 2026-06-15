@@ -4,6 +4,7 @@ import JoltBytecode.InstructionEquivalence.Memory.Utils
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
+import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib.Tactic.IntervalCases
@@ -71,7 +72,7 @@ theorem jolt_lb_bridge (s : SailState) (addr : BitVec 64) :
 
 /-- Sail-side `execute_LOAD imm rs1 rd false 1` reduces to
     `stateAfterWrite rd (sign_extend (loaded_byte_at ea))` under the
-    `LoadReadAssumptions` bundle for size 1. No `h_no_ovf` needed —
+    `LoadReadEvidence` bundle for size 1. No `h_no_ovf` needed —
     single-byte reads cannot overflow the 64-bit address space. -/
 theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
@@ -82,8 +83,8 @@ theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
       (stateAfterWrite js.sail rd
         (sign_extend (m := 64)
           (loaded_byte_at js.sail (load_effective_address val imm)))) := by
-  have hload : LoadReadAssumptions (load_effective_address val imm) 1 js.sail :=
-    loadReadAssumptions_of_aligned_phys
+  have hload : LoadReadEvidence (load_effective_address val imm) 1 js.sail :=
+    loadReadEvidence_of_aligned_phys
       (load_effective_address val imm) 1 js.sail
       (aligned_access_1 (load_effective_address val imm)) hphys
   unfold execute_LOAD
@@ -169,16 +170,15 @@ theorem lbProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
 `lbProgram`, interpreted by `execProgram`, agrees with Sail's signed byte-load
 execution. -/
 theorem lbProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 1 js.sail) :
+    (js : SailJoltState)
+    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.lbProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd false 1).run js.sail := by
-  rcases lbProgram_concrete imm rs1 rd js hcfg val hrx
-      h_dword_phys with
+  rcases lbProgram_concrete imm rs1 rd js h.cfg h.rs1_val h.rs1_read.value_eq
+      h.dwordPhys with
     ⟨js', hjolt, hjolt_sail⟩
-  have hsail := execute_LB_reduces imm rs1 rd js hcfg val hrx hphys
+  have hsail := execute_LB_reduces imm rs1 rd js h.cfg h.rs1_val
+    h.rs1_read.value_eq h.bytePhys
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]

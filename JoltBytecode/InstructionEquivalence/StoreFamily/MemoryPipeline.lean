@@ -2,12 +2,12 @@ import JoltBytecode.InstructionEquivalence.StoreFamily.Splice
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
 
 /-!
-# Store-family shared theorem assumptions
+# Store-family memory pipeline lemmas
 
-This file is the store analogue of the load-family assumption layer and the
-atomic-family `AmoMemoryAssumptions` bundle.  Public store theorems should not
-expose raw `vmem_write` reductions.  They should take compact memory-shape
-facts and derive the read/write pipeline facts underneath.
+This file proves the store-family Sail/Jolt memory-pipeline reductions.  Public
+store theorem bundles live in `StoreFamily.Bundles`; this file defines and
+consumes the internal `StoreMemoryContext` helper used by the store reduction
+lemmas.
 -/
 
 set_option linter.unusedVariables false
@@ -22,65 +22,38 @@ noncomputable section
 
 namespace StoreFamily
 
-/-- Ordinary non-MMIO writable RAM for a store of `width` bytes at `addr`. -/
-structure FlatStoreMem (addr : BitVec 64) (width : Nat) (s : SailState) :
-    Prop where
-  pmp : phys_access_check (Store Data) Privilege.Machine
-    (physaddr.Physaddr addr) width false s = .ok none s
-  mmio : within_mmio_writable (physaddr.Physaddr addr) width s = .ok false s
+/-- Internal memory context shared by store-family helper lemmas.
 
-/-- Ordinary non-MMIO RAM for the Jolt-side load/store pair used by store
-expansions. -/
-structure FlatLoadStoreMem (addr : BitVec 64) (width : Nat) (s : SailState) :
-    Prop where
-  load_pmp : phys_access_check (Load Data) Privilege.Machine
-    (physaddr.Physaddr addr) width false s = .ok none s
-  store_pmp : phys_access_check (Store Data) Privilege.Machine
-    (physaddr.Physaddr addr) width false s = .ok none s
-  readable : within_mmio_readable (physaddr.Physaddr addr) width s =
-    .ok false s
-  writable : within_mmio_writable (physaddr.Physaddr addr) width s =
-    .ok false s
-
-/-- Use a combined Jolt load/store memory fact as a read assumption. -/
-theorem FlatLoadStoreMem.toFlatPhysMem
-    {addr : BitVec 64} {width : Nat} {s : SailState}
-    (h : FlatLoadStoreMem addr width s) :
-    FlatPhysMem addr width s :=
-  { pmp := h.load_pmp
-    mmio := h.readable }
-
-/-- Use a combined Jolt load/store memory fact as a write assumption. -/
-theorem FlatLoadStoreMem.toFlatStoreMem
-    {addr : BitVec 64} {width : Nat} {s : SailState}
-    (h : FlatLoadStoreMem addr width s) :
-    FlatStoreMem addr width s :=
-  { pmp := h.store_pmp
-    mmio := h.writable }
-
-/-- Combined memory assumptions for store-family read-modify-write programs.
-
-The Jolt expansion reads and writes the enclosing dword at `joltAddr`; native
-Sail writes the instruction width at `sailAddr`. -/
-structure StoreMemoryAssumptions
+This is not a public theorem assumption. Public store theorems take
+`StoreProgramEqSailAssumptions`; `StoreFamily.Derived` constructs this context
+from that public bundle. -/
+structure StoreMemoryContext
     (sailAddr joltAddr : BitVec 64) (sailWidth : Nat) (s : SailState) :
     Prop where
   jolt_mem : FlatLoadStoreMem joltAddr 8 s
   sail_store_mem : FlatStoreMem sailAddr sailWidth s
+  cfg : JoltConfig s
 
-/-- Project the Jolt dword memory bundle to the read side. -/
-theorem StoreMemoryAssumptions.jolt_load_mem
+/-- The read half of the Jolt read-modify-write dword access. -/
+theorem StoreMemoryContext.jolt_load_mem
     {sailAddr joltAddr : BitVec 64} {sailWidth : Nat} {s : SailState}
-    (h : StoreMemoryAssumptions sailAddr joltAddr sailWidth s) :
+    (h : StoreMemoryContext sailAddr joltAddr sailWidth s) :
     FlatPhysMem joltAddr 8 s :=
   h.jolt_mem.toFlatPhysMem
 
-/-- Project the Jolt dword memory bundle to the write side. -/
-theorem StoreMemoryAssumptions.jolt_store_mem
+/-- The write half of the Jolt read-modify-write dword access. -/
+theorem StoreMemoryContext.jolt_store_mem
     {sailAddr joltAddr : BitVec 64} {sailWidth : Nat} {s : SailState}
-    (h : StoreMemoryAssumptions sailAddr joltAddr sailWidth s) :
+    (h : StoreMemoryContext sailAddr joltAddr sailWidth s) :
     FlatStoreMem joltAddr 8 s :=
   h.jolt_mem.toFlatStoreMem
+
+/-- The Jolt-side dword bytes carried by the store memory context. -/
+theorem StoreMemoryContext.jolt_bytes
+    {sailAddr joltAddr : BitVec 64} {sailWidth : Nat} {s : SailState}
+    (h : StoreMemoryContext sailAddr joltAddr sailWidth s) :
+    DwordBytesPresent joltAddr s :=
+  h.jolt_mem.bytes
 
 /-- The enclosing dword base used by store expansions is eight-byte aligned. -/
 theorem store_dword_base_aligns (val : BitVec 64) (imm : BitVec 12) :
@@ -316,10 +289,10 @@ theorem mem_write_value_byte_eq_state_after_byte_store
     mem_write_value (physaddr.Physaddr addr) 1 data
       (Store Data) false false false s =
     .ok (Ok true) (state_after_byte_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
   have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine
-    hcfg.machine_mode
+    hcfg.cur_privilege.value
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
     checked_mem_write
   simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
@@ -362,10 +335,10 @@ theorem mem_write_value_halfword_eq_state_after_halfword_store
     mem_write_value (physaddr.Physaddr addr) 2 data
       (Store Data) false false false s =
     .ok (Ok true) (state_after_halfword_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
   have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine
-    hcfg.machine_mode
+    hcfg.cur_privilege.value
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
     checked_mem_write
   simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
@@ -408,10 +381,10 @@ theorem mem_write_value_word_eq_state_after_word_store
     mem_write_value (physaddr.Physaddr addr) 4 data
       (Store Data) false false false s =
     .ok (Ok true) (state_after_word_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
   have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine
-    hcfg.machine_mode
+    hcfg.cur_privilege.value
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
     checked_mem_write
   simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
@@ -664,7 +637,7 @@ theorem vmem_write_addr_word_store_bridge
   simp only [EStateM.bind, EStateM.map, hea_int, hwrite_int]
   rfl
 
-/-- Under flat byte-store memory assumptions, virtual byte stores are the
+/-- Under exact byte-store memory evidence, virtual byte stores are the
 canonical one-byte hashmap update. -/
 theorem vmem_write_addr_byte_store_reduces
     (addr : BitVec 64) (data : BitVec 8) (s : SailState)
@@ -677,7 +650,7 @@ theorem vmem_write_addr_byte_store_reduces
     (mem_write_ea_plain_store_ok addr 1 s)
     (mem_write_value_byte_eq_state_after_byte_store addr data s hcfg hstore)
 
-/-- Under aligned flat halfword-store memory assumptions, virtual halfword
+/-- Under exact aligned halfword-store memory evidence, virtual halfword
 stores are the canonical two-byte hashmap update. -/
 theorem vmem_write_addr_halfword_store_reduces
     (addr : BitVec 64) (data : BitVec 16) (s : SailState)
@@ -693,7 +666,7 @@ theorem vmem_write_addr_halfword_store_reduces
     (mem_write_value_halfword_eq_state_after_halfword_store
       addr data s hcfg hstore)
 
-/-- Under aligned flat word-store memory assumptions, virtual word stores are
+/-- Under exact aligned word-store memory evidence, virtual word stores are
 the canonical four-byte hashmap update. -/
 theorem vmem_write_addr_word_store_reduces
     (addr : BitVec 64) (data : BitVec 32) (s : SailState)
@@ -708,13 +681,13 @@ theorem vmem_write_addr_word_store_reduces
     (mem_write_ea_plain_store_ok addr 4 s)
     (mem_write_value_word_eq_state_after_word_store addr data s hcfg hstore)
 
-/-- The Jolt-side final dword store for a store expansion reduces from the
-compact `StoreMemoryAssumptions` bundle. -/
+/-- The Jolt-side final dword store for a store expansion reduces from internal
+`StoreMemoryContext`. -/
 theorem vmem_write_addr_store_dword_base_reduces
     {sailAddr : BitVec 64} {sailWidth : Nat}
     (val : BitVec 64) (imm : BitVec 12) (data : BitVec 64)
     (s : SailState) (hcfg : JoltConfig s)
-    (hmem : StoreMemoryAssumptions
+    (hmem : StoreMemoryContext
       sailAddr (compute_aligned_dword_base_address val imm) sailWidth s) :
     vmem_write_addr
       (Virtaddr (compute_aligned_dword_base_address val imm)) 8 data
@@ -728,8 +701,8 @@ theorem vmem_write_addr_store_dword_base_reduces
     (hmem.jolt_store_mem).pmp
     (hmem.jolt_store_mem).mmio
 
-/-- Register-addressed byte stores reduce through the compact store-memory
-assumption for the effective address. -/
+/-- Register-addressed byte stores reduce through exact store memory evidence
+for the effective address. -/
 theorem vmem_write_byte_store_reduces (imm : BitVec 12) (rs1 : regidx)
     (s : SailState) (hcfg : JoltConfig s)
     (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
@@ -749,8 +722,8 @@ theorem vmem_write_byte_store_reduces (imm : BitVec 12) (rs1 : regidx)
     ext_data_get_addr, hrx,
     vmem_write_addr_byte_store_reduces _ data s hcfg hstore]
 
-/-- Register-addressed halfword stores reduce through the compact store-memory
-assumption for the aligned effective address. -/
+/-- Register-addressed halfword stores reduce through exact store memory evidence
+for the aligned effective address. -/
 theorem vmem_write_halfword_store_reduces (imm : BitVec 12) (rs1 : regidx)
     (s : SailState) (hcfg : JoltConfig s)
     (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
@@ -771,8 +744,8 @@ theorem vmem_write_halfword_store_reduces (imm : BitVec 12) (rs1 : regidx)
     ext_data_get_addr, hrx,
     vmem_write_addr_halfword_store_reduces _ data s hcfg halign hstore]
 
-/-- Register-addressed word stores reduce through the compact store-memory
-assumption for the aligned effective address. -/
+/-- Register-addressed word stores reduce through exact store memory evidence
+for the aligned effective address. -/
 theorem vmem_write_word_store_reduces (imm : BitVec 12) (rs1 : regidx)
     (s : SailState) (hcfg : JoltConfig s)
     (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)

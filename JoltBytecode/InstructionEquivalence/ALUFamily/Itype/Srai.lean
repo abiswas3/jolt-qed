@@ -1,3 +1,4 @@
+import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSRAI
@@ -128,10 +129,11 @@ theorem sraiProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
 /-- Main program-level equivalence for `SRAI`. -/
 theorem sraiProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
     (js : SailJoltState)
-    (v : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail) :
+    (h : ALUFamily.UnarySourceReadAssumptions rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js) =
     (execute_SHIFTIOP shamt rs1 rd sop.SRAI).run js.sail := by
+  let v := h.rs1_val
+  have h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail := h.rs1_read.value_eq
   by_cases hrd : rd = regidx.Regidx 0
   · subst rd
     unfold JoltISA.sraiProgram

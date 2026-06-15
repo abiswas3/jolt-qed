@@ -95,8 +95,8 @@ theorem setupBlock (rest : JoltISA.Program)
     simpa [daddr, compute_aligned_dword_base_address, load_effective_address,
       aligned_dword_addr_eq] using
       (aligned_dword_addr_is_aligned_dword_access val imm)
-  have hd : DwordLoadAssumptions daddr js.sail :=
-    dwordLoadAssumptions_of_aligned_phys daddr js.sail h_daddr_aligned
+  have hd : DwordLoadEvidence daddr js.sail :=
+    dwordLoadEvidence_of_aligned_phys daddr js.sail h_daddr_aligned
       (by simpa [daddr] using h_dword_phys)
   have hld_read :
       vmem_read_addr (Virtaddr (js1.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12))) 0 8

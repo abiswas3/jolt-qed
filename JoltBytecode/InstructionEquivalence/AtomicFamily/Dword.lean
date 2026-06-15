@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Common
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.JoltISA.Semantics.Lemmas
 import JoltBytecode.JoltISA.Semantics.Instructions.Add
@@ -379,7 +380,7 @@ theorem amo_dword_load_old_aligned_run_into
     (hcfg : JoltConfig js.sail)
     (addr : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr amoAddr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr amoAddr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
@@ -389,13 +390,13 @@ theorem amo_dword_load_old_aligned_run_into
       js_afterLoad.vregs oldReg =
         loaded_dword_at js.sail addr := by
   have haligned := amo_dword_aligned_access addr h_align
-  have hload_assumptions : DwordLoadAssumptions addr js.sail :=
-    dwordLoadAssumptions_of_aligned_phys addr js.sail haligned
-      (AmoMemoryAssumptions.jolt_load_mem h_mem)
+  have hload_evidence : DwordLoadEvidence addr js.sail :=
+    dwordLoadEvidence_of_aligned_phys addr js.sail haligned
+      (AmoMemoryContext.jolt_load_mem h_mem)
   have hload :
       vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false js.sail =
         .ok (Ok (loaded_dword_at js.sail addr)) js.sail :=
-    aligned_dword_vmem_read_reduces addr js.sail hcfg hload_assumptions
+    aligned_dword_vmem_read_reduces addr js.sail hcfg hload_evidence
   exact
     amo_dword_ld_old_run_into oldReg rs1 js addr
       (loaded_dword_at js.sail addr) hrs1 h_align hload
@@ -407,7 +408,7 @@ theorem amo_dword_load_old_aligned_run
     (hcfg : JoltConfig js.sail)
     (addr : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr amoAddr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr amoAddr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
@@ -429,7 +430,7 @@ theorem amo_dword_store_xreg_result_after_load_aligned_run
     (addr result : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok result js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr amoAddr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr amoAddr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hld_sail : js_afterLoad.sail = js.sail) :
     ∃ js_afterStore : SailJoltState,
@@ -446,8 +447,8 @@ theorem amo_dword_store_xreg_result_after_load_aligned_run
         .ok (Ok true) (state_after_dword_store js.sail addr result) :=
     vmem_write_addr_dword_store_reduces addr result js.sail hcfg
       haligned.toAlignedAccess
-      (AmoMemoryAssumptions.jolt_store_mem h_mem).pmp
-      (AmoMemoryAssumptions.jolt_store_mem h_mem).mmio
+      (AmoMemoryContext.jolt_store_mem h_mem).pmp
+      (AmoMemoryContext.jolt_store_mem h_mem).mmio
   have hrs1_afterLoad :
       rX_bits rs1 js_afterLoad.sail = .ok addr js_afterLoad.sail := by
     rw [hld_sail]
@@ -1522,7 +1523,7 @@ theorem amo_dword_store_vreg_result_after_middle_aligned_run_from
     (hcfg : JoltConfig js.sail)
     (addr result : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr amoAddr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr amoAddr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hmiddle_sail : js_afterMiddle.sail = js.sail)
     (hmiddle_result : js_afterMiddle.vregs valueReg = result) :
@@ -1541,8 +1542,8 @@ theorem amo_dword_store_vreg_result_after_middle_aligned_run_from
         .ok (Ok true) (state_after_dword_store js.sail addr result) :=
     vmem_write_addr_dword_store_reduces addr result js.sail hcfg
       haligned.toAlignedAccess
-      (AmoMemoryAssumptions.jolt_store_mem h_mem).pmp
-      (AmoMemoryAssumptions.jolt_store_mem h_mem).mmio
+      (AmoMemoryContext.jolt_store_mem h_mem).pmp
+      (AmoMemoryContext.jolt_store_mem h_mem).mmio
   have hrs1_afterMiddle :
       rX_bits rs1 js_afterMiddle.sail =
         .ok addr js_afterMiddle.sail := by
@@ -1567,7 +1568,7 @@ theorem amo_dword_store_vreg_result_after_middle_aligned_run
     (hcfg : JoltConfig js.sail)
     (addr result : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr amoAddr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr amoAddr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hmiddle_sail : js_afterMiddle.sail = js.sail)
     (hmiddle_result : js_afterMiddle.vregs JoltISA.amoNewVReg = result) :
@@ -1636,7 +1637,7 @@ theorem amo_dword_double_binop_program_concrete_aligned
     (hcfg : JoltConfig js.sail)
     (addr result : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hmiddle :
       ∀ js_afterLoad : SailJoltState,
@@ -1760,7 +1761,7 @@ theorem amo_dword_is_aligned_paddr_true (addr : BitVec 64)
 dword value. -/
 theorem amo_dword_read_ram_reserved_eq_loaded_dword
     (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : DwordBytesPresent addr s)
     (h_no_ovf : addr.toNat + 7 < 2 ^ 64) :
     LeanRV64D.Functions.read_ram read_kind.Read_RISCV_reserved
       (physaddr.Physaddr addr) 8 false s =
@@ -1769,13 +1770,13 @@ theorem amo_dword_read_ram_reserved_eq_loaded_dword
     LeanRV64D.Functions.read_ram read_kind.Read_plain
       (physaddr.Physaddr addr) 8 false s =
     .ok (loaded_dword_at s addr, default_meta) s
-  exact read_ram_eq_loaded_dword addr s h_pop h_no_ovf
+  exact read_ram_eq_loaded_dword addr s hbytes h_no_ovf
 
 /-- The checked AMO dword read reduces to the canonical loaded dword when PMP
 and readable-MMIO checks say the access is ordinary RAM. -/
 theorem amo_dword_checked_mem_read_eq_loaded_dword
     (op : amoop) (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : DwordBytesPresent addr s)
     (h_no_ovf : addr.toNat + 7 < 2 ^ 64)
     (hfm : FlatAtomicMem op addr 8 s) :
     checked_mem_read (Atomic (op, Data, Data)) Privilege.Machine
@@ -1786,7 +1787,7 @@ theorem amo_dword_checked_mem_read_eq_loaded_dword
     Bool.false_eq_true, if_false]
   unfold read_kind_of_flags
   simp only [pure, EStateM.pure]
-  rw [amo_dword_read_ram_reserved_eq_loaded_dword addr s h_pop h_no_ovf]
+  rw [amo_dword_read_ram_reserved_eq_loaded_dword addr s hbytes h_no_ovf]
 
 /-- A full AMO dword memory read reduces through privilege, alignment, PMP, and
 RAM checks to the canonical loaded dword. -/
@@ -1799,9 +1800,9 @@ theorem amo_dword_mem_read_eq_loaded_dword
     mem_read (Atomic (op, Data, Data))
       (physaddr.Physaddr addr) 8 false false true s =
     .ok (Ok (loaded_dword_at s addr)) s := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
-  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.cur_privilege.value
   have h_paddr_aligned := amo_dword_is_aligned_paddr_true addr h_align
   have h_mpp_check : decide (0#1 = 1#1) = false := by decide
   unfold mem_read mem_read_priv
@@ -1815,7 +1816,7 @@ theorem amo_dword_mem_read_eq_loaded_dword
   unfold LeanRV64D.Functions.not
   simp only [Bool.not_true, Bool.false_eq_true, if_false]
   rw [amo_dword_checked_mem_read_eq_loaded_dword
-    op addr s hcfg.mem_populated h_no_ovf hfm]
+    op addr s hfm.bytes h_no_ovf hfm]
   rfl
 
 /-- The AMO dword write effective-address check succeeds for aligned physical
@@ -1864,9 +1865,9 @@ theorem amo_dword_mem_write_value_eq_state_after_dword_store
     mem_write_value (physaddr.Physaddr addr) 8 data
       (Atomic (op, Data, Data)) false false true s =
     .ok (Ok true) (state_after_dword_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
-  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.cur_privilege.value
   have h_paddr_aligned := amo_dword_is_aligned_paddr_true addr h_align
   have h_mpp_check : decide (0#1 = 1#1) = false := by decide
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
@@ -1967,7 +1968,7 @@ hashmap dword store. -/
 theorem amo_dword_mem_write_value_sail_result
     (op : amoop) (addr rs2Val result : BitVec 64) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hresult :
       amoDwordSailResult op
@@ -2074,7 +2075,7 @@ theorem execute_AMO_dword_non_cas_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hnot_cas : (op == amoop.AMOCAS) = false)
     (hresult :
@@ -2116,7 +2117,7 @@ theorem amo_dword_double_binop_program_eq_sail_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hnot_cas : (op == amoop.AMOCAS) = false)
     (hmiddle :
@@ -2217,7 +2218,7 @@ theorem amo_dword_double_binop_program_eq_sail
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr addr js.sail)
     (hnot_cas : (op == amoop.AMOCAS) = false)
     (hmiddle :
       ∀ js_afterLoad : SailJoltState,
@@ -2260,7 +2261,7 @@ theorem amo_dword_double_select_program_concrete_aligned
     (hcfg : JoltConfig js.sail)
     (addr result : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hmiddle :
       ∀ js_afterLoad : SailJoltState,
@@ -2362,7 +2363,7 @@ theorem amo_dword_double_select_program_eq_sail_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hnot_cas : (op == amoop.AMOCAS) = false)
     (hmiddle :
@@ -2431,7 +2432,7 @@ theorem amo_dword_double_select_program_eq_sail
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions op 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext op 8 addr addr js.sail)
     (hnot_cas : (op == amoop.AMOCAS) = false)
     (hmiddle :
       ∀ js_afterLoad : SailJoltState,

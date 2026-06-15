@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Environment
+import JoltBytecode.Derived
 import Mathlib.Tactic.IntervalCases
 
 set_option linter.unusedVariables false
@@ -23,10 +23,94 @@ memory-touching Jolt instructions in terms that are easy to reason about,
 and are related back to Sail's pipeline via bridge theorems elsewhere.
 -/
 
+-- ============================================================================
+-- Exact flat-memory predicates used by vmem helper lemmas
+-- ============================================================================
+
+/-- Exact facts needed to reduce one ordinary `vmem_read_addr` data-load access
+to a direct finite-memory read.
+
+The fields mirror the Sail pipeline checks used by `vmem_read` after address
+translation has reduced to the bare physical address: bytes are present in the
+finite memory map, PMP permits the load, and the address is not readable MMIO. -/
+structure FlatPhysMem (addr : BitVec 64) (width : Nat) (s : SailState) :
+    Prop where
+  bytes : MemBytesPresent addr width s
+  pmp : LoadPmpOk addr width s
+  mmio : NotReadableMmio addr width s
+
+/-- Exact facts needed to reduce one ordinary `vmem_write_addr` data-store
+access to a direct finite-memory write.
+
+Stores insert bytes into the finite memory map, so this does not require the
+target bytes to be present before the write. Read-modify-write expansions use
+`FlatLoadStoreMem`, because those proofs also read the original dword. -/
+structure FlatStoreMem (addr : BitVec 64) (width : Nat) (s : SailState) :
+    Prop where
+  pmp : StorePmpOk addr width s
+  mmio : NotWritableMmio addr width s
+
+/-- Exact facts needed by Jolt read-modify-write expansions that first reduce a
+`vmem_read_addr` dword load and later reduce a `vmem_write_addr` dword store at
+the same flat-memory window.
+
+Jolt store and `.W` AMO expansions load an enclosing dword, modify selected
+lanes, then store the enclosing dword. The `bytes` field is the pre-write read
+side; the PMP/MMIO fields cover both the load and store sides. -/
+structure FlatLoadStoreMem (addr : BitVec 64) (width : Nat) (s : SailState) :
+    Prop where
+  bytes : MemBytesPresent addr width s
+  load_pmp : LoadPmpOk addr width s
+  store_pmp : StorePmpOk addr width s
+  readable : NotReadableMmio addr width s
+  writable : NotWritableMmio addr width s
+
+namespace FlatLoadStoreMem
+
+/-- Use the read half of a read-modify-write flat-memory window. -/
+theorem toFlatPhysMem
+    {addr : BitVec 64} {width : Nat} {s : SailState}
+    (h : FlatLoadStoreMem addr width s) :
+    FlatPhysMem addr width s :=
+  { bytes := h.bytes
+    pmp := h.load_pmp
+    mmio := h.readable }
+
+/-- Use the write half of a read-modify-write flat-memory window. -/
+theorem toFlatStoreMem
+    {addr : BitVec 64} {width : Nat} {s : SailState}
+    (h : FlatLoadStoreMem addr width s) :
+    FlatStoreMem addr width s :=
+  { pmp := h.store_pmp
+    mmio := h.writable }
+
+end FlatLoadStoreMem
+
+/-- Exact facts needed to reduce Sail's native AMO memory operation on the
+ordinary flat-memory path.
+
+The PMP check is the atomic PMP check, not separate load/store checks. The MMIO
+predicates are still stated separately because the generated Sail memory
+pipeline queries readable and writable MMIO paths independently. -/
+structure FlatAtomicMem (op : amoop) (addr : BitVec 64) (width : Nat)
+    (s : SailState) : Prop where
+  bytes : MemBytesPresent addr width s
+  pmp : AtomicPmpOk op addr width s
+  readable : NotReadableMmio addr width s
+  writable : NotWritableMmio addr width s
+
+/-- Exact facts needed to reduce Sail's native load-reserved memory operation on
+the ordinary flat-memory path. -/
+structure FlatLoadReservedMem (addr : BitVec 64) (width : Nat)
+    (s : SailState) : Prop where
+  bytes : MemBytesPresent addr width s
+  pmp : LoadReservedPmpOk addr width s
+  readable : NotReadableMmio addr width s
+
 -- The 8-bit byte at a given vaddr. Direct hash-map lookup on `s.mem`.
 -- WARNING: returns `0` when vaddr is not populated. Indistinguishable from
 -- a legitimately-stored `0`. Callers must carry a populatedness hypothesis
--- (e.g. `JoltConfig.mem_populated`) to rule out the default branch.
+-- (e.g. `MemBytesPresent`) to rule out the default branch.
 def loaded_byte_at (s : SailState) (vaddr : BitVec 64) : BitVec 8 :=
   (s.mem.get? vaddr.toNat).getD 0
 
@@ -56,7 +140,7 @@ def loaded_dword_at (s : SailState) (vaddr : BitVec 64) : BitVec 64 :=
   loaded_byte_at s vaddr
 
 -- ============================================================================
--- Reusable pipeline assumptions
+-- Reusable pipeline evidence
 -- ============================================================================
 
 /-- The access at `addr` of `width` bytes will not be split into multiple
@@ -73,12 +157,6 @@ structure AlignedAccess (addr : BitVec 64) (width : Nat) : Prop where
 structure AlignedDwordAccess (addr : BitVec 64) : Prop extends AlignedAccess addr 8 where
   align : addr &&& 7 = 0
   no_ovf : addr.toNat + 7 < 2 ^ 64
-
-/-- Physical memory at `addr` of `width` bytes is ordinary RAM, not MMIO. -/
-structure FlatPhysMem (addr : BitVec 64) (width : Nat) (s : SailState) : Prop where
-  pmp : phys_access_check (Load Data) Privilege.Machine (physaddr.Physaddr addr) width false s =
-    .ok none s
-  mmio : within_mmio_readable (physaddr.Physaddr addr) width s = .ok false s
 
 -- ============================================================================
 -- Reusable pure alignment facts
@@ -233,8 +311,11 @@ theorem access_misaligned_4_unaligned_true (addr : BitVec 64)
   have h_mod_int : (↑addr.toNat : Int) % 4 ≠ 0 := by
     intro h0
     apply h_mod
-    norm_num at h0 ⊢
-    exact_mod_cast h0
+    have hdiv_int : (4 : Int) ∣ (addr.toNat : Int) :=
+      Int.dvd_of_emod_eq_zero h0
+    have hdiv_nat : 4 ∣ addr.toNat := by
+      exact_mod_cast hdiv_int
+    exact Nat.mod_eq_zero_of_dvd hdiv_nat
   simp [Int.tmod, h_mod_int, LeanRV64D.Functions.not, plat_enable_misaligned_access]
 
 /-- A 4-aligned address doesn't fragment — `split_misaligned` yields the
@@ -254,6 +335,38 @@ theorem split_misaligned_aligned_4 (addr : BitVec 64)
         Nat.and_two_pow_sub_one_eq_mod] at h
     exact h
   simp [Int.tmod, h_mod, pure, EStateM.pure]
+
+/-- A 4-aligned 64-bit address has room for the full word window. -/
+theorem aligned_word_addr_no_ovf (addr : BitVec 64)
+    (halign : addr &&& 3 = 0) :
+    addr.toNat + 3 < 2 ^ 64 := by
+  have h_mod : addr.toNat % 4 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h3 : (3 : BitVec 64).toNat = 3 := by decide
+    have h0 : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h3, h0,
+        show (3 : Nat) = 2^2 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  have hlt : addr.toNat < 2 ^ 64 := addr.isLt
+  omega
+
+/-- A 2-aligned 64-bit address has room for the full halfword window. -/
+theorem aligned_halfword_addr_no_ovf (addr : BitVec 64)
+    (halign : addr &&& 1 = 0) :
+    addr.toNat + 1 < 2 ^ 64 := by
+  have h_mod : addr.toNat % 2 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h1 : (1 : BitVec 64).toNat = 1 := by decide
+    have h0 : (0 : BitVec 64).toNat = 0 := by decide
+    rw [h1, h0,
+        show (1 : Nat) = 2^1 - 1 from by norm_num,
+        Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  have hlt : addr.toNat < 2 ^ 64 := addr.isLt
+  omega
 
 /-- A 2-aligned address (low 1 bit zero) doesn't trigger the misalignment
     exception for a 2-byte access. -/
@@ -293,8 +406,11 @@ theorem access_misaligned_2_unaligned_true (addr : BitVec 64)
   have h_mod_int : (↑addr.toNat : Int) % 2 ≠ 0 := by
     intro h0
     apply h_mod
-    norm_num at h0 ⊢
-    exact_mod_cast h0
+    have hdiv_int : (2 : Int) ∣ (addr.toNat : Int) :=
+      Int.dvd_of_emod_eq_zero h0
+    have hdiv_nat : 2 ∣ addr.toNat := by
+      exact_mod_cast hdiv_int
+    exact Nat.mod_eq_zero_of_dvd hdiv_nat
   simp [Int.tmod, h_mod_int, LeanRV64D.Functions.not, plat_enable_misaligned_access]
 
 /-- A 2-aligned address doesn't fragment — `split_misaligned` yields the
@@ -348,20 +464,19 @@ theorem readByte_eq (n : Nat) (s : SailState) (v : BitVec 8)
 -- ============================================================================
 
 theorem readBytes_8_eq_loaded_dword (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : MemBytesPresent addr 8 s)
     (h_no_ovf : addr.toNat + 7 < 2 ^ 64) :
     (PreSail.readBytes 8 addr.toNat : SailM _) s =
     .ok (loaded_dword_at s addr, none) s := by
-  have gb : ∀ k : Nat, ∃ v, s.mem.get? k = some v := by
-    intro k; exact Option.ne_none_iff_exists'.mp (h_pop k)
-  obtain ⟨b0, hb0⟩ := gb addr.toNat
-  obtain ⟨b1, hb1⟩ := gb (addr.toNat + 1)
-  obtain ⟨b2, hb2⟩ := gb (addr.toNat + 2)
-  obtain ⟨b3, hb3⟩ := gb (addr.toNat + 3)
-  obtain ⟨b4, hb4⟩ := gb (addr.toNat + 4)
-  obtain ⟨b5, hb5⟩ := gb (addr.toNat + 5)
-  obtain ⟨b6, hb6⟩ := gb (addr.toNat + 6)
-  obtain ⟨b7, hb7⟩ := gb (addr.toNat + 7)
+  obtain ⟨b0, hb0'⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 0 (by omega))
+  obtain ⟨b1, hb1⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 1 (by omega))
+  obtain ⟨b2, hb2⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 2 (by omega))
+  obtain ⟨b3, hb3⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 3 (by omega))
+  obtain ⟨b4, hb4⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 4 (by omega))
+  obtain ⟨b5, hb5⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 5 (by omega))
+  obtain ⟨b6, hb6⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 6 (by omega))
+  obtain ⟨b7, hb7⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 7 (by omega))
+  have hb0 : s.mem.get? addr.toNat = some b0 := by simpa using hb0'
   simp only [PreSail.readBytes, PreSail.readByte,
              bind, EStateM.bind, pure, EStateM.pure,
              MonadStateOf.get, EStateM.get, getThe, get,
@@ -379,12 +494,11 @@ theorem readBytes_8_eq_loaded_dword (addr : BitVec 64) (s : SailState)
   rfl
 
 theorem readBytes_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none) :
+    (hbytes : MemBytesPresent addr 1 s) :
     (PreSail.readBytes 1 addr.toNat : SailM _) s =
     .ok (loaded_byte_at s addr, none) s := by
-  have gb : ∀ k : Nat, ∃ v, s.mem.get? k = some v := by
-    intro k; exact Option.ne_none_iff_exists'.mp (h_pop k)
-  obtain ⟨b0, hb0⟩ := gb addr.toNat
+  obtain ⟨b0, hb0'⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 0 (by omega))
+  have hb0 : s.mem.get? addr.toNat = some b0 := by simpa using hb0'
   simp only [PreSail.readBytes, PreSail.readByte,
              bind, EStateM.bind, pure, EStateM.pure,
              MonadStateOf.get, EStateM.get, getThe, get,
@@ -393,14 +507,13 @@ theorem readBytes_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
   simp only [hb0, Option.getD]
 
 theorem readBytes_2_eq_loaded_halfword (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : MemBytesPresent addr 2 s)
     (h_no_ovf : addr.toNat + 1 < 2 ^ 64) :
     (PreSail.readBytes 2 addr.toNat : SailM _) s =
     .ok (loaded_halfword_at s addr, none) s := by
-  have gb : ∀ k : Nat, ∃ v, s.mem.get? k = some v := by
-    intro k; exact Option.ne_none_iff_exists'.mp (h_pop k)
-  obtain ⟨b0, hb0⟩ := gb addr.toNat
-  obtain ⟨b1, hb1⟩ := gb (addr.toNat + 1)
+  obtain ⟨b0, hb0'⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 0 (by omega))
+  obtain ⟨b1, hb1⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 1 (by omega))
+  have hb0 : s.mem.get? addr.toNat = some b0 := by simpa using hb0'
   simp only [PreSail.readBytes, PreSail.readByte,
              bind, EStateM.bind, pure, EStateM.pure,
              MonadStateOf.get, EStateM.get, getThe, get,
@@ -412,16 +525,15 @@ theorem readBytes_2_eq_loaded_halfword (addr : BitVec 64) (s : SailState)
   rfl
 
 theorem readBytes_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : MemBytesPresent addr 4 s)
     (h_no_ovf : addr.toNat + 3 < 2 ^ 64) :
     (PreSail.readBytes 4 addr.toNat : SailM _) s =
     .ok (loaded_word_at s addr, none) s := by
-  have gb : ∀ k : Nat, ∃ v, s.mem.get? k = some v := by
-    intro k; exact Option.ne_none_iff_exists'.mp (h_pop k)
-  obtain ⟨b0, hb0⟩ := gb addr.toNat
-  obtain ⟨b1, hb1⟩ := gb (addr.toNat + 1)
-  obtain ⟨b2, hb2⟩ := gb (addr.toNat + 2)
-  obtain ⟨b3, hb3⟩ := gb (addr.toNat + 3)
+  obtain ⟨b0, hb0'⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 0 (by omega))
+  obtain ⟨b1, hb1⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 1 (by omega))
+  obtain ⟨b2, hb2⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 2 (by omega))
+  obtain ⟨b3, hb3⟩ := Option.ne_none_iff_exists'.mp (hbytes.present 3 (by omega))
+  have hb0 : s.mem.get? addr.toNat = some b0 := by simpa using hb0'
   simp only [PreSail.readBytes, PreSail.readByte,
              bind, EStateM.bind, pure, EStateM.pure,
              MonadStateOf.get, EStateM.get, getThe, get,
@@ -435,7 +547,7 @@ theorem readBytes_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
   rfl
 
 theorem read_ram_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none) :
+    (hbytes : MemBytesPresent addr 1 s) :
     LeanRV64D.Functions.read_ram read_kind.Read_plain (physaddr.Physaddr addr) 1 false s =
     .ok (loaded_byte_at s addr, default_meta) s := by
   dsimp [LeanRV64D.Functions.read_ram,
@@ -443,11 +555,11 @@ theorem read_ram_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
          PreSail.ConcurrencyInterfaceV1.sail_mem_read,
          default_meta]
   simp only [bind, EStateM.bind, pure, EStateM.pure]
-  rw [readBytes_1_eq_loaded_byte addr s h_pop]
+  rw [readBytes_1_eq_loaded_byte addr s hbytes]
   simp [EStateM.pure]
 
 theorem read_ram_2_eq_loaded_halfword (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : MemBytesPresent addr 2 s)
     (h_no_ovf : addr.toNat + 1 < 2 ^ 64) :
     LeanRV64D.Functions.read_ram read_kind.Read_plain (physaddr.Physaddr addr) 2 false s =
     .ok (loaded_halfword_at s addr, default_meta) s := by
@@ -456,11 +568,11 @@ theorem read_ram_2_eq_loaded_halfword (addr : BitVec 64) (s : SailState)
          PreSail.ConcurrencyInterfaceV1.sail_mem_read,
          default_meta]
   simp only [bind, EStateM.bind, pure, EStateM.pure]
-  rw [readBytes_2_eq_loaded_halfword addr s h_pop h_no_ovf]
+  rw [readBytes_2_eq_loaded_halfword addr s hbytes h_no_ovf]
   simp [EStateM.pure]
 
 theorem read_ram_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : MemBytesPresent addr 4 s)
     (h_no_ovf : addr.toNat + 3 < 2 ^ 64) :
     LeanRV64D.Functions.read_ram read_kind.Read_plain (physaddr.Physaddr addr) 4 false s =
     .ok (loaded_word_at s addr, default_meta) s := by
@@ -469,11 +581,11 @@ theorem read_ram_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
          PreSail.ConcurrencyInterfaceV1.sail_mem_read,
          default_meta]
   simp only [bind, EStateM.bind, pure, EStateM.pure]
-  rw [readBytes_4_eq_loaded_word addr s h_pop h_no_ovf]
+  rw [readBytes_4_eq_loaded_word addr s hbytes h_no_ovf]
   simp [EStateM.pure]
 
 theorem checked_mem_read_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : MemBytesPresent addr 1 s)
     (hfm : FlatPhysMem addr 1 s) :
     checked_mem_read (Load Data) Privilege.Machine (physaddr.Physaddr addr) 1 false false false false s =
     .ok (Ok (loaded_byte_at s addr, default_meta)) s := by
@@ -482,10 +594,10 @@ theorem checked_mem_read_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
              Bool.false_eq_true, if_false]
   unfold read_kind_of_flags
   simp only [pure, EStateM.pure]
-  rw [read_ram_1_eq_loaded_byte addr s h_pop]
+  rw [read_ram_1_eq_loaded_byte addr s hbytes]
 
 theorem checked_mem_read_2_eq_loaded_halfword (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : MemBytesPresent addr 2 s)
     (h_no_ovf : addr.toNat + 1 < 2 ^ 64)
     (hfm : FlatPhysMem addr 2 s) :
     checked_mem_read (Load Data) Privilege.Machine (physaddr.Physaddr addr) 2 false false false false s =
@@ -495,10 +607,10 @@ theorem checked_mem_read_2_eq_loaded_halfword (addr : BitVec 64) (s : SailState)
              Bool.false_eq_true, if_false]
   unfold read_kind_of_flags
   simp only [pure, EStateM.pure]
-  rw [read_ram_2_eq_loaded_halfword addr s h_pop h_no_ovf]
+  rw [read_ram_2_eq_loaded_halfword addr s hbytes h_no_ovf]
 
 theorem checked_mem_read_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : MemBytesPresent addr 4 s)
     (h_no_ovf : addr.toNat + 3 < 2 ^ 64)
     (hfm : FlatPhysMem addr 4 s) :
     checked_mem_read (Load Data) Privilege.Machine (physaddr.Physaddr addr) 4 false false false false s =
@@ -508,16 +620,16 @@ theorem checked_mem_read_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
              Bool.false_eq_true, if_false]
   unfold read_kind_of_flags
   simp only [pure, EStateM.pure]
-  rw [read_ram_4_eq_loaded_word addr s h_pop h_no_ovf]
+  rw [read_ram_4_eq_loaded_word addr s hbytes h_no_ovf]
 
 theorem mem_read_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
     (hcfg : JoltConfig s)
     (hfm : FlatPhysMem addr 1 s) :
     mem_read (Load Data) (physaddr.Physaddr addr) 1 false false false s =
     .ok (Ok (loaded_byte_at s addr)) s := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
-  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.cur_privilege.value
   unfold mem_read mem_read_priv
   simp only [bind, EStateM.bind, pure, EStateM.pure, h_ms_read, h_priv]
   unfold effectivePrivilege
@@ -526,7 +638,7 @@ theorem mem_read_1_eq_loaded_byte (addr : BitVec 64) (s : SailState)
   simp only [bind, EStateM.bind, pure, EStateM.pure,
              Bool.false_or, Bool.false_and, Bool.false_eq_true, ite_false]
   simp (config := { decide := true }) only [ite_false, EStateM.pure, MemoryOpResult_drop_meta]
-  rw [checked_mem_read_1_eq_loaded_byte addr s hcfg.mem_populated hfm]
+  rw [checked_mem_read_1_eq_loaded_byte addr s hfm.bytes hfm]
 
 theorem mem_read_2_eq_loaded_halfword (addr : BitVec 64) (s : SailState)
     (hcfg : JoltConfig s)
@@ -534,9 +646,9 @@ theorem mem_read_2_eq_loaded_halfword (addr : BitVec 64) (s : SailState)
     (hfm : FlatPhysMem addr 2 s) :
     mem_read (Load Data) (physaddr.Physaddr addr) 2 false false false s =
     .ok (Ok (loaded_halfword_at s addr)) s := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
-  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.cur_privilege.value
   unfold mem_read mem_read_priv
   simp only [bind, EStateM.bind, pure, EStateM.pure, h_ms_read, h_priv]
   unfold effectivePrivilege
@@ -545,7 +657,7 @@ theorem mem_read_2_eq_loaded_halfword (addr : BitVec 64) (s : SailState)
   simp only [bind, EStateM.bind, pure, EStateM.pure,
              Bool.false_or, Bool.false_and, Bool.false_eq_true, ite_false]
   simp (config := { decide := true }) only [ite_false, EStateM.pure, MemoryOpResult_drop_meta]
-  rw [checked_mem_read_2_eq_loaded_halfword addr s hcfg.mem_populated h_no_ovf hfm]
+  rw [checked_mem_read_2_eq_loaded_halfword addr s hfm.bytes h_no_ovf hfm]
 
 theorem mem_read_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
     (hcfg : JoltConfig s)
@@ -553,9 +665,9 @@ theorem mem_read_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
     (hfm : FlatPhysMem addr 4 s) :
     mem_read (Load Data) (physaddr.Physaddr addr) 4 false false false s =
     .ok (Ok (loaded_word_at s addr)) s := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
-  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.cur_privilege.value
   unfold mem_read mem_read_priv
   simp only [bind, EStateM.bind, pure, EStateM.pure, h_ms_read, h_priv]
   unfold effectivePrivilege
@@ -564,7 +676,7 @@ theorem mem_read_4_eq_loaded_word (addr : BitVec 64) (s : SailState)
   simp only [bind, EStateM.bind, pure, EStateM.pure,
              Bool.false_or, Bool.false_and, Bool.false_eq_true, ite_false]
   simp (config := { decide := true }) only [ite_false, EStateM.pure, MemoryOpResult_drop_meta]
-  rw [checked_mem_read_4_eq_loaded_word addr s hcfg.mem_populated h_no_ovf hfm]
+  rw [checked_mem_read_4_eq_loaded_word addr s hfm.bytes h_no_ovf hfm]
 
 theorem vmem_read_addr_byte_bridge (addr : BitVec 64) (offset : BitVec 64) (s : SailState)
     (hcfg : JoltConfig s) (ha : AlignedAccess addr 1)
@@ -657,7 +769,7 @@ theorem vmem_read_addr_word_bridge (addr : BitVec 64) (offset : BitVec 64) (s : 
   bv_decide
 
 theorem read_ram_eq_loaded_dword (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : DwordBytesPresent addr s)
     (h_no_ovf : addr.toNat + 7 < 2 ^ 64) :
     LeanRV64D.Functions.read_ram read_kind.Read_plain (physaddr.Physaddr addr) 8 false s =
     .ok (loaded_dword_at s addr, default_meta) s := by
@@ -666,11 +778,11 @@ theorem read_ram_eq_loaded_dword (addr : BitVec 64) (s : SailState)
          PreSail.ConcurrencyInterfaceV1.sail_mem_read,
          default_meta]
   simp only [bind, EStateM.bind, pure, EStateM.pure]
-  rw [readBytes_8_eq_loaded_dword addr s h_pop h_no_ovf]
+  rw [readBytes_8_eq_loaded_dword addr s hbytes h_no_ovf]
   simp [EStateM.pure]
 
 theorem checked_mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : DwordBytesPresent addr s)
     (h_no_ovf : addr.toNat + 7 < 2 ^ 64)
     (hfm : FlatPhysMem addr 8 s) :
     checked_mem_read (Load Data) Privilege.Machine (physaddr.Physaddr addr) 8 false false false false s =
@@ -680,7 +792,7 @@ theorem checked_mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
              Bool.false_eq_true, if_false]
   unfold read_kind_of_flags
   simp only [pure, EStateM.pure]
-  rw [read_ram_eq_loaded_dword addr s h_pop h_no_ovf]
+  rw [read_ram_eq_loaded_dword addr s hbytes h_no_ovf]
 
 theorem mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
     (hcfg : JoltConfig s)
@@ -688,9 +800,9 @@ theorem mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
     (hfm : FlatPhysMem addr 8 s) :
     mem_read (Load Data) (physaddr.Physaddr addr) 8 false false false s =
     .ok (Ok (loaded_dword_at s addr)) s := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
-  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.cur_privilege.value
   unfold mem_read mem_read_priv
   simp only [bind, EStateM.bind, pure, EStateM.pure, h_ms_read, h_priv]
   unfold effectivePrivilege
@@ -699,7 +811,7 @@ theorem mem_read_eq_loaded_dword (addr : BitVec 64) (s : SailState)
   simp only [bind, EStateM.bind, pure, EStateM.pure,
              Bool.false_or, Bool.false_and, Bool.false_eq_true, ite_false]
   simp (config := { decide := true }) only [ite_false, EStateM.pure, MemoryOpResult_drop_meta]
-  rw [checked_mem_read_eq_loaded_dword addr s hcfg.mem_populated h_no_ovf hfm]
+  rw [checked_mem_read_eq_loaded_dword addr s hfm.bytes h_no_ovf hfm]
 
 theorem vmem_read_addr_pipeline_bridge (addr : BitVec 64) (s : SailState)
     (hcfg : JoltConfig s) (ha : AlignedAccess addr 8)

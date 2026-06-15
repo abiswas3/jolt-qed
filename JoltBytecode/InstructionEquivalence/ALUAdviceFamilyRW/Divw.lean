@@ -1,6 +1,7 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
+import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div_math
@@ -275,13 +276,15 @@ end JoltISA
 
 /-- Main program-level equivalence for `DIVW` with honest advice. -/
 theorem divwProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (dividend divisor : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.divwProgram rs2 rs1 rd
-                      (sail_divw_value dividend divisor false)
-                      (bv_abs (sail_remw_value dividend divisor false)))).run js) =
+                      (sail_divw_value h.rs1_val h.rs2_val false)
+                      (bv_abs (sail_remw_value h.rs1_val h.rs2_val false)))).run js) =
     (execute_DIVW rs2 rs1 rd false).run js.sail := by
+  let dividend := h.rs1_val
+  let divisor := h.rs2_val
+  have hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail := h.rs1_read.value_eq
+  have hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail := h.rs2_read.value_eq
   exact JoltISA.divwProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
 
 end

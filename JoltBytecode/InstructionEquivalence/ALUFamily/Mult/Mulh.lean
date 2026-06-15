@@ -1,5 +1,6 @@
 import JoltBytecode.JoltISA.Expansions.Mul
 import JoltBytecode.JoltISA.Semantics.Instructions
+import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib
 
@@ -350,11 +351,13 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
 the same projected architectural result as Sail's `MULH` semantics. -/
 theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx)
     (js : SailJoltState)
-    (v1 v2 : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js) =
     (execute_MUL rs2 rs1 rd mulhOp).run js.sail := by
+  let v1 := h.rs1_val
+  let v2 := h.rs2_val
+  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read.value_eq
+  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read.value_eq
   by_cases hrd : rd = regidx.Regidx 0
   · subst rd
     unfold JoltISA.mulhProgram

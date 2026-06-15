@@ -37,7 +37,7 @@ theorem execute_AMOXORD_reduces_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOXOR 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext amoop.AMOXOR 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     (execute_AMO amoop.AMOXOR false false rs2 rs1 8 rd).run js.sail =
       .ok RETIRE_SUCCESS (amoxordFinalSailState rd js.sail addr rs2Val) := by
@@ -64,7 +64,7 @@ theorem amoxordProgram_concrete_aligned
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOXOR 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext amoop.AMOXOR 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     ∃ jsf : SailJoltState,
       (JoltISA.execProgram (JoltISA.amoxordProgram rs2 rs1 rd)).run js =
@@ -96,7 +96,7 @@ theorem amoxordProgram_eq_sail_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOXOR 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext amoop.AMOXOR 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     projectResult ((JoltISA.execProgram
       (JoltISA.amoxordProgram rs2 rs1 rd)).run js) =
@@ -116,18 +116,18 @@ theorem amoxordProgram_eq_sail_aligned
       (amo_dword_xor_middle_after_load rs2 js addr rs2Val hrs2)
       (amoxord_sail_result rs2Val (loaded_dword_at js.sail addr))
 
-/-- Main public theorem for `AMOXOR.D`.
+/-- Internal memory-context theorem for `AMOXOR.D`.
 
 The theorem exposes no alignment hypothesis; it delegates the aligned and
 misaligned cases to the shared dword double-binop theorem. -/
-theorem amoxordProgram_eq_sail
+theorem amoxordProgram_eq_sail_of_memory_context
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOXOR 8 addr addr js.sail) :
+    (h_mem : AmoMemoryContext amoop.AMOXOR 8 addr addr js.sail) :
     projectResult ((JoltISA.execProgram
       (JoltISA.amoxordProgram rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOXOR false false rs2 rs1 8 rd).run js.sail := by
@@ -145,6 +145,24 @@ theorem amoxordProgram_eq_sail
       (by decide)
       (amo_dword_xor_middle_after_load rs2 js addr rs2Val hrs2)
       (amoxord_sail_result rs2Val (loaded_dword_at js.sail addr))
+
+/-- Main public theorem for `AMOXOR.D`.
+
+The theorem takes one primitive-only atomic bundle. Exact memory context is
+derived internally from that bundle. -/
+theorem amoxordProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : AmoDwordProgramEqSailAssumptions amoop.AMOXOR rs2 rs1 rd js) :
+    projectResult ((JoltISA.execProgram
+      (JoltISA.amoxordProgram rs2 rs1 rd)).run js) =
+      (execute_AMO amoop.AMOXOR false false rs2 rs1 8 rd).run js.sail := by
+  let addr := h.rs1_val
+  let rs2Val := h.rs2_val
+  have h_mem : AmoMemoryContext amoop.AMOXOR 8 addr addr js.sail := by
+    simpa [addr] using h.memoryContext
+  exact amoxordProgram_eq_sail_of_memory_context
+    rs2 rs1 rd js h.cfg addr rs2Val
+    h.rs1_read.value_eq h.rs2_read.value_eq h.rd_readable.exists_value h_mem
 
 end AtomicFamily
 

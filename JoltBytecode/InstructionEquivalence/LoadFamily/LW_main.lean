@@ -4,6 +4,7 @@ import JoltBytecode.InstructionEquivalence.Memory.Utils
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
+import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib.Tactic.IntervalCases
@@ -36,15 +37,15 @@ From `tracer/src/instruction/lw.rs::inline_sequence_64`:
 
 This file proves equivalence for the structured `JoltISA.lwProgram`, using
 the bridge lemma (a pure bit-vector identity specialised to LW), the Sail-side
-load-pipeline helpers (`LWDwordReadAssumptions` and friends), and separate
+load-pipeline helpers (`LWDwordReadEvidence` and friends), and separate
 aligned/misaligned cases.
 
 ## What lives here (by role)
 
 * `jolt_lw_bridge` — specialisation of the DwordArithmetic identities to
   LW: Jolt's logic-phase expression equals `sign_extend (loaded_word_at …)`.
-* `LWDwordReadAssumptions` + `lw_dword_*_of_*` — Sail-side structures
-  packaging the dword physical-memory assumption.
+* `LWDwordReadEvidence` + `lw_dword_*_of_*` — Sail-side structures
+  packaging exact dword physical-memory evidence.
 * `execute_LW_reduces`, `execute_LW_misaligned` — Sail-side `execute_LOAD`
   reductions for the two cases.
 * `lwProgram_concrete_aligned`, `lwProgram_concrete_misaligned` —
@@ -88,35 +89,35 @@ theorem jolt_lw_bridge (s : SailState) (addr : BitVec 64)
   simp only [srl_sign_extend_word_extracts_word _ _ halign, ← loaded_word_in_dword _ _ halign]
 
 -- ============================================================================
--- Sail-side dword-read assumption bundles (LW-specific)
+-- Sail-side dword-read evidence (LW-specific)
 -- ============================================================================
 
-/-- LW-flavoured dword read assumptions: the aligned dword base
+/-- LW-flavoured dword read evidence: the aligned dword base
     `aligned_dword_addr val imm` lives in ordinary RAM (not MMIO).
     Translation is derived from `JoltConfig`. Currently unused; kept for
-    callers that want a bundled assumption type. -/
-structure LWDwordReadAssumptions (val : BitVec 64) (imm : BitVec 12) (s : SailState) : Prop where
+    callers that want a bundled evidence type. -/
+structure LWDwordReadEvidence (val : BitVec 64) (imm : BitVec 12) (s : SailState) : Prop where
   phys : FlatPhysMem (aligned_dword_addr val imm) 8 s
 
-/-- Promote `LWDwordReadAssumptions` to the generic
-    `DwordLoadAssumptions`. -/
-theorem lw_dword_load_assumptions_of_local
+/-- Promote `LWDwordReadEvidence` to the generic
+    `DwordLoadEvidence`. -/
+theorem lw_dword_load_evidence_of_local
     (val : BitVec 64) (imm : BitVec 12) (s : SailState)
-    (h : LWDwordReadAssumptions val imm s) :
-    DwordLoadAssumptions (aligned_dword_addr val imm) s := by
+    (h : LWDwordReadEvidence val imm s) :
+    DwordLoadEvidence (aligned_dword_addr val imm) s := by
   refine
     { aligned := aligned_dword_addr_is_aligned_dword_access val imm
       phys := h.phys }
 
-/-- Construct `LWDwordReadAssumptions` from the `compute_aligned_dword_base_address`-phrased
+/-- Construct `LWDwordReadEvidence` from the `compute_aligned_dword_base_address`-phrased
     phys hypothesis. (The two addresses are definitionally equal;
     `aligned_dword_addr_eq` bridges the notation.) -/
-theorem lw_dword_read_assumptions_of_addr
+theorem lw_dword_read_evidence_of_addr
     (val : BitVec 64)
     (imm : BitVec 12)
     (s : SailState)
     (hphys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 s) :
-    LWDwordReadAssumptions val imm s := by
+    LWDwordReadEvidence val imm s := by
   have haddr : aligned_dword_addr val imm = compute_aligned_dword_base_address val imm := by
     simp [compute_aligned_dword_base_address, load_effective_address, aligned_dword_addr_eq]
   exact { phys := by simpa [haddr] using hphys }
@@ -126,12 +127,12 @@ theorem lw_dword_read_assumptions_of_addr
 -- ============================================================================
 
 /-- Sail-side `execute_LOAD imm rs1 rd false 4` reduces to
-    `stateAfterWrite rd (sign_extend (loaded_word_at ea))` under aligned +
-    translate + phys + no-overflow assumptions. -/
+    `stateAfterWrite rd (sign_extend (loaded_word_at ea))` under aligned,
+    translate, physical-memory, and no-overflow evidence. -/
 theorem execute_LW_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hload : LoadReadAssumptions (load_effective_address val imm) 4 js.sail)
+    (hload : LoadReadEvidence (load_effective_address val imm) 4 js.sail)
     (h_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64) :
     (execute_LOAD imm rs1 rd false 4).run js.sail =
     .ok RETIRE_SUCCESS
@@ -159,10 +160,8 @@ theorem execute_LW_reduces (imm : BitVec 12) (rs1 rd : regidx)
     memory-alignment exception as Jolt. Uses
     `access_misaligned_4_unaligned_true` from `MemoryUtils`. -/
 theorem execute_LW_misaligned (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 4 js.sail)
-    (h_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64)
     (h_align : load_effective_address val imm &&& 3 ≠ 0)
     :
     (execute_LOAD imm rs1 rd false 4).run js.sail =
@@ -274,27 +273,29 @@ Jolt-ISA program. -/
 theorem lwProgram_eq_sail_aligned (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 4 js.sail)
-    (h_word_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64)
+    (hcfg : JoltConfig js.sail)
+    (hjolt_mem :
+      FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hsail_mem : FlatPhysMem (load_effective_address val imm) 4 js.sail)
     (h_align : load_effective_address val imm &&& 3 = 0) :
     projectResult ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd false 4).run js.sail := by
   let ea := load_effective_address val imm
-  have hload : LoadReadAssumptions (load_effective_address val imm) 4 js.sail := by
+  have hload : LoadReadEvidence (load_effective_address val imm) 4 js.sail := by
     refine
       { aligned := ?_
-        phys := hphys }
+        phys := hsail_mem }
     refine
       { misalign := ?_
         split := ?_ }
     · simpa [ea] using access_misaligned_4_aligned_false ea h_align
     · simpa [ea] using split_misaligned_aligned_4 ea h_align
   rcases lwProgram_concrete_aligned imm rs1 rd js hcfg val hrx h_align
-      h_dword_phys with
+      hjolt_mem with
     ⟨js', hjolt, hjolt_sail⟩
+  have h_word_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64 := by
+    simpa [ea] using aligned_word_addr_no_ovf ea h_align
   have hsail := execute_LW_reduces imm rs1 rd js hcfg val hrx hload h_word_no_ovf
   rw [hjolt]
   simp only [projectResult, project]
@@ -306,10 +307,7 @@ word alignment assertion. -/
 theorem lwProgram_eq_sail_misaligned (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 4 js.sail)
-    (h_word_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64)
     (h_align : load_effective_address val imm &&& 3 ≠ 0) :
     projectResult ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd false 4).run js.sail := by
@@ -324,8 +322,7 @@ theorem lwProgram_eq_sail_misaligned (imm : BitVec 12)
         .ok (ExecutionResult.Memory_Exception
           (Virtaddr ea, ExceptionType.E_Load_Addr_Align ())) js.sail := by
     simpa [ea] using
-      (execute_LW_misaligned imm rs1 rd js hcfg val hrx hphys
-        h_word_no_ovf h_align)
+      (execute_LW_misaligned imm rs1 rd js val hrx h_align)
   rw [hjolt]
   simp only [projectResult, project]
   symm
@@ -335,21 +332,48 @@ theorem lwProgram_eq_sail_misaligned (imm : BitVec 12)
 `lwProgram`, interpreted by `execProgram`, agrees with Sail's `execute_LOAD`
 for signed word loads.  The proof dispatches on the same alignment predicate
 that the first Jolt virtual instruction checks. -/
-theorem lwProgram_eq_sail (imm : BitVec 12)
+theorem lwProgram_eq_sail_of_setup (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 4 js.sail)
-    (h_word_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64) :
+    (hcfg : JoltConfig js.sail)
+    (hjolt_mem :
+      FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hsail_mem : FlatPhysMem (load_effective_address val imm) 4 js.sail) :
     projectResult ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd false 4).run js.sail := by
   let ea := load_effective_address val imm
   by_cases h_align : ea &&& 3 = 0
-  · exact lwProgram_eq_sail_aligned imm rs1 rd js hcfg val hrx
-      h_dword_phys hphys h_word_no_ovf h_align
-  · exact lwProgram_eq_sail_misaligned imm rs1 rd js hcfg val hrx
-      hphys h_word_no_ovf h_align
+  · exact lwProgram_eq_sail_aligned imm rs1 rd js val hrx
+      hcfg hjolt_mem hsail_mem h_align
+  · exact lwProgram_eq_sail_misaligned imm rs1 rd js val hrx
+      h_align
+
+/-- **Main program theorem for LW.**
+
+The public theorem takes one instruction-specific primitive assumption bundle. Internally
+the proof opens the bundle to recover the source-register value and the memory
+facts at the addresses computed from that value. -/
+theorem lwProgram_eq_sail (imm : BitVec 12)
+    (rs1 rd : regidx)
+    (js : SailJoltState)
+    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
+    projectResult ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js) =
+    (execute_LOAD imm rs1 rd false 4).run js.sail := by
+  let ea := load_effective_address h.rs1_val imm
+  let base := compute_aligned_dword_base_address h.rs1_val imm
+  have hcfg : JoltConfig js.sail := h.cfg
+  have h_jolt_phys : FlatPhysMem base 8 js.sail := by
+    simpa [base] using h.dwordPhys
+  by_cases h_align : ea &&& 3 = 0
+  · have h_sail_phys : FlatPhysMem ea 4 js.sail := by
+      simpa [ea] using h.wordPhys (by simpa [ea] using h_align)
+    exact lwProgram_eq_sail_aligned imm rs1 rd js h.rs1_val
+      h.rs1_read.value_eq hcfg
+      (by simpa [base] using h_jolt_phys)
+      (by simpa [ea] using h_sail_phys)
+      (by simpa [ea] using h_align)
+  · exact lwProgram_eq_sail_misaligned imm rs1 rd js h.rs1_val
+      h.rs1_read.value_eq (by simpa [ea] using h_align)
 
 end LW_main

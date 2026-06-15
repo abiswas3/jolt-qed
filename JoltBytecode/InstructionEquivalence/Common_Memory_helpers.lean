@@ -16,10 +16,11 @@ noncomputable section
 
 namespace InstructionEquivalence
 
-theorem dword_load_assumptions_of_aligned_phys (addr : BitVec 64) (s : SailState)
+/-- Build exact dword-load evidence from alignment and physical-memory facts. -/
+theorem dword_load_evidence_of_aligned_phys (addr : BitVec 64) (s : SailState)
     (haligned : AlignedDwordAccess addr)
     (hphys : FlatPhysMem addr 8 s) :
-    DwordLoadAssumptions addr s := by
+    DwordLoadEvidence addr s := by
   refine
     { aligned := haligned
       phys := hphys }

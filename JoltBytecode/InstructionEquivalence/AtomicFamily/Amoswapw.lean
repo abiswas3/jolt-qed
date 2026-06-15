@@ -23,7 +23,7 @@ theorem amo_word_swap_pre64_aligned_run
     (hcfg : JoltConfig js.sail)
     (addr : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (h_mem : AmoMemoryAssumptions op 4 (amoWordBase addr) addr js.sail)
+    (h_mem : AmoMemoryContext op 4 (amoWordBase addr) addr js.sail)
     (h_no_ovf : (amoWordBase addr).toNat + 7 < 2 ^ 64)
     (h_align : addr &&& (3 : BitVec 64) = 0) :
     ∃ js_pre : SailJoltState,
@@ -55,13 +55,13 @@ theorem amo_word_swap_pre64_aligned_run
   have hcfg_base : JoltConfig js_base.sail := by
     rw [hbase_sail]
     exact hcfg
-  have hload_assumptions :
-      DwordLoadAssumptions (amoWordBase addr) js_base.sail := by
+  have hload_evidence :
+      DwordLoadEvidence (amoWordBase addr) js_base.sail := by
     rw [hbase_sail]
     exact
-      dwordLoadAssumptions_of_aligned_phys (amoWordBase addr) js.sail
+      dwordLoadEvidence_of_aligned_phys (amoWordBase addr) js.sail
         (amo_word_base_aligned_access addr h_no_ovf)
-        (AmoMemoryAssumptions.jolt_load_mem h_mem)
+        (AmoMemoryContext.jolt_load_mem h_mem)
   have hld :
       (JoltISA.execInstr
         (.LD (.vreg JoltISA.amoWordSwapDwordVReg)
@@ -73,9 +73,9 @@ theorem amo_word_swap_pre64_aligned_run
                 loaded_dword_at js_base.sail (amoWordBase addr)
               else js_base.vregs r } := by
     exact
-      vreg_LD_run_of_dword_assumptions
+      vreg_LD_run_of_dword_evidence
         JoltISA.amoWordSwapDwordVReg JoltISA.amoWordSwapShiftVReg js_base
-        (amoWordBase addr) hbase_shift hcfg_base hload_assumptions
+        (amoWordBase addr) hbase_shift hcfg_base hload_evidence
   let js_load : SailJoltState :=
     { sail := js_base.sail
       vregs := fun r =>
@@ -634,7 +634,7 @@ theorem amo_word_swap_sd_spliced_dword_run
     {op : amoop}
     (js : SailJoltState) (s : SailState) (addr dwordNew old : BitVec 64)
     (hcfg : JoltConfig s)
-    (h_mem : AmoMemoryAssumptions op 4 (amoWordBase addr) addr s)
+    (h_mem : AmoMemoryContext op 4 (amoWordBase addr) addr s)
     (h_no_ovf : (amoWordBase addr).toNat + 7 < 2 ^ 64)
     (h_sail : js.sail = s)
     (h_base : js.vregs JoltISA.amoWordSwapMaskVReg = amoWordBase addr)
@@ -654,8 +654,8 @@ theorem amo_word_swap_sd_spliced_dword_run
       .ok (Ok true) (state_after_dword_store s (amoWordBase addr) dwordNew) :=
     vmem_write_addr_dword_store_reduces (amoWordBase addr) dwordNew s hcfg
       (amo_word_base_aligned_access addr h_no_ovf).toAlignedAccess
-      (AmoMemoryAssumptions.jolt_store_mem h_mem).pmp
-      (AmoMemoryAssumptions.jolt_store_mem h_mem).mmio
+      (AmoMemoryContext.jolt_store_mem h_mem).pmp
+      (AmoMemoryContext.jolt_store_mem h_mem).mmio
   have hwrite_current :
       vmem_write_addr (Virtaddr (js.vregs JoltISA.amoWordSwapMaskVReg +
           sign_extend (m := 64) (0 : BitVec 12))) 8
@@ -732,7 +732,7 @@ theorem amo_word_swap_post64_amoswap_aligned_run
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOSWAP 4 (amoWordBase addr) addr js.sail)
+    (h_mem : AmoMemoryContext amoop.AMOSWAP 4 (amoWordBase addr) addr js.sail)
     (h_no_ovf : (amoWordBase addr).toNat + 7 < 2 ^ 64)
     (h_align : addr &&& (3 : BitVec 64) = 0)
     (hpre_sail : js_pre.sail = js.sail)
@@ -800,7 +800,7 @@ theorem amo_word_swap_post64_amoswap_aligned_run
       state_after_dword_store js.sail (amoWordBase addr) dwordNew =
         state_after_word_store js.sail addr wordResult :=
     amo_word_spliced_dword_store_eq_word_store
-      js.sail addr rs2Val hsetup hcfg.mem_populated
+      js.sail addr rs2Val hsetup h_mem.jolt_bytes
   have hstore_sail_word :
       js_store.sail = state_after_word_store js.sail addr wordResult := by
     rw [hstore_sail, hword_store]
@@ -836,7 +836,7 @@ theorem amoswapwProgram_concrete_aligned
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOSWAP 4
+    (h_mem : AmoMemoryContext amoop.AMOSWAP 4
       (amoWordBase addr) addr js.sail)
     (h_align : addr &&& (3 : BitVec 64) = 0) :
     ∃ jsf : SailJoltState,
@@ -918,7 +918,7 @@ theorem execute_AMOSWAPW_reduces_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOSWAP 4
+    (h_mem : AmoMemoryContext amoop.AMOSWAP 4
       (amoWordBase addr) addr js.sail)
     (h_align : addr &&& (3 : BitVec 64) = 0) :
     (execute_AMO amoop.AMOSWAP false false rs2 rs1 4 rd).run js.sail =
@@ -987,7 +987,7 @@ theorem amoswapwProgram_eq_sail_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOSWAP 4
+    (h_mem : AmoMemoryContext amoop.AMOSWAP 4
       (amoWordBase addr) addr js.sail)
     (h_align : addr &&& (3 : BitVec 64) = 0) :
     projectResult ((JoltISA.execProgram
@@ -1054,19 +1054,19 @@ theorem amoswapwProgram_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Main public theorem for `AMOSWAP.W`.
+/-- Internal memory-context theorem for `AMOSWAP.W`.
 
 The theorem exposes the same alignment split as the load/store families:
-aligned addresses use the full memory assumptions, while misaligned addresses
+aligned addresses use the full memory context, while misaligned addresses
 stop at both interpreters' leading alignment check. -/
-theorem amoswapwProgram_eq_sail
+theorem amoswapwProgram_eq_sail_of_memory_context
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOSWAP 4
+    (h_mem : AmoMemoryContext amoop.AMOSWAP 4
       (amoWordBase addr) addr js.sail) :
     projectResult ((JoltISA.execProgram
       (JoltISA.amoswapwProgram rs2 rs1 rd)).run js) =
@@ -1076,6 +1076,33 @@ theorem amoswapwProgram_eq_sail
       rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 hrd h_mem h_align
   · exact amoswapwProgram_eq_sail_misaligned
       rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 h_align
+
+/-- Main public theorem for `AMOSWAP.W`.
+
+The theorem takes one primitive-only atomic bundle. The aligned branch derives
+exact memory context from the enclosing dword window; the misaligned branch
+stops before memory context is needed. -/
+theorem amoswapwProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : AmoWordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
+    projectResult ((JoltISA.execProgram
+      (JoltISA.amoswapwProgram rs2 rs1 rd)).run js) =
+      (execute_AMO amoop.AMOSWAP false false rs2 rs1 4 rd).run js.sail := by
+  let addr := h.rs1_val
+  let rs2Val := h.rs2_val
+  by_cases h_align : addr &&& (3 : BitVec 64) = 0
+  · have h_mem_base :
+        AmoMemoryContext amoop.AMOSWAP 4 (amoWordAssumptionBase addr) addr js.sail := by
+      simpa [addr] using h.memoryContext (by simpa [addr] using h_align)
+    have h_mem : AmoMemoryContext amoop.AMOSWAP 4 (amoWordBase addr) addr js.sail := by
+      simpa [amoWordBase, amoWordAssumptionBase] using h_mem_base
+    exact amoswapwProgram_eq_sail_aligned
+      rs2 rs1 rd js h.cfg addr rs2Val
+      h.rs1_read.value_eq h.rs2_read.value_eq h.rd_readable.exists_value
+      h_mem h_align
+  · exact amoswapwProgram_eq_sail_misaligned
+      rs2 rs1 rd js h.cfg addr rs2Val
+      h.rs1_read.value_eq h.rs2_read.value_eq h_align
 
 end AtomicFamily
 

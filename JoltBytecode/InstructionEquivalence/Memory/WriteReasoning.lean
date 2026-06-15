@@ -79,9 +79,9 @@ theorem mem_write_value_dword_eq_state_after_dword_store
     mem_write_value (physaddr.Physaddr addr) 8 data
       (Store Data) false false false s =
     .ok (Ok true) (state_after_dword_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
-  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.cur_privilege.value
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
     checked_mem_write
   simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
@@ -202,7 +202,7 @@ theorem vmem_write_addr_dword_store_bridge
     is_store_conditional, BEq.beq, Bool.false_and, Bool.false_eq_true,
     if_true, pure, EStateM.pure, ExceptT.pure]
 
-/-- Under the standard aligned flat-memory assumptions, Sail's virtual dword
+/-- Under exact aligned flat-memory evidence, Sail's virtual dword
 store pipeline is exactly the canonical hashmap dword update. -/
 theorem vmem_write_addr_dword_store_reduces
     (addr data : BitVec 64) (s : SailState)

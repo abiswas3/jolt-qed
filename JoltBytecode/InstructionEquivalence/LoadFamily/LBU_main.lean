@@ -4,6 +4,7 @@ import JoltBytecode.InstructionEquivalence.Memory.Utils
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
+import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib.Tactic.IntervalCases
@@ -84,7 +85,7 @@ theorem jolt_lbu_bridge (s : SailState) (addr : BitVec 64) :
 theorem execute_LBU_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hload : LoadReadAssumptions (load_effective_address val imm) 1 js.sail) :
+    (hload : LoadReadEvidence (load_effective_address val imm) 1 js.sail) :
     -- DIFF: `execute_LOAD` is called with `true` (unsigned) not `false`.
     (execute_LOAD imm rs1 rd true 1).run js.sail =
     .ok RETIRE_SUCCESS
@@ -178,20 +179,19 @@ theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
 `lbuProgram`, interpreted by `execProgram`, agrees with Sail's unsigned
 byte-load execution. -/
 theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 1 js.sail) :
+    (js : SailJoltState)
+    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd true 1).run js.sail := by
-  have hload : LoadReadAssumptions (load_effective_address val imm) 1 js.sail :=
-    loadReadAssumptions_of_aligned_phys
-      (load_effective_address val imm) 1 js.sail
-      (aligned_access_1 (load_effective_address val imm)) hphys
-  rcases lbuProgram_concrete imm rs1 rd js hcfg val hrx
-      h_dword_phys with
+  have hload : LoadReadEvidence (load_effective_address h.rs1_val imm) 1 js.sail :=
+    loadReadEvidence_of_aligned_phys
+      (load_effective_address h.rs1_val imm) 1 js.sail
+      (aligned_access_1 (load_effective_address h.rs1_val imm)) h.bytePhys
+  rcases lbuProgram_concrete imm rs1 rd js h.cfg h.rs1_val
+      h.rs1_read.value_eq h.dwordPhys with
     ⟨js', hjolt, hjolt_sail⟩
-  have hsail := execute_LBU_reduces imm rs1 rd js hcfg val hrx hload
+  have hsail := execute_LBU_reduces imm rs1 rd js h.cfg h.rs1_val
+    h.rs1_read.value_eq hload
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]

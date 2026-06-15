@@ -22,8 +22,9 @@ one of them:
    This is the dominant risk.
 2. **Vacuity.** If an assumption bundle (`JoltConfig`, `EcallSystemAssumptions`,
    the memory predicates) is internally contradictory, every theorem about it is
-   vacuously true. The June 2026 deep audit confirmed `JoltConfig.mem_populated`
-   is genuinely unsatisfiable (W2), so this is not hypothetical.
+   vacuously true. The June 2026 deep audit found the old
+   `JoltConfig.mem_populated` field was unsatisfiable; the load/store/AMO
+   theorem boundary now uses finite primitive memory windows instead.
 3. **Weak statement.** A theorem can be true but under-constrain the result: a
    loose postcondition, a projection that discards exactly the bits that differ,
    or a comparison against the wrong Sail function.
@@ -66,7 +67,7 @@ with only optional regression-gate work remaining.
 | T6 | Faithfulness of `xProgram` definitions to Rust `inline_sequence` emission | unproven | drift risk; the AMO.D row mismatch was repaired in Lean, but no general Rust-to-Lean expansion check exists yet (W1) |
 | T7 | Toolchain mismatch: `v4.29.0-rc4` vs lean-sail's target nightly | environment | documented in `README.md`; not active hardening work |
 | T8 | lean-sail runtime (`Sail` package: `SequentialState`, BitVec/`shift_bits_right` helpers, memory primitives, the `EStateM` monad) | reference runtime | trusted by everything, pinned at tag `v3`; distinct from generated `LeanRV64D/` (T3) and included in W7's axiom/TCB scope |
-| T9 | jolt-qed's own `sailReadByte`/`sailReadWord`/`sailReadDword` (`Environment.lean:28–45`) | bridge definition | trusted Lean definitions, proven equal to Sail's `vmem_read` only *under* `JoltConfig` (`Environment.lean:86–122`). Revisit only as part of W2's finite-footprint memory repair |
+| T9 | jolt-qed's own `sailReadByte`/`sailReadWord`/`sailReadDword` (`Environment.lean:28–45`) | bridge definition | trusted Lean definitions, proven equal to Sail's `vmem_read` only under the primitive finite-window memory evidence used by the current load/store/AMO theorem bundles |
 | T10 | Decode/encode: Rust decoder vs Sail `encdec`, and PC-step/fetch/interrupt loop (`LeanRV64D/Step.lean`) | out of model | every theorem is at the post-decode `execute_*` level; decode agreement and the step loop are checked by *nothing*, in this plan or W1. See the claim-boundary note in `LEAN_BYTECODE_MODEL_LIMITATIONS.md` and the decode-differential addition to W1 |
 
 ## Recorded decisions (June 2026)
@@ -91,12 +92,18 @@ These are settled for handoff; update this section when they change.
    The Lean ISA and AMO.D expansions now remove that row and model the dword
    `LD`/`SD` row itself as the alignment boundary.
 
-4. **Memory inhabitance — investigation concluded (June 2026 deep audit).**
-   `JoltConfig.mem_populated` (`∀ addr : Nat, s.mem.get? addr ≠ none` over
-   Sail's finite `Std.ExtHashMap Nat (BitVec 8)`) is unsatisfiable; no witness
-   exists. W2's only path is the finite footprint contract for the bytes each
-   theorem actually touches (≤ 8 consecutive bytes per consumer; see unknown 1
-   resolution for the migration surface).
+4. **Memory inhabitance — repaired for load/store/AMO theorem boundaries.**
+   The old `JoltConfig.mem_populated` field (`∀ addr : Nat, s.mem.get? addr ≠
+   none` over Sail's finite `Std.ExtHashMap Nat (BitVec 8)`) was unsatisfiable.
+   It has been removed from `JoltConfig`. Load/store/AMO public theorem bundles
+   now assume only finite primitive windows for the bytes each instruction can
+   touch, and derive exact `Flat*` memory evidence internally.
+
+5. **ALU / ALUAdvice public assumption boundary — repaired.** Ordinary ALU and
+   advice-backed DIV/REM public equivalence theorems now take only source-register
+   read bundles: one read for unary/immediate ALU, two reads for binary ALU and
+   ALUAdvice. Destination writes, advice correctness, and phase facts remain
+   internal proof obligations, not public assumptions.
 
 ## Workstreams
 
@@ -111,7 +118,7 @@ Only three items are active trust issues:
 | Workstream | Decision | Why |
 | --- | --- | --- |
 | W1 — Rust to Lean conformance | **Active** | We already found real drift: AMO.D's Lean program had a row Rust did not emit. |
-| W2 — anti-vacuity / `mem_populated` | **Active** | `JoltConfig.mem_populated` quantifies over every `Nat` address, but Sail memory is a finite map. The affected theorems are vacuous until this is replaced by finite footprints. |
+| W2 — anti-vacuity / witnesses | **Partly done / active** | The impossible `JoltConfig.mem_populated` memory boundary has been replaced for load/store/AMO by finite primitive windows, and ALU/ALUAdvice theorem boundaries expose only source-register reads. Remaining W2 work is witness/co-satisfiability coverage for surviving bundles, especially system/CSR bundles. |
 | W10 — system/CSR assumptions | **Active** | Several system theorem hypotheses assume the Sail/Jolt CSR correspondence the theorem name appears to prove. |
 | W11 — composition/frame lemmas | **Later / conditional** | Real only if we want multi-instruction or trace-level chaining. Not a blocker for current per-instruction claims. |
 
@@ -256,11 +263,14 @@ and closes part of T10.
 
 ### W2 — Anti-vacuity: inhabitance witnesses (VACUITY)
 
-**Status: not-started, but the central question is now answered. Effort: M.
-Recommended first — escalated to urgent by the June 2026 deep audit:
-`mem_populated` is confirmed unsatisfiable (see unknown 1 resolution), so the
-~219 `JoltConfig`-hypothesized theorems are vacuous as stated until the
-finite-footprint migration lands.**
+**Status: partly done. Effort: M.**
+
+The urgent memory-boundary repair is complete for load/store/AMO:
+`JoltConfig.mem_populated` has been removed, and public theorem bundles now use
+finite primitive windows. The ALU and ALUAdvice public theorem boundaries have
+also been reduced to minimal source-register read bundles. Remaining W2 work is
+to add checked inhabitance / co-satisfiability witnesses for the surviving
+bundles, especially system/CSR bundles.
 
 Goal: prove every assumption bundle is satisfiable, so no family's theorems are
 vacuously true.
@@ -270,13 +280,16 @@ real one. There is currently no inhabitance check anywhere in `JoltBytecode/`.
 
 Tasks:
 
-- First produce a complete inventory of hypothesis bundles, not only the
-  obvious ones. Include `JoltConfig`, `EcallSystemAssumptions`,
-  `CsrrwSystemAssumptions`, `StoreFamily.StoreMemoryAssumptions`,
-  `AtomicFamily.AmoMemoryAssumptions`,
-  `LoadReservedFamily.LoadReservedMemoryAssumptions`, `FlatPhysMem`,
-  `FlatStoreMem`, `FlatLoadStoreMem`, `FlatAtomicMem`,
-  `FlatLoadReservedMem`, and the CSR access/legalizer assumptions.
+- First produce a complete inventory of surviving public hypothesis bundles,
+  not only the obvious ones. Include `JoltConfig`,
+  `LoadFamily.LoadProgramEqSailAssumptions`,
+  `StoreFamily.StoreProgramEqSailAssumptions`,
+  `AtomicFamily.AmoDwordProgramEqSailAssumptions`,
+  `AtomicFamily.AmoWordProgramEqSailAssumptions`,
+  `ALUFamily.UnarySourceReadAssumptions`,
+  `ALUFamily.BinarySourceReadAssumptions`,
+  `EcallSystemAssumptions`, `CsrrwSystemAssumptions`,
+  `MretSystemAssumptions`, and the CSR access/legalizer assumptions.
 - For each inventoried predicate/structure used as a theorem hypothesis,
   construct a concrete witness as a checked `example`, or document why the
   current predicate is intentionally uninhabited and replace it before relying
@@ -284,11 +297,13 @@ Tasks:
 - Prefer a single realistic `initialJoltState` builder from which the bundles
   are *jointly* derivable, so co-satisfiability (not just per-predicate
   satisfiability) is demonstrated.
-- `JoltConfig.mem_populated` is **resolved: unwitnessable** (finite
-  `Std.ExtHashMap` vs `∀ addr : Nat`; unknown 1 resolution has the full
-  consumer list). Replace it with a finite memory-footprint assumption and
-  migrate the `readBytes_*_eq_loaded_*` bottleneck (`Memory/Utils.lean:381–435`)
-  and the store-splice/AMO consumers; public statements keep their shape.
+- The old `JoltConfig.mem_populated` issue is **resolved for load/store/AMO**:
+  public memory assumptions are finite primitive windows, and exact read/write
+  evidence is derived in `LoadFamily.Derived`, `StoreFamily.Derived`, and
+  `AtomicFamily.Derived`.
+- The ALU/ALUAdvice public theorem boundary is **resolved as a vacuity concern**:
+  public assumptions are exactly source-register reads. The remaining hard
+  assumption-boundary problem is the system/CSR family.
 
 Acceptance criteria: a file (for example
 `JoltBytecode/InstructionEquivalence/AssumptionsAreSatisfiable.lean`) containing
@@ -537,8 +552,8 @@ Dependencies: W2 if revived as cleanup.
 
 ### W10 — Discharge proof-shaped system assumptions (ASSUMED CONCLUSION)
 
-**Status: not-started, new in June 2026 deep audit. Effort: L. Highest
-system-family value.**
+**Status: active / not repaired, new in June 2026 deep audit. Effort: L.
+Highest system-family value.**
 
 Goal: convert the system-family assumption bundles from "assume Sail and Jolt
 agree" to "prove they agree from genuine environment invariants," so the
@@ -546,7 +561,7 @@ ECALL/MRET/CSRRW theorems claim what their names imply.
 
 Rationale: the deep audit found 8 of ~30 fields across
 `CsrrwSystemAssumptions` (`Csrrw.lean:335`), `EcallSystemAssumptions`
-(`System/Common.lean:1657`), and `MretSystemAssumptions` (`Mret.lean:542`) are
+(`System/Common.lean:1683`), and `MretSystemAssumptions` (`Mret.lean:580`) are
 *correspondence assumptions*: they hypothesize the very Sail↔Jolt equality the
 theorem exists to establish. A comment at `Csrrw.lean:326` already records that
 these are provisional and "should be discharged from concrete ZeroOS
@@ -673,19 +688,17 @@ The follow-up audit (June 11, 2026; both repos plus toolchain experiments) has
 resolved or sharply narrowed all ten unknowns. Findings below supersede the
 original questions; each item records the evidence and the action it implies.
 
-1. **`JoltConfig.mem_populated` — RESOLVED: unsatisfiable.** Sail memory is
-   `Std.ExtHashMap Nat (BitVec 8)` (lean-sail `Sail/Sail.lean:470`), a finite
-   map; no concrete state can satisfy `∀ addr : Nat, s.mem.get? addr ≠ none`
-   (`JoltBytecode/JoltISA/Environment.lean:77`). Every theorem hypothesizing
-   `JoltConfig` (~219 by grep) is therefore vacuous as stated today. The fix is
-   mechanical, not structural: all 16 direct consumers (the
-   `readBytes_*_eq_loaded_*` bottleneck at `Memory/Utils.lean:381–435` and its
-   `mem_read_*` clients, the store-splice lemmas in `StoreFamily/S{b,h,w}_main.lean`,
-   and the AMO bridging lemmas) touch at most 8 consecutive bytes around one
-   base address, so a finite-footprint hypothesis
-   (`∀ k, base ≤ k < base + w → s.mem.get? k ≠ none`) suffices, and the public
-   statements already carry local `FlatPhysMem`-style envelopes. W2 is hereby
-   escalated from investigation to urgent trust repair.
+1. **`JoltConfig.mem_populated` — RESOLVED and repaired for load/store/AMO.**
+   Sail memory is `Std.ExtHashMap Nat (BitVec 8)` (lean-sail
+   `Sail/Sail.lean:470`), a finite map; no concrete state can satisfy the old
+   global predicate `∀ addr : Nat, s.mem.get? addr ≠ none`. The repair is now
+   implemented for load/store/AMO public theorem boundaries: `JoltConfig`
+   contains only Machine-mode / MPRV facts, `JoltBytecode.Assumptions` contains
+   finite primitive memory windows, and family public bundles derive exact
+   `Flat*` evidence internally. Ordinary ALU and ALUAdvice public theorem
+   boundaries now expose only source-register read bundles. W2 remains open only
+   for checked witness / co-satisfiability coverage of the surviving bundles,
+   especially system/CSR bundles.
 2. **AMO.D conformance target — RESOLVED: real drift; Lean now matches Rust.**
    Verified in source: `expand_amo_d`
    (`crates/jolt-program/src/expand/memory/shared.rs:182`) emits LD / op / SD /
@@ -773,11 +786,13 @@ original questions; each item records the evidence and the action it implies.
    else. The broader generated-Sail provenance story is documented externally in
    the project blog, so reconstructing a local regeneration CI path is deferred
    and not part of the active hardening work.
-9. **System/CSR joint satisfiability — PARTIALLY RESOLVED; one real
-   composition gap.** Each bundle (`EcallSystemAssumptions`,
-   `System/Common.lean:1657`; `CsrrwSystemAssumptions`, `Csrrw.lean:335`;
-   `MretSystemAssumptions`, `Mret.lean:542`) appears individually satisfiable —
-   W2 should construct the witnesses. But ECALL leaves the mstatus vreg at
+9. **System/CSR joint satisfiability — STILL NEEDS ATTENTION.** The memory,
+   ALU, and ALUAdvice theorem boundaries have been tightened, but the system
+   bundles remain the open assumption-boundary work. Each bundle
+   (`EcallSystemAssumptions`, `System/Common.lean:1683`;
+   `CsrrwSystemAssumptions`, `Csrrw.lean:335`; `MretSystemAssumptions`,
+   `Mret.lean:580`) appears individually satisfiable — W2 should construct the
+   witnesses. But ECALL leaves the mstatus vreg at
    `zeroOSMstatus = 0x1800` (MPIE=0, MIE=0; `Common.lean:36`), while MRET
    assumes `MPIE = 1` and `MIE = MPIE` (`Mret.lean:563–567`) precisely so that
    Sail's xret mstatus update is a no-op. The modeled ECALL → handler → MRET
