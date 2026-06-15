@@ -170,6 +170,148 @@ private theorem byteSplice_other_bytes_of_lt (dword_orig : BitVec 64)
       byteMask_getElem_false_of_ge8 hidx_ge8 hidx_lt64
     simp [hbefore, hmaskIdx]
 
+private theorem halfwordMask_getElem_true {i : Nat} (hi : i < 16) :
+    (65535#64)[i] = true := by
+  have hi64 : i < 64 := by omega
+  have hmaskNat : Nat.testBit 65535 i = true := by
+    rw [show 65535 = 2 ^ 16 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  have hmaskBase : (65535#64).getLsbD i = true := by
+    rw [BitVec.getLsbD_ofNat]
+    simp [hi64, hmaskNat]
+  rw [← BitVec.getLsbD_eq_getElem (x := (65535#64)) hi64]
+  exact hmaskBase
+
+private theorem halfwordMask_getElem_false_of_ge16 {i : Nat} (hge : 16 ≤ i)
+    (hi64 : i < 64) :
+    (65535#64)[i] = false := by
+  have hmaskNat : Nat.testBit 65535 i = false := by
+    rw [show 65535 = 2 ^ 16 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [not_lt.mpr hge]
+  have hmaskBase : (65535#64).getLsbD i = false := by
+    rw [BitVec.getLsbD_ofNat]
+    simp [hi64, hmaskNat]
+  rw [← BitVec.getLsbD_eq_getElem (x := (65535#64)) hi64]
+  exact hmaskBase
+
+private theorem halfwordSplice_target_bytes_of_bound (dword_orig : BitVec 64)
+    (halfword_val : BitVec 16) (off : Nat) (hoff : off + 2 ≤ 8) :
+    ∀ j : Nat, j < 2 →
+      dword_byte (halfwordSplice dword_orig halfword_val (8 * off)) (off + j) =
+      halfword_byte halfword_val j := by
+  intro j hj
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hglobal64 : 8 * (off + j) + i < 64 := by omega
+  have hsrc64 : 8 * j + i < 64 := by omega
+  have hsrc16 : 8 * j + i < 16 := by omega
+  have hnotlt : ¬8 * (off + j) + i < 8 * off := by omega
+  have hsub : 8 * (off + j) + i - 8 * off = 8 * j + i := by omega
+  have hmaskIdx : (65535#64)[8 * j + i] = true :=
+    halfwordMask_getElem_true hsrc16
+  simp [dword_byte, halfword_byte, halfwordSplice,
+    BitVec.getLsbD_extractLsb', BitVec.getLsbD_xor, BitVec.getLsbD_and,
+    BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+    hglobal64, hsrc64, hnotlt, hsub, hi]
+  rw [hmaskIdx]
+  simp
+
+private theorem halfwordSplice_other_bytes_of_bound (dword_orig : BitVec 64)
+    (halfword_val : BitVec 16) (off : Nat) (hoff : off + 2 ≤ 8) :
+    ∀ k : Nat, k < 8 →
+      (k < off ∨ k ≥ off + 2) →
+      dword_byte (halfwordSplice dword_orig halfword_val (8 * off)) k =
+      dword_byte dword_orig k := by
+  intro k hk hout
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hglobal64 : 8 * k + i < 64 := by omega
+  simp [dword_byte, halfwordSplice,
+    BitVec.getLsbD_extractLsb', BitVec.getLsbD_xor, BitVec.getLsbD_and,
+    BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+    hglobal64, hi]
+  by_cases hbefore : 8 * k + i < 8 * off
+  · simp [hbefore]
+  · have hidx_ge16 : 16 ≤ 8 * k + i - 8 * off := by
+      rcases hout with hlt | hge
+      · omega
+      · omega
+    have hidx_lt64 : 8 * k + i - 8 * off < 64 := by omega
+    have hmaskIdx : (65535#64)[8 * k + i - 8 * off] = false :=
+      halfwordMask_getElem_false_of_ge16 hidx_ge16 hidx_lt64
+    simp [hbefore, hmaskIdx]
+
+private theorem wordMask_getElem_true {i : Nat} (hi : i < 32) :
+    (4294967295#64)[i] = true := by
+  have hi64 : i < 64 := by omega
+  have hmaskNat : Nat.testBit 4294967295 i = true := by
+    rw [show 4294967295 = 2 ^ 32 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  have hmaskBase : (4294967295#64).getLsbD i = true := by
+    rw [BitVec.getLsbD_ofNat]
+    simp [hi64, hmaskNat]
+  rw [← BitVec.getLsbD_eq_getElem (x := (4294967295#64)) hi64]
+  exact hmaskBase
+
+private theorem wordMask_getElem_false_of_ge32 {i : Nat} (hge : 32 ≤ i)
+    (hi64 : i < 64) :
+    (4294967295#64)[i] = false := by
+  have hmaskNat : Nat.testBit 4294967295 i = false := by
+    rw [show 4294967295 = 2 ^ 32 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [not_lt.mpr hge]
+  have hmaskBase : (4294967295#64).getLsbD i = false := by
+    rw [BitVec.getLsbD_ofNat]
+    simp [hi64, hmaskNat]
+  rw [← BitVec.getLsbD_eq_getElem (x := (4294967295#64)) hi64]
+  exact hmaskBase
+
+private theorem wordSplice_target_bytes_of_bound (dword_orig : BitVec 64)
+    (word_val : BitVec 32) (off : Nat) (hoff : off + 4 ≤ 8) :
+    ∀ j : Nat, j < 4 →
+      dword_byte (wordSplice dword_orig word_val (8 * off)) (off + j) =
+      word_byte word_val j := by
+  intro j hj
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hglobal64 : 8 * (off + j) + i < 64 := by omega
+  have hsrc64 : 8 * j + i < 64 := by omega
+  have hsrc32 : 8 * j + i < 32 := by omega
+  have hnotlt : ¬8 * (off + j) + i < 8 * off := by omega
+  have hsub : 8 * (off + j) + i - 8 * off = 8 * j + i := by omega
+  have hmaskIdx : (4294967295#64)[8 * j + i] = true :=
+    wordMask_getElem_true hsrc32
+  simp [dword_byte, word_byte, wordSplice,
+    BitVec.getLsbD_extractLsb', BitVec.getLsbD_xor, BitVec.getLsbD_and,
+    BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+    hglobal64, hsrc64, hnotlt, hsub, hi]
+  rw [hmaskIdx]
+  simp
+
+private theorem wordSplice_other_bytes_of_bound (dword_orig : BitVec 64)
+    (word_val : BitVec 32) (off : Nat) (hoff : off + 4 ≤ 8) :
+    ∀ k : Nat, k < 8 →
+      (k < off ∨ k ≥ off + 4) →
+      dword_byte (wordSplice dword_orig word_val (8 * off)) k =
+      dword_byte dword_orig k := by
+  intro k hk hout
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hglobal64 : 8 * k + i < 64 := by omega
+  simp [dword_byte, wordSplice,
+    BitVec.getLsbD_extractLsb', BitVec.getLsbD_xor, BitVec.getLsbD_and,
+    BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+    hglobal64, hi]
+  by_cases hbefore : 8 * k + i < 8 * off
+  · simp [hbefore]
+  · have hidx_ge32 : 32 ≤ 8 * k + i - 8 * off := by
+      rcases hout with hlt | hge
+      · omega
+      · omega
+    have hidx_lt64 : 8 * k + i - 8 * off < 64 := by omega
+    have hmaskIdx : (4294967295#64)[8 * k + i - 8 * off] = false :=
+      wordMask_getElem_false_of_ge32 hidx_ge32 hidx_lt64
+    simp [hbefore, hmaskIdx]
+
 /-- The byte splice writes the target byte. -/
 theorem byteSplice_target_bytes (dword_orig : BitVec 64) (byte_val : BitVec 8)
     (off : Nat)
@@ -219,9 +361,9 @@ theorem halfwordSplice_target_bytes (dword_orig : BitVec 64)
     ∀ j : Nat, j < 2 →
       dword_byte (halfwordSplice dword_orig halfword_val (8 * off)) (off + j) =
       halfword_byte halfword_val j := by
-  intro j hj
-  rcases hoff with rfl | rfl | rfl | rfl
-  all_goals interval_cases j <;> simp [halfwordSplice, dword_byte, halfword_byte] <;> bv_decide
+  have hoff_bound : off + 2 ≤ 8 := by
+    rcases hoff with h0 | h2 | h4 | h6 <;> omega
+  exact halfwordSplice_target_bytes_of_bound dword_orig halfword_val off hoff_bound
 
 /-- The halfword splice preserves every non-target byte. -/
 theorem halfwordSplice_other_bytes (dword_orig : BitVec 64)
@@ -231,11 +373,9 @@ theorem halfwordSplice_other_bytes (dword_orig : BitVec 64)
       (k < off ∨ k ≥ off + 2) →
       dword_byte (halfwordSplice dword_orig halfword_val (8 * off)) k =
       dword_byte dword_orig k := by
-  intro k hk hout
-  rcases hoff with rfl | rfl | rfl | rfl
-  all_goals
-    interval_cases k <;>
-      (first | omega | (simp [halfwordSplice, dword_byte] <;> bv_decide))
+  have hoff_bound : off + 2 ≤ 8 := by
+    rcases hoff with h0 | h2 | h4 | h6 <;> omega
+  exact halfwordSplice_other_bytes_of_bound dword_orig halfword_val off hoff_bound
 
 /-- The halfword-store XOR-mask-XOR expression is a two-byte splice. -/
 theorem halfwordSplice_spec (dword_orig : BitVec 64) (halfword_val : BitVec 16)
@@ -255,9 +395,9 @@ theorem wordSplice_target_bytes (dword_orig : BitVec 64) (word_val : BitVec 32)
     ∀ j : Nat, j < 4 →
       dword_byte (wordSplice dword_orig word_val (8 * off)) (off + j) =
       word_byte word_val j := by
-  intro j hj
-  rcases hoff with rfl | rfl
-  all_goals interval_cases j <;> simp [wordSplice, dword_byte, word_byte] <;> bv_decide
+  have hoff_bound : off + 4 ≤ 8 := by
+    rcases hoff with h0 | h4 <;> omega
+  exact wordSplice_target_bytes_of_bound dword_orig word_val off hoff_bound
 
 /-- The word splice preserves every non-target byte. -/
 theorem wordSplice_other_bytes (dword_orig : BitVec 64) (word_val : BitVec 32)
@@ -266,11 +406,9 @@ theorem wordSplice_other_bytes (dword_orig : BitVec 64) (word_val : BitVec 32)
       (k < off ∨ k ≥ off + 4) →
       dword_byte (wordSplice dword_orig word_val (8 * off)) k =
       dword_byte dword_orig k := by
-  intro k hk hout
-  rcases hoff with rfl | rfl
-  all_goals
-    interval_cases k <;>
-      (first | omega | (simp [wordSplice, dword_byte] <;> bv_decide))
+  have hoff_bound : off + 4 ≤ 8 := by
+    rcases hoff with h0 | h4 <;> omega
+  exact wordSplice_other_bytes_of_bound dword_orig word_val off hoff_bound
 
 /-- The word-store XOR-mask-XOR expression is a four-byte splice. -/
 theorem wordSplice_spec (dword_orig : BitVec 64) (word_val : BitVec 32)
