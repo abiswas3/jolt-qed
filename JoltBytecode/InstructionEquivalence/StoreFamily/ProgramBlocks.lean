@@ -120,6 +120,146 @@ private theorem shift6_eq_of_offset_word (ea base : BitVec 64)
     }
   exact shift6_eq_of_offset_byte ea base hbyte
 
+private theorem byteSequenceMask_getLsbD_true {i : Nat} (hi : i < 8) :
+    (255#64).getLsbD i = true := by
+  have hi64 : i < 64 := by omega
+  have hmaskNat : Nat.testBit 255 i = true := by
+    rw [show 255 = 2 ^ 8 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hi64, hmaskNat]
+
+private theorem byteSequenceMask_getLsbD_false_of_ge8 {i : Nat} (hge : 8 ≤ i) :
+    (255#64).getLsbD i = false := by
+  have hmaskNat : Nat.testBit 255 i = false := by
+    rw [show 255 = 2 ^ 8 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [not_lt.mpr hge]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hmaskNat]
+
+private theorem halfwordSequenceMask_getLsbD_true {i : Nat} (hi : i < 16) :
+    (65535#64).getLsbD i = true := by
+  have hi64 : i < 64 := by omega
+  have hmaskNat : Nat.testBit 65535 i = true := by
+    rw [show 65535 = 2 ^ 16 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hi64, hmaskNat]
+
+private theorem halfwordSequenceMask_getLsbD_false_of_ge16 {i : Nat}
+    (hge : 16 ≤ i) :
+    (65535#64).getLsbD i = false := by
+  have hmaskNat : Nat.testBit 65535 i = false := by
+    rw [show 65535 = 2 ^ 16 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [not_lt.mpr hge]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hmaskNat]
+
+private theorem wordSequenceMask_getLsbD_true {i : Nat} (hi : i < 32) :
+    (4294967295#64).getLsbD i = true := by
+  have hi64 : i < 64 := by omega
+  have hmaskNat : Nat.testBit 4294967295 i = true := by
+    rw [show 4294967295 = 2 ^ 32 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hi64, hmaskNat]
+
+private theorem wordSequenceMask_getLsbD_false_of_ge32 {i : Nat}
+    (hge : 32 ≤ i) :
+    (4294967295#64).getLsbD i = false := by
+  have hmaskNat : Nat.testBit 4294967295 i = false := by
+    rw [show 4294967295 = 2 ^ 32 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [not_lt.mpr hge]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hmaskNat]
+
+private theorem byteSplice_eq_sequence_of_bound
+    (dword_orig rs2_val : BitVec 64) (off : Nat) (hoff : off + 1 ≤ 8) :
+    dword_orig ^^^
+        ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
+          shift_bits_left (0x00000000000000FF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
+      StoreSplice.byteSplice dword_orig (Sail.BitVec.extractLsb rs2_val 7 0) (off * 8) := by
+  rw [shift_bits_left_eq_shiftLeft_nat rs2_val (BitVec.ofNat 6 (off * 8))]
+  rw [shift_bits_left_eq_shiftLeft_nat (0x00000000000000FF : BitVec 64)
+    (BitVec.ofNat 6 (off * 8))]
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hshift_lt64 : off * 8 < 64 := by omega
+  have hshift_toNat : (BitVec.ofNat 6 (off * 8)).toNat = off * 8 := by
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_eq_of_lt hshift_lt64
+  simp only [StoreSplice.byteSplice, Sail.BitVec.extractLsb,
+    BitVec.getLsbD_xor, BitVec.getLsbD_and, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb,
+    hshift_toNat]
+  by_cases hbefore : i < off * 8
+  · simp [hbefore]
+  · by_cases hinside : i - off * 8 < 8
+    · have hsub64 : i - off * 8 < 64 := by omega
+      simp [hbefore, hinside, hsub64]
+    · have hge : 8 ≤ i - off * 8 := by omega
+      have hmask : (255#64).getLsbD (i - off * 8) = false :=
+        byteSequenceMask_getLsbD_false_of_ge8 hge
+      simp [hbefore, hinside, hmask]
+
+private theorem halfwordSplice_eq_sequence_of_bound
+    (dword_orig rs2_val : BitVec 64) (off : Nat) (hoff : off + 2 ≤ 8) :
+    dword_orig ^^^
+        ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
+          shift_bits_left (0x000000000000FFFF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
+      StoreSplice.halfwordSplice dword_orig (Sail.BitVec.extractLsb rs2_val 15 0) (off * 8) := by
+  rw [shift_bits_left_eq_shiftLeft_nat rs2_val (BitVec.ofNat 6 (off * 8))]
+  rw [shift_bits_left_eq_shiftLeft_nat (0x000000000000FFFF : BitVec 64)
+    (BitVec.ofNat 6 (off * 8))]
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hshift_lt64 : off * 8 < 64 := by omega
+  have hshift_toNat : (BitVec.ofNat 6 (off * 8)).toNat = off * 8 := by
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_eq_of_lt hshift_lt64
+  simp only [StoreSplice.halfwordSplice, Sail.BitVec.extractLsb,
+    BitVec.getLsbD_xor, BitVec.getLsbD_and, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb,
+    hshift_toNat]
+  by_cases hbefore : i < off * 8
+  · simp [hbefore]
+  · by_cases hinside : i - off * 8 < 16
+    · have hsub64 : i - off * 8 < 64 := by omega
+      simp [hbefore, hinside, hsub64]
+    · have hge : 16 ≤ i - off * 8 := by omega
+      have hmask : (65535#64).getLsbD (i - off * 8) = false :=
+        halfwordSequenceMask_getLsbD_false_of_ge16 hge
+      simp [hbefore, hinside, hmask]
+
+private theorem wordSplice_eq_sequence_of_bound
+    (dword_orig rs2_val : BitVec 64) (off : Nat) (hoff : off + 4 ≤ 8) :
+    dword_orig ^^^
+        ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
+          shift_bits_left (0x00000000FFFFFFFF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
+      StoreSplice.wordSplice dword_orig (Sail.BitVec.extractLsb rs2_val 31 0) (off * 8) := by
+  rw [shift_bits_left_eq_shiftLeft_nat rs2_val (BitVec.ofNat 6 (off * 8))]
+  rw [shift_bits_left_eq_shiftLeft_nat (0x00000000FFFFFFFF : BitVec 64)
+    (BitVec.ofNat 6 (off * 8))]
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hshift_lt64 : off * 8 < 64 := by omega
+  have hshift_toNat : (BitVec.ofNat 6 (off * 8)).toNat = off * 8 := by
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_eq_of_lt hshift_lt64
+  simp only [StoreSplice.wordSplice, Sail.BitVec.extractLsb,
+    BitVec.getLsbD_xor, BitVec.getLsbD_and, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb,
+    hshift_toNat]
+  by_cases hbefore : i < off * 8
+  · simp [hbefore]
+  · by_cases hinside : i - off * 8 < 32
+    · have hsub64 : i - off * 8 < 64 := by omega
+      simp [hbefore, hinside, hsub64]
+    · have hge : 32 ≤ i - off * 8 := by omega
+      have hmask : (4294967295#64).getLsbD (i - off * 8) = false :=
+        wordSequenceMask_getLsbD_false_of_ge32 hge
+      simp [hbefore, hinside, hmask]
+
 private theorem byteSplice_eq_sequence
     (dword_orig rs2_val : BitVec 64) (off : Nat)
     (hoff :
@@ -129,10 +269,9 @@ private theorem byteSplice_eq_sequence
         ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
           shift_bits_left (0x00000000000000FF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
       StoreSplice.byteSplice dword_orig (Sail.BitVec.extractLsb rs2_val 7 0) (off * 8) := by
-  rcases hoff with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  all_goals
-    simp [StoreSplice.byteSplice, shift_bits_left_eq_shiftLeft_nat, Sail.BitVec.extractLsb]
-    bv_decide
+  have hoff_bound : off + 1 ≤ 8 := by
+    rcases hoff with h0 | h1 | h2 | h3 | h4 | h5 | h6 | h7 <;> omega
+  exact byteSplice_eq_sequence_of_bound dword_orig rs2_val off hoff_bound
 
 private theorem halfwordSplice_eq_sequence
     (dword_orig rs2_val : BitVec 64) (off : Nat)
@@ -141,10 +280,9 @@ private theorem halfwordSplice_eq_sequence
         ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
           shift_bits_left (0x000000000000FFFF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
       StoreSplice.halfwordSplice dword_orig (Sail.BitVec.extractLsb rs2_val 15 0) (off * 8) := by
-  rcases hoff with rfl | rfl | rfl | rfl
-  all_goals
-    simp [StoreSplice.halfwordSplice, shift_bits_left_eq_shiftLeft_nat, Sail.BitVec.extractLsb]
-    bv_decide
+  have hoff_bound : off + 2 ≤ 8 := by
+    rcases hoff with h0 | h2 | h4 | h6 <;> omega
+  exact halfwordSplice_eq_sequence_of_bound dword_orig rs2_val off hoff_bound
 
 private theorem wordSplice_eq_sequence
     (dword_orig rs2_val : BitVec 64) (off : Nat)
@@ -153,10 +291,9 @@ private theorem wordSplice_eq_sequence
         ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
           shift_bits_left (0x00000000FFFFFFFF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
       StoreSplice.wordSplice dword_orig (Sail.BitVec.extractLsb rs2_val 31 0) (off * 8) := by
-  rcases hoff with rfl | rfl
-  all_goals
-    simp [StoreSplice.wordSplice, shift_bits_left_eq_shiftLeft_nat, Sail.BitVec.extractLsb]
-    bv_decide
+  have hoff_bound : off + 4 ≤ 8 := by
+    rcases hoff with h0 | h4 <;> omega
+  exact wordSplice_eq_sequence_of_bound dword_orig rs2_val off hoff_bound
 
 private theorem shift_bits_right_allOnes_32 :
     shift_bits_right (-1 : BitVec 64) (32 : BitVec 6) =

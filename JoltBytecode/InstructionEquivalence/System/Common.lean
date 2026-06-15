@@ -353,15 +353,41 @@ theorem systemProject_mtval_read
   rw [extDHashMap_get?_insert_of_ne (h := by decide)]
   rw [Std.ExtDHashMap.get?_insert_self]
 
+private theorem mstatus_mpelp_zero_update_eq_self
+    (mstatus : BitVec 64) (h41 : mstatus.getLsbD 41 = false) :
+    Sail.BitVec.updateSubrange mstatus 41 41 0#1 = mstatus := by
+  unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  simp only [BitVec.zeroExtend_eq_setWidth, BitVec.getLsbD_or,
+    BitVec.getLsbD_and, BitVec.getLsbD_not, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_setWidth, BitVec.getLsbD_allOnes, BitVec.getLsbD_ofNat]
+  by_cases hidx : i = 41
+  · subst i
+    simpa [BitVec.getLsbD_eq_getElem] using h41
+  · by_cases hlt : i < 41
+    · have hsub : i - 41 = 0 := by omega
+      simp [hlt, hsub, hi]
+    · have hsub_not_lt : ¬i - 41 < 1 := by omega
+      simp [hlt, hsub_not_lt, hi]
+
 /-- If the machine-trap mstatus update already equals Jolt's ZeroOS value, then
 Zicfilp's `mstatus[41] := 0` write is redundant. -/
 theorem ecall_mstatus_zicfilp_write_eq_self
     (mstatus : BitVec 64)
     (h : sailMachineTrapMstatus mstatus = zeroOSMstatus) :
     Sail.BitVec.updateSubrange mstatus 41 41 0#1 = mstatus := by
-  unfold sailMachineTrapMstatus zeroOSMstatus at h
-  unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange' at h ⊢
-  bv_decide
+  have h41 : mstatus.getLsbD 41 = false := by
+    have hbit := congrArg (fun x : BitVec 64 => x.getLsbD 41) h
+    unfold sailMachineTrapMstatus zeroOSMstatus at hbit
+    unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange' at hbit
+    simp only [BitVec.zeroExtend_eq_setWidth, BitVec.getLsbD_or,
+      BitVec.getLsbD_and, BitVec.getLsbD_not, BitVec.getLsbD_shiftLeft,
+      BitVec.getLsbD_setWidth, BitVec.getLsbD_allOnes, BitVec.getLsbD_ofNat]
+      at hbit
+    norm_num at hbit
+    exact hbit
+  exact mstatus_mpelp_zero_update_eq_self mstatus h41
 
 /-- For the ECALL envelope, Sail's Zicfilp trap hook is state-neutral:
 `mstatus[41]` and `elp` are already zero. -/

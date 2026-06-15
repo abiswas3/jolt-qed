@@ -422,6 +422,30 @@ theorem wordSplice_spec (dword_orig : BitVec 64) (word_val : BitVec 32)
   · intro k hk hout
     simpa using wordSplice_other_bytes dword_orig word_val off hoff k hk hout
 
+private theorem dword_align_down_8_and_7_eq_zero (x : BitVec 64) :
+    (x &&& (-8 : BitVec 64)) &&& (7 : BitVec 64) = 0 := by
+  apply BitVec.eq_of_toNat_eq
+  rw [BitVec.toNat_and, BitVec.toNat_and]
+  have hneg8 : (-8 : BitVec 64).toNat = 2 ^ 64 - 8 := by decide
+  have h7 : (7 : BitVec 64).toNat = 7 := by decide
+  have h0 : (0 : BitVec 64).toNat = 0 := by decide
+  rw [hneg8, h7, h0]
+  apply Nat.eq_of_testBit_eq
+  intro i
+  rw [Nat.testBit_and, Nat.zero_testBit]
+  by_cases hlt : i < 3
+  · have hmask : (2 ^ 64 - 8).testBit i = false := by
+      interval_cases i <;> decide
+    norm_num at hmask
+    rw [Nat.testBit_and]
+    simp [hmask]
+  · have h7bit : (7 : Nat).testBit i = false := by
+      apply Nat.testBit_lt_two_pow
+      have : 3 ≤ i := by omega
+      exact lt_of_lt_of_le (by norm_num : 7 < 2 ^ 3)
+        (Nat.pow_le_pow_right (by norm_num : 0 < 2) this)
+    simp [h7bit]
+
 /-- A dword-window setup is enough to reuse the existing dword-store hashmap
 facts, whose older statement packages a word-alignment field that is irrelevant
 for an 8-byte write. -/
@@ -430,13 +454,19 @@ private theorem dwordStoreSetup_self_of_window {ea base : BitVec 64}
     DwordStoreSetup base base := by
   have hbase8 : base &&& (7 : BitVec 64) = 0 := by
     rw [h.base_is_aligned]
-    bv_decide
+    exact dword_align_down_8_and_7_eq_zero ea
   have hbase4 : base &&& (3 : BitVec 64) = 0 := by
-    have := hbase8
-    bv_decide
+    have h73 : (7 : BitVec 64) &&& (3 : BitVec 64) = 3 := by decide
+    calc
+      base &&& (3 : BitVec 64) =
+          base &&& ((7 : BitVec 64) &&& (3 : BitVec 64)) := by rw [h73]
+      _ = (base &&& (7 : BitVec 64)) &&& (3 : BitVec 64) := by
+        rw [BitVec.and_assoc]
+      _ = 0 := by rw [hbase8]; rfl
   have hbase_self : base = base &&& (-8 : BitVec 64) := by
-    have := hbase8
-    bv_decide
+    rw [h.base_is_aligned]
+    rw [BitVec.and_assoc]
+    rw [BitVec.and_self]
   exact
     { word_aligned := hbase4
       base_is_aligned := hbase_self

@@ -206,6 +206,12 @@ theorem amo_word_pre64_misaligned_run
   unfold JoltISA.amoPre64Program JoltISA.amoPre64ProgramWithScratch
   exact amo_word_assert_prefix_misaligned_run rs1 _ js addr hrs1 h_align
 
+private theorem setWidth6_eq_extractLsb_5_0 (v : BitVec 64) :
+    v.setWidth 6 = Sail.BitVec.extractLsb v 5 0 := by
+  unfold Sail.BitVec.extractLsb
+  ext i
+  simp
+
 /-- The low six bits of the `.W` AMO shift value are exactly the byte-lane
 offset in bits. -/
 theorem amo_word_shift6_eq_offset
@@ -213,39 +219,98 @@ theorem amo_word_shift6_eq_offset
     (hsetup : StoreSplice.WordStoreSetup addr base) :
     Sail.BitVec.extractLsb (shift_bits_left addr (3 : BitVec 6)) 5 0 =
       BitVec.ofNat 6 (((addr - base).toNat) * 8) := by
+  rw [← setWidth6_eq_extractLsb_5_0 (shift_bits_left addr (3 : BitVec 6))]
+  apply BitVec.eq_of_toNat_eq
+  simp only [shift_bits_left, BitVec.toNat_setWidth, BitVec.toNat_ofNat]
+  change (BitVec.shiftLeft addr 3).toNat % 2 ^ 6 =
+    (addr - base).toNat * 8 % 2 ^ 6
+  rw [show (BitVec.shiftLeft addr 3).toNat = addr.toNat <<< 3 % 2 ^ 64 by
+    exact BitVec.toNat_shiftLeft]
+  simp only [Nat.shiftLeft_eq]
+  norm_num
+  conv_lhs => rw [hsetup.ea_toNat]
   have hbase8 : base &&& (7 : BitVec 64) = 0 := by
     rw [hsetup.base_is_aligned]
-    bv_decide
-  rcases hsetup.offset_cases with h0 | h4
-  · have hsub0 : addr - base = (0 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      rw [h0]
-      rfl
-    have haddr : addr = base := by
-      have h := hsub0
-      bv_decide
-    rw [h0, haddr]
-    change
-      Sail.BitVec.extractLsb (shift_bits_left base (3 : BitVec 6)) 5 0 =
-        (0 : BitVec 6)
-    have h := hbase8
-    unfold shift_bits_left Sail.BitVec.extractLsb
-    bv_decide
-  · have hsub4 : addr - base = (4 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      rw [h4]
-      rfl
-    have haddr : addr = base + (4 : BitVec 64) := by
-      have h := hsub4
-      bv_decide
-    rw [h4, haddr]
-    change
-      Sail.BitVec.extractLsb
-          (shift_bits_left (base + (4 : BitVec 64)) (3 : BitVec 6)) 5 0 =
-        (32 : BitVec 6)
-    have h := hbase8
-    unfold shift_bits_left Sail.BitVec.extractLsb
-    bv_decide
+    exact align_down_8_and_7_eq_zero addr
+  have hbase_low : (base &&& (7 : BitVec 64)).toNat = base.toNat % 8 := by
+    rw [BitVec.toNat_and]
+    have h7 : (7 : BitVec 64).toNat = 7 := by decide
+    rw [h7, show (7 : Nat) = 2 ^ 3 - 1 by norm_num,
+      Nat.and_two_pow_sub_one_eq_mod]
+  have hbase_mod8 : base.toNat % 8 = 0 := by
+    have hzero := congrArg BitVec.toNat hbase8
+    rw [hbase_low] at hzero
+    simpa using hzero
+  have hmod :
+      ((base.toNat + (addr - base).toNat) * 8) % 64 =
+        ((addr - base).toNat * 8) % 64 := by
+    have hb_dvd : 8 ∣ base.toNat := Nat.dvd_of_mod_eq_zero hbase_mod8
+    rcases hb_dvd with ⟨q, hq⟩
+    rw [hq]
+    rw [show (8 * q + (addr - base).toNat) * 8 =
+        (addr - base).toNat * 8 + 64 * q by ring]
+    rw [Nat.add_mul_mod_self_left]
+  rw [hmod]
+  have hsub_toNat :
+      (18446744073709551616 - base.toNat + addr.toNat) %
+          18446744073709551616 =
+        (addr - base).toNat := by
+    rw [show 18446744073709551616 = 2 ^ 64 by norm_num]
+    exact (BitVec.toNat_sub addr base).symm
+  conv_rhs => rw [hsub_toNat]
+
+private theorem shift_bits_left_eq_shiftLeft_nat (x : BitVec 64) (sh : BitVec 6) :
+    shift_bits_left x sh = x <<< sh.toNat := by
+  rfl
+
+private theorem amoWordSequenceMask_getLsbD_true {i : Nat} (hi : i < 32) :
+    (4294967295#64).getLsbD i = true := by
+  have hi64 : i < 64 := by omega
+  have hmaskNat : Nat.testBit 4294967295 i = true := by
+    rw [show 4294967295 = 2 ^ 32 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hi64, hmaskNat]
+
+private theorem amoWordSequenceMask_getLsbD_false_of_ge32 {i : Nat}
+    (hge : 32 ≤ i) :
+    (4294967295#64).getLsbD i = false := by
+  have hmaskNat : Nat.testBit 4294967295 i = false := by
+    rw [show 4294967295 = 2 ^ 32 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [not_lt.mpr hge]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hmaskNat]
+
+private theorem amo_word_splice_eq_sequence_of_bound
+    (dword rs2Val : BitVec 64) (off : Nat) (hoff : off + 4 ≤ 8) :
+    dword ^^^
+        (((dword ^^^
+          shift_bits_left rs2Val (BitVec.ofNat 6 (off * 8))) &&&
+          shift_bits_left (0x00000000FFFFFFFF : BitVec 64)
+            (BitVec.ofNat 6 (off * 8)))) =
+      StoreSplice.wordSplice dword
+        (Sail.BitVec.extractLsb rs2Val 31 0) (off * 8) := by
+  rw [shift_bits_left_eq_shiftLeft_nat rs2Val (BitVec.ofNat 6 (off * 8))]
+  rw [shift_bits_left_eq_shiftLeft_nat (0x00000000FFFFFFFF : BitVec 64)
+    (BitVec.ofNat 6 (off * 8))]
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hshift_lt64 : off * 8 < 64 := by omega
+  have hshift_toNat : (BitVec.ofNat 6 (off * 8)).toNat = off * 8 := by
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_eq_of_lt hshift_lt64
+  simp only [StoreSplice.wordSplice, Sail.BitVec.extractLsb,
+    BitVec.getLsbD_xor, BitVec.getLsbD_and, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb, hshift_toNat]
+  by_cases hbefore : i < off * 8
+  · simp [hbefore]
+  · by_cases hinside : i - off * 8 < 32
+    · have hsub64 : i - off * 8 < 64 := by omega
+      simp [hbefore, hinside, hsub64]
+    · have hge : 32 ≤ i - off * 8 := by omega
+      have hmask : (4294967295#64).getLsbD (i - off * 8) = false :=
+        amoWordSequenceMask_getLsbD_false_of_ge32 hge
+      simp [hbefore, hinside, hmask]
 
 /-- The XOR-mask-XOR postlude expression is the same word splice used by the
 store-family memory bridge. -/
@@ -259,11 +324,10 @@ theorem amo_word_splice_eq_sequence
             (BitVec.ofNat 6 (off * 8)))) =
       StoreSplice.wordSplice dword
         (Sail.BitVec.extractLsb rs2Val 31 0) (8 * off) := by
-  rcases hoff with rfl | rfl
-  · unfold StoreSplice.wordSplice shift_bits_left Sail.BitVec.extractLsb
-    bv_decide
-  · unfold StoreSplice.wordSplice shift_bits_left Sail.BitVec.extractLsb
-    bv_decide
+  have hoff_bound : off + 4 ≤ 8 := by
+    rcases hoff with h0 | h4 <;> omega
+  rw [Nat.mul_comm 8 off]
+  exact amo_word_splice_eq_sequence_of_bound dword rs2Val off hoff_bound
 
 /-- The byte slices of `loaded_dword_at` agree with direct byte loads from the
 same dword window. -/
@@ -728,14 +792,26 @@ theorem amo_word_shifted_old_sign_extend_eq_loaded_word
   simp only [srl_sign_extend_word_extracts_word _ _ h_align,
     ← loaded_word_in_dword _ _ h_align]
 
+private theorem sign_extend_64_setWidth_32 (x : BitVec 32) :
+    (sign_extend (m := 64) x).setWidth 32 = x := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  simp only [BitVec.getLsbD_setWidth]
+  change ((i<b32) && (BitVec.signExtend 64 x).getLsbD i) = x.getLsbD i
+  rw [BitVec.getLsbD_signExtend]
+  have hi64 : i < 64 := by omega
+  simp [hi, hi64]
+
 /-- Sign-extension from 32 to 64 bits is injective. -/
 theorem amo_word_sign_extend_64_injective
     {lhs rhs : BitVec 32}
     (h : sign_extend (m := 64) lhs = sign_extend (m := 64) rhs) :
     lhs = rhs := by
-  revert lhs rhs
-  unfold sign_extend Sail.BitVec.signExtend
-  bv_decide
+  have h' := congrArg (fun x : BitVec 64 => x.setWidth 32) h
+  change (sign_extend (m := 64) lhs).setWidth 32 =
+    (sign_extend (m := 64) rhs).setWidth 32 at h'
+  rw [sign_extend_64_setWidth_32 lhs, sign_extend_64_setWidth_32 rhs] at h'
+  exact h'
 
 /-- The shifted old dword produced by the word-AMO prelude has the native old
 word in its low 32 bits. -/
@@ -1287,22 +1363,22 @@ structure AmoWordMiddleStep
 /-- Word AMO addition is commutative at the 64-bit scratch-register level. -/
 theorem amo_word_add_comm (lhs rhs : BitVec 64) :
     lhs + rhs = rhs + lhs := by
-  bv_decide
+  exact BitVec.add_comm lhs rhs
 
 /-- Word AMO bitwise-and is commutative at the 64-bit scratch-register level. -/
 theorem amo_word_and_comm (lhs rhs : BitVec 64) :
     lhs &&& rhs = rhs &&& lhs := by
-  bv_decide
+  exact BitVec.and_comm lhs rhs
 
 /-- Word AMO bitwise-or is commutative at the 64-bit scratch-register level. -/
 theorem amo_word_or_comm (lhs rhs : BitVec 64) :
     lhs ||| rhs = rhs ||| lhs := by
-  bv_decide
+  exact BitVec.or_comm lhs rhs
 
 /-- Word AMO bitwise-xor is commutative at the 64-bit scratch-register level. -/
 theorem amo_word_xor_comm (lhs rhs : BitVec 64) :
     lhs ^^^ rhs = rhs ^^^ lhs := by
-  bv_decide
+  exact BitVec.xor_comm lhs rhs
 
 /-- The `AMOADD.W` middle instruction writes `rs2 + old` to `amoNewVReg` and
 preserves the word-AMO prelude registers. -/
@@ -3062,11 +3138,9 @@ theorem amo_word_select_value_of_bool
     (old new : BitVec 64) (flag : Bool) :
     (new - old) * zero_extend (m := 64) (bool_to_bit flag) + old =
       if flag then new else old := by
-  cases flag
-  · unfold bool_to_bit bool_bit_forwards zero_extend Sail.BitVec.zeroExtend
-    bv_decide
-  · unfold bool_to_bit bool_bit_forwards zero_extend Sail.BitVec.zeroExtend
-    bv_decide
+  cases flag <;>
+    unfold bool_to_bit bool_bit_forwards zero_extend Sail.BitVec.zeroExtend <;>
+    simp
 
 /-- The signed-min word select arithmetic matches Sail's 32-bit signed branch. -/
 theorem amo_word_select_value_of_slt_sext (old new : BitVec 64) :
