@@ -1,3 +1,4 @@
+import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.ORI
@@ -62,7 +63,11 @@ private theorem or32_setWidth6_toNat (x : BitVec 64) :
     ((Riscv.ori x 32#64).setWidth 6).toNat = (x.setWidth 5).toNat + 32 := by
   have h : (Riscv.ori x 32#64).setWidth 6 = ((1#1) +++ x.setWidth 5) := by
     unfold Riscv.ori
-    bv_decide
+    apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    interval_cases i <;> simp
+    all_goals rw [BitVec.getElem_append]
+    all_goals simp [BitVec.getElem_setWidth]
   rw [h, BitVec.toNat_append]
   norm_num [Nat.shiftLeft_eq]
   change (2 ^ 5 ||| (x.setWidth 5).toNat) = (x.setWidth 5).toNat + 32
@@ -291,11 +296,13 @@ theorem srlwProgram_eq_sail
     (rs1 : regidx)
     (rd : regidx)
     (js : SailJoltState)
-    (v1 v2 : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.srlwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SRLW).run js.sail := by
+  let v1 := h.rs1_val
+  let v2 := h.rs2_val
+  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read.value_eq
+  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read.value_eq
   by_cases hrd : rd = regidx.Regidx 0
   · subst rd
     unfold JoltISA.srlwProgram

@@ -114,14 +114,14 @@ theorem loadDwordPhase_run (js : SailJoltState) (js_setup : SailJoltState)
     simpa only [hsetup_sail] using hcfg
   have hphys_setup : FlatPhysMem addr 8 js_setup.sail := by
     simpa only [hsetup_sail] using hphys
-  have hdword : DwordLoadAssumptions addr js_setup.sail :=
-    dword_load_assumptions_of_aligned_phys
+  have hdword : DwordLoadEvidence addr js_setup.sail :=
+    dword_load_evidence_of_aligned_phys
       addr js_setup.sail haligned hphys_setup
   have h_ld_succeeds :
       (JoltISA.execInstr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0)).run js_setup =
         .ok RETIRE_SUCCESS js_load := by
     have hld :=
-      vreg_LD_run_of_dword_assumptions JoltISA.inlineTmp1 JoltISA.inlineTmp1
+      vreg_LD_run_of_dword_evidence JoltISA.inlineTmp1 JoltISA.inlineTmp1
         js_setup addr hsetup_v1 hcfg_setup hdword
     simpa only [js_load, dword, hsetup_sail] using hld
   have h_phase_succeeds :

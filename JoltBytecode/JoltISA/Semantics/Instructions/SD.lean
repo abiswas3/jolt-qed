@@ -20,6 +20,8 @@ Jolt-ISA `SD` retires with the produced Sail state and preserves virtual
 registers. -/
 theorem execInstr_sd_vreg_run_of_write (base value : VReg) (imm : BitVec 12)
     (js : SailJoltState) (s' : SailState)
+    (h_align :
+      (js.vregs base + sign_extend (m := 64) imm) &&& (7 : BitVec 64) = 0)
     (h :
       vmem_write_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 8
         (js.vregs value) (Store Data) false false false js.sail =
@@ -29,7 +31,8 @@ theorem execInstr_sd_vreg_run_of_write (base value : VReg) (imm : BitVec 12)
   unfold execInstr readSrc readVReg liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
-  rw [h]
+  rw [if_pos h_align]
+  simp [EStateM.bind, h]
   rfl
 
 /-- Successful `SD` from architectural-register base and value sources. -/
@@ -38,6 +41,8 @@ theorem execInstr_sd_xreg_xreg_run_of_write
     (js : SailJoltState) (baseValue stored : BitVec 64) (s' : SailState)
     (hbase : rX_bits base js.sail = .ok baseValue js.sail)
     (hvalue : rX_bits value js.sail = .ok stored js.sail)
+    (h_align :
+      (baseValue + sign_extend (m := 64) imm) &&& (7 : BitVec 64) = 0)
     (hwrite :
       vmem_write_addr (Virtaddr (baseValue + sign_extend (m := 64) imm)) 8
         stored (Store Data) false false false js.sail =
@@ -50,7 +55,8 @@ theorem execInstr_sd_xreg_xreg_run_of_write
   dsimp only
   rw [hvalue]
   dsimp only
-  rw [hwrite]
+  rw [if_pos h_align]
+  simp [EStateM.bind, hwrite]
   rfl
 
 end JoltISA

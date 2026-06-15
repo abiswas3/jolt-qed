@@ -49,9 +49,9 @@ def ebreakAfterJal (js : SailJoltState) (pc nextPC : BitVec 64) :
 theorem jal_zero_target (pc : BitVec 64) :
     pc + sign_extend (m := 64) (0 : BitVec 21) = pc := by
   have hzero : sign_extend (m := 64) (0 : BitVec 21) = 0#64 := by
-    native_decide
+    decide
   rw [hzero]
-  bv_decide
+  exact BitVec.add_zero pc
 
 /-- Jumping to a fetch-aligned `PC` succeeds and writes that value into
 `nextPC`.
@@ -69,9 +69,9 @@ theorem jump_to_pc_run
       .ok RETIRE_SUCCESS (setNextPCState js.sail pc) := by
   have hExtC := currentlyEnabled_Ext_C_run js.sail misa hmisa
   have hassert : (0#1 == 0#1) = true := by
-    native_decide
+    decide
   have hbit1 : bool_bit_backwards 0#1 = false := by
-    native_decide
+    decide
   unfold jump_to ext_control_check_pc SailME.run PreSail.PreSailME.run
   unfold currentlyEnabled hartSupports
   unfold set_next_pc setNextPCState sail_branch_announce redirect_callback

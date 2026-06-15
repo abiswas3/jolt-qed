@@ -35,7 +35,7 @@ theorem amoandwProgram_concrete_aligned
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOAND 4
+    (h_mem : AmoMemoryContext amoop.AMOAND 4
       (amoWordBase addr) addr js.sail)
     (h_align : addr &&& (3 : BitVec 64) = 0) :
     ∃ jsf : SailJoltState,
@@ -72,7 +72,7 @@ theorem execute_AMOANDW_reduces_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOAND 4
+    (h_mem : AmoMemoryContext amoop.AMOAND 4
       (amoWordBase addr) addr js.sail)
     (h_align : addr &&& (3 : BitVec 64) = 0) :
     (execute_AMO amoop.AMOAND false false rs2 rs1 4 rd).run js.sail =
@@ -94,7 +94,7 @@ theorem amoandwProgram_eq_sail_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOAND 4
+    (h_mem : AmoMemoryContext amoop.AMOAND 4
       (amoWordBase addr) addr js.sail)
     (h_align : addr &&& (3 : BitVec 64) = 0) :
     projectResult ((JoltISA.execProgram
@@ -164,15 +164,15 @@ theorem amoandwProgram_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Main public theorem for `AMOAND.W`. -/
-theorem amoandwProgram_eq_sail
+/-- Internal memory-context theorem for `AMOAND.W`. -/
+theorem amoandwProgram_eq_sail_of_memory_context
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOAND 4
+    (h_mem : AmoMemoryContext amoop.AMOAND 4
       (amoWordBase addr) addr js.sail) :
     projectResult ((JoltISA.execProgram
       (JoltISA.amoandwProgram rs2 rs1 rd)).run js) =
@@ -182,6 +182,33 @@ theorem amoandwProgram_eq_sail
       rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 hrd h_mem h_align
   · exact amoandwProgram_eq_sail_misaligned
       rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 h_align
+
+/-- Main public theorem for `AMOAND.W`.
+
+The theorem takes one primitive-only atomic bundle. The aligned branch derives
+exact memory context from the enclosing dword window; the misaligned branch
+stops before memory context is needed. -/
+theorem amoandwProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : AmoWordProgramEqSailAssumptions amoop.AMOAND rs2 rs1 rd js) :
+    projectResult ((JoltISA.execProgram
+      (JoltISA.amoandwProgram rs2 rs1 rd)).run js) =
+      (execute_AMO amoop.AMOAND false false rs2 rs1 4 rd).run js.sail := by
+  let addr := h.rs1_val
+  let rs2Val := h.rs2_val
+  by_cases h_align : addr &&& (3 : BitVec 64) = 0
+  · have h_mem_base :
+        AmoMemoryContext amoop.AMOAND 4 (amoWordAssumptionBase addr) addr js.sail := by
+      simpa [addr] using h.memoryContext (by simpa [addr] using h_align)
+    have h_mem : AmoMemoryContext amoop.AMOAND 4 (amoWordBase addr) addr js.sail := by
+      simpa [amoWordBase, amoWordAssumptionBase] using h_mem_base
+    exact amoandwProgram_eq_sail_aligned
+      rs2 rs1 rd js h.cfg addr rs2Val
+      h.rs1_read.value_eq h.rs2_read.value_eq h.rd_readable.exists_value
+      h_mem h_align
+  · exact amoandwProgram_eq_sail_misaligned
+      rs2 rs1 rd js h.cfg addr rs2Val
+      h.rs1_read.value_eq h.rs2_read.value_eq h_align
 
 end AtomicFamily
 

@@ -3,7 +3,8 @@ import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.StoreDefUtils
 import JoltBytecode.InstructionEquivalence.StoreFamily.ProgramBlocks
-import JoltBytecode.InstructionEquivalence.StoreFamily.Assumptions
+import JoltBytecode.InstructionEquivalence.StoreFamily.MemoryPipeline
+import JoltBytecode.InstructionEquivalence.StoreFamily.Derived
 
 /-!
 # SH: top-down store-halfword equivalence
@@ -103,7 +104,9 @@ theorem shProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     rw [hsplice_sail]
     simpa [base, dword_new, finalSail] using hwrite_dword
   rcases StoreProgramBlocks.sdWriteBlock (.done RETIRE_SUCCESS)
-      js_splice base dword_new finalSail hsplice_v1 hdword_new hwrite_for_sd with
+      js_splice base dword_new finalSail hsplice_v1 hdword_new
+      (by simpa [base] using StoreFamily.store_dword_base_aligns rs1_val imm)
+      hwrite_for_sd with
     ⟨js_write, hsd_run, hsail_write, _hvregs_write⟩
   refine ⟨js_write, ?_, ?_⟩
   · calc
@@ -128,7 +131,8 @@ theorem sh_spliced_dword_store_eq_halfword_store (imm : BitVec 12)
     (hsetup : StoreSplice.HalfwordStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (hmem : ∀ addr : Nat, s.mem.get? addr ≠ none) :
+    (hbytes : DwordBytesPresent
+      (compute_aligned_dword_base_address rs1_val imm) s) :
     state_after_dword_store s
         (compute_aligned_dword_base_address rs1_val imm)
         (shSplicedDword imm rs1_val rs2_val s) =
@@ -145,8 +149,8 @@ theorem sh_spliced_dword_store_eq_halfword_store (imm : BitVec 12)
     simpa [dword_new, shSplicedDword, dword_orig, halfword_val, off, ea, base, Nat.mul_comm]
       using StoreSplice.halfwordSplice_spec dword_orig halfword_val off hsetup.offset_cases
   have hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none := by
-    intro k _hk
-    exact hmem (base.toNat + k)
+    intro k hk
+    exact hbytes.present k hk
   have hload : ∀ k : Nat, k < 8 →
       dword_byte dword_orig k = loaded_byte_at s (base + BitVec.ofNat 64 k) := by
     intro k hk
@@ -196,7 +200,7 @@ theorem shProgram_concrete_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
   refine ⟨js', hjolt, ?_⟩
   rw [hjolt_sail]
   exact sh_spliced_dword_store_eq_halfword_store imm js.sail rs1_val rs2_val
-    hsetup hcfg.mem_populated
+    hsetup h_dword_phys.bytes
 
 /-- **Sail-side aligned SH reduction.** -/
 theorem execute_SH_reduces (imm : BitVec 12) (rs2 rs1 : regidx)
@@ -231,7 +235,7 @@ theorem shProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (rs1_val rs2_val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (hmem : StoreFamily.StoreMemoryAssumptions
+    (hmem : StoreFamily.StoreMemoryContext
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm) 2 js.sail)
     (halign : load_effective_address rs1_val imm &&& (1 : BitVec 64) = 0) :
@@ -361,21 +365,23 @@ theorem shProgram_eq_sail_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
 The caller supplies only the compact memory bundle. The proof cases on the
 halfword alignment guard and reuses the aligned or misaligned branch theorem. -/
 theorem shProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
-    (rs1_val rs2_val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (hmem : StoreFamily.StoreMemoryAssumptions
-      (load_effective_address rs1_val imm)
-      (compute_aligned_dword_base_address rs1_val imm) 2 js.sail) :
+    (js : SailJoltState)
+    (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.shProgram imm rs2 rs1)).run js) =
       (execute_STORE imm rs2 rs1 2).run js.sail := by
+  let ea := load_effective_address h.rs1_val imm
   by_cases halign :
-      load_effective_address rs1_val imm &&& (1 : BitVec 64) = 0
-  · exact shProgram_eq_sail_aligned imm rs2 rs1 js hcfg rs1_val rs2_val
-      hrs1 hrs2 hmem halign
-  · exact shProgram_eq_sail_misaligned imm rs2 rs1 js rs1_val rs2_val
-      hrs1 hrs2 halign
+      ea &&& (1 : BitVec 64) = 0
+  · have hmem : StoreFamily.StoreMemoryContext
+        (load_effective_address h.rs1_val imm)
+        (compute_aligned_dword_base_address h.rs1_val imm) 2 js.sail :=
+      h.accessContext 2
+        (h.halfwordStore (by simpa [ea] using halign))
+    exact shProgram_eq_sail_aligned imm rs2 rs1 js h.cfg h.rs1_val h.rs2_val
+      h.rs1_read.value_eq h.rs2_read.value_eq hmem
+      (by simpa [ea] using halign)
+  · exact shProgram_eq_sail_misaligned imm rs2 rs1 js h.rs1_val h.rs2_val
+      h.rs1_read.value_eq h.rs2_read.value_eq (by simpa [ea] using halign)
 
 end SH_main
 

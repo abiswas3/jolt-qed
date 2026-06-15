@@ -70,7 +70,12 @@ private theorem sail_remw_value_of_normal_remw (dividend divisor : BitVec 64)
 private lemma extractLsb_signExtend_32_64_remw (x : BitVec 32) :
     Sail.BitVec.extractLsb (sign_extend (m := 64) x) 31 0 = x := by
   unfold sign_extend Sail.BitVec.signExtend Sail.BitVec.extractLsb
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitVec.getLsbD_extractLsb, BitVec.getLsbD_signExtend]
+  have hi32 : i < 32 := by omega
+  have hi64 : i < 64 := by omega
+  simp [hi32, hi64]
 
 private lemma signExtend_extract_signExtend_32_64_remw (x : BitVec 32) :
     sign_extend (m := 64)
@@ -82,15 +87,38 @@ private lemma sshiftRight31_eq_63_of_sext32_remw (x : BitVec 32) :
     (sign_extend (m := 64) x).sshiftRight 31 =
     (sign_extend (m := 64) x).sshiftRight 63 := by
   unfold sign_extend Sail.BitVec.signExtend
-  bv_decide
+  ext i hi
+  rw [BitVec.getElem_sshiftRight, BitVec.getElem_sshiftRight]
+  have hi64 : ¬ 64 ≤ i := by omega
+  by_cases hi0 : i = 0
+  · subst i
+    simp [hi64, BitVec.getLsbD_signExtend,
+      ← BitVec.getLsbD_eq_getElem, BitVec.msb_eq_getLsbD_last]
+  · have h31_lo : ¬ 31 + i < 32 := by omega
+    by_cases h31_hi : 31 + i < 64
+    · have h63_hi : ¬ 63 + i < 64 := by omega
+      simp [hi64, h31_hi, h31_lo, h63_hi, BitVec.getLsbD_signExtend,
+        ← BitVec.getLsbD_eq_getElem, BitVec.msb_eq_getLsbD_last]
+    · have h63_hi : ¬ 63 + i < 64 := by omega
+      simp [hi64, h31_hi, h63_hi]
 
 private lemma sshiftRight63_signExtend_eq_of_msb_eq_remw (x y : BitVec 32)
     (h : x.msb = y.msb) :
     (sign_extend (m := 64) x).sshiftRight 63 =
     (sign_extend (m := 64) y).sshiftRight 63 := by
-  revert h
   unfold sign_extend Sail.BitVec.signExtend
-  bv_decide
+  ext i hi
+  rw [BitVec.getElem_sshiftRight, BitVec.getElem_sshiftRight]
+  have hi64 : ¬ 64 ≤ i := by omega
+  by_cases hi0 : i = 0
+  · subst i
+    simp [hi64, BitVec.getLsbD_signExtend,
+      ← BitVec.getLsbD_eq_getElem, BitVec.msb_eq_getLsbD_last, h]
+    simpa [BitVec.msb_eq_getLsbD_last] using h
+  · have h63_hi : ¬ 63 + i < 64 := by omega
+    simp [hi64, h63_hi, h]
+    simpa [BitVec.msb_eq_getLsbD_last, ← BitVec.getLsbD_eq_getElem,
+      BitVec.getLsbD_signExtend] using h
 
 private lemma signfix31_bv_abs_sext32_eq_self_remw (x : BitVec 32) :
     (bv_abs (sign_extend (m := 64) x) ^^^
@@ -110,8 +138,28 @@ private theorem sext32_xor_sub_sign_eq_sext32_remw
     sign_extend (m := 64) val := by
   by_cases hzero : val = 0#32
   · rw [hzero]
-    unfold sign_extend Sail.BitVec.signExtend bv_abs
-    bv_decide
+    unfold bv_abs
+    have hzero64 : sign_extend (m := 64) (0#32 : BitVec 32) = 0#64 := by
+      decide
+    rw [hzero64]
+    simp only [BitVec.msb_zero, ↓reduceIte]
+    by_cases hx : x32.msb = false
+    · have hsign :
+          (sign_extend (m := 64) x32).sshiftRight 63 =
+          (sign_extend (m := 64) (0#32 : BitVec 32)).sshiftRight 63 := by
+        exact sshiftRight63_signExtend_eq_of_msb_eq_remw x32 0#32 (by simp [hx])
+      rw [hsign]
+      decide
+    · have hxtrue : x32.msb = true := by
+        cases hxv : x32.msb <;> simp_all
+      have hsign :
+          (sign_extend (m := 64) x32).sshiftRight 63 =
+          (sign_extend (m := 64) (-1#32 : BitVec 32)).sshiftRight 63 := by
+        exact sshiftRight63_signExtend_eq_of_msb_eq_remw x32 (-1#32) (by
+          rw [hxtrue]
+          decide)
+      rw [hsign]
+      decide
   · have hsrem_ne : BitVec.srem x32 y32 ≠ 0#32 := by
       intro hs
       exact hzero (hval_srem.trans hs)

@@ -1,11 +1,10 @@
 # Plan: Ordinary Memory Envelope
 
-Status: ordinary-memory theorem boundary only for this version.
+Status: ordinary-memory theorem boundary completed for load/store/AMO.
 
-This note tracks the remaining memory-envelope work for bytecode expansion.
-Ordinary load, store, and AMO equivalence proofs exist, but their theorem
-boundary still needs a single clear statement of the memory assumptions under
-which they apply.
+This note records the memory-envelope boundary for bytecode expansion. Ordinary
+load, store, and AMO public equivalence theorems now take primitive-only family
+bundles; internal exact access records are derived inside the proofs.
 
 Jolt special memory regions are explicitly out of scope for this version. We are
 not proving that Rust/Jolt's memory implementation, address layout, or device
@@ -40,66 +39,67 @@ this access, and Sail treats the same bytes as ordinary non-MMIO memory availabl
 in `s.mem`, then the bytecode expansion is equivalent to the Sail instruction.
 ```
 
-That is already the shape of the existing assumptions.
+That is the theorem boundary implemented for loads, stores, and AMOs.
 
 ## Current Pieces
 
-The current memory setup is split across a global state predicate and
-family-specific access bundles.
+The current memory setup is split into primitive assumptions, public family
+bundles, shared exact flat-memory predicates, and colocated helper contexts.
 
-`JoltConfig s` gives global Sail execution assumptions:
+`JoltConfig s` gives only global Sail execution assumptions:
 
 - machine mode;
-- `MPRV = 0`;
-- populated `s.mem`.
+- `MPRV = 0`.
 
-`FlatPhysMem addr width s` is the read-side ordinary-memory predicate:
+Primitive memory assumptions live in `JoltBytecode.Assumptions`:
 
-- load PMP check succeeds;
-- `within_mmio_readable` returns `false`.
+- `MemBytesPresent`;
+- load/store/atomic PMP checks, including `*InRange` forms;
+- readable/writable MMIO exclusion, including `*InRange` forms.
 
-Loads add alignment/splitting facts through:
+Shared exact flat-memory predicates live with the vmem helper lemmas in
+`InstructionEquivalence.Memory.Utils`:
 
-- `DwordLoadAssumptions`;
-- `LoadReadAssumptions`.
+- `FlatPhysMem`;
+- `FlatStoreMem`;
+- `FlatLoadStoreMem`;
+- `FlatAtomicMem`;
+- `FlatLoadReservedMem`.
 
-Stores add write-side and read-modify-write assumptions through:
+Public theorem bundles are family-local and primitive-only:
 
-- `StoreFamily.FlatStoreMem`;
-- `StoreFamily.FlatLoadStoreMem`;
-- `StoreFamily.StoreMemoryAssumptions`.
+- `LoadFamily.LoadProgramEqSailAssumptions`;
+- `StoreFamily.StoreProgramEqSailAssumptions`;
+- `AtomicFamily.AmoDwordProgramEqSailAssumptions`;
+- `AtomicFamily.AmoWordProgramEqSailAssumptions`.
 
-AMOs add atomic access assumptions through:
+Family-local helper contexts are not public theorem assumptions and live with
+the helper lemmas that consume them:
 
-- `AtomicFamily.FlatLoadStoreMem`;
-- `AtomicFamily.FlatAtomicMem`;
-- `AtomicFamily.AmoMemoryAssumptions`.
+- load no longer has a standalone helper context;
+- `StoreFamily.StoreMemoryContext` lives in `StoreFamily.MemoryPipeline`;
+- `AtomicFamily.AmoMemoryContext` lives in `AtomicFamily.Common`;
+- `LoadReservedFamily.LoadReservedMemoryContext` lives in
+  `LoadReservedFamily.Common`.
 
-So there is no single RAM struct today. There is one common `JoltConfig`, one
-common read predicate, and separate store/AMO bundles.
+`InstructionEquivalence.Memory.Derived` contains only family-agnostic derivation
+theorems from wider primitive windows to exact flat-access predicates. Family-specific
+derivations live in the family `Derived.lean` files.
 
 ## What To Centralize
 
-The useful cleanup is to centralize the Sail-pipeline ordinary-memory envelope,
-not to introduce a Rust/Jolt layout model.
+The useful cleanup was to centralize the Sail-pipeline ordinary-memory
+vocabulary, not to introduce a Rust/Jolt layout model.
 
-The target should be a shared access vocabulary, for example:
+The implemented shared vocabulary is the `Flat*` exact flat-access family in
+`InstructionEquivalence.Memory.Utils`.
 
-```text
-SailOrdinaryReadMem addr width s
-SailOrdinaryWriteMem addr width s
-SailOrdinaryLoadStoreMem addr width s
-SailOrdinaryAtomicMem op addr width s
-```
+The goal was mainly naming and reuse:
 
-or one namespace containing the existing equivalent structures.
-
-The goal is mainly naming and reuse:
-
-- avoid redefining `FlatStoreMem` separately for stores and atomics;
-- avoid redefining `FlatLoadStoreMem` separately for stores and atomics;
-- make public theorem statements read as ordinary Sail-memory assumptions;
-- keep load/store/AMO proofs using the same operational memory vocabulary.
+- stores and atomics share `FlatStoreMem` / `FlatLoadStoreMem`;
+- public theorem statements expose primitive finite-window assumptions rather
+  than internal pipeline helper contexts;
+- load/store/AMO proofs use the same operational memory vocabulary.
 
 ## What Not To Do In This Version
 
@@ -114,13 +114,12 @@ Do not claim Rust's memory implementation is correct.
 Those are runtime/device-layer claims, not needed for the current conceptual
 Jolt ISA bytecode-expansion theorem over ordinary memory-row execution.
 
-## Milestones For This Version
+## Completed Milestones
 
-1. Decide whether to keep the existing family-specific bundles or move the
-   duplicate store/AMO structures into one shared memory module.
-2. If centralizing, define shared read/write/load-store/atomic ordinary-memory
-   predicates in `InstructionEquivalence.Memory`.
-3. Re-export compatibility projections so existing load/store/AMO proofs do not
-   need major rewrites.
-4. Update planning/theorem comments to say "ordinary memory-row execution"
-   rather than "Jolt RAM layout."
+1. Shared read/write/load-store/atomic ordinary-memory predicates live with the
+   vmem helper lemmas in `InstructionEquivalence.Memory.Utils`.
+2. Primitive finite-window assumptions centralized in `JoltBytecode.Assumptions`.
+3. Load/store/AMO public theorem statements now take one primitive-only family
+   bundle.
+4. Shared helper contexts are colocated with the helper modules that consume
+   them; no standalone adapter files remain.

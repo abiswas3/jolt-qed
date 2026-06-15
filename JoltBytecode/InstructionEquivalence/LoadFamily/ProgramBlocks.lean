@@ -95,8 +95,8 @@ theorem setupBlock (rest : JoltISA.Program)
     simpa [daddr, compute_aligned_dword_base_address, load_effective_address,
       aligned_dword_addr_eq] using
       (aligned_dword_addr_is_aligned_dword_access val imm)
-  have hd : DwordLoadAssumptions daddr js.sail :=
-    dwordLoadAssumptions_of_aligned_phys daddr js.sail h_daddr_aligned
+  have hd : DwordLoadEvidence daddr js.sail :=
+    dwordLoadEvidence_of_aligned_phys daddr js.sail h_daddr_aligned
       (by simpa [daddr] using h_dword_phys)
   have hld_read :
       vmem_read_addr (Virtaddr (js1.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12))) 0 8
@@ -116,9 +116,22 @@ theorem setupBlock (rest : JoltISA.Program)
   have hld :
       (JoltISA.execInstr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0)).run js1 =
         .ok RETIRE_SUCCESS js_load := by
+    have hld_align :
+        (js1.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12)) &&&
+            (7 : BitVec 64) =
+          0 := by
+      have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by
+        decide
+      have hv1 : js1.vregs JoltISA.inlineTmp1 = daddr := by
+        simp only [js1]
+        simp only [if_true]
+      have haddr0 : daddr + (0 : BitVec 64) = daddr := by
+        bv_decide
+      rw [hv1, h0, haddr0]
+      exact h_daddr_aligned.align
     simpa [js_load, dword] using
       (JoltISA.ld_run_vreg_vreg_from_memory_read JoltISA.inlineTmp1 JoltISA.inlineTmp1
-        (0 : BitVec 12) js1 dword hld_read)
+        (0 : BitVec 12) js1 dword hld_align hld_read)
   refine ⟨js_load, ?_, rfl, ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js js0 haddi]
     rw [JoltISA.execProgram_instr_run_retire _ _ js0 js1 handi]

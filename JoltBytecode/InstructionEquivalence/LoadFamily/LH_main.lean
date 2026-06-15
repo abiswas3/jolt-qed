@@ -4,6 +4,7 @@ import JoltBytecode.InstructionEquivalence.Memory.Utils
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
+import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib.Tactic.IntervalCases
@@ -76,7 +77,7 @@ theorem jolt_lh_bridge (s : SailState) (addr : BitVec 64)
 theorem execute_LH_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState) (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hload : LoadReadAssumptions (load_effective_address val imm) 2 js.sail)
+    (hload : LoadReadEvidence (load_effective_address val imm) 2 js.sail)
     (h_no_ovf : (load_effective_address val imm).toNat + 1 < 2 ^ 64) :
     (execute_LOAD imm rs1 rd false 2).run js.sail =
     .ok RETIRE_SUCCESS
@@ -104,10 +105,8 @@ theorem execute_LH_reduces (imm : BitVec 12) (rs1 rd : regidx)
     memory-alignment exception as Jolt. Width-2 variant of
     `execute_LW_misaligned`, using `access_misaligned_2_unaligned_true`. -/
 theorem execute_LH_misaligned (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 2 js.sail)
-    (h_no_ovf : (load_effective_address val imm).toNat + 1 < 2 ^ 64)
     (h_align : load_effective_address val imm &&& 1 ≠ 0)
     :
     (execute_LOAD imm rs1 rd false 2).run js.sail =
@@ -235,7 +234,7 @@ theorem lhProgram_eq_sail_aligned (imm : BitVec 12)
     projectResult ((JoltISA.execProgram (JoltISA.lhProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd false 2).run js.sail := by
   let ea := load_effective_address val imm
-  have hload : LoadReadAssumptions (load_effective_address val imm) 2 js.sail := by
+  have hload : LoadReadEvidence (load_effective_address val imm) 2 js.sail := by
     refine
       { aligned := ?_
         phys := hphys }
@@ -256,10 +255,7 @@ theorem lhProgram_eq_sail_aligned (imm : BitVec 12)
 theorem lhProgram_eq_sail_misaligned (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 2 js.sail)
-    (h_half_no_ovf : (load_effective_address val imm).toNat + 1 < 2 ^ 64)
     (h_align : load_effective_address val imm &&& 1 ≠ 0) :
     projectResult ((JoltISA.execProgram (JoltISA.lhProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd false 2).run js.sail := by
@@ -274,8 +270,7 @@ theorem lhProgram_eq_sail_misaligned (imm : BitVec 12)
         .ok (ExecutionResult.Memory_Exception
           (Virtaddr ea, ExceptionType.E_Load_Addr_Align ())) js.sail := by
     simpa [ea] using
-      (execute_LH_misaligned imm rs1 rd js hcfg val hrx hphys
-        h_half_no_ovf h_align)
+      (execute_LH_misaligned imm rs1 rd js val hrx h_align)
   rw [hjolt]
   simp only [projectResult, project]
   symm
@@ -287,18 +282,18 @@ load execution. -/
 theorem lhProgram_eq_sail (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 2 js.sail)
-    (h_half_no_ovf : (load_effective_address val imm).toNat + 1 < 2 ^ 64) :
+    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.lhProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd false 2).run js.sail := by
-  let ea := load_effective_address val imm
+  let ea := load_effective_address h.rs1_val imm
   by_cases h_align : ea &&& 1 = 0
-  · exact lhProgram_eq_sail_aligned imm rs1 rd js hcfg val hrx
-      h_dword_phys hphys h_half_no_ovf h_align
-  · exact lhProgram_eq_sail_misaligned imm rs1 rd js hcfg val hrx
-      hphys h_half_no_ovf h_align
+  · exact lhProgram_eq_sail_aligned imm rs1 rd js h.cfg h.rs1_val
+      h.rs1_read.value_eq
+      h.dwordPhys
+      (h.halfwordPhys (by simpa [ea] using h_align))
+      (h.halfwordNoOvf (by simpa [ea] using h_align))
+      (by simpa [ea] using h_align)
+  · exact lhProgram_eq_sail_misaligned imm rs1 rd js h.rs1_val
+      h.rs1_read.value_eq (by simpa [ea] using h_align)
 
 end LH_main

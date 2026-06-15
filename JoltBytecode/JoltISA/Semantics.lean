@@ -297,28 +297,29 @@ def execInstr : Instr → JoltMonad ExecutionResult
         pure RETIRE_SUCCESS
       else
         pure (ExecutionResult.Memory_Exception (Virtaddr addr, fault))
-  | .VirtualAssertDwordAlignment base imm fault => do
-      let baseValue ← liftSail (rX_bits base)
-      let addr := baseValue + sign_extend (m := 64) imm
-      if addr &&& (7 : BitVec 64) = 0 then
-        pure RETIRE_SUCCESS
-      else
-        pure (ExecutionResult.Memory_Exception (Virtaddr addr, fault))
   | .LD dst base imm => do
       let baseValue ← readSrc base
       let addr := baseValue + sign_extend (m := 64) imm
-      match ← liftSail (vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false) with
-      | .Ok dword =>
-          writeDst dst dword
-          pure RETIRE_SUCCESS
-      | .Err e => pure e
+      if addr &&& (7 : BitVec 64) = 0 then
+        match ← liftSail (vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false) with
+        | .Ok dword =>
+            writeDst dst dword
+            pure RETIRE_SUCCESS
+        | .Err e => pure e
+      else
+        pure (ExecutionResult.Memory_Exception
+          (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ()))
   | .SD base value imm => do
       let baseValue ← readSrc base
       let addr := baseValue + sign_extend (m := 64) imm
       let stored ← readSrc value
-      match ← liftSail (vmem_write_addr (Virtaddr addr) 8 stored (Store Data) false false false) with
-      | .Ok _ => pure RETIRE_SUCCESS
-      | .Err e => pure e
+      if addr &&& (7 : BitVec 64) = 0 then
+        match ← liftSail (vmem_write_addr (Virtaddr addr) 8 stored (Store Data) false false false) with
+        | .Ok _ => pure RETIRE_SUCCESS
+        | .Err e => pure e
+      else
+        pure (ExecutionResult.Memory_Exception
+          (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ()))
   | .VirtualLW dst base imm => do
       let baseValue ← readSrc base
       let addr := baseValue + sign_extend (m := 64) imm

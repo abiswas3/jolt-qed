@@ -30,6 +30,7 @@ leaves the Sail state unchanged. -/
 theorem amoswapd_ld_old_run
     (rs1 : regidx) (js : SailJoltState) (addr oldVal : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
+    (h_align : addr &&& (7 : BitVec 64) = 0)
     (hload :
       vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false js.sail =
         .ok (Ok oldVal) js.sail) :
@@ -39,7 +40,7 @@ theorem amoswapd_ld_old_run
         .ok RETIRE_SUCCESS js_afterLoad ∧
       js_afterLoad.sail = js.sail ∧
       js_afterLoad.vregs JoltISA.amoOldVReg = oldVal := by
-  exact amo_dword_ld_old_run rs1 js addr oldVal hrs1 hload
+  exact amo_dword_ld_old_run rs1 js addr oldVal hrs1 h_align hload
 
 /-- `SD rs2, 0(rs1)` writes the new dword and preserves virtual registers. -/
 theorem amoswapd_sd_new_run
@@ -47,6 +48,7 @@ theorem amoswapd_sd_new_run
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js_afterLoad.sail = .ok addr js_afterLoad.sail)
     (hrs2 : rX_bits rs2 js_afterLoad.sail = .ok rs2Val js_afterLoad.sail)
+    (h_align : addr &&& (7 : BitVec 64) = 0)
     (hwrite :
       vmem_write_addr (Virtaddr addr) 8 rs2Val
         (Store Data) false false false js_afterLoad.sail =
@@ -61,7 +63,7 @@ theorem amoswapd_sd_new_run
       js_afterStore.vregs = js_afterLoad.vregs := by
   exact
     amo_dword_sd_result_run rs2 rs1 js_afterLoad addr rs2Val
-      hrs1 hrs2 hwrite
+      hrs1 hrs2 h_align hwrite
 
 /-- `ADDI rd, old, 0` writes the old dword value back to `rd`. -/
 theorem amoswapd_addi_writeback_old_run
@@ -78,22 +80,20 @@ theorem amoswapd_addi_writeback_old_run
 
 /-- Jolt-side aligned concrete execution for `AMOSWAP.D`.
 
-This is the intended composition point for the three instruction lemmas above:
-load old dword, store `rs2`, then write old dword to `rd`. -/
+Rust emits `LD; SD; ADDI` for AMOSWAP.D, with no leading dword alignment row.
+This composition follows that emitted row sequence. -/
 theorem amoswapdProgram_concrete_aligned
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOSWAP 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext amoop.AMOSWAP 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     ∃ jsf : SailJoltState,
       (JoltISA.execProgram (JoltISA.amoswapdProgram rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS jsf ∧
       jsf.sail = amoswapdFinalSailState rd js.sail addr rs2Val := by
-  have hassert :=
-    amo_dword_virtual_assert_aligned_run rs1 js addr hrs1 h_align
   obtain ⟨js_afterLoad, hld, hld_sail, hld_old⟩ :=
     amo_dword_load_old_aligned_run rs1 js hcfg addr hrs1 h_mem h_align
   obtain ⟨js_afterStore, hsd, hsd_sail, hsd_vregs⟩ :=
@@ -105,7 +105,6 @@ theorem amoswapdProgram_concrete_aligned
       (loaded_dword_at js.sail addr) hsd_vregs hld_old
   refine ⟨js_afterWrite, ?_, ?_⟩
   · unfold JoltISA.amoswapdProgram
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterLoad hld]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterLoad js_afterStore hsd]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterStore js_afterWrite haddi]
@@ -127,17 +126,17 @@ theorem amoswapd_is_aligned_paddr_true (addr : BitVec 64)
 /-- AMOSWAPD reserved RAM reads use the shared dword RAM read reduction. -/
 theorem amoswapd_read_ram_reserved_eq_loaded_dword
     (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : DwordBytesPresent addr s)
     (h_no_ovf : addr.toNat + 7 < 2 ^ 64) :
     LeanRV64D.Functions.read_ram read_kind.Read_RISCV_reserved
       (physaddr.Physaddr addr) 8 false s =
     .ok (loaded_dword_at s addr, default_meta) s := by
-  exact amo_dword_read_ram_reserved_eq_loaded_dword addr s h_pop h_no_ovf
+  exact amo_dword_read_ram_reserved_eq_loaded_dword addr s hbytes h_no_ovf
 
 /-- AMOSWAPD checked memory reads use the shared dword AMO read reduction. -/
 theorem amoswapd_checked_mem_read_eq_loaded_dword
     (addr : BitVec 64) (s : SailState)
-    (h_pop : ∀ a : Nat, s.mem.get? a ≠ none)
+    (hbytes : DwordBytesPresent addr s)
     (h_no_ovf : addr.toNat + 7 < 2 ^ 64)
     (hfm : FlatAtomicMem amoop.AMOSWAP addr 8 s) :
     checked_mem_read (Atomic (amoop.AMOSWAP, Data, Data)) Privilege.Machine
@@ -145,7 +144,7 @@ theorem amoswapd_checked_mem_read_eq_loaded_dword
     .ok (Ok (loaded_dword_at s addr, default_meta)) s := by
   exact
     amo_dword_checked_mem_read_eq_loaded_dword
-      amoop.AMOSWAP addr s h_pop h_no_ovf hfm
+      amoop.AMOSWAP addr s hbytes h_no_ovf hfm
 
 /-- AMOSWAPD memory reads use the shared dword AMO memory reduction. -/
 theorem amoswapd_mem_read_eq_loaded_dword
@@ -199,7 +198,7 @@ theorem execute_AMOSWAPD_reduces_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOSWAP 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext amoop.AMOSWAP 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     (execute_AMO amoop.AMOSWAP false false rs2 rs1 8 rd).run js.sail =
       .ok RETIRE_SUCCESS (amoswapdFinalSailState rd js.sail addr rs2Val) := by
@@ -218,8 +217,9 @@ theorem execute_AMOSWAPD_reduces_aligned
 
 /-- Jolt-side misaligned execution for `AMOSWAP.D`.
 
-The AMO expansion performs the leading dword alignment check with Sail's
-store/AMO alignment exception, so the body is not executed on this path. -/
+The Rust-emitted expansion starts with `LD`; on a misaligned AMO.D address that
+dword memory row returns the store/AMO alignment exception and the body is not
+executed. -/
 theorem amoswapdProgram_concrete_misaligned
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (addr : BitVec 64)
@@ -229,23 +229,21 @@ theorem amoswapdProgram_concrete_misaligned
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js := by
   let rest : JoltISA.Program :=
-    .instr (.LD (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
     .instr (.SD (.xreg rs1) (.xreg rs2) (0 : BitVec 12)) <|
     .instr (.ADDI (.xreg rd) (.vreg JoltISA.amoOldVReg) (0 : BitVec 12)) <|
     .done RETIRE_SUCCESS
   let e := (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())
-  have hassert :
+  have hld :
       (JoltISA.execInstr
-        (.VirtualAssertDwordAlignment rs1 (0 : BitVec 12)
-          (ExceptionType.E_SAMO_Addr_Align ()))).run js =
+        (.LD (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
       .ok (ExecutionResult.Memory_Exception e) js := by
-    exact amo_dword_virtual_assert_misaligned_run rs1 js addr hrs1 h_align
+    exact amo_dword_ld_xreg_misaligned_run
+      JoltISA.amoOldVReg rs1 js addr hrs1 h_align
   unfold JoltISA.amoswapdProgram
   exact
     JoltISA.execProgram_instr_run_memory_exception
-      (.VirtualAssertDwordAlignment rs1 (0 : BitVec 12)
-        (ExceptionType.E_SAMO_Addr_Align ()))
-      rest js js e hassert
+      (.LD (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))
+      rest js js e hld
 
 /-- Sail-side misaligned execution for native `AMOSWAP.D`. -/
 theorem execute_AMOSWAPD_misaligned
@@ -271,7 +269,7 @@ theorem amoswapdProgram_eq_sail_aligned
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOSWAP 8 addr addr js.sail)
+    (h_mem : AmoMemoryContext amoop.AMOSWAP 8 addr addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     projectResult ((JoltISA.execProgram
       (JoltISA.amoswapdProgram rs2 rs1 rd)).run js) =
@@ -305,18 +303,18 @@ theorem amoswapdProgram_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Main public theorem for `AMOSWAP.D`.
+/-- Internal memory-context theorem for `AMOSWAP.D`.
 
 The outer theorem mirrors LoadFamily: it exposes no alignment hypothesis and
 dispatches on the exact predicate checked by the AMO dword access. -/
-theorem amoswapdProgram_eq_sail
+theorem amoswapdProgram_eq_sail_of_memory_context
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
     (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryAssumptions amoop.AMOSWAP 8 addr addr js.sail) :
+    (h_mem : AmoMemoryContext amoop.AMOSWAP 8 addr addr js.sail) :
     projectResult ((JoltISA.execProgram
       (JoltISA.amoswapdProgram rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOSWAP false false rs2 rs1 8 rd).run js.sail := by
@@ -325,6 +323,24 @@ theorem amoswapdProgram_eq_sail
       rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 hrd h_mem h_align
   · exact amoswapdProgram_eq_sail_misaligned
       rs2 rs1 rd js hcfg addr rs2Val hrs1 hrs2 h_align
+
+/-- Main public theorem for `AMOSWAP.D`.
+
+The theorem takes one primitive-only atomic bundle. Exact memory context is
+derived internally from that bundle. -/
+theorem amoswapdProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : AmoDwordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
+    projectResult ((JoltISA.execProgram
+      (JoltISA.amoswapdProgram rs2 rs1 rd)).run js) =
+      (execute_AMO amoop.AMOSWAP false false rs2 rs1 8 rd).run js.sail := by
+  let addr := h.rs1_val
+  let rs2Val := h.rs2_val
+  have h_mem : AmoMemoryContext amoop.AMOSWAP 8 addr addr js.sail := by
+    simpa [addr] using h.memoryContext
+  exact amoswapdProgram_eq_sail_of_memory_context
+    rs2 rs1 rd js h.cfg addr rs2Val
+    h.rs1_read.value_eq h.rs2_read.value_eq h.rd_readable.exists_value h_mem
 
 end AtomicFamily
 

@@ -41,7 +41,7 @@ theorem lrdProgram_eq_sail
     (hcfg : JoltConfig js.sail)
     (addr : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (h_mem : LoadReservedMemoryAssumptions 8 addr addr js.sail) :
+    (h_mem : LoadReservedMemoryContext 8 addr addr js.sail) :
     projectResult ((JoltISA.execProgram
       (JoltISA.lrdProgram rs1 rd)).run js) =
       (execute_LOADRES false false rs1 8 rd).run js.sail := by

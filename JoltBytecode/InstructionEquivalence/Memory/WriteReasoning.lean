@@ -79,9 +79,9 @@ theorem mem_write_value_dword_eq_state_after_dword_store
     mem_write_value (physaddr.Physaddr addr) 8 data
       (Store Data) false false false s =
     .ok (Ok true) (state_after_dword_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_ok
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
-  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.machine_mode
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.cur_privilege.value
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
     checked_mem_write
   simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
@@ -202,7 +202,7 @@ theorem vmem_write_addr_dword_store_bridge
     is_store_conditional, BEq.beq, Bool.false_and, Bool.false_eq_true,
     if_true, pure, EStateM.pure, ExceptT.pure]
 
-/-- Under the standard aligned flat-memory assumptions, Sail's virtual dword
+/-- Under exact aligned flat-memory evidence, Sail's virtual dword
 store pipeline is exactly the canonical hashmap dword update. -/
 theorem vmem_write_addr_dword_store_reduces
     (addr data : BitVec 64) (s : SailState)
@@ -586,10 +586,40 @@ theorem stored_dword_get?_hit (s : SailState) (base : BitVec 64) (dword_new : Bi
 -- Inputs: addr (effective address)
 -- Assumptions: none
 -- Splits a word-aligned address into its dword-aligned base plus the low 3-bit offset.
+private theorem write_and_neg8_eq_shr_shl (addr : BitVec 64) :
+    addr &&& (-8 : BitVec 64) = (addr >>> 3) <<< 3 := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitVec.getLsbD_and, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_ushiftRight]
+  interval_cases i <;> simp
+
 theorem write_addr_split_aligned_offset (addr : BitVec 64) :
     (addr &&& (-8 : BitVec 64)) + BitVec.ofNat 64 (addr &&& 7).toNat = addr := by
   simp only [BitVec.ofNat_toNat, BitVec.setWidth_eq]
-  bv_decide
+  rw [write_and_neg8_eq_shr_shl]
+  apply BitVec.eq_of_toNat_eq
+  have hbase : (((addr >>> 3) <<< 3) : BitVec 64).toNat =
+      addr.toNat / 8 * 8 := by
+    rw [BitVec.toNat_shiftLeft, BitVec.toNat_ushiftRight]
+    simp [Nat.shiftLeft_eq, Nat.shiftRight_eq_div_pow]
+    have hlt : addr.toNat / 8 * 8 ≤ addr.toNat := by
+      simpa [Nat.mul_comm] using Nat.mul_div_le addr.toNat 8
+    exact lt_of_le_of_lt hlt addr.isLt
+  have hlow : (addr &&& (7 : BitVec 64)).toNat = addr.toNat % 8 := by
+    rw [BitVec.toNat_and]
+    have h7 : (7 : BitVec 64).toNat = 7 := by decide
+    rw [h7, show (7 : Nat) = 2 ^ 3 - 1 by norm_num,
+      Nat.and_two_pow_sub_one_eq_mod]
+  have hsum_lt :
+      (((addr >>> 3) <<< 3) : BitVec 64).toNat +
+          (addr &&& (7 : BitVec 64)).toNat < 2 ^ 64 := by
+    rw [hbase, hlow]
+    have h := Nat.div_add_mod addr.toNat 8
+    omega
+  rw [BitVec.toNat_add_of_lt hsum_lt, hbase, hlow]
+  have h := Nat.div_add_mod addr.toNat 8
+  omega
 
 -- Inputs: addr (effective address)
 -- Assumptions: addr is word aligned
@@ -629,15 +659,16 @@ theorem store_offset_cases (ea base : BitVec 64) (hsetup : DwordStoreSetup ea ba
     rw [hk] at hsplit
     norm_num at hsplit
     have hsub : ea - (ea &&& (-8 : BitVec 64)) = 0 := by
-      rw [hsplit]
-      bv_decide
+      nth_rw 1 [← hsplit]
+      simp
     simpa using congrArg BitVec.toNat hsub
   · right
     have hsplit := write_addr_split_aligned_offset ea
     rw [hk] at hsplit
     have hsub : ea - (ea &&& (-8 : BitVec 64)) = 4 := by
-      rw [← hsplit]
-      bv_decide
+      nth_rw 1 [← hsplit]
+      simpa [BitVec.add_comm] using
+        (BitVec.add_sub_cancel (4 : BitVec 64) (ea &&& (-8 : BitVec 64)))
     simpa using congrArg BitVec.toNat hsub
 
 -- Inputs: ea, base (addresses)
@@ -651,19 +682,20 @@ theorem ea_toNat_eq_base_plus_offset (ea base : BitVec 64)
       apply BitVec.eq_of_toNat_eq
       simpa using hoff
     have hEq : ea = base := by
-      have := hsub0
-      bv_decide
+      have h := BitVec.sub_eq_iff_eq_add.mp hsub0
+      simpa using h
     subst ea
     simp
   · have hsub4 : ea - base = (4 : BitVec 64) := by
       apply BitVec.eq_of_toNat_eq
       simpa using hoff
     have hEq : ea = base + (4 : BitVec 64) := by
-      have := hsub4
-      bv_decide
+      have h := BitVec.sub_eq_iff_eq_add.mp hsub4
+      simpa [BitVec.add_comm] using h
     rw [hEq]
     have hsub : ((base + (4 : BitVec 64)) - base : BitVec 64) = 4 := by
-      bv_decide
+      simpa [BitVec.add_comm] using
+        (BitVec.add_sub_cancel (4 : BitVec 64) base)
     rw [hsub]
     have hsum : base.toNat + 4 < 2 ^ 64 := by
       calc

@@ -1,11 +1,12 @@
-import JoltBytecode.JoltISA.Operands
+import JoltBytecode.Derived
 
 /-!
-# Jolt execution environment assumptions
+# Jolt execution environment helpers
 
-This file contains the Sail memory helpers and state predicates used to connect
-Jolt bytecode proofs to the Sail memory model. Core Jolt state and operand
-definitions live in `JoltISA.Core` and `JoltISA.Operands`.
+This file contains executable Sail memory helpers used to connect Jolt bytecode
+proofs to the Sail memory model. Primitive proof assumptions live in
+`JoltBytecode.Assumptions`; top-level derived facts from those assumptions live
+in `JoltBytecode.Derived`.
 -/
 
 set_option linter.unusedVariables false
@@ -43,102 +44,6 @@ def sailReadDword (addr : BitVec 64) : SailM (BitVec 64) := do
   let lo ← sailReadWord addr
   let hi ← sailReadWord (addr + 4)
   pure ((hi ++ lo : BitVec 64))
-
--- ============================================================================
--- JoltConfig: Sail state assumptions for Jolt's execution environment
--- ============================================================================
-
--- Jolt runs in bare-metal M-mode with flat physical memory. Under these
--- assumptions, Sail's virtual memory pipeline (vmem_read) reduces to raw
--- byte reads from state.mem.
---
--- The conditions are:
--- 1. Machine mode with MPRV=0: translateAddr returns identity (Bare mode)
--- 2. PMP entries are unlocked: Machine mode bypasses PMP
--- 3. Valid PMA region: the physical address has readable attributes
--- 4. Not MMIO: the address is regular RAM, not memory-mapped I/O
--- 5. Memory is populated: all accessed addresses are in state.mem
---
--- These are captured as a predicate on SailState rather than baking in
--- specific register values, so the proofs stay abstract.
-structure JoltConfig (s : SailState) : Prop where
-  -- Machine mode: cur_privilege register is Machine.
-  -- This makes translateAddr use Bare (identity) translation.
-  machine_mode : s.regs.get? Register.cur_privilege =
-    some (Privilege.Machine : RegisterType Register.cur_privilege)
-  -- mstatus register is readable and has MPRV=0.
-  -- MPRV=0 means effectivePrivilege returns the actual privilege (Machine),
-  -- not the MPP field. This ensures Bare translation mode.
-  mstatus_ok : ∃ mval : RegisterType Register.mstatus,
-    s.regs.get? Register.mstatus = some mval ∧
-    _get_Mstatus_MPRV mval = 0#1
-  -- All memory addresses are populated in state.mem.
-  -- This makes sailReadByte succeed for any address.
-  mem_populated : ∀ addr : Nat, s.mem.get? addr ≠ none
-
-theorem readReg_eq_of_get? (r : Register) (s : SailState) (v : RegisterType r)
-    (h : s.regs.get? r = some v) :
-    (Sail.readReg r : SailM (RegisterType r)) s = .ok v s := by
-  unfold Sail.readReg PreSail.readReg
-  simp only [bind, EStateM.bind, pure, EStateM.pure,
-             MonadStateOf.get, EStateM.get, getThe, get, h]
-
-/-- Under Jolt's M-mode/MPRV=0 execution assumptions, a normal data-load
-    address translation is the bare identity translation. -/
-theorem translateAddr_load_data_of_joltConfig
-    (addr : BitVec 64) (s : SailState) (hcfg : JoltConfig s) :
-    translateAddr (Virtaddr addr) (Load Data) s =
-      .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s := by
-  obtain ⟨mval, hmstatus, hmprv⟩ := hcfg.mstatus_ok
-  have h_ms_read := readReg_eq_of_get? Register.mstatus s mval hmstatus
-  have h_priv := readReg_eq_of_get? Register.cur_privilege s Privilege.Machine hcfg.machine_mode
-  unfold translateAddr SailME.run PreSail.PreSailME.run
-  simp (config := { decide := true }) [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
-        ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
-        ExceptT.pure, ExceptT.lift,
-        MonadLift.monadLift, liftM, monadLift, Functor.map,
-        effectivePrivilege, translationMode, is_shadow_stack_access,
-        h_ms_read, h_priv, hmprv,
-        bits_of_virtaddr, BEq.beq]
-  rfl
-
-/-- Under Jolt's M-mode/MPRV=0 execution assumptions, a normal data-store
-    address translation is the bare identity translation. -/
-theorem translateAddr_store_data_of_joltConfig
-    (addr : BitVec 64) (s : SailState) (hcfg : JoltConfig s) :
-    translateAddr (Virtaddr addr) (Store Data) s =
-      .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s := by
-  obtain ⟨mval, hmstatus, hmprv⟩ := hcfg.mstatus_ok
-  have h_ms_read := readReg_eq_of_get? Register.mstatus s mval hmstatus
-  have h_priv := readReg_eq_of_get? Register.cur_privilege s Privilege.Machine hcfg.machine_mode
-  unfold translateAddr SailME.run PreSail.PreSailME.run
-  simp (config := { decide := true }) [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
-        ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
-        ExceptT.pure, ExceptT.lift,
-        MonadLift.monadLift, liftM, monadLift, Functor.map,
-        effectivePrivilege, translationMode, is_shadow_stack_access,
-        h_ms_read, h_priv, hmprv,
-        bits_of_virtaddr, BEq.beq]
-  rfl
-
-/-- Under Jolt's M-mode/MPRV=0 execution assumptions, a data AMO address
-    translation is the bare identity translation. -/
-theorem translateAddr_atomic_data_of_joltConfig
-    (op : amoop) (addr : BitVec 64) (s : SailState) (hcfg : JoltConfig s) :
-    translateAddr (Virtaddr addr) (Atomic (op, Data, Data)) s =
-      .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s := by
-  obtain ⟨mval, hmstatus, hmprv⟩ := hcfg.mstatus_ok
-  have h_ms_read := readReg_eq_of_get? Register.mstatus s mval hmstatus
-  have h_priv := readReg_eq_of_get? Register.cur_privilege s Privilege.Machine hcfg.machine_mode
-  unfold translateAddr SailME.run PreSail.PreSailME.run
-  simp (config := { decide := true }) [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
-        ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
-        ExceptT.pure, ExceptT.lift,
-        MonadLift.monadLift, liftM, monadLift, Functor.map,
-        effectivePrivilege, translationMode, is_shadow_stack_access,
-        h_ms_read, h_priv, hmprv,
-        bits_of_virtaddr, BEq.beq]
-  rfl
 
 -- ============================================================================
 -- Focused bridge lemmas for the vmem_read pipeline

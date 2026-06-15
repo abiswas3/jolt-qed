@@ -49,79 +49,44 @@ private theorem shift6_eq_of_offset_byte (ea base : BitVec 64)
     Sail.BitVec.extractLsb (shift_bits_left ea (3 : BitVec 6)) 5 0 =
       BitVec.ofNat 6 (((ea - base).toNat) * 8) := by
   rw [← setWidth6_eq_extractLsb_5_0 (shift_bits_left ea (3 : BitVec 6))]
-  rcases hsetup.offset_cases with h0 | h1 | h2 | h3 | h4 | h5 | h6 | h7
-  · have hsub : ea - base = (0 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h0
-    have hea : ea = base := by
-      have := hsub
-      bv_decide
-    rw [h0, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (1 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h1
-    have hea : ea = base + (1 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h1, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (2 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h2
-    have hea : ea = base + (2 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h2, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (3 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h3
-    have hea : ea = base + (3 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h3, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (4 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h4
-    have hea : ea = base + (4 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h4, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (5 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h5
-    have hea : ea = base + (5 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h5, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (6 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h6
-    have hea : ea = base + (6 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h6, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
-  · have hsub : ea - base = (7 : BitVec 64) := by
-      apply BitVec.eq_of_toNat_eq
-      simpa using h7
-    have hea : ea = base + (7 : BitVec 64) := by
-      have := hsub
-      bv_decide
-    rw [h7, hea, hsetup.base_is_aligned]
-    unfold shift_bits_left
-    bv_decide
+  apply BitVec.eq_of_toNat_eq
+  simp only [shift_bits_left, BitVec.toNat_setWidth, BitVec.toNat_ofNat]
+  change (BitVec.shiftLeft ea 3).toNat % 2 ^ 6 =
+    (ea - base).toNat * 8 % 2 ^ 6
+  rw [show (BitVec.shiftLeft ea 3).toNat = ea.toNat <<< 3 % 2 ^ 64 by
+    exact BitVec.toNat_shiftLeft]
+  simp only [Nat.shiftLeft_eq]
+  norm_num
+  conv_lhs => rw [hsetup.ea_toNat]
+  have hbase8 : base &&& (7 : BitVec 64) = 0 := by
+    rw [hsetup.base_is_aligned]
+    exact align_down_8_and_7_eq_zero ea
+  have hbase_low : (base &&& (7 : BitVec 64)).toNat = base.toNat % 8 := by
+    rw [BitVec.toNat_and]
+    have h7 : (7 : BitVec 64).toNat = 7 := by decide
+    rw [h7, show (7 : Nat) = 2 ^ 3 - 1 by norm_num,
+      Nat.and_two_pow_sub_one_eq_mod]
+  have hbase_mod8 : base.toNat % 8 = 0 := by
+    have hzero := congrArg BitVec.toNat hbase8
+    rw [hbase_low] at hzero
+    simpa using hzero
+  have hmod :
+      ((base.toNat + (ea - base).toNat) * 8) % 64 =
+        ((ea - base).toNat * 8) % 64 := by
+    have hb_dvd : 8 ∣ base.toNat := Nat.dvd_of_mod_eq_zero hbase_mod8
+    rcases hb_dvd with ⟨q, hq⟩
+    rw [hq]
+    rw [show (8 * q + (ea - base).toNat) * 8 =
+        (ea - base).toNat * 8 + 64 * q by ring]
+    rw [Nat.add_mul_mod_self_left]
+  rw [hmod]
+  have hsub_toNat :
+      (18446744073709551616 - base.toNat + ea.toNat) %
+          18446744073709551616 =
+        (ea - base).toNat := by
+    rw [show 18446744073709551616 = 2 ^ 64 by norm_num]
+    exact (BitVec.toNat_sub ea base).symm
+  conv_rhs => rw [hsub_toNat]
 
 private theorem shift6_eq_of_offset_halfword (ea base : BitVec 64)
     (hsetup : StoreSplice.HalfwordStoreSetup ea base) :
@@ -155,6 +120,146 @@ private theorem shift6_eq_of_offset_word (ea base : BitVec 64)
     }
   exact shift6_eq_of_offset_byte ea base hbyte
 
+private theorem byteSequenceMask_getLsbD_true {i : Nat} (hi : i < 8) :
+    (255#64).getLsbD i = true := by
+  have hi64 : i < 64 := by omega
+  have hmaskNat : Nat.testBit 255 i = true := by
+    rw [show 255 = 2 ^ 8 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hi64, hmaskNat]
+
+private theorem byteSequenceMask_getLsbD_false_of_ge8 {i : Nat} (hge : 8 ≤ i) :
+    (255#64).getLsbD i = false := by
+  have hmaskNat : Nat.testBit 255 i = false := by
+    rw [show 255 = 2 ^ 8 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [not_lt.mpr hge]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hmaskNat]
+
+private theorem halfwordSequenceMask_getLsbD_true {i : Nat} (hi : i < 16) :
+    (65535#64).getLsbD i = true := by
+  have hi64 : i < 64 := by omega
+  have hmaskNat : Nat.testBit 65535 i = true := by
+    rw [show 65535 = 2 ^ 16 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hi64, hmaskNat]
+
+private theorem halfwordSequenceMask_getLsbD_false_of_ge16 {i : Nat}
+    (hge : 16 ≤ i) :
+    (65535#64).getLsbD i = false := by
+  have hmaskNat : Nat.testBit 65535 i = false := by
+    rw [show 65535 = 2 ^ 16 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [not_lt.mpr hge]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hmaskNat]
+
+private theorem wordSequenceMask_getLsbD_true {i : Nat} (hi : i < 32) :
+    (4294967295#64).getLsbD i = true := by
+  have hi64 : i < 64 := by omega
+  have hmaskNat : Nat.testBit 4294967295 i = true := by
+    rw [show 4294967295 = 2 ^ 32 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [hi]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hi64, hmaskNat]
+
+private theorem wordSequenceMask_getLsbD_false_of_ge32 {i : Nat}
+    (hge : 32 ≤ i) :
+    (4294967295#64).getLsbD i = false := by
+  have hmaskNat : Nat.testBit 4294967295 i = false := by
+    rw [show 4294967295 = 2 ^ 32 - 1 by norm_num, Nat.testBit_two_pow_sub_one]
+    simp [not_lt.mpr hge]
+  rw [BitVec.getLsbD_ofNat]
+  simp [hmaskNat]
+
+private theorem byteSplice_eq_sequence_of_bound
+    (dword_orig rs2_val : BitVec 64) (off : Nat) (hoff : off + 1 ≤ 8) :
+    dword_orig ^^^
+        ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
+          shift_bits_left (0x00000000000000FF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
+      StoreSplice.byteSplice dword_orig (Sail.BitVec.extractLsb rs2_val 7 0) (off * 8) := by
+  rw [shift_bits_left_eq_shiftLeft_nat rs2_val (BitVec.ofNat 6 (off * 8))]
+  rw [shift_bits_left_eq_shiftLeft_nat (0x00000000000000FF : BitVec 64)
+    (BitVec.ofNat 6 (off * 8))]
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hshift_lt64 : off * 8 < 64 := by omega
+  have hshift_toNat : (BitVec.ofNat 6 (off * 8)).toNat = off * 8 := by
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_eq_of_lt hshift_lt64
+  simp only [StoreSplice.byteSplice, Sail.BitVec.extractLsb,
+    BitVec.getLsbD_xor, BitVec.getLsbD_and, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb,
+    hshift_toNat]
+  by_cases hbefore : i < off * 8
+  · simp [hbefore]
+  · by_cases hinside : i - off * 8 < 8
+    · have hsub64 : i - off * 8 < 64 := by omega
+      simp [hbefore, hinside, hsub64]
+    · have hge : 8 ≤ i - off * 8 := by omega
+      have hmask : (255#64).getLsbD (i - off * 8) = false :=
+        byteSequenceMask_getLsbD_false_of_ge8 hge
+      simp [hbefore, hinside, hmask]
+
+private theorem halfwordSplice_eq_sequence_of_bound
+    (dword_orig rs2_val : BitVec 64) (off : Nat) (hoff : off + 2 ≤ 8) :
+    dword_orig ^^^
+        ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
+          shift_bits_left (0x000000000000FFFF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
+      StoreSplice.halfwordSplice dword_orig (Sail.BitVec.extractLsb rs2_val 15 0) (off * 8) := by
+  rw [shift_bits_left_eq_shiftLeft_nat rs2_val (BitVec.ofNat 6 (off * 8))]
+  rw [shift_bits_left_eq_shiftLeft_nat (0x000000000000FFFF : BitVec 64)
+    (BitVec.ofNat 6 (off * 8))]
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hshift_lt64 : off * 8 < 64 := by omega
+  have hshift_toNat : (BitVec.ofNat 6 (off * 8)).toNat = off * 8 := by
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_eq_of_lt hshift_lt64
+  simp only [StoreSplice.halfwordSplice, Sail.BitVec.extractLsb,
+    BitVec.getLsbD_xor, BitVec.getLsbD_and, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb,
+    hshift_toNat]
+  by_cases hbefore : i < off * 8
+  · simp [hbefore]
+  · by_cases hinside : i - off * 8 < 16
+    · have hsub64 : i - off * 8 < 64 := by omega
+      simp [hbefore, hinside, hsub64]
+    · have hge : 16 ≤ i - off * 8 := by omega
+      have hmask : (65535#64).getLsbD (i - off * 8) = false :=
+        halfwordSequenceMask_getLsbD_false_of_ge16 hge
+      simp [hbefore, hinside, hmask]
+
+private theorem wordSplice_eq_sequence_of_bound
+    (dword_orig rs2_val : BitVec 64) (off : Nat) (hoff : off + 4 ≤ 8) :
+    dword_orig ^^^
+        ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
+          shift_bits_left (0x00000000FFFFFFFF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
+      StoreSplice.wordSplice dword_orig (Sail.BitVec.extractLsb rs2_val 31 0) (off * 8) := by
+  rw [shift_bits_left_eq_shiftLeft_nat rs2_val (BitVec.ofNat 6 (off * 8))]
+  rw [shift_bits_left_eq_shiftLeft_nat (0x00000000FFFFFFFF : BitVec 64)
+    (BitVec.ofNat 6 (off * 8))]
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hshift_lt64 : off * 8 < 64 := by omega
+  have hshift_toNat : (BitVec.ofNat 6 (off * 8)).toNat = off * 8 := by
+    rw [BitVec.toNat_ofNat]
+    exact Nat.mod_eq_of_lt hshift_lt64
+  simp only [StoreSplice.wordSplice, Sail.BitVec.extractLsb,
+    BitVec.getLsbD_xor, BitVec.getLsbD_and, BitVec.getLsbD_shiftLeft,
+    BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb,
+    hshift_toNat]
+  by_cases hbefore : i < off * 8
+  · simp [hbefore]
+  · by_cases hinside : i - off * 8 < 32
+    · have hsub64 : i - off * 8 < 64 := by omega
+      simp [hbefore, hinside, hsub64]
+    · have hge : 32 ≤ i - off * 8 := by omega
+      have hmask : (4294967295#64).getLsbD (i - off * 8) = false :=
+        wordSequenceMask_getLsbD_false_of_ge32 hge
+      simp [hbefore, hinside, hmask]
+
 private theorem byteSplice_eq_sequence
     (dword_orig rs2_val : BitVec 64) (off : Nat)
     (hoff :
@@ -164,10 +269,9 @@ private theorem byteSplice_eq_sequence
         ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
           shift_bits_left (0x00000000000000FF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
       StoreSplice.byteSplice dword_orig (Sail.BitVec.extractLsb rs2_val 7 0) (off * 8) := by
-  rcases hoff with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
-  all_goals
-    simp [StoreSplice.byteSplice, shift_bits_left_eq_shiftLeft_nat, Sail.BitVec.extractLsb]
-    bv_decide
+  have hoff_bound : off + 1 ≤ 8 := by
+    rcases hoff with h0 | h1 | h2 | h3 | h4 | h5 | h6 | h7 <;> omega
+  exact byteSplice_eq_sequence_of_bound dword_orig rs2_val off hoff_bound
 
 private theorem halfwordSplice_eq_sequence
     (dword_orig rs2_val : BitVec 64) (off : Nat)
@@ -176,10 +280,9 @@ private theorem halfwordSplice_eq_sequence
         ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
           shift_bits_left (0x000000000000FFFF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
       StoreSplice.halfwordSplice dword_orig (Sail.BitVec.extractLsb rs2_val 15 0) (off * 8) := by
-  rcases hoff with rfl | rfl | rfl | rfl
-  all_goals
-    simp [StoreSplice.halfwordSplice, shift_bits_left_eq_shiftLeft_nat, Sail.BitVec.extractLsb]
-    bv_decide
+  have hoff_bound : off + 2 ≤ 8 := by
+    rcases hoff with h0 | h2 | h4 | h6 <;> omega
+  exact halfwordSplice_eq_sequence_of_bound dword_orig rs2_val off hoff_bound
 
 private theorem wordSplice_eq_sequence
     (dword_orig rs2_val : BitVec 64) (off : Nat)
@@ -188,29 +291,28 @@ private theorem wordSplice_eq_sequence
         ((dword_orig ^^^ shift_bits_left rs2_val (BitVec.ofNat 6 (off * 8))) &&&
           shift_bits_left (0x00000000FFFFFFFF : BitVec 64) (BitVec.ofNat 6 (off * 8))) =
       StoreSplice.wordSplice dword_orig (Sail.BitVec.extractLsb rs2_val 31 0) (off * 8) := by
-  rcases hoff with rfl | rfl
-  all_goals
-    simp [StoreSplice.wordSplice, shift_bits_left_eq_shiftLeft_nat, Sail.BitVec.extractLsb]
-    bv_decide
+  have hoff_bound : off + 4 ≤ 8 := by
+    rcases hoff with h0 | h4 <;> omega
+  exact wordSplice_eq_sequence_of_bound dword_orig rs2_val off hoff_bound
 
 private theorem shift_bits_right_allOnes_32 :
     shift_bits_right (-1 : BitVec 64) (32 : BitVec 6) =
       (0x00000000FFFFFFFF : BitVec 64) := by
-  native_decide
+  decide
 
 private theorem shift_bits_right_signExtend_neg_one_32 :
     shift_bits_right (sign_extend (m := 64) (-1 : BitVec 12)) (32 : BitVec 6) =
       (0x00000000FFFFFFFF : BitVec 64) := by
-  native_decide
+  decide
 
 private theorem shift_bits_right_signExtend_4095_32 :
     shift_bits_right (sign_extend (m := 64) (4095#12)) (32#6) =
       (0x00000000FFFFFFFF : BitVec 64) := by
-  native_decide
+  decide
 
 private theorem zero_or_signExtend_neg_one :
     (0#64) ||| sign_extend (m := 64) (-1 : BitVec 12) = (-1 : BitVec 64) := by
-  native_decide
+  decide
 
 /-!
 ## The `SW` mask prefix
@@ -439,8 +541,8 @@ theorem setupBlock (rest : JoltISA.Program)
     simpa [base, compute_aligned_dword_base_address, load_effective_address,
       aligned_dword_addr_eq] using
       (aligned_dword_addr_is_aligned_dword_access val imm)
-  have hd : DwordLoadAssumptions base js.sail :=
-    dwordLoadAssumptions_of_aligned_phys base js.sail h_base_aligned
+  have hd : DwordLoadEvidence base js.sail :=
+    dwordLoadEvidence_of_aligned_phys base js.sail h_base_aligned
       (by simpa [base] using h_dword_phys)
   have hld_read :
       vmem_read_addr (Virtaddr (js1.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12))) 0 8
@@ -459,9 +561,21 @@ theorem setupBlock (rest : JoltISA.Program)
   have hld :
       (JoltISA.execInstr (.LD (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp1) 0)).run js1 =
         .ok RETIRE_SUCCESS js_load := by
+    have hld_align :
+        (js1.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12)) &&&
+            (7 : BitVec 64) =
+          0 := by
+      have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by
+        decide
+      have hv1 : js1.vregs JoltISA.inlineTmp1 = base := by
+        simp [js1]
+      have haddr0 : base + (0 : BitVec 64) = base := by
+        bv_decide
+      rw [hv1, h0, haddr0]
+      exact h_base_aligned.align
     simpa [js_load, dword] using
       (JoltISA.ld_run_vreg_vreg_from_memory_read JoltISA.inlineTmp2 JoltISA.inlineTmp1
-        (0 : BitVec 12) js1 dword hld_read)
+        (0 : BitVec 12) js1 dword hld_align hld_read)
   refine ⟨js_load, ?_, rfl, ?_, ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js js0 haddi]
     rw [JoltISA.execProgram_instr_run_retire _ _ js0 js1 handi]
@@ -1384,6 +1498,7 @@ theorem sdWriteBlock (rest : JoltISA.Program)
     (js_store : SailJoltState) (base dword_new : BitVec 64) (s' : SailState)
     (hbase : js_store.vregs JoltISA.inlineTmp1 = base)
     (hdword : js_store.vregs JoltISA.inlineTmp2 = dword_new)
+    (h_align : base &&& (7 : BitVec 64) = 0)
     (hwrite :
       vmem_write_addr (Virtaddr base) 8 dword_new
         (Store Data) false false false js_store.sail =
@@ -1406,12 +1521,18 @@ theorem sdWriteBlock (rest : JoltISA.Program)
       .ok (Ok true) s' := by
     rw [haddr, hdword]
     exact hwrite
+  have hsd_align :
+      (js_store.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12)) &&&
+          (7 : BitVec 64) =
+        0 := by
+    rw [haddr]
+    exact h_align
   have hsd :
       (JoltISA.execInstr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0)).run js_store =
         .ok RETIRE_SUCCESS js_write := by
     simpa [js_write] using
       (JoltISA.execInstr_sd_vreg_run_of_write
-        JoltISA.inlineTmp1 JoltISA.inlineTmp2 (0 : BitVec 12) js_store s' hwrite')
+        JoltISA.inlineTmp1 JoltISA.inlineTmp2 (0 : BitVec 12) js_store s' hsd_align hwrite')
   refine ⟨js_write, ?_, rfl, rfl⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js_store js_write hsd]
 

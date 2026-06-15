@@ -20,6 +20,8 @@ Jolt-ISA `LD` writes that dword to the destination virtual register and
 continues with `RETIRE_SUCCESS`. -/
 theorem ld_run_vreg_vreg_from_memory_read (vd base : VReg) (imm : BitVec 12)
     (js : SailJoltState) (value : BitVec 64)
+    (h_align :
+      (js.vregs base + sign_extend (m := 64) imm) &&& (7 : BitVec 64) = 0)
     (h :
       vmem_read_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm)) 0 8
         (Load Data) false false false js.sail =
@@ -31,15 +33,22 @@ theorem ld_run_vreg_vreg_from_memory_read (vd base : VReg) (imm : BitVec 12)
   unfold execInstr readSrc writeDst readVReg liftSail writeVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
-  rw [h]
-  simp only [EStateM.bind, EStateM.pure, modify, modifyGet,
-    MonadStateOf.modifyGet, EStateM.modifyGet]
+  rw [if_pos h_align]
+  have h' :
+      vmem_read_addr (Virtaddr (js.vregs base + sign_extend (m := 64) imm))
+        (0#64) 8 (Load Data) false false false js.sail =
+        .ok (Ok value) js.sail := by
+    simpa using h
+  simp [EStateM.bind, h', modify, modifyGet, MonadStateOf.modifyGet]
+  rfl
 
 /-- Successful `LD` from an architectural-register base into a virtual
 register. -/
 theorem ld_run_vreg_xreg_from_memory_read (vd : VReg) (base : regidx)
     (imm : BitVec 12) (js : SailJoltState) (baseValue value : BitVec 64)
     (hbase : rX_bits base js.sail = .ok baseValue js.sail)
+    (h_align :
+      (baseValue + sign_extend (m := 64) imm) &&& (7 : BitVec 64) = 0)
     (hread :
       vmem_read_addr (Virtaddr (baseValue + sign_extend (m := 64) imm)) 0 8
         (Load Data) false false false js.sail =
@@ -52,9 +61,14 @@ theorem ld_run_vreg_xreg_from_memory_read (vd : VReg) (base : regidx)
   simp only [bind, EStateM.bind, pure, EStateM.run]
   rw [hbase]
   dsimp only
-  rw [hread]
-  simp only [EStateM.bind, EStateM.pure, modify, modifyGet,
-    MonadStateOf.modifyGet, EStateM.modifyGet]
+  rw [if_pos h_align]
+  have hread' :
+      vmem_read_addr (Virtaddr (baseValue + sign_extend (m := 64) imm))
+        (0#64) 8 (Load Data) false false false js.sail =
+        .ok (Ok value) js.sail := by
+    simpa using hread
+  simp [EStateM.bind, hread', modify, modifyGet, MonadStateOf.modifyGet]
+  rfl
 
 end JoltISA
 

@@ -1,5 +1,6 @@
 import JoltBytecode.JoltISA.Expansions.Mul
 import JoltBytecode.JoltISA.Semantics.Instructions
+import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib
 
@@ -121,7 +122,10 @@ inside the `2^64` range. -/
 private theorem xor_neg_one_toNat (x : BitVec 64) :
     (x ^^^ (-1 : BitVec 64)).toNat =
       18446744073709551616 - 1 - x.toNat := by
-  rw [show x ^^^ (-1 : BitVec 64) = ~~~x by bv_decide]
+  change (x ^^^ (-1#64 : BitVec 64)).toNat =
+    18446744073709551616 - 1 - x.toNat
+  rw [show (-1#64 : BitVec 64) = BitVec.allOnes 64 from by decide,
+    BitVec.xor_allOnes]
   rw [BitVec.toNat_not]
 /-- For a negative signed 64-bit word, `xor -1` followed by `+ 1` computes the
 magnitude `2^64 - x.toNat`. -/
@@ -717,11 +721,13 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
 has the same projected architectural result as Sail's `MULHSU` semantics. -/
 theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx)
     (js : SailJoltState)
-    (v1 v2 : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js) =
     (execute_MUL rs2 rs1 rd mulhsuOp).run js.sail := by
+  let v1 := h.rs1_val
+  let v2 := h.rs2_val
+  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read.value_eq
+  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read.value_eq
   by_cases hrd : rd = regidx.Regidx 0
   · subst rd
     unfold JoltISA.mulhsuProgram
