@@ -32,10 +32,15 @@ theorem ecall_auipc_run
   unfold JoltISA.execInstr JoltISA.writeDst writeVReg liftSail
   unfold get_arch_pc Sail.readReg PreSail.readReg
   unfold ecallAfterAuipc joltSetVReg vregWrite
+  have hwr : WritableVReg JoltISA.systemScratchVReg := by
+    unfold WritableVReg
+    decide
+  unfold WritableVReg at hwr
   simp only [hpc, auipc_zero_offset,
     bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hwr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- Concrete ECALL row 1: copy v40 into virtual `mepc`. -/
 theorem ecall_mepc_run
@@ -47,10 +52,15 @@ theorem ecall_mepc_run
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst
   unfold readVReg writeVReg ecallAfterMepc ecallAfterAuipc
   unfold joltSetVReg vregWrite
+  have hwr : WritableVReg JoltISA.mepcVReg := by
+    unfold WritableVReg
+    decide
+  unfold WritableVReg at hwr
   simp only [if_true, addi_zero_value,
     bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hwr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- Concrete ECALL row 2: write machine-mode ECALL cause to virtual `mcause`. -/
 theorem ecall_mcause_run
@@ -61,9 +71,14 @@ theorem ecall_mcause_run
       .ok RETIRE_SUCCESS (ecallAfterMcause js pc) := by
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst liftSail writeVReg
   unfold ecallAfterMcause joltSetVReg vregWrite
+  have hwr : WritableVReg JoltISA.mcauseVReg := by
+    unfold WritableVReg
+    decide
+  unfold WritableVReg at hwr
   simp only [rX_bits_regidx_zero, addi_ecall_machine_cause_value,
     bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hwr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- Concrete ECALL row 3: write zero to virtual `mtval`. -/
 theorem ecall_mtval_run
@@ -74,9 +89,14 @@ theorem ecall_mtval_run
       .ok RETIRE_SUCCESS (ecallAfterMtval js pc) := by
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst liftSail writeVReg
   unfold ecallAfterMtval joltSetVReg vregWrite
+  have hwr : WritableVReg JoltISA.mtvalVReg := by
+    unfold WritableVReg
+    decide
+  unfold WritableVReg at hwr
   simp only [rX_bits_regidx_zero, addi_zero_value,
     bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hwr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- Concrete ECALL row 4: reuse v40 for the literal value three. -/
 theorem ecall_three_run
@@ -87,9 +107,14 @@ theorem ecall_three_run
       .ok RETIRE_SUCCESS (ecallAfterThree js pc) := by
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst liftSail writeVReg
   unfold ecallAfterThree joltSetVReg vregWrite
+  have hwr : WritableVReg JoltISA.systemScratchVReg := by
+    unfold WritableVReg
+    decide
+  unfold WritableVReg at hwr
   simp only [rX_bits_regidx_zero, addi_three_value,
     bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hwr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- Concrete ECALL row 5: lowered `SLLI mstatus, three, 11`. -/
 theorem ecall_mstatus_run
@@ -102,10 +127,15 @@ theorem ecall_mstatus_run
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst
   unfold readVReg writeVReg ecallAfterMstatus ecallAfterThree
   unfold joltSetVReg vregWrite
+  have hwr : WritableVReg JoltISA.mstatusVReg := by
+    unfold WritableVReg
+    decide
+  unfold WritableVReg at hwr
   simp only [if_true,
     bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hwr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
   have hmuli :
       jolt_virtual_muli_value (3#64) (2048 : BitVec 64) = zeroOSMstatus :=
     virtualMuli_three_to_zeroOS

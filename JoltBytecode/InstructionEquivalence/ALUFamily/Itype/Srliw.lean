@@ -129,6 +129,7 @@ theorem srliwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJol
       h_left_shift_writes_leftShiftedSource, _, h_left_shift_block_succeeds⟩ :=
     JoltISA.exists_state_after_slli_block_run_vreg_xreg
       JoltISA.inlineTmp0 rs1 (32 : BitVec 6) js v h_read_rs1
+      (by unfold WritableVReg; decide)
 
   -- Instruction 2: `VirtualSRLI rd, v0, srliwBitmask shamt` writes the shifted result.
   let bitmask := JoltISA.srliwBitmask shamt

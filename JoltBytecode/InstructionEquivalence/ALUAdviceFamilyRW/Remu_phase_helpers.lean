@@ -57,7 +57,7 @@ theorem phase_setup_run
       js'.vregs v0VReg = q ∧
       js'.sail = js.sail := by
   unfold phase_setup
-  obtain ⟨js', hrun, h_v0, _, h_sail⟩ := vreg_advice_run_ex v0VReg q js
+  obtain ⟨js', hrun, h_v0, _, h_sail⟩ := vreg_advice_run_ex v0VReg q js (by unfold WritableVReg; decide)
   refine ⟨js', ?_, h_v0, h_sail⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js' hrun]
   rfl
@@ -95,7 +95,7 @@ theorem phase_quotient_product_run
       js'.sail = js.sail := by
   unfold phase_quotient_product
   obtain ⟨s1, h1, hs1_v0, _, hs1_sail⟩ :=
-    vreg_MUL_from_real_vs2_run_ex v0VReg v0VReg rs2 js divisor hrs2
+    vreg_MUL_from_real_vs2_run_ex v0VReg v0VReg rs2 js divisor hrs2 (by unfold WritableVReg; decide)
   have hs1_v0_eq : s1.vregs v0VReg = q * divisor := by rw [hs1_v0, h_v0]
   have hrs1_s1 : rX_bits rs1 s1.sail = .ok dividend s1.sail := hs1_sail.symm ▸ hrs1
   have hguard : (s1.vregs v0VReg).toNat ≤ dividend.toNat := by
@@ -124,7 +124,7 @@ theorem phase_remainder_bound_run
       js'.sail = js.sail := by
   unfold phase_remainder_bound
   obtain ⟨s1, h1, hs1_v0, _, hs1_sail⟩ :=
-    vreg_SUB_from_real_vs1_run_ex v0VReg rs1 v0VReg js dividend hrs1
+    vreg_SUB_from_real_vs1_run_ex v0VReg rs1 v0VReg js dividend hrs1 (by unfold WritableVReg; decide)
   have hs1_v0_eq : s1.vregs v0VReg = dividend - q * divisor := by rw [hs1_v0, h_v0]
   have hrs2_s1 : rX_bits rs2 s1.sail = .ok divisor s1.sail := hs1_sail.symm ▸ hrs2
   have hguard : divisor = 0#64 ∨ (s1.vregs v0VReg).toNat < divisor.toNat := by
@@ -173,7 +173,7 @@ theorem phase_setup_run_sound
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure] at hdone
   cases hdone
-  obtain ⟨s₁, hrun_ex, hs1_v0, _, hs1_sail⟩ := vreg_advice_run_ex v0VReg q js
+  obtain ⟨s₁, hrun_ex, hs1_v0, _, hs1_sail⟩ := vreg_advice_run_ex v0VReg q js (by unfold WritableVReg; decide)
   rw [hrun_ex] at hrun
   cases hrun
   exact ⟨hs1_v0, hs1_sail⟩
@@ -220,7 +220,7 @@ theorem phase_quotient_product_run_sound
   obtain ⟨s₁, hrun1, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s₁, hrun1_ex, hs1_v0, _, hs1_sail⟩ :=
-    vreg_MUL_from_real_vs2_run_ex v0VReg v0VReg rs2 js divisor hrs2
+    vreg_MUL_from_real_vs2_run_ex v0VReg v0VReg rs2 js divisor hrs2 (by unfold WritableVReg; decide)
   rw [hrun1_ex] at hrun1
   cases hrun1
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=
@@ -255,7 +255,7 @@ theorem phase_remainder_bound_run_sound
   obtain ⟨s₁, hrun1, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s₁, hrun1_ex, hs1_v0, _, hs1_sail⟩ :=
-    vreg_SUB_from_real_vs1_run_ex v0VReg rs1 v0VReg js dividend hrs1
+    vreg_SUB_from_real_vs1_run_ex v0VReg rs1 v0VReg js dividend hrs1 (by unfold WritableVReg; decide)
   rw [hrun1_ex] at hrun1
   cases hrun1
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=

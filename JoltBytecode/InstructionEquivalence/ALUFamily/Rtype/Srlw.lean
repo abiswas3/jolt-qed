@@ -219,6 +219,7 @@ theorem srlwProgram_concrete
       h_left_shift_writes_leftShiftedSource, _, h_left_shift_block_succeeds⟩ :=
     JoltISA.exists_state_after_slli_block_run_vreg_xreg
       JoltISA.inlineTmp1 rs1 (32 : BitVec 6) js v1 h_read_rs1
+      (by unfold WritableVReg; decide)
 
   -- Instruction 2: `ORI v1, rs2, 32` writes the encoded shift amount to `v1`.
   let encodedShift := v2 ||| sign_extend (m := 64) (32 : BitVec 12)

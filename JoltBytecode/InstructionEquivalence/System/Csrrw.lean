@@ -135,9 +135,11 @@ theorem csrrw_write_only_row_run
       (.ADDI (.vreg (JoltISA.SystemCSR.vreg csr)) (.xreg rs1)
         (0 : BitVec 12))).run js =
       .ok RETIRE_SUCCESS (csrrwAfterCsrWrite js csr rs1Val) := by
+  have hcsr : WritableVReg (JoltISA.SystemCSR.vreg csr) := by
+    cases csr <;> unfold WritableVReg <;> decide
   have hRun :=
     JoltISA.addi_run_vreg_xreg (JoltISA.SystemCSR.vreg csr) rs1
-      (0 : BitVec 12) js rs1Val h_rs1
+      (0 : BitVec 12) js rs1Val h_rs1 hcsr
   rw [csrrw_addi_zero rs1Val] at hRun
   simpa [csrrwAfterCsrWrite, joltSetVReg, vregWrite] using hRun
 
@@ -177,9 +179,12 @@ theorem csrrw_preserve_rs1_row_run
       (.ADDI (.vreg JoltISA.systemScratchVReg) (.xreg rs1)
         (0 : BitVec 12))).run js =
       .ok RETIRE_SUCCESS (joltSetVReg js JoltISA.systemScratchVReg rs1Val) := by
+  have hscratch : WritableVReg JoltISA.systemScratchVReg := by
+    unfold WritableVReg
+    decide
   have hRun :=
     JoltISA.addi_run_vreg_xreg JoltISA.systemScratchVReg rs1
-      (0 : BitVec 12) js rs1Val h_rs1
+      (0 : BitVec 12) js rs1Val h_rs1 hscratch
   rw [csrrw_addi_zero rs1Val] at hRun
   simpa [joltSetVReg, vregWrite] using hRun
 
@@ -194,13 +199,15 @@ theorem csrrw_restore_csr_from_scratch_row_run
         { joltSetVReg js JoltISA.systemScratchVReg rs1Val with
           sail := stateAfterWrite js.sail rd oldCsr } =
       .ok RETIRE_SUCCESS (csrrwAfterSameReg js csr rd oldCsr rs1Val) := by
+  have hcsr : WritableVReg (JoltISA.SystemCSR.vreg csr) := by
+    cases csr <;> unfold WritableVReg <;> decide
+  unfold WritableVReg at hcsr
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst readVReg writeVReg
   unfold csrrwAfterSameReg joltSetVReg vregWrite
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+    hcsr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
     csrrw_addi_zero]
-  simp only [if_true]
 
 /-- Rust's full CSRRW Jolt program reaches the branch-selected concrete final
 state.  The `rd != rs1` branch needs the ordinary register-file fact that

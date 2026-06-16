@@ -22,50 +22,55 @@ straight-line expansions, including advice-backed DIV/REM programs.
 -/
 
 /-- `VirtualAdvice` writes advice to a virtual register. -/
-theorem vreg_advice_run (vd : BitVec 7) (advice : BitVec 64) (js : SailJoltState) :
+theorem vreg_advice_run (vd : BitVec 7) (advice : BitVec 64) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.VirtualAdvice vd advice)).run js = .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r => if r = vd then advice else js.vregs r } :=
-  JoltISA.virtual_advice_run vd advice js
+  JoltISA.virtual_advice_run vd advice js hvd
 
 /-- `MUL` on virtual registers writes the low 64 bits. -/
-theorem vreg_MUL_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+theorem vreg_MUL_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.MUL (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
       .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r => if r = vd then js.vregs vs1 * js.vregs vs2
                           else js.vregs r } :=
-  JoltISA.mul_run_vreg_vreg_vreg vd vs1 vs2 js
+  JoltISA.mul_run_vreg_vreg_vreg vd vs1 vs2 js hvd
 
 /-- `ADD` on virtual registers. -/
-theorem vreg_ADD_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+theorem vreg_ADD_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.ADD (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
       .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r => if r = vd then js.vregs vs1 + js.vregs vs2
                           else js.vregs r } :=
-  JoltISA.add_run_vreg_vreg_vreg vd vs1 vs2 js
+  JoltISA.add_run_vreg_vreg_vreg vd vs1 vs2 js hvd
 
 /-- `SUB` on virtual registers. -/
-theorem vreg_SUB_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+theorem vreg_SUB_run (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.SUB (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
       .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r => if r = vd then js.vregs vs1 - js.vregs vs2
                           else js.vregs r } :=
-  JoltISA.sub_run_vreg_vreg_vreg vd vs1 vs2 js
+  JoltISA.sub_run_vreg_vreg_vreg vd vs1 vs2 js hvd
 
 /-- `VirtualChangeDivisor` reads two real registers and writes the adjusted divisor. -/
 theorem vreg_change_divisor_run (vd : BitVec 7) (rs1 rs2 : regidx)
     (js : SailJoltState) (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.VirtualChangeDivisor vd rs1 rs2)).run js = .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
           if r = vd then change_divisor_value dividend divisor
           else js.vregs r } :=
-  JoltISA.virtual_change_divisor_run vd rs1 rs2 js dividend divisor hrs1 hrs2
+  JoltISA.virtual_change_divisor_run vd rs1 rs2 js dividend divisor hrs1 hrs2 hvd
 
 /-- `ADDI` from a virtual register to a real register. -/
 theorem vreg_ADDI_to_real_run (rd : regidx) (vs1 : BitVec 7) (imm : BitVec 12)
@@ -149,7 +154,8 @@ theorem vreg_assert_valid_unsigned_remainder_run_err
   JoltISA.virtual_assert_valid_unsigned_remainder_run_err vr vd js hguard
 
 /-- Existential variant of `vreg_advice_run`. -/
-theorem vreg_advice_run_ex (vd : BitVec 7) (advice : BitVec 64) (js : SailJoltState) :
+theorem vreg_advice_run_ex (vd : BitVec 7) (advice : BitVec 64) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     ∃ js',
       (JoltISA.execInstr (.VirtualAdvice vd advice)).run js = .ok RETIRE_SUCCESS js' ∧
       js'.vregs vd = advice ∧
@@ -159,7 +165,7 @@ theorem vreg_advice_run_ex (vd : BitVec 7) (advice : BitVec 64) (js : SailJoltSt
     { sail := js.sail
       vregs := fun r => if r = vd then advice else js.vregs r }
   refine ⟨js', ?_, ?_, ?_, rfl⟩
-  · simpa only [js'] using vreg_advice_run vd advice js
+  · simpa only [js'] using vreg_advice_run vd advice js hvd
   · show (if vd = vd then advice else js.vregs vd) = advice
     rw [if_pos rfl]
   · intro k h
@@ -167,7 +173,8 @@ theorem vreg_advice_run_ex (vd : BitVec 7) (advice : BitVec 64) (js : SailJoltSt
     rw [if_neg h]
 
 /-- Existential variant of `vreg_MUL_run`. -/
-theorem vreg_MUL_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+theorem vreg_MUL_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     ∃ js',
       (JoltISA.execInstr (.MUL (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -179,7 +186,7 @@ theorem vreg_MUL_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
       vregs := fun r => if r = vd then js.vregs vs1 * js.vregs vs2
         else js.vregs r }
   refine ⟨js', ?_, ?_, ?_, rfl⟩
-  · simpa only [js'] using vreg_MUL_run vd vs1 vs2 js
+  · simpa only [js'] using vreg_MUL_run vd vs1 vs2 js hvd
   · show (if vd = vd then _ else js.vregs vd) = _
     rw [if_pos rfl]
   · intro k h
@@ -190,7 +197,8 @@ theorem vreg_MUL_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
 theorem vreg_change_divisor_run_ex (vd : BitVec 7) (rs1 rs2 : regidx)
     (js : SailJoltState) (dividend divisor : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
+    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
+    (hvd : WritableVReg vd) :
     ∃ js',
       (JoltISA.execInstr (.VirtualChangeDivisor vd rs1 rs2)).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -202,7 +210,8 @@ theorem vreg_change_divisor_run_ex (vd : BitVec 7) (rs1 rs2 : regidx)
       vregs := fun r =>
         if r = vd then change_divisor_value dividend divisor else js.vregs r }
   refine ⟨js', ?_, ?_, ?_, rfl⟩
-  · simpa only [js'] using vreg_change_divisor_run vd rs1 rs2 js dividend divisor hrs1 hrs2
+  · simpa only [js'] using
+      vreg_change_divisor_run vd rs1 rs2 js dividend divisor hrs1 hrs2 hvd
   · show (if vd = vd then _ else js.vregs vd) = _
     rw [if_pos rfl]
   · intro k h
@@ -210,7 +219,8 @@ theorem vreg_change_divisor_run_ex (vd : BitVec 7) (rs1 rs2 : regidx)
     rw [if_neg h]
 
 /-- Existential variant for `XOR`. -/
-theorem vreg_XOR_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+theorem vreg_XOR_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     ∃ js',
       (JoltISA.execInstr (.XOR (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -221,7 +231,7 @@ theorem vreg_XOR_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
     { sail := js.sail
       vregs := fun r => if r = vd then js.vregs vs1 ^^^ js.vregs vs2 else js.vregs r }
   refine ⟨js', ?_, ?_, ?_, rfl⟩
-  · simpa only [js'] using JoltISA.xor_run_vreg_vreg_vreg vd vs1 vs2 js
+  · simpa only [js'] using JoltISA.xor_run_vreg_vreg_vreg vd vs1 vs2 js hvd
   · show (if vd = vd then _ else js.vregs vd) = _
     rw [if_pos rfl]
   · intro k h
@@ -229,7 +239,8 @@ theorem vreg_XOR_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
     rw [if_neg h]
 
 /-- Existential variant of `vreg_SUB_run`. -/
-theorem vreg_SUB_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+theorem vreg_SUB_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     ∃ js',
       (JoltISA.execInstr (.SUB (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -240,7 +251,7 @@ theorem vreg_SUB_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
     { sail := js.sail
       vregs := fun r => if r = vd then js.vregs vs1 - js.vregs vs2 else js.vregs r }
   refine ⟨js', ?_, ?_, ?_, rfl⟩
-  · simpa only [js'] using vreg_SUB_run vd vs1 vs2 js
+  · simpa only [js'] using vreg_SUB_run vd vs1 vs2 js hvd
   · show (if vd = vd then _ else js.vregs vd) = _
     rw [if_pos rfl]
   · intro k h
@@ -248,7 +259,8 @@ theorem vreg_SUB_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
     rw [if_neg h]
 
 /-- Existential variant of `vreg_ADD_run`. -/
-theorem vreg_ADD_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
+theorem vreg_ADD_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     ∃ js',
       (JoltISA.execInstr (.ADD (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -259,7 +271,7 @@ theorem vreg_ADD_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
     { sail := js.sail
       vregs := fun r => if r = vd then js.vregs vs1 + js.vregs vs2 else js.vregs r }
   refine ⟨js', ?_, ?_, ?_, rfl⟩
-  · simpa only [js'] using vreg_ADD_run vd vs1 vs2 js
+  · simpa only [js'] using vreg_ADD_run vd vs1 vs2 js hvd
   · show (if vd = vd then _ else js.vregs vd) = _
     rw [if_pos rfl]
   · intro k h
@@ -269,7 +281,7 @@ theorem vreg_ADD_run_ex (vd vs1 vs2 : BitVec 7) (js : SailJoltState) :
 /-- Existential variant for the lowered `SRAI` block on virtual registers.
 The first returned fact rewrites the whole block against any continuation. -/
 theorem vreg_SRAI_run_ex (vd vs : BitVec 7) (shamt : BitVec 6)
-    (js : SailJoltState) :
+    (js : SailJoltState) (hvd : WritableVReg vd) :
     ∃ js',
       (∀ tail,
         (JoltISA.execProgram (JoltISA.sraiBlock (.vreg vd) (.vreg vs) shamt tail)).run js =
@@ -278,7 +290,7 @@ theorem vreg_SRAI_run_ex (vd vs : BitVec 7) (shamt : BitVec 6)
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
       js'.sail = js.sail := by
   obtain ⟨js', h_sail, h_vd, h_pres, h_run⟩ :=
-    JoltISA.exists_state_after_srai_block_run_vreg_vreg vd vs shamt js
+    JoltISA.exists_state_after_srai_block_run_vreg_vreg vd vs shamt js hvd
   exact ⟨js', h_run, h_vd, h_pres, h_sail⟩
 
 /-- Existential variant for the lowered `SRAI` block from a real source to a
@@ -286,7 +298,8 @@ virtual register. The first returned fact rewrites the whole block against any
 continuation. -/
 theorem vreg_SRAI_from_real_run_ex (vd : BitVec 7) (rs : regidx)
     (shamt : BitVec 6) (js : SailJoltState) (x : BitVec 64)
-    (hread : rX_bits rs js.sail = .ok x js.sail) :
+    (hread : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     ∃ js',
       (∀ tail,
         (JoltISA.execProgram (JoltISA.sraiBlock (.vreg vd) (.xreg rs) shamt tail)).run js =
@@ -295,7 +308,7 @@ theorem vreg_SRAI_from_real_run_ex (vd : BitVec 7) (rs : regidx)
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
       js'.sail = js.sail := by
   obtain ⟨js', _hread, h_sail, h_vd, h_pres, h_run⟩ :=
-    JoltISA.exists_state_after_srai_block_run_vreg_xreg vd rs shamt js x hread
+    JoltISA.exists_state_after_srai_block_run_vreg_xreg vd rs shamt js x hread hvd
   exact ⟨js', h_run, h_vd, h_pres, h_sail⟩
 
 end
