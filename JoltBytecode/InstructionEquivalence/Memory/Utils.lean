@@ -27,6 +27,19 @@ and are related back to Sail's pipeline via bridge theorems elsewhere.
 -- Exact flat-memory predicates used by vmem helper lemmas
 -- ============================================================================
 
+/-- The bytes in `[addr, addr + width)` are present in Sail's finite memory map.
+
+This is a local helper predicate for direct byte-level memory proofs. The
+primitive public assumption is `Assumptions.DwordPresent`; sub-byte/word facts
+are derived from it rather than assumed directly. -/
+structure MemBytesPresent (addr : BitVec 64) (width : Nat) (s : SailState) :
+    Prop where
+  present : ∀ k : Nat, k < width → s.mem.get? (addr.toNat + k) ≠ none
+
+/-- Convenience spelling used by memory helper lemmas. -/
+abbrev DwordBytesPresent (addr : BitVec 64) (s : SailState) : Prop :=
+  MemBytesPresent addr 8 s
+
 /-- Exact facts needed to reduce one ordinary `vmem_read_addr` data-load access
 to a direct finite-memory read.
 
@@ -98,14 +111,6 @@ structure FlatAtomicMem (op : amoop) (addr : BitVec 64) (width : Nat)
   pmp : AtomicPmpOk op addr width s
   readable : NotReadableMmio addr width s
   writable : NotWritableMmio addr width s
-
-/-- Exact facts needed to reduce Sail's native load-reserved memory operation on
-the ordinary flat-memory path. -/
-structure FlatLoadReservedMem (addr : BitVec 64) (width : Nat)
-    (s : SailState) : Prop where
-  bytes : MemBytesPresent addr width s
-  pmp : LoadReservedPmpOk addr width s
-  readable : NotReadableMmio addr width s
 
 -- The 8-bit byte at a given vaddr. Direct hash-map lookup on `s.mem`.
 -- WARNING: returns `0` when vaddr is not populated. Indistinguishable from

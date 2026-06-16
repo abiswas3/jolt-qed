@@ -625,12 +625,13 @@ composition.
 
 Rationale: this is real, but only for a stronger claim than the current
 per-instruction theorem surface. The deep audit found **no preservation or frame lemmas anywhere**.
-Nothing proves a non-system expansion preserves `JoltConfig`, leaves the
-persistent CSR vregs (v32–v39) untouched, or leaves memory outside its footprint
-unchanged. Combined with `projectResult` discarding all vregs
+Nothing proves a non-system expansion leaves the persistent CSR vregs
+(v32–v39) untouched. Because `projectResult` discards all vregs
 (`JoltISA/Core.lean:51`), an ALU/load/store expansion that clobbered
 `mstatusVReg` would satisfy its own `*_eq_sail` theorem perfectly and silently
 invalidate every later system-instruction assumption — an invisible bug class.
+Sail memory is not part of this extra frame problem: it lives in the projected
+Sail state, so `projectResult jres = sres` already exposes memory differences.
 VReg disjointness is currently proven only for the one scratch register CSRRW
 uses (`systemScratch_ne_systemCSR_vreg`, `Csrrw.lean:75`); v41–v47 have no such
 facts. The per-instruction theorems are honest, but nothing licenses chaining
@@ -646,10 +647,9 @@ not compete with W1/W2/W10.
 
 Tasks:
 
-- Per non-system family, prove a frame lemma triple: executing the `xProgram`
-  (a) preserves `JoltConfig` (machine mode, MPRV=0, the finite memory footprint
-  from W2), (b) leaves vregs 32–39 unchanged, (c) for stores/AMOs, leaves
-  `s.mem` unchanged outside the written dword footprint.
+- Per non-system family, strengthen the public theorem contract so executing
+  the `xProgram` both matches the projected Sail result and leaves protected
+  Jolt registers unchanged.
 - Establish vreg disjointness for the full scratch pool (v40–v47) vs the
   persistent CSR vregs (v32–v39), not just the single CSRRW scratch register.
 - Prove one concrete two-instruction composition theorem (e.g. an ALU op
@@ -657,11 +657,13 @@ Tasks:
   the frame lemmas actually chain. A general n-instruction/trace theorem is a
   larger follow-on, explicitly out of scope for the first pass.
 
-Acceptance criteria: frame lemmas (JoltConfig-preservation, CSR-vreg-invariance,
-memory-footprint-frame) in the root build for each non-system family; full
-scratch-vs-CSR vreg disjointness; one proved two-instruction composition.
+Acceptance criteria: strengthened public theorem contracts in the root build
+for each non-system family; full scratch-vs-CSR vreg disjointness; one proved
+two-instruction composition.
 
-Dependencies: W2 (the finite-footprint memory contract is what gets framed).
+Dependencies: none for the protected-vreg frame. Future composition with memory
+instructions may still rely on the W2 finite-memory assumptions already present
+in those theorem statements.
 
 ## Sequencing
 

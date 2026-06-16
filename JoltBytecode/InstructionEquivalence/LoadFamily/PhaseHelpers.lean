@@ -65,7 +65,8 @@ theorem loadSetupPhase_run (imm : BitVec 12) (rs1 : regidx)
       (JoltISA.execInstr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm)).run js =
         .ok RETIRE_SUCCESS js_afterAddi := by
     simpa only [js_afterAddi, ea, load_effective_address] using
-      (JoltISA.addi_run_vreg_xreg JoltISA.inlineTmp0 rs1 imm js val hrx)
+      (JoltISA.addi_run_vreg_xreg JoltISA.inlineTmp0 rs1 imm js val hrx
+        (by unfold WritableVReg; decide))
   have h_signExtend_neg8 :
       sign_extend (m := 64) (-8 : BitVec 12) = (-8 : BitVec 64) := by
     decide
@@ -76,7 +77,7 @@ theorem loadSetupPhase_run (imm : BitVec 12) (rs1 : regidx)
     simpa only [js_afterAddi, js_setup, ea, daddr, compute_aligned_dword_base_address,
       load_effective_address, h_signExtend_neg8] using
       (JoltISA.andi_run_vreg_vreg JoltISA.inlineTmp1 JoltISA.inlineTmp0
-        (-8 : BitVec 12) js_afterAddi)
+        (-8 : BitVec 12) js_afterAddi (by unfold WritableVReg; decide))
   have h_setup_succeeds :
       JoltISA.Program.Run (loadSetupPhase imm rs1) js js_setup := by
     change (JoltISA.execProgram (loadSetupPhase imm rs1)).run js =
@@ -122,7 +123,7 @@ theorem loadDwordPhase_run (js : SailJoltState) (js_setup : SailJoltState)
         .ok RETIRE_SUCCESS js_load := by
     have hld :=
       vreg_LD_run_of_dword_evidence JoltISA.inlineTmp1 JoltISA.inlineTmp1
-        js_setup addr hsetup_v1 hcfg_setup hdword
+        js_setup addr hsetup_v1 hcfg_setup hdword (by unfold WritableVReg; decide)
     simpa only [js_load, dword, hsetup_sail] using hld
   have h_phase_succeeds :
       JoltISA.Program.Run loadDwordPhase js_setup js_load := by

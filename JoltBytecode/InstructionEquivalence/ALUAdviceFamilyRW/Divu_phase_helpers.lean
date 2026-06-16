@@ -38,20 +38,22 @@ Phase definitions and phase-run lemmas live in the `Divu` namespace.
 theorem vreg_MUL_from_real_vs2_run
     (vd vs1 : BitVec 7) (rs2 : regidx)
     (js : SailJoltState) (rs2_val : BitVec 64)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail) :
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.MUL (.vreg vd) (.vreg vs1) (.xreg rs2))).run js =
       .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
           if r = vd then js.vregs vs1 * rs2_val
           else js.vregs r } :=
-  JoltISA.mul_run_vreg_vreg_xreg vd vs1 rs2 js rs2_val hrs2
+  JoltISA.mul_run_vreg_vreg_xreg vd vs1 rs2 js rs2_val hrs2 hvd
 
 /-- Existential variant of `vreg_MUL_from_real_vs2_run`. -/
 theorem vreg_MUL_from_real_vs2_run_ex
     (vd vs1 : BitVec 7) (rs2 : regidx)
     (js : SailJoltState) (rs2_val : BitVec 64)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail) :
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
+    (hvd : WritableVReg vd) :
     ∃ js',
       (JoltISA.execInstr (.MUL (.vreg vd) (.vreg vs1) (.xreg rs2))).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -62,7 +64,7 @@ theorem vreg_MUL_from_real_vs2_run_ex
     { sail := js.sail
       vregs := fun r => if r = vd then js.vregs vs1 * rs2_val else js.vregs r }
   refine ⟨js', ?_, ?_, ?_, rfl⟩
-  · simpa only [js'] using vreg_MUL_from_real_vs2_run vd vs1 rs2 js rs2_val hrs2
+  · simpa only [js'] using vreg_MUL_from_real_vs2_run vd vs1 rs2 js rs2_val hrs2 hvd
   · show (if vd = vd then _ else js.vregs vd) = _
     rw [if_pos rfl]
   · intro k h
@@ -73,20 +75,22 @@ theorem vreg_MUL_from_real_vs2_run_ex
 theorem vreg_SUB_from_real_vs1_run
     (vd : BitVec 7) (rs1 : regidx) (vs2 : BitVec 7)
     (js : SailJoltState) (rs1_val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail) :
+    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.SUB (.vreg vd) (.xreg rs1) (.vreg vs2))).run js =
       .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
           if r = vd then rs1_val - js.vregs vs2
           else js.vregs r } :=
-  JoltISA.sub_run_vreg_xreg_vreg vd rs1 vs2 js rs1_val hrs1
+  JoltISA.sub_run_vreg_xreg_vreg vd rs1 vs2 js rs1_val hrs1 hvd
 
 /-- Existential variant of `vreg_SUB_from_real_vs1_run`. -/
 theorem vreg_SUB_from_real_vs1_run_ex
     (vd : BitVec 7) (rs1 : regidx) (vs2 : BitVec 7)
     (js : SailJoltState) (rs1_val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail) :
+    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
+    (hvd : WritableVReg vd) :
     ∃ js',
       (JoltISA.execInstr (.SUB (.vreg vd) (.xreg rs1) (.vreg vs2))).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -97,7 +101,7 @@ theorem vreg_SUB_from_real_vs1_run_ex
     { sail := js.sail
       vregs := fun r => if r = vd then rs1_val - js.vregs vs2 else js.vregs r }
   refine ⟨js', ?_, ?_, ?_, rfl⟩
-  · simpa only [js'] using vreg_SUB_from_real_vs1_run vd rs1 vs2 js rs1_val hrs1
+  · simpa only [js'] using vreg_SUB_from_real_vs1_run vd rs1 vs2 js rs1_val hrs1 hvd
   · show (if vd = vd then _ else js.vregs vd) = _
     rw [if_pos rfl]
   · intro k h
@@ -225,7 +229,7 @@ theorem phase_setup_run
       vregs := fun r => if r = v0VReg then q else js.vregs r }
   have h1 : (JoltISA.execInstr (.VirtualAdvice v0VReg q)).run js =
       .ok RETIRE_SUCCESS s1 :=
-    vreg_advice_run v0VReg q js
+    vreg_advice_run v0VReg q js (by unfold WritableVReg; decide)
   have hs1_v0 : s1.vregs v0VReg = q := by
     show (if v0VReg = v0VReg then q else js.vregs v0VReg) = q
     rw [if_pos rfl]
@@ -276,7 +280,7 @@ theorem phase_quotient_product_run
       js'.sail = js.sail := by
   unfold phase_quotient_product
   obtain ⟨s1, h1, hs1_v1, hs1_pres, hs1_sail⟩ :=
-    vreg_MUL_from_real_vs2_run_ex v1VReg v0VReg rs2 js divisor hrs2
+    vreg_MUL_from_real_vs2_run_ex v1VReg v0VReg rs2 js divisor hrs2 (by unfold WritableVReg; decide)
   have hs1_v0 : s1.vregs v0VReg = q := (hs1_pres v0VReg (by decide)).trans h_v0
   have hs1_v1_eq : s1.vregs v1VReg = q * divisor := by rw [hs1_v1, h_v0]
   have hrs1_s1 : rX_bits rs1 s1.sail = .ok dividend s1.sail := hs1_sail.symm ▸ hrs1
@@ -307,7 +311,7 @@ theorem phase_remainder_bound_run
       js'.sail = js.sail := by
   unfold phase_remainder_bound
   obtain ⟨s1, h1, hs1_v1, hs1_pres, hs1_sail⟩ :=
-    vreg_SUB_from_real_vs1_run_ex v1VReg rs1 v1VReg js dividend hrs1
+    vreg_SUB_from_real_vs1_run_ex v1VReg rs1 v1VReg js dividend hrs1 (by unfold WritableVReg; decide)
   have hs1_v0 : s1.vregs v0VReg = q := (hs1_pres v0VReg (by decide)).trans h_v0
   have hs1_v1_eq : s1.vregs v1VReg = dividend - q * divisor := by rw [hs1_v1, h_v1]
   have hrs2_s1 : rX_bits rs2 s1.sail = .ok divisor s1.sail := hs1_sail.symm ▸ hrs2
@@ -358,7 +362,7 @@ theorem phase_setup_run_sound
   unfold phase_setup at hp
   obtain ⟨s₁, hrun1, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s₁, hrun1_ex, hs1_v0, _hs1_pres, hs1_sail⟩ := vreg_advice_run_ex v0VReg q js
+  obtain ⟨s₁, hrun1_ex, hs1_v0, _hs1_pres, hs1_sail⟩ := vreg_advice_run_ex v0VReg q js (by unfold WritableVReg; decide)
   rw [hrun1_ex] at hrun1
   cases hrun1
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=
@@ -421,7 +425,7 @@ theorem phase_quotient_product_run_sound
   obtain ⟨s₁, hrun1, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s₁, hrun1_ex, hs1_v1, hs1_pres, hs1_sail⟩ :=
-    vreg_MUL_from_real_vs2_run_ex v1VReg v0VReg rs2 js divisor hrs2
+    vreg_MUL_from_real_vs2_run_ex v1VReg v0VReg rs2 js divisor hrs2 (by unfold WritableVReg; decide)
   rw [hrun1_ex] at hrun1
   cases hrun1
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=
@@ -458,7 +462,7 @@ theorem phase_remainder_bound_run_sound
   obtain ⟨s₁, hrun1, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   obtain ⟨s₁, hrun1_ex, hs1_v1, hs1_pres, hs1_sail⟩ :=
-    vreg_SUB_from_real_vs1_run_ex v1VReg rs1 v1VReg js dividend hrs1
+    vreg_SUB_from_real_vs1_run_ex v1VReg rs1 v1VReg js dividend hrs1 (by unfold WritableVReg; decide)
   rw [hrun1_ex] at hrun1
   cases hrun1
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=

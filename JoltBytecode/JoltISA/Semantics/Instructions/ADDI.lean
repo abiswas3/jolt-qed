@@ -19,15 +19,18 @@ namespace JoltISA
 source and writes the immediate sum to the virtual destination. -/
 theorem addi_run_vreg_xreg (vd : VReg) (rs : regidx)
     (imm : BitVec 12) (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     (execInstr (.ADDI (.vreg vd) (.xreg rs) imm)).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>
             if r = vd then x + sign_extend (m := 64) imm else js.vregs r } := by
+  unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst liftSail writeVReg
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- `ADDI` from a virtual source to a real destination writes through Sail. -/
 theorem addi_run_xreg_vreg (rd : regidx) (vs : VReg) (imm : BitVec 12)

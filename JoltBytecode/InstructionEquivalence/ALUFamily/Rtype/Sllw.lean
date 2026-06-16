@@ -120,6 +120,7 @@ theorem sllwProgram_concrete
       h_pow2_writes_pow2, _, h_pow2_succeeds⟩ :=
     JoltISA.exists_state_after_virtual_pow2w_run_vreg_xreg
       JoltISA.inlineTmp0 rs2 js v2 h_read_rs2
+      (by unfold WritableVReg; decide)
 
   -- Instruction 2: `MUL rd, rs1, v0` writes the shifted word product to `rd`.
   let product := v1 * pow2
@@ -173,42 +174,50 @@ theorem sllwProgram_eq_sail
     (rd : regidx)
     (js : SailJoltState)
     (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.sllwProgram rs2 rs1 rd)).run js) =
-    (execute_RTYPEW rs2 rs1 rd ropw.SLLW).run js.sail := by
-  let v1 := h.rs1_val
-  let v2 := h.rs2_val
-  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read.value_eq
-  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read.value_eq
-  by_cases hrd : rd = regidx.Regidx 0
-  · subst rd
-    unfold JoltISA.sllwProgram
-    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
-    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.sllwProgram rs2 rs1 rd)).run js)
+      ((execute_RTYPEW rs2 rs1 rd ropw.SLLW).run js.sail) := by
+  constructor
+  · let v1 := h.rs1_val
+    let v2 := h.rs2_val
+    have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
+    have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read
+    by_cases hrd : rd = regidx.Regidx 0
+    · subst rd
+      unfold JoltISA.sllwProgram
+      rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+      rw [JoltISA.pureWritebackRdZeroProgram_run js]
+      simp only [projectResult, project]
+      rw [execute_RTYPEW_SLLW_factored rs2 rs1 (regidx.Regidx 0)]
+      simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+      simp only [h_read_rs1, h_read_rs2]
+      simp only [wX_bits_regidx_zero]
+
+    obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
+      sllwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
+
+    rw [h_program_succeeds]
     simp only [projectResult, project]
-    rw [execute_RTYPEW_SLLW_factored rs2 rs1 (regidx.Regidx 0)]
+    rw [h_final_sail]
+
+    rw [execute_RTYPEW_SLLW_factored rs2 rs1 rd]
     simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
     simp only [h_read_rs1, h_read_rs2]
-    simp only [wX_bits_regidx_zero]
 
-  obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-    sllwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
-
-  -- Use the concrete proof to collapse the Jolt side to its final Sail state.
-  rw [h_program_succeeds]
-  simp only [projectResult, project]
-  rw [h_final_sail]
-
-  -- Expand the Sail-side `SLLW`: it reads the same inputs and writes the same
-  -- already-proved final value.
-  rw [execute_RTYPEW_SLLW_factored rs2 rs1 rd]
-  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-  simp only [h_read_rs1, h_read_rs2]
-
-  -- The only remaining mismatch is the concrete state chosen by `wX_bits`
-  -- versus our `stateAfterWrite` spelling of that same register update.
-  obtain ⟨s', h_write⟩ := wX_shape rd (sllw_sail_operation v1 v2) js.sail
-  simp only [h_write]
-  congr 1
-  exact (wX_bits_eq_stateAfterWrite rd (sllw_sail_operation v1 v2) js.sail s' h_write).symm
+    obtain ⟨s', h_write⟩ := wX_shape rd (sllw_sail_operation v1 v2) js.sail
+    simp only [h_write]
+    congr 1
+    exact (wX_bits_eq_stateAfterWrite rd (sllw_sail_operation v1 v2) js.sail s' h_write).symm
+  · intro result js' hrun
+    have hsafe :
+        JoltISA.ProgramWritesNoProtectedVReg
+          (JoltISA.sllwProgram rs2 rs1 rd) := by
+      unfold JoltISA.sllwProgram
+      apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+      simp [JoltISA.ProgramWritesNoProtectedVReg,
+        JoltISA.InstrWritesNoProtectedVReg,
+        JoltISA.DstWritesNoProtectedVReg]
+    exact JoltISA.execProgram_preserves_protected
+      (js := js) (js' := js') (result := result) hsafe hrun
 
 end

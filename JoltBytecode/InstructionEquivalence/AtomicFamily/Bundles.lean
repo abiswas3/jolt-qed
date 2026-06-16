@@ -43,11 +43,11 @@ structure AmoRegisterConfigAssumptions
     (rs2 rs1 rd : regidx) (js : SailJoltState) where
   rs1_val : BitVec 64
   rs2_val : BitVec 64
-  rs1_read : XRegRead rs1 rs1_val js.sail
-  rs2_read : XRegRead rs2 rs2_val js.sail
-  rd_readable : XRegReadable rd js.sail
-  cur_privilege : CurPrivilegeMachine js.sail
-  mstatus_mprv : MstatusMprvZero js.sail
+  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+  rs2_read : rX_bits rs2 js.sail = .ok rs2_val js.sail
+  rd_readable : Assumptions.XRegReadable rd js.sail
+  cur_privilege : Assumptions.CurPrivilegeMachine js.sail
+  mstatus_mprv : Assumptions.MstatusMprvZero js.sail
 
 /-- Public assumptions for a dword AMO equivalence theorem.
 

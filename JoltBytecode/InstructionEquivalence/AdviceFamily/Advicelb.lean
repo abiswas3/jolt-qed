@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.AdviceFamily.Advice
+import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.Advice
 import JoltBytecode.JoltISA.Semantics.ExpansionBlocks.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions
@@ -13,7 +14,8 @@ set_option autoImplicit true
 
 noncomputable section
 
-/-- Sail-side spec for `ADVICELB`: write the sign-extended advised byte to `rd`. -/
+/-- Reference semantics for the Jolt-only `ADVICELB`: write the sign-extended
+advised byte to `rd`. -/
 def execute_ADVICELB (rd : regidx) (advice : BitVec 8) : SailM ExecutionResult := do
   wX_bits rd (sign_extend (m := 64) advice)
   pure RETIRE_SUCCESS
@@ -100,7 +102,7 @@ theorem advicelbProgram_concrete (rd : regidx) (advice : BitVec 8)
   rw [stateAfterWrite_stateAfterWrite]
 
 /-- Main program-level theorem for `ADVICELB`. -/
-theorem advicelbProgram_eq_sail
+private theorem advicelbProgram_project_eq_sail
     (rd : regidx) (advice : BitVec 8) (js : SailJoltState) :
     projectResult ((JoltISA.execProgram (JoltISA.advicelbProgram rd advice)).run js) =
       (execute_ADVICELB rd advice).run js.sail := by
@@ -127,5 +129,19 @@ theorem advicelbProgram_eq_sail
   congr 1
   exact (wX_bits_eq_stateAfterWrite rd (sign_extend (m := 64) advice) js.sail s'
     h_write).symm
+
+/-- Main program-level theorem for `ADVICELB`. -/
+theorem advicelbProgram_eq_sail
+    (rd : regidx) (advice : BitVec 8) (js : SailJoltState) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.advicelbProgram rd advice)).run js)
+      ((execute_ADVICELB rd advice).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact advicelbProgram_project_eq_sail rd advice js
+  · unfold JoltISA.advicelbProgram JoltISA.slliBlock
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg]
 
 end

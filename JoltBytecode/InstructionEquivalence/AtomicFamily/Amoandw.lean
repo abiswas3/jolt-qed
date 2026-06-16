@@ -188,7 +188,7 @@ theorem amoandwProgram_eq_sail_of_memory_context
 The theorem takes one primitive-only atomic bundle. The aligned branch derives
 exact memory context from the enclosing dword window; the misaligned branch
 stops before memory context is needed. -/
-theorem amoandwProgram_eq_sail
+private theorem amoandwProgram_project_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOAND rs2 rs1 rd js) :
     projectResult ((JoltISA.execProgram
@@ -204,11 +204,29 @@ theorem amoandwProgram_eq_sail
       simpa [amoWordBase, amoWordAssumptionBase] using h_mem_base
     exact amoandwProgram_eq_sail_aligned
       rs2 rs1 rd js h.cfg addr rs2Val
-      h.rs1_read.value_eq h.rs2_read.value_eq h.rd_readable.exists_value
+      h.rs1_read h.rs2_read h.rd_readable.exists_value
       h_mem h_align
   · exact amoandwProgram_eq_sail_misaligned
       rs2 rs1 rd js h.cfg addr rs2Val
-      h.rs1_read.value_eq h.rs2_read.value_eq h_align
+      h.rs1_read h.rs2_read h_align
+
+/-- Main public theorem for `AMOAND.W`. -/
+theorem amoandwProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : AmoWordProgramEqSailAssumptions amoop.AMOAND rs2 rs1 rd js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.amoandwProgram rs2 rs1 rd)).run js)
+      ((execute_AMO amoop.AMOAND false false rs2 rs1 4 rd).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact amoandwProgram_project_eq_sail rs2 rs1 rd js h
+  · simp [JoltISA.amoandwProgram, JoltISA.amoWordBinopProgram,
+      JoltISA.amoPre64Program, JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64Program, JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.amoOldVReg, JoltISA.amoNewVReg, JoltISA.amoMaskVReg,
+      JoltISA.amoDwordVReg, JoltISA.amoShiftVReg, JoltISA.amoInlineTmpVReg]
 
 end AtomicFamily
 

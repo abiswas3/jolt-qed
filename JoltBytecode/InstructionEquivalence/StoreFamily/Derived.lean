@@ -34,7 +34,8 @@ theorem joltMem
     FlatLoadStoreMem (compute_aligned_dword_base_address h.rs1_val imm) 8 js.sail :=
   FlatLoadStoreMem.ofReadWriteWindow
     (compute_aligned_dword_base_address h.rs1_val imm) 8 js.sail
-    h.dword_window.bytes h.dword_window.load_pmp h.dword_window.store_pmp
+    (Assumptions.DwordPresent.memBytesPresent h.dword_window.bytes)
+    h.dword_window.load_pmp h.dword_window.store_pmp
     h.dword_window.not_readable_mmio h.dword_window.not_writable_mmio
 
 /-- Derive an exact Sail write subaccess from the enclosing 8-byte writable

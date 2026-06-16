@@ -28,7 +28,6 @@ structure LoadReservedMemoryContext
     (sailWidth : Nat) (joltAddr lrAddr : BitVec 64)
     (s : SailState) : Prop where
   jolt_load_mem : FlatPhysMem joltAddr 8 s
-  sail_reserved_mem : FlatLoadReservedMem lrAddr sailWidth s
   cfg : JoltConfig s
 
 /-- The ordinary Jolt read used by the LR expansion. -/
@@ -37,13 +36,6 @@ theorem LoadReservedMemoryContext.jolt_load
     (h : LoadReservedMemoryContext sailWidth joltAddr lrAddr s) :
     FlatPhysMem joltAddr 8 s :=
   h.jolt_load_mem
-
-/-- The native Sail load-reserved read. -/
-theorem LoadReservedMemoryContext.sail_reserved
-    {sailWidth : Nat} {joltAddr lrAddr : BitVec 64} {s : SailState}
-    (h : LoadReservedMemoryContext sailWidth joltAddr lrAddr s) :
-    FlatLoadReservedMem lrAddr sailWidth s :=
-  h.sail_reserved_mem
 
 end LoadReservedFamily
 

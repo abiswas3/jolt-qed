@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.AdviceFamily.Advice
+import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.Advice
 import JoltBytecode.JoltISA.Semantics.Instructions
 
@@ -12,7 +13,8 @@ set_option autoImplicit true
 
 noncomputable section
 
-/-- Sail-side spec for `ADVICELD`: write the advised dword to `rd`. -/
+/-- Reference semantics for the Jolt-only `ADVICELD`: write the advised dword to
+`rd`. -/
 def execute_ADVICELD (rd : regidx) (advice : BitVec 64) : SailM ExecutionResult := do
   wX_bits rd advice
   pure RETIRE_SUCCESS
@@ -41,7 +43,7 @@ theorem adviceldProgram_concrete (rd : regidx) (advice : BitVec 64)
   exact ⟨js_afterAdvice, h_program_succeeds, h_advice_sail⟩
 
 /-- Main program-level theorem for `ADVICELD`. -/
-theorem adviceldProgram_eq_sail
+private theorem adviceldProgram_project_eq_sail
     (rd : regidx) (advice : BitVec 64) (js : SailJoltState) :
     projectResult ((JoltISA.execProgram (JoltISA.adviceldProgram rd advice)).run js) =
       (execute_ADVICELD rd advice).run js.sail := by
@@ -67,5 +69,19 @@ theorem adviceldProgram_eq_sail
   simp only [h_write]
   congr 1
   exact (wX_bits_eq_stateAfterWrite rd advice js.sail s' h_write).symm
+
+/-- Main program-level theorem for `ADVICELD`. -/
+theorem adviceldProgram_eq_sail
+    (rd : regidx) (advice : BitVec 64) (js : SailJoltState) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.adviceldProgram rd advice)).run js)
+      ((execute_ADVICELD rd advice).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact adviceldProgram_project_eq_sail rd advice js
+  · unfold JoltISA.adviceldProgram
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg]
 
 end

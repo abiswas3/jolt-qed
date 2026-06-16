@@ -219,6 +219,7 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       h_rs1_sign_mask_preserves, h_rs1_sign_mask_succeeds⟩ :=
     JoltISA.exists_state_after_movsign_run_vreg_xreg
       JoltISA.inlineTmp0 rs1 js js.sail v1 rfl h_read_rs1
+      (by unfold WritableVReg; decide)
 
   -- Instruction 2: `VirtualMovsign v1, rs2` writes the sign mask of `rs2`.
   let rs2SignMask := jolt_movsign_value v2
@@ -228,6 +229,7 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     JoltISA.exists_state_after_movsign_run_vreg_xreg
       JoltISA.inlineTmp1 rs2 js_afterRs1SignMask js.sail v2
       h_rs1_sign_mask_keeps_sail h_read_rs2
+      (by unfold WritableVReg; decide)
   have h_rs2_sign_mask_preserves_rs1SignMask :
       js_afterRs2SignMask.vregs JoltISA.inlineTmp0 = rs1SignMask :=
     (h_rs2_sign_mask_preserves JoltISA.inlineTmp0 inlineTmp0_ne_inlineTmp1).trans
@@ -242,6 +244,7 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       JoltISA.inlineTmp0 JoltISA.inlineTmp0 rs2 js_afterRs2SignMask js.sail
       rs1SignMask v2 h_rs2_sign_mask_keeps_sail
       h_rs2_sign_mask_preserves_rs1SignMask h_read_rs2
+      (by unfold WritableVReg; decide)
   have h_rs1_correction_mul_preserves_rs2SignMask :
       js_afterRs1CorrectionMul.vregs JoltISA.inlineTmp1 = rs2SignMask :=
     (h_rs1_correction_mul_preserves JoltISA.inlineTmp1 inlineTmp1_ne_inlineTmp0).trans
@@ -256,6 +259,7 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       JoltISA.inlineTmp1 JoltISA.inlineTmp1 rs1 js_afterRs1CorrectionMul js.sail
       rs2SignMask v1 h_rs1_correction_mul_keeps_sail
       h_rs1_correction_mul_preserves_rs2SignMask h_read_rs1
+      (by unfold WritableVReg; decide)
   have h_rs2_correction_mul_preserves_rs1CorrectionProduct :
       js_afterRs2CorrectionMul.vregs JoltISA.inlineTmp0 = rs1CorrectionProduct :=
     (h_rs2_correction_mul_preserves JoltISA.inlineTmp0 inlineTmp0_ne_inlineTmp1).trans
@@ -268,6 +272,7 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     JoltISA.exists_state_after_mulhu_run_vreg_xreg_xreg
       JoltISA.inlineTmp2 rs1 rs2 js_afterRs2CorrectionMul js.sail v1 v2
       h_rs2_correction_mul_keeps_sail h_read_rs1 h_read_rs2
+      (by unfold WritableVReg; decide)
   have h_mulhu_preserves_rs1CorrectionProduct :
       js_afterMulhu.vregs JoltISA.inlineTmp0 = rs1CorrectionProduct :=
     (h_mulhu_preserves JoltISA.inlineTmp0 inlineTmp0_ne_inlineTmp2).trans
@@ -284,7 +289,8 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
       h_add_rs1_correction_preserves, h_add_rs1_correction_succeeds⟩ :=
     JoltISA.exists_state_after_add_run_vreg_vreg_vreg
       JoltISA.inlineTmp2 JoltISA.inlineTmp2 JoltISA.inlineTmp0 js_afterMulhu
-      unsignedHighProduct rs1CorrectionProduct h_mulhu_writes_unsignedHighProduct
+      unsignedHighProduct rs1CorrectionProduct
+      (by unfold WritableVReg; decide) h_mulhu_writes_unsignedHighProduct
       h_mulhu_preserves_rs1CorrectionProduct
   have h_add_rs1_correction_preserves_rs2CorrectionProduct :
       js_afterAddRs1Correction.vregs JoltISA.inlineTmp1 = rs2CorrectionProduct :=
@@ -352,37 +358,44 @@ the same projected architectural result as Sail's `MULH` semantics. -/
 theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx)
     (js : SailJoltState)
     (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js) =
-    (execute_MUL rs2 rs1 rd mulhOp).run js.sail := by
-  let v1 := h.rs1_val
-  let v2 := h.rs2_val
-  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read.value_eq
-  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read.value_eq
-  by_cases hrd : rd = regidx.Regidx 0
-  · subst rd
-    unfold JoltISA.mulhProgram
-    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
-    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js)
+      ((execute_MUL rs2 rs1 rd mulhOp).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · let v1 := h.rs1_val
+    let v2 := h.rs2_val
+    have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
+    have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read
+    by_cases hrd : rd = regidx.Regidx 0
+    · subst rd
+      unfold JoltISA.mulhProgram
+      rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+      rw [JoltISA.pureWritebackRdZeroProgram_run js]
+      simp only [projectResult, project]
+      rw [execute_MULH_factored rs2 rs1 (regidx.Regidx 0)]
+      simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+      simp only [h_read_rs1, h_read_rs2]
+      simp only [wX_bits_regidx_zero]
+
+    obtain ⟨js_afterFinalAdd, h_program_succeeds, h_final_sail⟩ :=
+      mulhProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
+
+    rw [h_program_succeeds]
     simp only [projectResult, project]
-    rw [execute_MULH_factored rs2 rs1 (regidx.Regidx 0)]
+    rw [h_final_sail]
+
+    rw [execute_MULH_factored rs2 rs1 rd]
     simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
     simp only [h_read_rs1, h_read_rs2]
-    simp only [wX_bits_regidx_zero]
 
-  obtain ⟨js_afterFinalAdd, h_program_succeeds, h_final_sail⟩ :=
-    mulhProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
-
-  rw [h_program_succeeds]
-  simp only [projectResult, project]
-  rw [h_final_sail]
-
-  rw [execute_MULH_factored rs2 rs1 rd]
-  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-  simp only [h_read_rs1, h_read_rs2]
-
-  obtain ⟨s', h_write⟩ := wX_shape rd (mulhs v1 v2) js.sail
-  simp only [h_write]
-  congr 1
-  exact (wX_bits_eq_stateAfterWrite rd (mulhs v1 v2) js.sail s' h_write).symm
+    obtain ⟨s', h_write⟩ := wX_shape rd (mulhs v1 v2) js.sail
+    simp only [h_write]
+    congr 1
+    exact (wX_bits_eq_stateAfterWrite rd (mulhs v1 v2) js.sail s' h_write).symm
+  · unfold JoltISA.mulhProgram
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg]
 
 end

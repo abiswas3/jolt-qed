@@ -28,9 +28,9 @@ the enclosing dword read by Jolt's load expansion. -/
 structure LoadRegisterConfigAssumptions (rs1 : regidx)
     (js : SailJoltState) where
   rs1_val : BitVec 64
-  rs1_read : XRegRead rs1 rs1_val js.sail
-  cur_privilege : CurPrivilegeMachine js.sail
-  mstatus_mprv : MstatusMprvZero js.sail
+  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+  cur_privilege : Assumptions.CurPrivilegeMachine js.sail
+  mstatus_mprv : Assumptions.MstatusMprvZero js.sail
 
 /-- Shared public assumptions for Jolt load-family equivalence theorems.
 

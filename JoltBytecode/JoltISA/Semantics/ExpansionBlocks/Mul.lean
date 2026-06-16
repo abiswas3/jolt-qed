@@ -161,14 +161,14 @@ theorem exists_state_after_div_rem_mulh_block_run
   -- Block row 1: nested `VirtualMovsign inlineTmp4, inlineTmp0`.
   obtain ⟨s1, h1_sail, h1_v4, h1_pres, h1_succeeds⟩ :=
     exists_state_after_movsign_run_vreg_vreg
-      inlineTmp4 inlineTmp0 js lhs rfl
+      inlineTmp4 inlineTmp0 js lhs rfl (by unfold WritableVReg; decide)
 
   -- Block row 2: nested `VirtualMovsign inlineTmp5, inlineTmp2`.
   have h1_v2 : s1.vregs inlineTmp2 = rhs :=
     (h1_pres inlineTmp2 (by decide)).trans rfl
   obtain ⟨s2, h2_sail, h2_v5, h2_pres, h2_succeeds⟩ :=
     exists_state_after_movsign_run_vreg_vreg
-      inlineTmp5 inlineTmp2 s1 rhs h1_v2
+      inlineTmp5 inlineTmp2 s1 rhs h1_v2 (by unfold WritableVReg; decide)
 
   -- Block row 3: nested `MUL inlineTmp4, inlineTmp4, inlineTmp2`.
   have h2_v4 : s2.vregs inlineTmp4 = lhsSign :=
@@ -178,6 +178,7 @@ theorem exists_state_after_div_rem_mulh_block_run
   obtain ⟨s3, h3_sail, h3_v4, h3_pres, h3_succeeds⟩ :=
     exists_state_after_mul_run_vreg_vreg_vreg
       inlineTmp4 inlineTmp4 inlineTmp2 s2 lhsSign rhs h2_v4 h2_v2
+      (by unfold WritableVReg; decide)
 
   -- Block row 4: nested `MUL inlineTmp5, inlineTmp5, inlineTmp0`.
   have h3_v5 : s3.vregs inlineTmp5 = rhsSign :=
@@ -188,6 +189,7 @@ theorem exists_state_after_div_rem_mulh_block_run
   obtain ⟨s4, h4_sail, h4_v5, h4_pres, h4_succeeds⟩ :=
     exists_state_after_mul_run_vreg_vreg_vreg
       inlineTmp5 inlineTmp5 inlineTmp0 s3 rhsSign lhs h3_v5 h3_v0
+      (by unfold WritableVReg; decide)
 
   -- Block row 5: nested `MULHU inlineTmp6, inlineTmp0, inlineTmp2`.
   have h4_v0 : s4.vregs inlineTmp0 = lhs :=
@@ -198,6 +200,7 @@ theorem exists_state_after_div_rem_mulh_block_run
   obtain ⟨s5, h5_sail, h5_v6, h5_pres, h5_succeeds⟩ :=
     exists_state_after_mulhu_run_vreg_vreg_vreg
       inlineTmp6 inlineTmp0 inlineTmp2 s4 lhs rhs h4_v0 h4_v2
+      (by unfold WritableVReg; decide)
 
   -- Block row 6: nested `ADD inlineTmp6, inlineTmp6, inlineTmp4`.
   have h5_v4 : s5.vregs inlineTmp4 = lhsCorrection :=
@@ -206,7 +209,7 @@ theorem exists_state_after_div_rem_mulh_block_run
   obtain ⟨s6, h6_sail, h6_v6, h6_pres, h6_succeeds⟩ :=
     exists_state_after_add_run_vreg_vreg_vreg
       inlineTmp6 inlineTmp6 inlineTmp4 s5 unsignedHigh lhsCorrection
-      h5_v6 h5_v4
+      (by unfold WritableVReg; decide) h5_v6 h5_v4
 
   -- Block row 7: nested `ADD inlineTmp3, inlineTmp6, inlineTmp5`.
   have h6_v5 : s6.vregs inlineTmp5 = rhsCorrection :=
@@ -215,7 +218,7 @@ theorem exists_state_after_div_rem_mulh_block_run
   obtain ⟨s7, h7_sail, h7_v3, h7_pres, h7_succeeds⟩ :=
     exists_state_after_add_run_vreg_vreg_vreg
       inlineTmp3 inlineTmp6 inlineTmp5 s6 highWithLhsCorrection rhsCorrection
-      h6_v6 h6_v5
+      (by unfold WritableVReg; decide) h6_v6 h6_v5
 
   have h7_sail_orig : s7.sail = js.sail :=
     h7_sail.trans (h6_sail.trans (h5_sail.trans (h4_sail.trans

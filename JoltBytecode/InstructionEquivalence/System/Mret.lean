@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.System.Common
+import JoltBytecode.InstructionEquivalence.System.Bundles
 import Mathlib.Tactic.IntervalCases
 
 open Sail PreSail LeanRV64D.Functions
@@ -22,11 +22,6 @@ the M-mode-only ZeroOS envelope. The exact assumptions for that postlude should
 be discovered by the proof, so this file starts only with the concrete reads
 and control-flow facts already visible from the two execution paths.
 -/
-
-/-- Jolt's concrete MRET return target: `JALR` reads virtual `mepc` and clears
-bit 0. -/
-def mretReturnTarget (js : SailJoltState) : BitVec 64 :=
-  BitVec.update (js.vregs JoltISA.mepcVReg) 0 0#1
 
 /-- Concrete Jolt state after Rust's one-row MRET expansion. The scratch write is
 not part of `systemProject`, but keeping it in the model matches the emitted
@@ -559,58 +554,6 @@ theorem execute_MRET_machine_run
     hSetNext, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     Bool.false_eq_true, get, getThe, MonadStateOf.get, EStateM.get]
 
-/-- Assumptions for comparing Rust/Jolt MRET with Sail MRET under the system CSR
-projection.
-
-These are deliberately not a proof of the Sail xret postlude. They are just the
-mechanical facts already forced by the first unfolding:
-
-* Jolt `JALR` needs `nextPC` for the discarded link.
-* Sail `execute_MRET` needs the current `PC` and Machine privilege.
-* both sides' control-flow helpers inspect extension state through `misa`;
-  Sail's MRET postlude also consults `misa.U`.
-* Sail's Zicfilp xret hook reads `mseccfg` and `elp`.
-* Jolt's `JALR` target must satisfy the same fetch-alignment condition as Sail.
-* Sail's architectural MRET postlude is idempotent in the machine-only ZeroOS
-  envelope: returning privilege is Machine, `MIE` already equals `MPIE`, and
-  `MPIE` is already one; Zicfilp's `MPELP` field is already zero.
-
-Additional ZeroOS mstatus/privilege facts should be added only when the proof
-produces the corresponding subgoals. -/
-structure MretSystemAssumptions (js : SailJoltState) : Prop where
-  pc_readable :
-    ∃ pc : BitVec 64, js.sail.regs.get? Register.PC =
-      some (pc : RegisterType Register.PC)
-  nextPC_readable :
-    ∃ nextPC : BitVec 64, js.sail.regs.get? Register.nextPC =
-      some (nextPC : RegisterType Register.nextPC)
-  misa_readable :
-    ∃ misa : BitVec 64,
-      js.sail.regs.get? Register.misa =
-        some (misa : RegisterType Register.misa) ∧
-      _get_Misa_U misa = 0#1
-  mseccfg_readable :
-    ∃ mseccfg : BitVec 64, js.sail.regs.get? Register.mseccfg =
-      some (mseccfg : RegisterType Register.mseccfg)
-  elp_zero :
-    js.sail.regs.get? Register.elp =
-      some (0#1 : RegisterType Register.elp)
-  cur_privilege_machine :
-    js.sail.regs.get? Register.cur_privilege =
-      some (Privilege.Machine : RegisterType Register.cur_privilege)
-  mstatus_mie_matches_mpie :
-    _get_Mstatus_MIE (js.vregs JoltISA.mstatusVReg) =
-      _get_Mstatus_MPIE (js.vregs JoltISA.mstatusVReg)
-  mstatus_mpie_one :
-    _get_Mstatus_MPIE (js.vregs JoltISA.mstatusVReg) = 1#1
-  mstatus_mpp_machine :
-    _get_Mstatus_MPP (js.vregs JoltISA.mstatusVReg) =
-      privLevel_to_bits Privilege.Machine
-  mstatus_mpelp_zero :
-    _get_Mstatus_MPELP (js.vregs JoltISA.mstatusVReg) = 0#1
-  return_target_fetch_aligned :
-    BitVec.access (mretReturnTarget js) 1 = 0#1
-
 /-- MRET equivalence under the system CSR projection.
 
 The theorem follows ECALL's final-`JALR` shape for the Jolt side, then unfolds
@@ -621,23 +564,25 @@ theorem mretProgram_eq_sail
     (h_sys : MretSystemAssumptions js) :
     systemProjectResult ((JoltISA.execProgram JoltISA.mretProgram).run js) =
       (execute_MRET ()).run (systemProject js) := by
-  rcases h_sys.pc_readable with ⟨pc, hpc⟩
-  rcases h_sys.nextPC_readable with ⟨nextPC, hnextPC⟩
-  rcases h_sys.misa_readable with ⟨misa, hmisa, hmisa_u⟩
-  rcases h_sys.mseccfg_readable with ⟨mseccfg, hmseccfg⟩
+  rcases h_sys.pc_readable.exists_value with ⟨pc, hpc⟩
+  rcases h_sys.nextPC_readable.exists_value with ⟨nextPC, hnextPC⟩
+  rcases h_sys.misa_user_disabled.exists_value with ⟨misa, hmisa, hmisa_u⟩
+  rcases h_sys.mseccfg_readable.exists_value with ⟨mseccfg, hmseccfg⟩
   have hJolt :
       (JoltISA.execProgram JoltISA.mretProgram).run js =
         .ok RETIRE_SUCCESS (mretAfterJalr js nextPC) := by
     exact mretProgram_run js nextPC misa hnextPC hmisa
-      h_sys.return_target_fetch_aligned
+      h_sys.return_target_fetch_aligned.bit1_zero
   have hSail :
       (execute_MRET ()).run (systemProject js) =
         .ok RETIRE_SUCCESS (systemProject (mretAfterJalr js nextPC)) := by
     rw [execute_MRET_machine_run js pc misa mseccfg hpc hmisa hmisa_u
-      hmseccfg h_sys.elp_zero h_sys.cur_privilege_machine
-      h_sys.mstatus_mie_matches_mpie h_sys.mstatus_mpie_one
-      h_sys.mstatus_mpp_machine h_sys.mstatus_mpelp_zero
-      h_sys.return_target_fetch_aligned]
+      hmseccfg h_sys.elp_zero h_sys.cur_privilege_machine.value
+      h_sys.mstatus_mie_matches_mpie.value_eq
+      h_sys.mstatus_mpie_one.value_eq
+      h_sys.mstatus_mpp_machine.value_eq
+      h_sys.mstatus_mpelp_zero.value_eq
+      h_sys.return_target_fetch_aligned.bit1_zero]
     rw [← systemProject_mretAfterJalr js nextPC]
   unfold systemProjectResult
   rw [hJolt]

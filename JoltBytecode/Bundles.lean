@@ -25,8 +25,8 @@ noncomputable section
 This is a bundle of primitive register-state assumptions. Bare translation is a
 derived theorem from this bundle, not an assumption. -/
 structure JoltConfig (s : SailState) : Prop where
-  cur_privilege : CurPrivilegeMachine s
-  mstatus_mprv : MstatusMprvZero s
+  cur_privilege : Assumptions.CurPrivilegeMachine s
+  mstatus_mprv : Assumptions.MstatusMprvZero s
 
 -- ============================================================================
 -- Memory-window bundles
@@ -38,9 +38,14 @@ This is used by Jolt expansions that read an enclosing dword and then derive
 smaller Sail reads from that window. -/
 structure DwordReadWindowAssumptions (base : BitVec 64) (s : SailState) :
     Prop where
-  bytes : MemBytesPresent base 8 s
-  load_pmp : LoadPmpOkInRange base 8 s
-  not_readable_mmio : NotReadableMmioInRange base 8 s
+  bytes : Assumptions.DwordPresent base s
+  load_pmp :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
+      Assumptions.LoadPmpOk (base + BitVec.ofNat 64 offset) accessWidth s
+  not_readable_mmio :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
+      Assumptions.NotReadableMmio
+        (base + BitVec.ofNat 64 offset) accessWidth s
 
 /-- Primitive assumptions for one 8-byte dword window that Jolt both reads and
 writes.
@@ -49,8 +54,13 @@ This is used by Jolt store-style expansions that load the enclosing dword,
 splice a narrower value, and store the enclosing dword back. -/
 structure DwordReadWriteWindowAssumptions (base : BitVec 64) (s : SailState) :
     Prop extends DwordReadWindowAssumptions base s where
-  store_pmp : StorePmpOkInRange base 8 s
-  not_writable_mmio : NotWritableMmioInRange base 8 s
+  store_pmp :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
+      Assumptions.StorePmpOk (base + BitVec.ofNat 64 offset) accessWidth s
+  not_writable_mmio :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
+      Assumptions.NotWritableMmio
+        (base + BitVec.ofNat 64 offset) accessWidth s
 
 /-- Primitive assumptions for one 8-byte AMO/Jolt memory window.
 
@@ -59,6 +69,9 @@ address, while `.W` AMOs use the enclosing aligned dword base. -/
 structure AmoDwordWindowAssumptions
     (op : amoop) (base : BitVec 64) (s : SailState) :
     Prop extends DwordReadWriteWindowAssumptions base s where
-  atomic_pmp : AtomicPmpOkInRange op base 8 s
+  atomic_pmp :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
+      Assumptions.AtomicPmpOk op
+        (base + BitVec.ofNat 64 offset) accessWidth s
 
 end

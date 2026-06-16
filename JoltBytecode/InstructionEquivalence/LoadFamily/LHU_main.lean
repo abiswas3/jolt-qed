@@ -258,7 +258,7 @@ theorem lhuProgram_eq_sail_misaligned (imm : BitVec 12)
 /-- **Main program theorem for LHU.**  The structured Jolt-ISA expansion
 `lhuProgram`, interpreted by `execProgram`, agrees with Sail's unsigned
 halfword-load execution. -/
-theorem lhuProgram_eq_sail (imm : BitVec 12)
+private theorem lhuProgram_project_eq_sail (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
@@ -267,12 +267,29 @@ theorem lhuProgram_eq_sail (imm : BitVec 12)
   let ea := load_effective_address h.rs1_val imm
   by_cases h_align : ea &&& 1 = 0
   · exact lhuProgram_eq_sail_aligned imm rs1 rd js h.cfg h.rs1_val
-      h.rs1_read.value_eq
+      h.rs1_read
       h.dwordPhys
       (h.halfwordPhys (by simpa [ea] using h_align))
       (h.halfwordNoOvf (by simpa [ea] using h_align))
       (by simpa [ea] using h_align)
   · exact lhuProgram_eq_sail_misaligned imm rs1 rd js h.rs1_val
-      h.rs1_read.value_eq (by simpa [ea] using h_align)
+      h.rs1_read (by simpa [ea] using h_align)
+
+/-- **Main program theorem for LHU.**  The structured Jolt-ISA expansion
+matches Sail and preserves every protected Jolt register on successful runs. -/
+theorem lhuProgram_eq_sail (imm : BitVec 12)
+    (rs1 rd : regidx)
+    (js : SailJoltState)
+    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.lhuProgram imm rs1 rd)).run js)
+      ((execute_LOAD imm rs1 rd true 2).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact lhuProgram_project_eq_sail imm rs1 rd js h
+  · unfold JoltISA.lhuProgram JoltISA.slliBlock JoltISA.sllBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
 
 end LHU_main

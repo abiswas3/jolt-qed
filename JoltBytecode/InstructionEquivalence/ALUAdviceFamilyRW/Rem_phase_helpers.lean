@@ -133,10 +133,10 @@ theorem phase_quotient_product_run
       js'.sail = js.sail := by
   unfold phase_quotient_product
   obtain ⟨s1, h1, h1_v3, h1_pres, h1_sail⟩ :=
-    vreg_SRAI_from_real_run_ex t1VReg rs1 63 js dividend hrs1
-  obtain ⟨s2, h2, h2_v8, h2_pres, h2_sail⟩ := vreg_XOR_run_ex t3VReg a3VReg t1VReg s1
-  obtain ⟨s3, h3, h3_v8, h3_pres, h3_sail⟩ := vreg_SUB_run_ex t3VReg t3VReg t1VReg s2
-  obtain ⟨s4, h4, h4_v7, h4_pres, h4_sail⟩ := vreg_ADD_run_ex t2VReg t2VReg t3VReg s3
+    vreg_SRAI_from_real_run_ex t1VReg rs1 63 js dividend hrs1 (by unfold WritableVReg; decide)
+  obtain ⟨s2, h2, h2_v8, h2_pres, h2_sail⟩ := vreg_XOR_run_ex t3VReg a3VReg t1VReg s1 (by unfold WritableVReg; decide)
+  obtain ⟨s3, h3, h3_v8, h3_pres, h3_sail⟩ := vreg_SUB_run_ex t3VReg t3VReg t1VReg s2 (by unfold WritableVReg; decide)
+  obtain ⟨s4, h4, h4_v7, h4_pres, h4_sail⟩ := vreg_ADD_run_ex t2VReg t2VReg t3VReg s3 (by unfold WritableVReg; decide)
   have hs4_sail : s4.sail = js.sail :=
     h4_sail.trans (h3_sail.trans (h2_sail.trans h1_sail))
   have hs1_v1 : s1.vregs a3VReg = rem := (h1_pres a3VReg (by decide)).trans h_v1
@@ -192,9 +192,9 @@ theorem phase_remainder_bound_run
       js'.vregs t3VReg = signedRem ∧
       js'.sail = js.sail := by
   unfold phase_remainder_bound
-  obtain ⟨s1, h1, h1_v3, h1_pres, h1_sail⟩ := vreg_SRAI_run_ex t1VReg t0VReg 63 js
-  obtain ⟨s2, h2, h2_v7, h2_pres, h2_sail⟩ := vreg_XOR_run_ex t2VReg t0VReg t1VReg s1
-  obtain ⟨s3, h3, h3_v7, h3_pres, h3_sail⟩ := vreg_SUB_run_ex t2VReg t2VReg t1VReg s2
+  obtain ⟨s1, h1, h1_v3, h1_pres, h1_sail⟩ := vreg_SRAI_run_ex t1VReg t0VReg 63 js (by unfold WritableVReg; decide)
+  obtain ⟨s2, h2, h2_v7, h2_pres, h2_sail⟩ := vreg_XOR_run_ex t2VReg t0VReg t1VReg s1 (by unfold WritableVReg; decide)
+  obtain ⟨s3, h3, h3_v7, h3_pres, h3_sail⟩ := vreg_SUB_run_ex t2VReg t2VReg t1VReg s2 (by unfold WritableVReg; decide)
   have hs3_sail : s3.sail = js.sail := h3_sail.trans (h2_sail.trans h1_sail)
   have hs1_v2 : s1.vregs t0VReg = adj := (h1_pres t0VReg (by decide)).trans h_v2
   have hs1_v3 : s1.vregs t1VReg = adj.sshiftRight 63 := by rw [h1_v3, h_v2]; rfl
@@ -309,21 +309,21 @@ theorem phase_quotient_product_run_sound
   js₁.sail = js.sail := by
   unfold phase_quotient_product at hp
   obtain ⟨s1, hrun1_ex, hs1_v3, hs1_pres, hs1_sail⟩ :=
-    vreg_SRAI_from_real_run_ex t1VReg rs1 63 js dividend hrs1
+    vreg_SRAI_from_real_run_ex t1VReg rs1 63 js dividend hrs1 (by unfold WritableVReg; decide)
   rw [hrun1_ex _] at hp
   obtain ⟨s2, hrun2, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s2, hrun2_ex, hs2_v8, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex t3VReg a3VReg t1VReg s1
+  obtain ⟨s2, hrun2_ex, hs2_v8, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex t3VReg a3VReg t1VReg s1 (by unfold WritableVReg; decide)
   rw [hrun2_ex] at hrun2
   cases hrun2
   obtain ⟨s3, hrun3, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s3, hrun3_ex, hs3_v8, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex t3VReg t3VReg t1VReg s2
+  obtain ⟨s3, hrun3_ex, hs3_v8, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex t3VReg t3VReg t1VReg s2 (by unfold WritableVReg; decide)
   rw [hrun3_ex] at hrun3
   cases hrun3
   obtain ⟨s4, hrun4, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s4, hrun4_ex, hs4_v7, hs4_pres, hs4_sail⟩ := vreg_ADD_run_ex t2VReg t2VReg t3VReg s3
+  obtain ⟨s4, hrun4_ex, hs4_v7, hs4_pres, hs4_sail⟩ := vreg_ADD_run_ex t2VReg t2VReg t3VReg s3 (by unfold WritableVReg; decide)
   rw [hrun4_ex] at hrun4
   cases hrun4
   obtain ⟨js_afterAssert, hrun5, hdone⟩ :=
@@ -389,16 +389,16 @@ theorem phase_remainder_bound_run_sound
     js₁.vregs t3VReg = signedRem ∧
   js₁.sail = js.sail := by
   unfold phase_remainder_bound at hp
-  obtain ⟨s1, hrun1_ex, hs1_v3, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex t1VReg t0VReg 63 js
+  obtain ⟨s1, hrun1_ex, hs1_v3, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex t1VReg t0VReg 63 js (by unfold WritableVReg; decide)
   rw [hrun1_ex _] at hp
   obtain ⟨s2, hrun2, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s2, hrun2_ex, hs2_v7, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex t2VReg t0VReg t1VReg s1
+  obtain ⟨s2, hrun2_ex, hs2_v7, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex t2VReg t0VReg t1VReg s1 (by unfold WritableVReg; decide)
   rw [hrun2_ex] at hrun2
   cases hrun2
   obtain ⟨s3, hrun3, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s3, hrun3_ex, hs3_v7, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex t2VReg t2VReg t1VReg s2
+  obtain ⟨s3, hrun3_ex, hs3_v7, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex t2VReg t2VReg t1VReg s2 (by unfold WritableVReg; decide)
   rw [hrun3_ex] at hrun3
   cases hrun3
   obtain ⟨js_afterAssert, hrun4, hdone⟩ :=

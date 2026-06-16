@@ -18,20 +18,23 @@ namespace JoltISA
 /-- `ADD` on virtual sources and a virtual destination reads both virtual
 sources, writes their sum, and leaves the Sail state unchanged. -/
 theorem add_run_vreg_vreg_vreg (vd lhs rhs : VReg)
-    (js : SailJoltState) :
+    (js : SailJoltState) (hvd : WritableVReg vd) :
     (execInstr (.ADD (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r => if r = vd then js.vregs lhs + js.vregs rhs else js.vregs r } := by
+  unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg writeVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- `ADD` from two virtual sources to a virtual destination, packaged as an
 instruction step from known virtual-source values. -/
 theorem exists_state_after_add_run_vreg_vreg_vreg
     (vd lhs rhs : VReg) (js : SailJoltState) (x y : BitVec 64)
+    (hvd : WritableVReg vd)
     (h_lhs : js.vregs lhs = x)
     (h_rhs : js.vregs rhs = y) :
     ∃ js',
@@ -47,7 +50,7 @@ theorem exists_state_after_add_run_vreg_vreg_vreg
   · simp [js', h_lhs, h_rhs]
   · intro r hne
     simp [js', hne]
-  · simpa only [js'] using add_run_vreg_vreg_vreg vd lhs rhs js
+  · simpa only [js'] using add_run_vreg_vreg_vreg vd lhs rhs js hvd
 
 /-- `ADD` from two virtual sources to a real destination reads both virtual
 sources, writes their sum through `wX_bits`, and preserves virtual registers. -/

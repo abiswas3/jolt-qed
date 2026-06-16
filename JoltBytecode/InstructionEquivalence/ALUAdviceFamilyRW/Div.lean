@@ -246,7 +246,7 @@ theorem divProgram_sound (rs2 rs1 rd : regidx)
 end JoltISA
 
 /-- Main program-level equivalence for `DIV` with honest advice. -/
-theorem divProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
+private theorem divProgram_project_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.divProgram rs2 rs1 rd
                       (sail_div_value h.rs1_val h.rs2_val false)
@@ -254,8 +254,27 @@ theorem divProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
     (execute_DIV rs2 rs1 rd false).run js.sail := by
   let dividend := h.rs1_val
   let divisor := h.rs2_val
-  have hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail := h.rs1_read.value_eq
-  have hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail := h.rs2_read.value_eq
+  have hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail := h.rs1_read
+  have hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail := h.rs2_read
   exact JoltISA.divProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
+
+/-- Main program-level equivalence for `DIV` with honest advice. -/
+theorem divProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.divProgram rs2 rs1 rd
+        (sail_div_value h.rs1_val h.rs2_val false)
+        (bv_abs (sail_rem_value h.rs1_val h.rs2_val false)))).run js)
+      ((execute_DIV rs2 rs1 rd false).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact divProgram_project_eq_sail rs2 rs1 rd js h
+  · unfold JoltISA.divProgram JoltISA.mulhBlock JoltISA.sraiBlock
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.VRegWritesNoProtectedVReg,
+      Div.a2VReg, Div.a3VReg, Div.t0VReg, Div.t1VReg,
+      Div.t2VReg, Div.t3VReg, Div.t4VReg]
 
 end

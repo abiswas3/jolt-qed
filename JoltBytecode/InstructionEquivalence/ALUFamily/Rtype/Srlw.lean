@@ -219,6 +219,7 @@ theorem srlwProgram_concrete
       h_left_shift_writes_leftShiftedSource, _, h_left_shift_block_succeeds⟩ :=
     JoltISA.exists_state_after_slli_block_run_vreg_xreg
       JoltISA.inlineTmp1 rs1 (32 : BitVec 6) js v1 h_read_rs1
+      (by unfold WritableVReg; decide)
 
   -- Instruction 2: `ORI v1, rs2, 32` writes the encoded shift amount to `v1`.
   let encodedShift := v2 ||| sign_extend (m := 64) (32 : BitVec 12)
@@ -229,6 +230,7 @@ theorem srlwProgram_concrete
       js_afterLeftShift js.sail v2 leftShiftedSource
       h_left_shift_keeps_sail h_read_rs2 h_left_shift_writes_leftShiftedSource
       inlineTmp0_ne_inlineTmp1
+      (by unfold WritableVReg; decide)
 
   -- Instruction 3: `VirtualShiftRightBitmask v1, v1` writes the shift bitmask to `v1`.
   let shiftBitmask := jolt_virtual_shift_right_bitmask_value encodedShift
@@ -239,6 +241,7 @@ theorem srlwProgram_concrete
       js_afterOri js.sail encodedShift leftShiftedSource
       h_ori_keeps_sail h_ori_writes_encodedShift h_ori_preserves_leftShiftedSource
       inlineTmp0_ne_inlineTmp1
+      (by unfold WritableVReg; decide)
 
   -- Instruction 4: `VirtualSRL rd, v0, v1` writes the shifted result to `rd`.
   let shiftedResult := jolt_virtual_srl_value leftShiftedSource shiftBitmask
@@ -297,42 +300,49 @@ theorem srlwProgram_eq_sail
     (rd : regidx)
     (js : SailJoltState)
     (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.srlwProgram rs2 rs1 rd)).run js) =
-    (execute_RTYPEW rs2 rs1 rd ropw.SRLW).run js.sail := by
-  let v1 := h.rs1_val
-  let v2 := h.rs2_val
-  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read.value_eq
-  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read.value_eq
-  by_cases hrd : rd = regidx.Regidx 0
-  · subst rd
-    unfold JoltISA.srlwProgram
-    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
-    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.srlwProgram rs2 rs1 rd)).run js)
+      ((execute_RTYPEW rs2 rs1 rd ropw.SRLW).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · let v1 := h.rs1_val
+    let v2 := h.rs2_val
+    have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
+    have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read
+    by_cases hrd : rd = regidx.Regidx 0
+    · subst rd
+      unfold JoltISA.srlwProgram
+      rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+      rw [JoltISA.pureWritebackRdZeroProgram_run js]
+      simp only [projectResult, project]
+      rw [execute_RTYPEW_SRLW_factored rs2 rs1 (regidx.Regidx 0)]
+      simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+      simp only [h_read_rs1, h_read_rs2]
+      simp only [wX_bits_regidx_zero]
+
+    obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
+      srlwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
+
+    -- Use the concrete proof to collapse the Jolt side to its final Sail state.
+    rw [h_program_succeeds]
     simp only [projectResult, project]
-    rw [execute_RTYPEW_SRLW_factored rs2 rs1 (regidx.Regidx 0)]
+    rw [h_final_sail]
+
+    -- Expand the Sail-side `SRLW`: it reads the same inputs and writes the same
+    -- already-proved final value.
+    rw [execute_RTYPEW_SRLW_factored rs2 rs1 rd]
     simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
     simp only [h_read_rs1, h_read_rs2]
-    simp only [wX_bits_regidx_zero]
 
-  obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-    srlwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
-
-  -- Use the concrete proof to collapse the Jolt side to its final Sail state.
-  rw [h_program_succeeds]
-  simp only [projectResult, project]
-  rw [h_final_sail]
-
-  -- Expand the Sail-side `SRLW`: it reads the same inputs and writes the same
-  -- already-proved final value.
-  rw [execute_RTYPEW_SRLW_factored rs2 rs1 rd]
-  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-  simp only [h_read_rs1, h_read_rs2]
-
-  -- The only remaining mismatch is the concrete state chosen by `wX_bits`
-  -- versus our `stateAfterWrite` spelling of that same register update.
-  obtain ⟨s', h_write⟩ := wX_shape rd (srlw_sail_operation v1 v2) js.sail
-  simp only [h_write]
-  congr 1
-  exact (wX_bits_eq_stateAfterWrite rd (srlw_sail_operation v1 v2) js.sail s' h_write).symm
+    -- The only remaining mismatch is the concrete state chosen by `wX_bits`
+    -- versus our `stateAfterWrite` spelling of that same register update.
+    obtain ⟨s', h_write⟩ := wX_shape rd (srlw_sail_operation v1 v2) js.sail
+    simp only [h_write]
+    congr 1
+    exact (wX_bits_eq_stateAfterWrite rd (srlw_sail_operation v1 v2) js.sail s' h_write).symm
+  · unfold JoltISA.srlwProgram JoltISA.slliBlock
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg]
 
 end

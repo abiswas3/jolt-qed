@@ -1,6 +1,7 @@
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Common
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
+import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Semantics.Lemmas
 import JoltBytecode.JoltISA.Semantics.Instructions.Add
 import JoltBytecode.JoltISA.Semantics.Instructions.ADDI
@@ -138,7 +139,8 @@ theorem amo_dword_ld_old_run_into
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hload :
       vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false js.sail =
-        .ok (Ok oldVal) js.sail) :
+        .ok (Ok oldVal) js.sail)
+    (holdReg : WritableVReg oldReg) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
         (.LD (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
@@ -171,6 +173,7 @@ theorem amo_dword_ld_old_run_into
     exact
       JoltISA.ld_run_vreg_xreg_from_memory_read
         oldReg rs1 (0 : BitVec 12) js addr oldVal hrs1 hld_align hread
+        holdReg
   · rfl
   · change (if oldReg = oldReg then oldVal else js.vregs oldReg) = oldVal
     rw [if_pos rfl]
@@ -192,6 +195,7 @@ theorem amo_dword_ld_old_run
       js_afterLoad.vregs JoltISA.amoOldVReg = oldVal := by
   exact amo_dword_ld_old_run_into JoltISA.amoOldVReg
     rs1 js addr oldVal hrs1 h_align hload
+    (by unfold WritableVReg; decide)
 
 /-- `SD rs2, 0(rs1)` writes the AMO result dword and preserves virtual
 registers. -/
@@ -381,7 +385,8 @@ theorem amo_dword_load_old_aligned_run_into
     (addr : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (h_mem : AmoMemoryContext op 8 addr amoAddr js.sail)
-    (h_align : addr &&& (7 : BitVec 64) = 0) :
+    (h_align : addr &&& (7 : BitVec 64) = 0)
+    (holdReg : WritableVReg oldReg) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
         (.LD (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
@@ -399,7 +404,7 @@ theorem amo_dword_load_old_aligned_run_into
     aligned_dword_vmem_read_reduces addr js.sail hcfg hload_evidence
   exact
     amo_dword_ld_old_run_into oldReg rs1 js addr
-      (loaded_dword_at js.sail addr) hrs1 h_align hload
+      (loaded_dword_at js.sail addr) hrs1 h_align hload holdReg
 
 /-- The aligned AMO expansion load reads the old dword into `amoOldVReg`. -/
 theorem amo_dword_load_old_aligned_run
@@ -420,6 +425,7 @@ theorem amo_dword_load_old_aligned_run
   exact
     amo_dword_load_old_aligned_run_into JoltISA.amoOldVReg
       rs1 js hcfg addr hrs1 h_mem h_align
+      (by unfold WritableVReg; decide)
 
 /-- After the old-value load, `SD rs2, 0(rs1)` writes the AMO result dword from
 the source register. -/
@@ -841,41 +847,48 @@ less-than flag to a virtual destination without changing Sail state. -/
 theorem amo_dword_sltu_run_vreg_xreg_vreg
     (vd rhs : JoltISA.VReg) (lhs : regidx)
     (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits lhs js.sail = .ok x js.sail) :
+    (h : rX_bits lhs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.SLTU (.vreg vd) (.xreg lhs) (.vreg rhs))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>
             if r = vd then jolt_sltu_value x (js.vregs rhs) else js.vregs r } := by
+  unfold WritableVReg at hvd
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst
-    readVReg writeVReg liftSail
+    readVReg liftSail
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    get, getThe, MonadStateOf.get, EStateM.get]
+  exact JoltISA.writeVReg_retire_run_of_writable vd
+    (jolt_sltu_value x (js.vregs rhs)) js hvd
 
 /-- `SLTU` with a virtual left source and real right source writes the unsigned
 less-than flag to a virtual destination without changing Sail state. -/
 theorem amo_dword_sltu_run_vreg_vreg_xreg
     (vd lhs : JoltISA.VReg) (rhs : regidx)
     (js : SailJoltState) (y : BitVec 64)
-    (h : rX_bits rhs js.sail = .ok y js.sail) :
+    (h : rX_bits rhs js.sail = .ok y js.sail)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.SLTU (.vreg vd) (.vreg lhs) (.xreg rhs))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>
             if r = vd then jolt_sltu_value (js.vregs lhs) y else js.vregs r } := by
+  unfold WritableVReg at hvd
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst
-    readVReg writeVReg liftSail
+    readVReg liftSail
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    get, getThe, MonadStateOf.get, EStateM.get]
+  exact JoltISA.writeVReg_retire_run_of_writable vd
+    (jolt_sltu_value (js.vregs lhs) y) js hvd
 
 /-- `SLT` with a real left source and virtual right source writes the signed
 less-than flag to a virtual destination without changing Sail state. -/
 theorem amo_dword_slt_run_vreg_xreg_vreg
     (vd rhs : JoltISA.VReg) (lhs : regidx)
     (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits lhs js.sail = .ok x js.sail) :
+    (h : rX_bits lhs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.SLT (.vreg vd) (.xreg lhs) (.vreg rhs))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
@@ -883,18 +896,21 @@ theorem amo_dword_slt_run_vreg_xreg_vreg
             if r = vd then zero_extend (m := 64)
               (bool_to_bit (zopz0zI_s x (js.vregs rhs)))
             else js.vregs r } := by
+  unfold WritableVReg at hvd
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst
-    readVReg writeVReg liftSail
+    readVReg liftSail
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    get, getThe, MonadStateOf.get, EStateM.get]
+  exact JoltISA.writeVReg_retire_run_of_writable vd
+    (zero_extend (m := 64) (bool_to_bit (zopz0zI_s x (js.vregs rhs)))) js hvd
 
 /-- `SLT` with a virtual left source and real right source writes the signed
 less-than flag to a virtual destination without changing Sail state. -/
 theorem amo_dword_slt_run_vreg_vreg_xreg
     (vd lhs : JoltISA.VReg) (rhs : regidx)
     (js : SailJoltState) (y : BitVec 64)
-    (h : rX_bits rhs js.sail = .ok y js.sail) :
+    (h : rX_bits rhs js.sail = .ok y js.sail)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.SLT (.vreg vd) (.vreg lhs) (.xreg rhs))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
@@ -902,11 +918,13 @@ theorem amo_dword_slt_run_vreg_vreg_xreg
             if r = vd then zero_extend (m := 64)
               (bool_to_bit (zopz0zI_s (js.vregs lhs) y))
             else js.vregs r } := by
+  unfold WritableVReg at hvd
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst
-    readVReg writeVReg liftSail
+    readVReg liftSail
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    get, getThe, MonadStateOf.get, EStateM.get]
+  exact JoltISA.writeVReg_retire_run_of_writable vd
+    (zero_extend (m := 64) (bool_to_bit (zopz0zI_s (js.vregs lhs) y))) js hvd
 
 /-- The shared select-tail phase computes `old + (rs2 - old) * flag` from the
 old value in `amoOldVReg` and the flag already in `amoNewVReg`. -/
@@ -951,7 +969,8 @@ theorem amo_dword_select_tail_phase_run
           (.xreg rs2) (.vreg JoltISA.amoOldVReg))).run js =
         .ok RETIRE_SUCCESS js_afterSub := by
     rw [JoltISA.sub_run_vreg_xreg_vreg
-      JoltISA.amoTmpVReg rs2 JoltISA.amoOldVReg js rs2Val hrs2]
+      JoltISA.amoTmpVReg rs2 JoltISA.amoOldVReg js rs2Val hrs2
+      (by unfold WritableVReg; decide)]
     unfold js_afterSub delta
     rw [hold]
   have hmul_old : js_afterMul.vregs JoltISA.amoOldVReg = old := by
@@ -969,7 +988,8 @@ theorem amo_dword_select_tail_phase_run
           js_afterSub =
         .ok RETIRE_SUCCESS js_afterMul := by
     rw [JoltISA.mul_run_vreg_vreg_vreg
-      JoltISA.amoTmpVReg JoltISA.amoTmpVReg JoltISA.amoNewVReg js_afterSub]
+      JoltISA.amoTmpVReg JoltISA.amoTmpVReg JoltISA.amoNewVReg js_afterSub
+      (by unfold WritableVReg; decide)]
     unfold js_afterMul scaled
     rw [hsub_tmp, hsub_new]
   have hadd_old : js_afterAdd.vregs JoltISA.amoOldVReg = old := by
@@ -990,7 +1010,8 @@ theorem amo_dword_select_tail_phase_run
           js_afterMul =
         .ok RETIRE_SUCCESS js_afterAdd := by
     rw [JoltISA.add_run_vreg_vreg_vreg
-      JoltISA.amoNewVReg JoltISA.amoOldVReg JoltISA.amoTmpVReg js_afterMul]
+      JoltISA.amoNewVReg JoltISA.amoOldVReg JoltISA.amoTmpVReg js_afterMul
+      (by unfold WritableVReg; decide)]
     unfold js_afterAdd
     rw [hmul_old, hmul_tmp]
   refine ⟨js_afterAdd, ?_, ?_, ?_, ?_⟩
@@ -1029,7 +1050,8 @@ theorem amo_dword_minu_compare_phase_run
           (.xreg rs2) (.vreg JoltISA.amoOldVReg))).run js =
         .ok RETIRE_SUCCESS js_afterCmp := by
     rw [amo_dword_sltu_run_vreg_xreg_vreg
-      JoltISA.amoNewVReg JoltISA.amoOldVReg rs2 js rs2Val hrs2]
+      JoltISA.amoNewVReg JoltISA.amoOldVReg rs2 js rs2Val hrs2
+      (by unfold WritableVReg; decide)]
     unfold js_afterCmp flag
     rw [hold]
   refine ⟨js_afterCmp, ?_, ?_, ?_, ?_⟩
@@ -1185,7 +1207,8 @@ theorem amo_dword_min_compare_phase_run
           (.xreg rs2) (.vreg JoltISA.amoOldVReg))).run js =
         .ok RETIRE_SUCCESS js_afterCmp := by
     rw [amo_dword_slt_run_vreg_xreg_vreg
-      JoltISA.amoNewVReg JoltISA.amoOldVReg rs2 js rs2Val hrs2]
+      JoltISA.amoNewVReg JoltISA.amoOldVReg rs2 js rs2Val hrs2
+      (by unfold WritableVReg; decide)]
     unfold js_afterCmp flag
     rw [hold]
   refine ⟨js_afterCmp, ?_, ?_, ?_, ?_⟩
@@ -1286,7 +1309,8 @@ theorem amo_dword_max_compare_phase_run
           (.vreg JoltISA.amoOldVReg) (.xreg rs2))).run js =
         .ok RETIRE_SUCCESS js_afterCmp := by
     rw [amo_dword_slt_run_vreg_vreg_xreg
-      JoltISA.amoNewVReg JoltISA.amoOldVReg rs2 js rs2Val hrs2]
+      JoltISA.amoNewVReg JoltISA.amoOldVReg rs2 js rs2Val hrs2
+      (by unfold WritableVReg; decide)]
     unfold js_afterCmp flag
     rw [hold]
   refine ⟨js_afterCmp, ?_, ?_, ?_, ?_⟩
@@ -1439,7 +1463,8 @@ theorem amo_dword_maxu_compare_phase_run
           (.vreg JoltISA.amoOldVReg) (.xreg rs2))).run js =
         .ok RETIRE_SUCCESS js_afterCmp := by
     rw [amo_dword_sltu_run_vreg_vreg_xreg
-      JoltISA.amoNewVReg JoltISA.amoOldVReg rs2 js rs2Val hrs2]
+      JoltISA.amoNewVReg JoltISA.amoOldVReg rs2 js rs2Val hrs2
+      (by unfold WritableVReg; decide)]
     unfold js_afterCmp flag
     rw [hold]
   refine ⟨js_afterCmp, ?_, ?_, ?_, ?_⟩
@@ -1657,6 +1682,7 @@ theorem amo_dword_double_binop_program_concrete_aligned
   obtain ⟨js_afterLoad, hld, hld_sail, hld_old⟩ :=
     amo_dword_load_old_aligned_run_into
       JoltISA.amoDoubleBinopOldVReg rs1 js hcfg addr hrs1 h_mem h_align
+      (by unfold WritableVReg; decide)
   obtain ⟨js_afterMiddle, hmiddle_step⟩ :=
     hmiddle js_afterLoad hld_sail hld_old
   have hmiddle_sail : js_afterMiddle.sail = js.sail := by
@@ -2205,12 +2231,12 @@ theorem amo_dword_double_binop_program_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Shared full theorem for dword AMO double-binop expansions.
+/-- Shared projection helper for dword AMO double-binop expansions.
 
 The theorem exposes no alignment hypothesis. It follows the exact leading
 dword alignment predicate used by both the Jolt expansion and native Sail AMO
 execution, then delegates to the shared aligned or misaligned branch. -/
-theorem amo_dword_double_binop_program_eq_sail
+theorem amo_dword_double_binop_program_project_eq_sail
     (op : amoop) (binop : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
@@ -2421,8 +2447,8 @@ theorem amo_dword_double_select_program_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Shared full theorem for dword AMO double-select expansions. -/
-theorem amo_dword_double_select_program_eq_sail
+/-- Shared projection helper for dword AMO double-select expansions. -/
+theorem amo_dword_double_select_program_project_eq_sail
     (op : amoop)
     (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
     (cmpLhs cmpRhs : JoltISA.Src)

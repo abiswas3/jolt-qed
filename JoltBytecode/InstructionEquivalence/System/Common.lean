@@ -56,6 +56,11 @@ bit 0, exactly as Sail/Jolt `JALR` does. -/
 def ecallTrapTarget (js : SailJoltState) : BitVec 64 :=
   BitVec.update (js.vregs JoltISA.trapHandlerVReg) 0 0#1
 
+/-- Jolt's concrete MRET return target: `JALR` reads virtual `mepc` and clears
+bit 0. -/
+def mretReturnTarget (js : SailJoltState) : BitVec 64 :=
+  BitVec.update (js.vregs JoltISA.mepcVReg) 0 0#1
+
 /-- Overlay Jolt's persistent virtual CSR registers onto the generated Sail CSR
 register keys.
 
@@ -323,6 +328,18 @@ theorem systemProject_mtvec_read
   rw [extDHashMap_get?_insert_of_ne (h := by decide)]
   rw [Std.ExtDHashMap.get?_insert_self]
 
+/-- `systemProject` materializes virtual `mscratch` at the Sail `mscratch` key. -/
+theorem systemProject_mscratch_read
+    (js : SailJoltState) :
+    (systemProject js).regs.get? Register.mscratch =
+      some (js.vregs JoltISA.mscratchVReg : RegisterType Register.mscratch) := by
+  unfold systemProject
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+  rw [Std.ExtDHashMap.get?_insert_self]
+
 /-- `systemProject` materializes virtual `mepc` at the Sail `mepc` key. -/
 theorem systemProject_mepc_read
     (js : SailJoltState) :
@@ -465,6 +482,44 @@ def joltSetVReg (js : SailJoltState) (vr : JoltISA.VReg)
     (value : BitVec 64) : SailJoltState :=
   { js with vregs := vregWrite js.vregs vr value }
 
+/-- Final state for the CSRRW write-only `csrw csr, rs1` case. -/
+def csrrwAfterCsrWrite
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1Val : BitVec 64) :
+    SailJoltState :=
+  joltSetVReg js (JoltISA.SystemCSR.vreg csr) rs1Val
+
+/-- Final CSRRW state after `rd` receives the old CSR value and the virtual CSR
+receives `rs1`. -/
+def csrrwAfterReadWrite
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rd : regidx)
+    (oldCsr rs1Val : BitVec 64) : SailJoltState :=
+  joltSetVReg { js with sail := stateAfterWrite js.sail rd oldCsr }
+    (JoltISA.SystemCSR.vreg csr) rs1Val
+
+/-- Final CSRRW state for the `rd = rs1` branch: the source is preserved in
+scratch, the old CSR is written to `rd`, then the preserved value is restored
+to the CSR virtual register. -/
+def csrrwAfterSameReg
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rd : regidx)
+    (oldCsr rs1Val : BitVec 64) : SailJoltState :=
+  joltSetVReg
+    { joltSetVReg js JoltISA.systemScratchVReg rs1Val with
+      sail := stateAfterWrite js.sail rd oldCsr }
+    (JoltISA.SystemCSR.vreg csr) rs1Val
+
+/-- The concrete final Jolt state selected by Rust's CSRRW expansion branches. -/
+def csrrwJoltFinal
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
+    (rs1Val : BitVec 64) : SailJoltState :=
+  if JoltISA.isX0 rd then
+    csrrwAfterCsrWrite js csr rs1Val
+  else if JoltISA.sameXReg rd rs1 then
+    csrrwAfterSameReg js csr rd
+      (js.vregs (JoltISA.SystemCSR.vreg csr)) rs1Val
+  else
+    csrrwAfterReadWrite js csr rd
+      (js.vregs (JoltISA.SystemCSR.vreg csr)) rs1Val
+
 /-- Sail state after writing `nextPC`; used by Jolt `JALR` and Sail trap entry. -/
 def setNextPCState (s : SailState) (target : BitVec 64) : SailState :=
   { s with regs := s.regs.insert Register.nextPC target }
@@ -574,6 +629,17 @@ theorem systemProject_setNextPCState
             (k1 := Register.nextPC) (k2 := Register.mstatus)
             (v1 := target) (v2 := js.vregs JoltISA.mstatusVReg)
             (h := by decide)]
+
+/-- Projecting after an architectural x-register write is the same as applying
+that write after projecting Jolt's virtual CSR registers. -/
+theorem systemProject_stateAfterWrite
+    (js : SailJoltState) (rd : regidx) (value : BitVec 64) :
+    systemProject { js with sail := stateAfterWrite js.sail rd value } =
+      stateAfterWrite (systemProject js) rd value := by
+  unfold systemProject stateAfterWrite wX_update_regs regval_into_reg
+  obtain ⟨rdBits⟩ := rd
+  reg_cases (regidx.Regidx rdBits) <;>
+    simp_all [extDHashMap_insert_comm_of_ne]
 
 /-- Running generated Sail `set_next_pc` through `systemProject` is the same
 projected state as Jolt's final `JALR` Sail-state update. -/
@@ -1672,40 +1738,6 @@ theorem sailEcallTrapEntry_machine_run
   rw [hSetNext]
   simp only [pure, EStateM.pure]
   rw [← hFinal]
-
-/-- Assumptions for comparing Rust/Jolt ECALL trap entry with Sail trap entry.
-
-The first fields are the concrete Sail reads needed by `AUIPC`, `JALR`,
-`execute_ECALL`, `exception_delegatee`, and the generated Zicfilp trap hook.
-The final fields are the ZeroOS machine-mode trap envelope: Sail's mstatus
-update must match Rust's constant write, and Sail's `mtvec` helper must select
-the same address as the Jolt `JALR` target. -/
-structure EcallSystemAssumptions (js : SailJoltState) : Prop where
-  pc_readable :
-    ∃ pc : BitVec 64, js.sail.regs.get? Register.PC =
-      some (pc : RegisterType Register.PC)
-  nextPC_readable :
-    ∃ nextPC : BitVec 64, js.sail.regs.get? Register.nextPC =
-      some (nextPC : RegisterType Register.nextPC)
-  cur_privilege_machine :
-    js.sail.regs.get? Register.cur_privilege =
-      some (Privilege.Machine : RegisterType Register.cur_privilege)
-  medeleg_readable :
-    ∃ medeleg : BitVec 64, js.sail.regs.get? Register.medeleg =
-      some (medeleg : RegisterType Register.medeleg)
-  misa_readable :
-    ∃ misa : BitVec 64, js.sail.regs.get? Register.misa =
-      some (misa : RegisterType Register.misa)
-  elp_zero :
-    js.sail.regs.get? Register.elp =
-      some (0#1 : RegisterType Register.elp)
-  mstatus_matches_zeroOS_trap :
-    sailMachineTrapMstatus (js.vregs JoltISA.mstatusVReg) = zeroOSMstatus
-  trap_vector_matches_jalr :
-    tvec_addr (js.vregs JoltISA.trapHandlerVReg) ecallMachineCause =
-      some (ecallTrapTarget js)
-  trap_target_fetch_aligned :
-    BitVec.access (ecallTrapTarget js) 1 = 0#1
 
 end System
 

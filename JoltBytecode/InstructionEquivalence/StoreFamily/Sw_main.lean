@@ -431,7 +431,7 @@ theorem swProgram_eq_sail_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
 
 The caller supplies only the compact memory bundle. The proof cases on the
 word alignment guard and reuses the aligned or misaligned branch theorem. -/
-theorem swProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
+private theorem swProgram_project_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js) =
@@ -445,10 +445,27 @@ theorem swProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
       h.accessContext 4
         (h.wordStore (by simpa [ea] using halign))
     exact swProgram_eq_sail_aligned imm rs2 rs1 js h.rs1_val h.rs2_val
-      h.rs1_read.value_eq h.rs2_read.value_eq hmem
+      h.rs1_read h.rs2_read hmem
       (by simpa [ea] using halign)
   · exact swProgram_eq_sail_misaligned imm rs2 rs1 js h.rs1_val h.rs2_val
-      h.rs1_read.value_eq h.rs2_read.value_eq (by simpa [ea] using halign)
+      h.rs1_read h.rs2_read (by simpa [ea] using halign)
+
+/-- **Main public SW theorem.**  The Jolt bytecode expansion matches Sail and
+preserves every protected Jolt register on successful runs. -/
+theorem swProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState)
+    (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js)
+      ((execute_STORE imm rs2 rs1 4).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact swProgram_project_eq_sail imm rs2 rs1 js h
+  · unfold JoltISA.swProgram JoltISA.slliBlock JoltISA.sllBlock JoltISA.srliBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3,
+      JoltISA.storeInlineTmp]
 
 end SW_main
 

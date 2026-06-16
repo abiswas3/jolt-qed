@@ -180,7 +180,7 @@ theorem amominuwProgram_eq_sail_of_memory_context
         rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOMINU false false rs2 rs1 4 rd).run js.sail
   exact
-    amo_word_rust_select_program_eq_sail
+    amo_word_rust_select_program_project_eq_sail
       amoop.AMOMINU
       (fun dst src => .VirtualZeroExtendWord dst src)
       (fun dst lhs rhs => .SLTU dst lhs rhs)
@@ -210,7 +210,7 @@ theorem amominuwProgram_eq_sail_of_memory_context
 The theorem takes one primitive-only atomic bundle. The aligned branch derives
 exact memory context from the enclosing dword window; the misaligned branch
 stops before memory context is needed. -/
-theorem amominuwProgram_eq_sail
+private theorem amominuwProgram_project_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOMINU rs2 rs1 rd js) :
     projectResult ((JoltISA.execProgram
@@ -226,7 +226,7 @@ theorem amominuwProgram_eq_sail
       simpa [amoWordBase, amoWordAssumptionBase] using h_mem_base
     exact amominuwProgram_eq_sail_of_memory_context
       rs2 rs1 rd js h.cfg addr rs2Val
-      h.rs1_read.value_eq h.rs2_read.value_eq h.rd_readable.exists_value h_mem
+      h.rs1_read h.rs2_read h.rd_readable.exists_value h_mem
   · change
       projectResult ((JoltISA.execProgram
         (JoltISA.amoWordSelectRustProgram
@@ -243,7 +243,26 @@ theorem amominuwProgram_eq_sail
       (.vreg JoltISA.amoWordSelectNewVReg)
       (.vreg JoltISA.amoWordSelectMaskVReg)
       rs2 rs1 rd js h.cfg addr rs2Val
-      h.rs1_read.value_eq h.rs2_read.value_eq h_align
+      h.rs1_read h.rs2_read h_align
+
+/-- Main public theorem for `AMOMINU.W`. -/
+theorem amominuwProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : AmoWordProgramEqSailAssumptions amoop.AMOMINU rs2 rs1 rd js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.amominuwProgram rs2 rs1 rd)).run js)
+      ((execute_AMO amoop.AMOMINU false false rs2 rs1 4 rd).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact amominuwProgram_project_eq_sail rs2 rs1 rd js h
+  · simp [JoltISA.amominuwProgram, JoltISA.amoWordSelectRustProgram,
+      JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.amoWordSelectOldVReg, JoltISA.amoWordSelectDwordVReg,
+      JoltISA.amoWordSelectShiftVReg, JoltISA.amoWordSelectNewVReg,
+      JoltISA.amoWordSelectMaskVReg, JoltISA.amoWordSelectInlineTmpVReg]
 
 end AtomicFamily
 

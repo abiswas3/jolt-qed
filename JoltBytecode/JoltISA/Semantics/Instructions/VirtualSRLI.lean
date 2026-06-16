@@ -112,16 +112,17 @@ theorem exists_state_after_virtual_srli_run_xreg_vreg_of_value
 /-- `VirtualSRLI` from a virtual source to a virtual destination writes the
 logical right shift selected by the encoded bitmask and leaves Sail unchanged. -/
 theorem virtual_srli_run_vreg_vreg (vd vs : VReg)
-    (bitmask : Nat) (js : SailJoltState) :
+    (bitmask : Nat) (js : SailJoltState) (hvd : WritableVReg vd) :
     (execInstr (.VirtualSRLI (.vreg vd) (.vreg vs) bitmask)).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>
             if r = vd then jolt_virtual_srli_value (js.vregs vs) bitmask else js.vregs r } := by
-  unfold execInstr readSrc writeDst readVReg writeVReg
+  unfold execInstr readSrc writeDst readVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    get, getThe, MonadStateOf.get, EStateM.get]
+  exact writeVReg_retire_run_of_writable vd
+    (jolt_virtual_srli_value (js.vregs vs) bitmask) js hvd
 
 end JoltISA
 

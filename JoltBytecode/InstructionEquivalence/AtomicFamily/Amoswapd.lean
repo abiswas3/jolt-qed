@@ -328,7 +328,7 @@ theorem amoswapdProgram_eq_sail_of_memory_context
 
 The theorem takes one primitive-only atomic bundle. Exact memory context is
 derived internally from that bundle. -/
-theorem amoswapdProgram_eq_sail
+private theorem amoswapdProgram_project_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
     projectResult ((JoltISA.execProgram
@@ -340,7 +340,22 @@ theorem amoswapdProgram_eq_sail
     simpa [addr] using h.memoryContext
   exact amoswapdProgram_eq_sail_of_memory_context
     rs2 rs1 rd js h.cfg addr rs2Val
-    h.rs1_read.value_eq h.rs2_read.value_eq h.rd_readable.exists_value h_mem
+    h.rs1_read h.rs2_read h.rd_readable.exists_value h_mem
+
+/-- Main public theorem for `AMOSWAP.D`. -/
+theorem amoswapdProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : AmoDwordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.amoswapdProgram rs2 rs1 rd)).run js)
+      ((execute_AMO amoop.AMOSWAP false false rs2 rs1 8 rd).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact amoswapdProgram_project_eq_sail rs2 rs1 rd js h
+  · simp [JoltISA.amoswapdProgram,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.amoOldVReg]
 
 end AtomicFamily
 

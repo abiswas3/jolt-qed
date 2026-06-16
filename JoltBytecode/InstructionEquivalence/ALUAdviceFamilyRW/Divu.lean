@@ -229,15 +229,32 @@ theorem divuProgram_sound (rs2 rs1 rd : regidx)
 end JoltISA
 
 /-- Main program-level equivalence for `DIVU` with honest advice. -/
-theorem divuProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
+private theorem divuProgram_project_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.divuProgram rs2 rs1 rd
                       (sail_div_value h.rs1_val h.rs2_val true))).run js) =
     (execute_DIV rs2 rs1 rd true).run js.sail := by
   let dividend := h.rs1_val
   let divisor := h.rs2_val
-  have hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail := h.rs1_read.value_eq
-  have hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail := h.rs2_read.value_eq
+  have hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail := h.rs1_read
+  have hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail := h.rs2_read
   exact JoltISA.divuProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
+
+/-- Main program-level equivalence for `DIVU` with honest advice. -/
+theorem divuProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.divuProgram rs2 rs1 rd
+        (sail_div_value h.rs1_val h.rs2_val true))).run js)
+      ((execute_DIV rs2 rs1 rd true).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact divuProgram_project_eq_sail rs2 rs1 rd js h
+  · unfold JoltISA.divuProgram
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.VRegWritesNoProtectedVReg,
+      Divu.v0VReg, Divu.v1VReg]
 
 end

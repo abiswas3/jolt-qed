@@ -64,7 +64,7 @@ theorem amo_word_rust_select_pre64_aligned_run
   obtain ⟨js_base, _hrs1_base, hbase_sail, hbase_shift_raw,
       _hbase_preserves, hbase_run⟩ :=
     JoltISA.exists_state_after_andi_run_vreg_xreg_of_sail_eq
-      JoltISA.amoWordSelectShiftVReg rs1 (-8 : BitVec 12) js js.sail addr rfl hrs1
+      JoltISA.amoWordSelectShiftVReg rs1 (-8 : BitVec 12) js js.sail addr rfl hrs1 (by unfold WritableVReg; decide)
   have hbase_shift :
       js_base.vregs JoltISA.amoWordSelectShiftVReg = amoWordBase addr := by
     rw [hbase_shift_raw]
@@ -93,6 +93,7 @@ theorem amo_word_rust_select_pre64_aligned_run
       vreg_LD_run_of_dword_evidence
         JoltISA.amoWordSelectDwordVReg JoltISA.amoWordSelectShiftVReg js_base
         (amoWordBase addr) hbase_shift hcfg_base hload_evidence
+        (by unfold WritableVReg; decide)
   let js_load : SailJoltState :=
     { sail := js_base.sail
       vregs := fun r =>
@@ -141,6 +142,7 @@ theorem amo_word_rust_select_pre64_aligned_run
             else js_load.vregs r } :=
     amo_word_virtual_muli_run_vreg_xreg
       JoltISA.amoWordSelectShiftVReg rs1 (8 : BitVec 64) js_load addr hrs1_load
+      (by unfold WritableVReg; decide)
   let js_shift : SailJoltState :=
     { sail := js_load.sail
       vregs := fun r =>
@@ -188,6 +190,7 @@ theorem amo_word_rust_select_pre64_aligned_run
             else js_shift.vregs r } :=
     JoltISA.virtual_shift_right_bitmask_run_vreg_vreg
       JoltISA.amoWordSelectNewVReg JoltISA.amoWordSelectShiftVReg js_shift
+      (by unfold WritableVReg; decide)
   let js_bitmask : SailJoltState :=
     { sail := js_shift.sail
       vregs := fun r =>
@@ -253,6 +256,7 @@ theorem amo_word_rust_select_pre64_aligned_run
     JoltISA.virtual_srl_run_vreg_vreg_vreg
       JoltISA.amoWordSelectOldVReg JoltISA.amoWordSelectDwordVReg
       JoltISA.amoWordSelectNewVReg js_bitmask
+      (by unfold WritableVReg; decide)
   let js_pre : SailJoltState :=
     { sail := js_bitmask.sail
       vregs := fun r =>
@@ -340,7 +344,7 @@ theorem amo_word_rust_select_mask32_prefix_run
       hones_preserves, hones_run⟩ :=
     JoltISA.exists_state_after_ori_run_vreg_xreg_of_sail_eq
       JoltISA.amoWordSelectMaskVReg (regidx.Regidx 0) (-1 : BitVec 12)
-      js s (0#64) h_sail (amo_word_read_x0_eq_zero s)
+      js s (0#64) h_sail (amo_word_read_x0_eq_zero s) (by unfold WritableVReg; decide)
   have hones_sail : js_ones.sail = s := by
     rw [hones_sail_raw, h_sail]
   have hones_mask : js_ones.vregs JoltISA.amoWordSelectMaskVReg = (-1 : BitVec 64) := by
@@ -362,6 +366,7 @@ theorem amo_word_rust_select_mask32_prefix_run
       hmask_tail⟩ :=
     JoltISA.exists_state_after_srli_block_run_vreg_vreg
       JoltISA.amoWordSelectMaskVReg JoltISA.amoWordSelectMaskVReg (32 : BitVec 6) js_ones
+      (by unfold WritableVReg; decide)
   refine ⟨js_mask, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [hmask_sail_raw, hones_sail]
   · rw [hmask_raw, hones_mask]
@@ -410,7 +415,7 @@ theorem amo_word_rust_select_shift_mask_prefix_run
   obtain ⟨js', h_sail_raw, h_mask_raw, h_preserves, htail⟩ :=
     JoltISA.exists_state_after_sll_block_run_vreg_vreg_vreg
       JoltISA.amoWordSelectMaskVReg JoltISA.amoWordSelectMaskVReg
-      JoltISA.amoWordSelectShiftVReg JoltISA.amoWordSelectInlineTmpVReg js (by decide)
+      JoltISA.amoWordSelectShiftVReg JoltISA.amoWordSelectInlineTmpVReg js (by decide) (by unfold WritableVReg; decide) (by unfold WritableVReg; decide)
   refine ⟨js', ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [h_sail_raw, h_sail]
   · rw [h_mask_raw, h_mask, h_shift]
@@ -457,7 +462,7 @@ theorem amo_word_rust_select_shift_new_prefix_run
   obtain ⟨js', _hrs2, h_sail_raw, h_shift_raw, h_preserves, htail⟩ :=
     JoltISA.exists_state_after_sll_block_run_vreg_xreg_vreg
       JoltISA.amoWordSelectShiftVReg rs2 JoltISA.amoWordSelectShiftVReg
-      JoltISA.amoWordSelectInlineTmpVReg js rs2Val hrs2_current
+      JoltISA.amoWordSelectInlineTmpVReg js rs2Val hrs2_current (by unfold WritableVReg; decide) (by unfold WritableVReg; decide)
   refine ⟨js', ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [h_sail_raw, h_sail]
   · rw [h_shift_raw, h_shift]
@@ -501,7 +506,7 @@ theorem amo_word_rust_select_shift_new_vreg_prefix_run
   obtain ⟨js', h_sail_raw, h_shift_raw, h_preserves, htail⟩ :=
     JoltISA.exists_state_after_sll_block_run_vreg_vreg_vreg
       JoltISA.amoWordSelectShiftVReg new JoltISA.amoWordSelectShiftVReg
-      JoltISA.amoWordSelectInlineTmpVReg js hnew_ne_tmp
+      JoltISA.amoWordSelectInlineTmpVReg js hnew_ne_tmp (by unfold WritableVReg; decide) (by unfold WritableVReg; decide)
   refine ⟨js', ?_, ?_, ?_, ?_, ?_, ?_⟩
   · rw [h_sail_raw, h_sail]
   · rw [h_shift_raw, h_new, h_shift]
@@ -564,7 +569,7 @@ theorem amo_word_rust_select_splice_block_run
       hxor_run⟩ :=
     JoltISA.exists_state_after_xor_run_vreg_vreg_vreg
       JoltISA.amoWordSelectShiftVReg JoltISA.amoWordSelectDwordVReg
-      JoltISA.amoWordSelectShiftVReg js dword shiftedNew h_dword h_shift
+      JoltISA.amoWordSelectShiftVReg js dword shiftedNew h_dword h_shift (by unfold WritableVReg; decide)
   have hxor_sail : js_xor.sail = s := by
     rw [hxor_sail_raw, h_sail]
   have hxor_shift : js_xor.vregs JoltISA.amoWordSelectShiftVReg = dword ^^^ shiftedNew := by
@@ -583,6 +588,7 @@ theorem amo_word_rust_select_splice_block_run
     amo_word_exists_state_after_and_run_vreg_vreg_vreg
       JoltISA.amoWordSelectShiftVReg JoltISA.amoWordSelectShiftVReg JoltISA.amoWordSelectMaskVReg
       js_xor (dword ^^^ shiftedNew) shiftedMask hxor_shift hxor_mask
+      (by unfold WritableVReg; decide)
   have hand_sail : js_and.sail = s := by
     rw [hand_sail_raw, hxor_sail]
   have hand_shift : js_and.vregs JoltISA.amoWordSelectShiftVReg =
@@ -599,7 +605,7 @@ theorem amo_word_rust_select_splice_block_run
     JoltISA.exists_state_after_xor_run_vreg_vreg_vreg
       JoltISA.amoWordSelectDwordVReg JoltISA.amoWordSelectDwordVReg
       JoltISA.amoWordSelectShiftVReg js_and dword
-      ((dword ^^^ shiftedNew) &&& shiftedMask) hand_dword hand_shift
+      ((dword ^^^ shiftedNew) &&& shiftedMask) hand_dword hand_shift (by unfold WritableVReg; decide)
   have hspliced_value := amo_word_splice_shifted_eq s addr newValue hsetup
   refine ⟨js_splice, ?_, ?_, ?_, ?_⟩
   · rw [hsplice_sail_raw, hand_sail]
@@ -632,7 +638,7 @@ theorem amo_word_rust_select_store_base_prefix_run
           (JoltISA.execProgram tail).run js' := by
   obtain ⟨js', _hrs1, h_sail_raw, h_base_raw, h_preserves, hrun⟩ :=
     JoltISA.exists_state_after_andi_run_vreg_xreg_of_sail_eq
-      JoltISA.amoWordSelectMaskVReg rs1 (-8 : BitVec 12) js s addr h_sail hrs1
+      JoltISA.amoWordSelectMaskVReg rs1 (-8 : BitVec 12) js s addr h_sail hrs1 (by unfold WritableVReg; decide)
   refine ⟨js', ?_, ?_, ?_, ?_, ?_⟩
   · rw [h_sail_raw, h_sail]
   · rw [h_base_raw]
@@ -1005,6 +1011,7 @@ theorem amo_word_rust_select_signed_extend_phase_run
     exact
       JoltISA.virtual_sign_extend_word_run_vreg_xreg
         JoltISA.amoWordSelectNewVReg rs2 js rs2Val hrs2
+        (by unfold WritableVReg; decide)
   have hold_afterRs2 :
       js_afterRs2.vregs JoltISA.amoWordSelectOldVReg = old := by
     change
@@ -1016,7 +1023,9 @@ theorem amo_word_rust_select_signed_extend_phase_run
         (.VirtualSignExtendWord (.vreg JoltISA.amoWordSelectMaskVReg)
           (.vreg JoltISA.amoWordSelectOldVReg))).run js_afterRs2 =
         .ok RETIRE_SUCCESS js_afterExt := by
-    rw [JoltISA.virtual_sign_extend_word_run_vreg_vreg]
+    rw [JoltISA.virtual_sign_extend_word_run_vreg_vreg
+      JoltISA.amoWordSelectMaskVReg JoltISA.amoWordSelectOldVReg js_afterRs2
+      (by unfold WritableVReg; decide)]
     unfold js_afterExt oldExt
     rw [hold_afterRs2]
   refine ⟨js_afterExt, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
@@ -1099,6 +1108,7 @@ theorem amo_word_rust_select_unsigned_extend_phase_run
     exact
       JoltISA.virtual_zero_extend_word_run_vreg_xreg
         JoltISA.amoWordSelectNewVReg rs2 js rs2Val hrs2
+        (by unfold WritableVReg; decide)
   have hold_afterRs2 :
       js_afterRs2.vregs JoltISA.amoWordSelectOldVReg = old := by
     change
@@ -1110,7 +1120,9 @@ theorem amo_word_rust_select_unsigned_extend_phase_run
         (.VirtualZeroExtendWord (.vreg JoltISA.amoWordSelectMaskVReg)
           (.vreg JoltISA.amoWordSelectOldVReg))).run js_afterRs2 =
         .ok RETIRE_SUCCESS js_afterExt := by
-    rw [amo_word_virtual_zero_extend_word_run_vreg_vreg]
+    rw [amo_word_virtual_zero_extend_word_run_vreg_vreg
+      JoltISA.amoWordSelectMaskVReg JoltISA.amoWordSelectOldVReg js_afterRs2
+      (by unfold WritableVReg; decide)]
     unfold js_afterExt oldExt
     rw [hold_afterRs2]
   refine ⟨js_afterExt, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
@@ -1180,7 +1192,8 @@ theorem amo_word_rust_select_slt_compare_phase_run_vreg_vreg
         (.SLT (.vreg JoltISA.amoWordSelectMaskVReg) (.vreg lhs) (.vreg rhs))).run
           js =
         .ok RETIRE_SUCCESS js_afterCmp := by
-    rw [amo_word_slt_run_vreg_vreg_vreg JoltISA.amoWordSelectMaskVReg lhs rhs js]
+    rw [amo_word_slt_run_vreg_vreg_vreg JoltISA.amoWordSelectMaskVReg lhs rhs js
+      (by unfold WritableVReg; decide)]
     unfold js_afterCmp flag
     rw [hlhs, hrhs]
   refine ⟨js_afterCmp, ?_, ?_, ?_, ?_, ?_, ?_⟩
@@ -1230,7 +1243,8 @@ theorem amo_word_rust_select_sltu_compare_phase_run_vreg_vreg
         (.SLTU (.vreg JoltISA.amoWordSelectMaskVReg) (.vreg lhs) (.vreg rhs))).run
           js =
         .ok RETIRE_SUCCESS js_afterCmp := by
-    rw [amo_word_sltu_run_vreg_vreg_vreg JoltISA.amoWordSelectMaskVReg lhs rhs js]
+    rw [amo_word_sltu_run_vreg_vreg_vreg JoltISA.amoWordSelectMaskVReg lhs rhs js
+      (by unfold WritableVReg; decide)]
     unfold js_afterCmp flag
     rw [hlhs, hrhs]
   refine ⟨js_afterCmp, ?_, ?_, ?_, ?_, ?_, ?_⟩
@@ -1313,7 +1327,8 @@ theorem amo_word_rust_select_tail_phase_run
           (.xreg rs2) (.vreg JoltISA.amoWordSelectOldVReg))).run js =
         .ok RETIRE_SUCCESS js_afterSub := by
     rw [JoltISA.sub_run_vreg_xreg_vreg
-      JoltISA.amoWordSelectNewVReg rs2 JoltISA.amoWordSelectOldVReg js rs2Val hrs2]
+      JoltISA.amoWordSelectNewVReg rs2 JoltISA.amoWordSelectOldVReg js rs2Val hrs2
+      (by unfold WritableVReg; decide)]
     unfold js_afterSub delta
     rw [hold]
   have hmul_new : js_afterMul.vregs JoltISA.amoWordSelectNewVReg = scaled := by
@@ -1344,7 +1359,7 @@ theorem amo_word_rust_select_tail_phase_run
         .ok RETIRE_SUCCESS js_afterMul := by
     rw [JoltISA.mul_run_vreg_vreg_vreg
       JoltISA.amoWordSelectNewVReg JoltISA.amoWordSelectNewVReg JoltISA.amoWordSelectMaskVReg
-      js_afterSub]
+      js_afterSub (by unfold WritableVReg; decide)]
     unfold js_afterMul scaled
     rw [hsub_new, hsub_flag]
   have hadd_result :
@@ -1378,7 +1393,7 @@ theorem amo_word_rust_select_tail_phase_run
         .ok RETIRE_SUCCESS js_afterAdd := by
     rw [JoltISA.add_run_vreg_vreg_vreg
       JoltISA.amoWordSelectNewVReg JoltISA.amoWordSelectNewVReg JoltISA.amoWordSelectOldVReg
-      js_afterMul]
+      js_afterMul (by unfold WritableVReg; decide)]
     unfold js_afterAdd
     rw [hmul_new, hmul_old]
   refine ⟨js_afterAdd, ?_, ?_, ?_, ?_, ?_, ?_⟩
@@ -2001,8 +2016,8 @@ theorem amo_word_rust_select_program_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Shared full theorem for word AMO select expansions. -/
-theorem amo_word_rust_select_program_eq_sail
+/-- Shared projection helper for word AMO select expansions. -/
+theorem amo_word_rust_select_program_project_eq_sail
     (op : amoop)
     (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
     (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)

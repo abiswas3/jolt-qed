@@ -137,7 +137,7 @@ theorem amoxordProgram_eq_sail_of_memory_context
         (fun dst lhs rhs => .XOR dst lhs rhs) rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOXOR false false rs2 rs1 8 rd).run js.sail
   exact
-    amo_dword_double_binop_program_eq_sail
+    amo_dword_double_binop_program_project_eq_sail
       amoop.AMOXOR (fun dst lhs rhs => .XOR dst lhs rhs)
       rs2 rs1 rd js hcfg addr rs2Val
       (rs2Val ^^^ loaded_dword_at js.sail addr)
@@ -150,7 +150,7 @@ theorem amoxordProgram_eq_sail_of_memory_context
 
 The theorem takes one primitive-only atomic bundle. Exact memory context is
 derived internally from that bundle. -/
-theorem amoxordProgram_eq_sail
+private theorem amoxordProgram_project_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOXOR rs2 rs1 rd js) :
     projectResult ((JoltISA.execProgram
@@ -162,7 +162,22 @@ theorem amoxordProgram_eq_sail
     simpa [addr] using h.memoryContext
   exact amoxordProgram_eq_sail_of_memory_context
     rs2 rs1 rd js h.cfg addr rs2Val
-    h.rs1_read.value_eq h.rs2_read.value_eq h.rd_readable.exists_value h_mem
+    h.rs1_read h.rs2_read h.rd_readable.exists_value h_mem
+
+/-- Main public theorem for `AMOXOR.D`. -/
+theorem amoxordProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : AmoDwordProgramEqSailAssumptions amoop.AMOXOR rs2 rs1 rd js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.amoxordProgram rs2 rs1 rd)).run js)
+      ((execute_AMO amoop.AMOXOR false false rs2 rs1 8 rd).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact amoxordProgram_project_eq_sail rs2 rs1 rd js h
+  · simp [JoltISA.amoxordProgram, JoltISA.amoDoubleBinopProgram,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.amoDoubleBinopNewVReg, JoltISA.amoDoubleBinopOldVReg]
 
 end AtomicFamily
 

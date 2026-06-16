@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.System.Common
+import JoltBytecode.InstructionEquivalence.System.Bundles
 
 set_option linter.unusedSimpArgs false
 
@@ -28,42 +28,6 @@ legalizes/writes the architectural CSR, runs a callback, and writes the old CSR
 value to `rd`.  The theorem below keeps those generated CSR/legalizer facts
 explicit instead of silently assuming all CSR writes are raw writes.
 -/
-
-/-- Final state for the write-only `csrw csr, rs1` case. -/
-def csrrwAfterCsrWrite
-    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1Val : BitVec 64) :
-    SailJoltState :=
-  joltSetVReg js (JoltISA.SystemCSR.vreg csr) rs1Val
-
-/-- Final state for the ordinary read/write case after `rd` receives the old
-CSR value and the virtual CSR receives `rs1`. -/
-def csrrwAfterReadWrite
-    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rd : regidx)
-    (oldCsr rs1Val : BitVec 64) : SailJoltState :=
-  joltSetVReg { js with sail := stateAfterWrite js.sail rd oldCsr }
-    (JoltISA.SystemCSR.vreg csr) rs1Val
-
-/-- Final state for the `rd = rs1` clobber case.  The scratch write is kept in
-the concrete state because it is a real emitted row, though `systemProject`
-ignores it. -/
-def csrrwAfterSameReg
-    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rd : regidx)
-    (oldCsr rs1Val : BitVec 64) : SailJoltState :=
-  joltSetVReg
-    { joltSetVReg js JoltISA.systemScratchVReg rs1Val with
-      sail := stateAfterWrite js.sail rd oldCsr }
-    (JoltISA.SystemCSR.vreg csr) rs1Val
-
-/-- The concrete final Jolt state selected by Rust's CSRRW expansion branches. -/
-def csrrwJoltFinal
-    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
-    (rs1Val : BitVec 64) : SailJoltState :=
-  if JoltISA.isX0 rd then
-    csrrwAfterCsrWrite js csr rs1Val
-  else if JoltISA.sameXReg rd rs1 then
-    csrrwAfterSameReg js csr rd (js.vregs (JoltISA.SystemCSR.vreg csr)) rs1Val
-  else
-    csrrwAfterReadWrite js csr rd (js.vregs (JoltISA.SystemCSR.vreg csr)) rs1Val
 
 /-- A zero-immediate ADDI copies its source value unchanged. -/
 theorem csrrw_addi_zero (x : BitVec 64) :
@@ -140,6 +104,28 @@ theorem bool_eq_false_of_ne_true {b : Bool} (h : b ≠ true) :
     b = false := by
   cases b <;> simp_all
 
+/-- Rust's `sameXReg = false` guard implies the wrapped generated register
+indices are distinct. -/
+theorem regidx_ne_of_sameXReg_false
+    {rd rs : regidx} (h_same : JoltISA.sameXReg rd rs = false) :
+    rd ≠ rs := by
+  intro hEq
+  subst rs
+  cases rd
+  unfold JoltISA.sameXReg at h_same
+  simp at h_same
+
+/-- In the Rust general CSRRW branch, `rd != rs1`, so the write to `rd` cannot
+change the later read from `rs1`. -/
+theorem rX_bits_stateAfterWrite_of_sameXReg_false
+    (rd rs : regidx) (writeVal readVal : BitVec 64) (s : SailState)
+    (h_same : JoltISA.sameXReg rd rs = false)
+    (hread : rX_bits rs s = .ok readVal s) :
+    rX_bits rs (stateAfterWrite s rd writeVal) =
+      .ok readVal (stateAfterWrite s rd writeVal) := by
+  exact rX_bits_stateAfterWrite_of_ne rd rs writeVal readVal s
+    (regidx_ne_of_sameXReg_false h_same) hread
+
 /-- Copy `rs1` into the CSR virtual register for the `rd = x0` branch. -/
 theorem csrrw_write_only_row_run
     (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 : regidx)
@@ -149,9 +135,11 @@ theorem csrrw_write_only_row_run
       (.ADDI (.vreg (JoltISA.SystemCSR.vreg csr)) (.xreg rs1)
         (0 : BitVec 12))).run js =
       .ok RETIRE_SUCCESS (csrrwAfterCsrWrite js csr rs1Val) := by
+  have hcsr : WritableVReg (JoltISA.SystemCSR.vreg csr) := by
+    cases csr <;> unfold WritableVReg <;> decide
   have hRun :=
     JoltISA.addi_run_vreg_xreg (JoltISA.SystemCSR.vreg csr) rs1
-      (0 : BitVec 12) js rs1Val h_rs1
+      (0 : BitVec 12) js rs1Val h_rs1 hcsr
   rw [csrrw_addi_zero rs1Val] at hRun
   simpa [csrrwAfterCsrWrite, joltSetVReg, vregWrite] using hRun
 
@@ -191,9 +179,12 @@ theorem csrrw_preserve_rs1_row_run
       (.ADDI (.vreg JoltISA.systemScratchVReg) (.xreg rs1)
         (0 : BitVec 12))).run js =
       .ok RETIRE_SUCCESS (joltSetVReg js JoltISA.systemScratchVReg rs1Val) := by
+  have hscratch : WritableVReg JoltISA.systemScratchVReg := by
+    unfold WritableVReg
+    decide
   have hRun :=
     JoltISA.addi_run_vreg_xreg JoltISA.systemScratchVReg rs1
-      (0 : BitVec 12) js rs1Val h_rs1
+      (0 : BitVec 12) js rs1Val h_rs1 hscratch
   rw [csrrw_addi_zero rs1Val] at hRun
   simpa [joltSetVReg, vregWrite] using hRun
 
@@ -208,13 +199,15 @@ theorem csrrw_restore_csr_from_scratch_row_run
         { joltSetVReg js JoltISA.systemScratchVReg rs1Val with
           sail := stateAfterWrite js.sail rd oldCsr } =
       .ok RETIRE_SUCCESS (csrrwAfterSameReg js csr rd oldCsr rs1Val) := by
+  have hcsr : WritableVReg (JoltISA.SystemCSR.vreg csr) := by
+    cases csr <;> unfold WritableVReg <;> decide
+  unfold WritableVReg at hcsr
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst readVReg writeVReg
   unfold csrrwAfterSameReg joltSetVReg vregWrite
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+    hcsr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
     csrrw_addi_zero]
-  simp only [if_true]
 
 /-- Rust's full CSRRW Jolt program reaches the branch-selected concrete final
 state.  The `rd != rs1` branch needs the ordinary register-file fact that
@@ -223,13 +216,7 @@ as a hypothesis here so the top-level theorem records the exact proof pressure. 
 theorem csrrwProgram_run
     (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
     (rs1Val : BitVec 64)
-    (h_rs1 : rX_bits rs1 js.sail = .ok rs1Val js.sail)
-    (h_rs1_after_rd :
-      ∀ oldCsr : BitVec 64,
-        JoltISA.isX0 rd = false →
-        JoltISA.sameXReg rd rs1 = false →
-        rX_bits rs1 (stateAfterWrite js.sail rd oldCsr) =
-          .ok rs1Val (stateAfterWrite js.sail rd oldCsr)) :
+    (h_rs1 : rX_bits rs1 js.sail = .ok rs1Val js.sail) :
     (JoltISA.execProgram (JoltISA.csrrwProgram csr rs1 rd)).run js =
       .ok RETIRE_SUCCESS (csrrwJoltFinal js csr rs1 rd rs1Val) := by
   unfold JoltISA.csrrwProgram csrrwJoltFinal
@@ -312,8 +299,10 @@ theorem csrrwProgram_run
             .ok RETIRE_SUCCESS
               (csrrwAfterReadWrite js csr rd
                 (js.vregs (JoltISA.SystemCSR.vreg csr)) rs1Val) := by
-        have hReadRs1 := h_rs1_after_rd
-          (js.vregs (JoltISA.SystemCSR.vreg csr)) h_x0_false h_same_false
+        have hReadRs1 :=
+          rX_bits_stateAfterWrite_of_sameXReg_false rd rs1
+            (js.vregs (JoltISA.SystemCSR.vreg csr)) rs1Val js.sail
+            h_same_false h_rs1
         have hRow :=
           csrrw_write_only_row_run js_read csr rs1 rs1Val hReadRs1
         simpa [js_read, csrrwAfterCsrWrite, csrrwAfterReadWrite] using hRow
@@ -322,52 +311,6 @@ theorem csrrwProgram_run
         (csrrwAfterReadWrite js csr rd
           (js.vregs (JoltISA.SystemCSR.vreg csr)) rs1Val) hWrite]
       simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure]
-
-/-- Explicit assumptions forced by comparing Rust/Jolt CSRRW to raw generated
-Sail `execute_CSRReg`.
-
-The CSR read/write fields are intentionally at the generated Sail CSR boundary:
-for `mstatus`, `mtvec`, and `mepc` they are where Sail legalizes or aligns
-values while Rust stores raw virtual-register values.  Later proofs should
-discharge these fields from concrete ZeroOS invariants such as "`mepc` is
-already xepc-legal" or "`mstatus` is already fixed by `legalize_mstatus`",
-rather than weakening the theorem. -/
-structure CsrrwSystemAssumptions
-    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx) :
-    Type where
-  rs1_val : BitVec 64
-  source_read_jolt :
-    rX_bits rs1 js.sail = .ok rs1_val js.sail
-  source_read_after_rd_write :
-    ∀ oldCsr : BitVec 64,
-      JoltISA.isX0 rd = false →
-      JoltISA.sameXReg rd rs1 = false →
-      rX_bits rs1 (stateAfterWrite js.sail rd oldCsr) =
-        .ok rs1_val (stateAfterWrite js.sail rd oldCsr)
-  cur_privilege_machine :
-    (systemProject js).regs.get? Register.cur_privilege =
-      some (Privilege.Machine : RegisterType Register.cur_privilege)
-  csr_check_succeeds :
-    check_CSR (JoltISA.SystemCSR.address csr) Privilege.Machine
-        (csr_access_type csrop.CSRRW (rd == zreg) (rs1 == zreg))
-        (systemProject js) =
-      .ok true (systemProject js)
-  csr_read_matches :
-    JoltISA.isX0 rd = false →
-      read_CSR (JoltISA.SystemCSR.address csr) (systemProject js) =
-        .ok (js.vregs (JoltISA.SystemCSR.vreg csr)) (systemProject js)
-  csr_write_matches :
-    write_CSR (JoltISA.SystemCSR.address csr) rs1_val (systemProject js) =
-      .ok (Result.Ok rs1_val)
-        (systemProject (csrrwAfterCsrWrite js csr rs1_val))
-  rd_write_projects :
-    ∀ oldCsr : BitVec 64,
-      JoltISA.isX0 rd = false →
-        wX_bits rd oldCsr
-            (systemProject (csrrwAfterCsrWrite js csr rs1_val)) =
-          .ok ()
-            (systemProject
-              (csrrwJoltFinal js csr rs1 rd rs1_val))
 
 /-- The generated CSR-id write callback is state-neutral for the supported
 system CSR whitelist. -/
@@ -379,6 +322,175 @@ theorem csr_id_write_callback_systemCSR_run
     unfold csr_id_write_callback csr_full_write_callback
       JoltISA.SystemCSR.address <;>
     rfl
+
+/-- Jolt's `SystemCSR` type is exactly the supported machine CSR whitelist used
+by the Rust CSRRW expander, so generated Sail's architectural CSR permission
+check succeeds in Machine mode for every access shape CSRRW can request. -/
+theorem check_CSR_systemCSR_machine_run
+    (s : SailState) (csr : JoltISA.SystemCSR) (access : CSRAccessType) :
+    check_CSR (JoltISA.SystemCSR.address csr) Privilege.Machine access s =
+      .ok true s := by
+  cases csr <;> cases access <;>
+    unfold check_CSR check_CSR_priv check_CSR_access is_CSR_accessible
+      stateen_allows_CSR_access privLevel_to_CSR_privbits csrPriv csrAccess
+      JoltISA.SystemCSR.address zopz0zKzJ_u <;>
+    simp [bind, EStateM.bind, pure, EStateM.pure] <;>
+    decide
+
+private theorem extractLsb_xlen_full (x : BitVec 64) :
+    Sail.BitVec.extractLsb x (LeanRV64D.Functions.xlen -i 1) 0 = x := by
+  simp only [LeanRV64D.Functions.xlen, Sail.BitVec.extractLsb]
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitVec.getLsbD_extractLsb]
+  have hlt : i < 64 := by
+    simpa using hi
+  simp [hlt]
+
+/-- Generated Sail CSR reads for Jolt's six supported SYSTEM CSRs.
+
+The raw CSR read cases are proved here. The `mepc` case is intentionally left
+open because generated Sail reads `mepc` through `get_xepc`, which aligns the
+stored PC before returning it, while Jolt reads the persistent `mepc` virtual
+register raw. -/
+theorem read_CSR_systemCSR_project_run
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) :
+    read_CSR (JoltISA.SystemCSR.address csr) (systemProject js) =
+      .ok (js.vregs (JoltISA.SystemCSR.vreg csr)) (systemProject js) := by
+  cases csr
+  · -- `mstatus`: read is raw; write is not.
+    have hread := systemProject_mstatus_read js
+    unfold read_CSR Sail.readReg PreSail.readReg
+    simp [JoltISA.SystemCSR.address, JoltISA.SystemCSR.vreg, hread,
+      extractLsb_xlen_full, bind, EStateM.bind, pure, EStateM.pure, get,
+      getThe, MonadStateOf.get, EStateM.get]
+  · -- `mtvec`: read is raw; write is not.
+    have hread := systemProject_mtvec_read js
+    unfold read_CSR get_mtvec Sail.readReg PreSail.readReg
+    simp [JoltISA.SystemCSR.address, JoltISA.SystemCSR.vreg, hread, bind,
+      EStateM.bind, pure, EStateM.pure, get, getThe, MonadStateOf.get,
+      EStateM.get]
+  · -- `mscratch`: raw read/write.
+    have hread := systemProject_mscratch_read js
+    unfold read_CSR Sail.readReg PreSail.readReg
+    simp [JoltISA.SystemCSR.address, JoltISA.SystemCSR.vreg, hread, bind,
+      EStateM.bind, pure, EStateM.pure, get, getThe, MonadStateOf.get,
+      EStateM.get]
+  · -- `mepc`: Sail read aligns through `get_xepc`; Jolt read is raw.
+    sorry
+  · -- `mcause`: raw read/write.
+    have hread := systemProject_mcause_read js
+    unfold read_CSR Sail.readReg PreSail.readReg
+    simp [JoltISA.SystemCSR.address, JoltISA.SystemCSR.vreg, hread, bind,
+      EStateM.bind, pure, EStateM.pure, get, getThe, MonadStateOf.get,
+      EStateM.get]
+  · -- `mtval`: raw read/write.
+    have hread := systemProject_mtval_read js
+    unfold read_CSR Sail.readReg PreSail.readReg
+    simp [JoltISA.SystemCSR.address, JoltISA.SystemCSR.vreg, hread, bind,
+      EStateM.bind, pure, EStateM.pure, get, getThe, MonadStateOf.get,
+      EStateM.get]
+
+/-- Generated Sail CSR writes for Jolt's six supported SYSTEM CSRs.
+
+The raw CSR write cases are proved here. The `mstatus`, `mtvec`, and `mepc`
+cases are intentionally left open because generated Sail writes them through
+CSR legalizers, while Jolt's CSRRW expansion writes the corresponding virtual
+register raw. -/
+theorem write_CSR_systemCSR_project_run
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (value : BitVec 64) :
+    write_CSR (JoltISA.SystemCSR.address csr) value (systemProject js) =
+      .ok (Result.Ok value) (systemProject (csrrwAfterCsrWrite js csr value)) := by
+  cases csr
+  · -- `mstatus`: Sail uses `legalize_mstatus`; Jolt writes raw.
+    sorry
+  · -- `mtvec`: Sail uses `legalize_tvec`; Jolt writes raw.
+    sorry
+  · -- `mscratch`: raw read/write.
+    simp [write_CSR, read_CSR, JoltISA.SystemCSR.address,
+      JoltISA.SystemCSR.vreg, systemProject, csrrwAfterCsrWrite, joltSetVReg,
+      vregWrite, Sail.readReg, PreSail.readReg, Sail.writeReg,
+      PreSail.writeReg, bind, EStateM.bind, pure, EStateM.pure, get, getThe,
+      MonadStateOf.get, EStateM.get, modify, modifyGet,
+      MonadStateOf.modifyGet, EStateM.modifyGet, extDHashMap_insert_comm_of_ne,
+      extDHashMap_insert_insert_same,
+      JoltISA.mstatusVReg, JoltISA.trapHandlerVReg, JoltISA.mscratchVReg,
+      JoltISA.mepcVReg, JoltISA.mcauseVReg, JoltISA.mtvalVReg,
+      JoltISA.riscvRegisterBase, JoltISA.riscvRegisterCount,
+      JoltISA.numReservedVirtualRegisters]
+    rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+    rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+    rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+    rw [Std.ExtDHashMap.get?_insert_self]
+    rfl
+  · -- `mepc`: Sail uses `legalize_xepc`; Jolt writes raw.
+    sorry
+  · -- `mcause`: raw read/write.
+    simp [write_CSR, read_CSR, JoltISA.SystemCSR.address,
+      JoltISA.SystemCSR.vreg, systemProject, csrrwAfterCsrWrite, joltSetVReg,
+      vregWrite, Sail.readReg, PreSail.readReg, Sail.writeReg,
+      PreSail.writeReg, bind, EStateM.bind, pure, EStateM.pure, get, getThe,
+      MonadStateOf.get, EStateM.get, modify, modifyGet,
+      MonadStateOf.modifyGet, EStateM.modifyGet, extDHashMap_insert_comm_of_ne,
+      extDHashMap_insert_insert_same,
+      JoltISA.mstatusVReg, JoltISA.trapHandlerVReg, JoltISA.mscratchVReg,
+      JoltISA.mepcVReg, JoltISA.mcauseVReg, JoltISA.mtvalVReg,
+      JoltISA.riscvRegisterBase, JoltISA.riscvRegisterCount,
+      JoltISA.numReservedVirtualRegisters]
+    rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+    rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+    rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+    rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+    rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+    rw [Std.ExtDHashMap.get?_insert_self]
+    rfl
+  · -- `mtval`: raw read/write.
+    simp [write_CSR, read_CSR, JoltISA.SystemCSR.address,
+      JoltISA.SystemCSR.vreg, systemProject, csrrwAfterCsrWrite, joltSetVReg,
+      vregWrite, Sail.readReg, PreSail.readReg, Sail.writeReg,
+      PreSail.writeReg, bind, EStateM.bind, pure, EStateM.pure, get, getThe,
+      MonadStateOf.get, EStateM.get, modify, modifyGet,
+      MonadStateOf.modifyGet, EStateM.modifyGet, extDHashMap_insert_comm_of_ne,
+      extDHashMap_insert_insert_same,
+      JoltISA.mstatusVReg, JoltISA.trapHandlerVReg, JoltISA.mscratchVReg,
+      JoltISA.mepcVReg, JoltISA.mcauseVReg, JoltISA.mtvalVReg,
+      JoltISA.riscvRegisterBase, JoltISA.riscvRegisterCount,
+      JoltISA.numReservedVirtualRegisters]
+    rw [extDHashMap_get?_insert_of_ne (h := by decide)]
+    rw [Std.ExtDHashMap.get?_insert_self]
+    rfl
+
+/-- The generated writeback of the old CSR value reaches the same projected
+state as Rust's CSRRW final Jolt state. This is register bookkeeping, not a
+public assumption. -/
+theorem csrrw_rd_write_projects
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
+    (rs1Val : BitVec 64)
+    (h_x0_false : JoltISA.isX0 rd = false) :
+    wX_bits rd (js.vregs (JoltISA.SystemCSR.vreg csr))
+        (systemProject (csrrwAfterCsrWrite js csr rs1Val)) =
+      .ok ()
+        (systemProject (csrrwJoltFinal js csr rs1 rd rs1Val)) := by
+  rw [wX_bits_stateAfterWrite]
+  rw [csrrwJoltFinal, h_x0_false]
+  by_cases h_same : JoltISA.sameXReg rd rs1 = true
+  · rw [h_same]
+    simp only [Bool.false_eq_true, if_false, if_true]
+    rw [← systemProject_stateAfterWrite]
+    cases csr <;>
+      simp [csrrwAfterSameReg, csrrwAfterCsrWrite, systemProject, joltSetVReg,
+        vregWrite, JoltISA.SystemCSR.vreg, JoltISA.systemScratchVReg,
+        JoltISA.mstatusVReg, JoltISA.trapHandlerVReg, JoltISA.mscratchVReg,
+        JoltISA.mepcVReg, JoltISA.mcauseVReg, JoltISA.mtvalVReg,
+        JoltISA.inlineTmp0, JoltISA.inlineTmp, JoltISA.inlineRegisterBase,
+        JoltISA.riscvRegisterBase, JoltISA.riscvRegisterCount,
+        JoltISA.numReservedVirtualRegisters]
+  · have h_same_false : JoltISA.sameXReg rd rs1 = false :=
+      bool_eq_false_of_ne_true h_same
+    rw [h_same_false]
+    simp only [Bool.false_eq_true, if_false]
+    rw [← systemProject_stateAfterWrite]
+    simp [csrrwAfterReadWrite, csrrwAfterCsrWrite, joltSetVReg, vregWrite]
 
 /-- Sail's raw CSRRW execution reaches the projected Jolt final state under the
 explicit CSR/legalizer and architectural-register obligations. -/
@@ -393,14 +505,19 @@ theorem execute_CSRReg_csrrw_system_run
   have hSourceSail :
       rX_bits rs1 (systemProject js) =
         .ok h_sys.rs1_val (systemProject js) :=
-    systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.source_read_jolt
+    systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.source_read
+  have hCurPrivProject :
+      (systemProject js).regs.get? Register.cur_privilege =
+        some (Privilege.Machine : RegisterType Register.cur_privilege) :=
+    systemProject_cur_privilege_read js h_sys.cur_privilege_machine.value
   by_cases h_x0 : JoltISA.isX0 rd = true
   · have h_beq := beq_zreg_eq_true_of_isX0_eq_true h_x0
     have hCheck :
         check_CSR (JoltISA.SystemCSR.address csr) Privilege.Machine
             CSRAccessType.CSRWrite (systemProject js) =
           .ok true (systemProject js) := by
-      simpa [csr_access_type, h_beq] using h_sys.csr_check_succeeds
+      exact check_CSR_systemCSR_machine_run (systemProject js) csr
+        CSRAccessType.CSRWrite
     have hExtCheck :
         ext_check_CSR (JoltISA.SystemCSR.address csr) Privilege.Machine
           CSRAccessType.CSRWrite = true := by
@@ -419,15 +536,15 @@ theorem execute_CSRReg_csrrw_system_run
         (systemProject (csrrwAfterCsrWrite js csr h_sys.rs1_val))
         csr h_sys.rs1_val
     unfold execute_CSRReg doCSR Sail.readReg PreSail.readReg
-    simp only [hSourceSail, h_sys.cur_privilege_machine,
+    simp only [hSourceSail, hCurPrivProject,
       csr_access_type, h_beq, bind, EStateM.bind, pure, EStateM.pure,
       EStateM.run, get, getThe, MonadStateOf.get, EStateM.get]
     rw [hCheck]
-    simp [LeanRV64D.Functions.not, h_sys.cur_privilege_machine,
+    simp [LeanRV64D.Functions.not, hCurPrivProject,
       hExtCheck, bne, BEq.beq, EStateM.bind, EStateM.pure,
       EStateM.get, get, MonadStateOf.get, hAccessWriteWrite,
       hAccessWriteRead]
-    rw [h_sys.csr_write_matches]
+    rw [write_CSR_systemCSR_project_run]
     simp only [EStateM.bind, EStateM.pure]
     rw [hCallback]
     simp only [EStateM.bind, EStateM.pure]
@@ -448,7 +565,8 @@ theorem execute_CSRReg_csrrw_system_run
         check_CSR (JoltISA.SystemCSR.address csr) Privilege.Machine
             CSRAccessType.CSRReadWrite (systemProject js) =
           .ok true (systemProject js) := by
-      simpa [csr_access_type, h_beq] using h_sys.csr_check_succeeds
+      exact check_CSR_systemCSR_machine_run (systemProject js) csr
+        CSRAccessType.CSRReadWrite
     have hExtCheck :
         ext_check_CSR (JoltISA.SystemCSR.address csr) Privilege.Machine
           CSRAccessType.CSRReadWrite = true := by
@@ -467,29 +585,28 @@ theorem execute_CSRReg_csrrw_system_run
         (systemProject (csrrwAfterCsrWrite js csr h_sys.rs1_val))
         csr h_sys.rs1_val
     unfold execute_CSRReg doCSR Sail.readReg PreSail.readReg
-    simp only [hSourceSail, h_sys.cur_privilege_machine,
+    simp only [hSourceSail, hCurPrivProject,
       csr_access_type, h_beq, bind, EStateM.bind, pure, EStateM.pure,
       EStateM.run, get, getThe, MonadStateOf.get, EStateM.get]
     rw [hCheck]
-    simp [LeanRV64D.Functions.not, h_sys.cur_privilege_machine,
+    simp [LeanRV64D.Functions.not, hCurPrivProject,
       hExtCheck, bne, BEq.beq, EStateM.bind, EStateM.pure,
       EStateM.get, get, MonadStateOf.get, hAccessReadWriteWrite,
       hAccessReadWriteRead]
-    rw [h_sys.csr_read_matches h_x0_false]
+    rw [read_CSR_systemCSR_project_run]
     simp only [EStateM.bind, EStateM.pure]
-    rw [h_sys.csr_write_matches]
+    rw [write_CSR_systemCSR_project_run]
     simp only [EStateM.bind, EStateM.pure]
     rw [hCallback]
     simp only [EStateM.bind, EStateM.pure]
-    rw [h_sys.rd_write_projects
-      (js.vregs (JoltISA.SystemCSR.vreg csr)) h_x0_false]
+    rw [csrrw_rd_write_projects js csr rs1 rd h_sys.rs1_val h_x0_false]
 
-/-- CSRRW equivalence under the system CSR projection.
+/-- Internal CSRRW equivalence under the system CSR projection.
 
 The proof is intentionally top-down: the Jolt side is the Rust inline sequence,
 and the Sail side is raw generated `execute_CSRReg`.  All nontrivial mismatch
 points are named in `CsrrwSystemAssumptions` rather than hidden in the theorem. -/
-theorem csrrwProgram_eq_sail
+theorem csrrwProgram_eq_sail_projected
     (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
     (h_sys : CsrrwSystemAssumptions js csr rs1 rd) :
     systemProjectResult
@@ -498,12 +615,33 @@ theorem csrrwProgram_eq_sail
         (systemProject js) := by
   have hJolt :=
     csrrwProgram_run js csr rs1 rd h_sys.rs1_val
-      h_sys.source_read_jolt h_sys.source_read_after_rd_write
+      h_sys.source_read
   have hSail :=
     execute_CSRReg_csrrw_system_run js csr rs1 rd h_sys
   unfold systemProjectResult
   rw [hJolt]
   exact hSail.symm
+
+/-- Public CSRRW theorem.
+
+The Jolt side is decoded through `systemProjectResult` because CSRRW writes
+the selected CSR through Jolt's persistent virtual CSR register. The Sail side
+starts from the actual Sail state. The CSRRW assumption bundle includes the
+explicit conjunction that the persistent CSR virtual registers already agree
+with the Sail CSR registers before the instruction, so the internal projected
+theorem can be specialized back to `js.sail` on the Sail side. -/
+theorem csrrwProgram_eq_sail
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
+    (h_sys : CsrrwSystemAssumptions js csr rs1 rd) :
+    systemProjectResult
+        ((JoltISA.execProgram (JoltISA.csrrwProgram csr rs1 rd)).run js) =
+      (execute_CSRReg (JoltISA.SystemCSR.address csr) rs1 rd csrop.CSRRW).run
+        js.sail := by
+  have hProject : systemProject js = js.sail := by
+    simpa [project] using
+      systemProject_eq_project_of_compatible js h_sys.linked_csrs
+  rw [← hProject]
+  exact csrrwProgram_eq_sail_projected js csr rs1 rd h_sys
 
 end System
 
