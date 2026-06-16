@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.System.Common
+import JoltBytecode.InstructionEquivalence.System.Bundles
 
 open Sail PreSail LeanRV64D.Functions
 
@@ -182,17 +182,18 @@ theorem ecallProgram_eq_sail_trap_entry
     (h_sys : EcallSystemAssumptions js) :
     systemProjectResult ((JoltISA.execProgram JoltISA.ecallProgram).run js) =
       sailEcallTrapEntry.run (systemProject js) := by
-  rcases h_sys.pc_readable with ⟨pc, hpc⟩
-  rcases h_sys.nextPC_readable with ⟨nextPC, hnextPC⟩
-  rcases h_sys.medeleg_readable with ⟨medeleg, hmedeleg⟩
-  rcases h_sys.misa_readable with ⟨misa, hmisa⟩
+  rcases h_sys.pc_readable.exists_value with ⟨pc, hpc⟩
+  rcases h_sys.nextPC_readable.exists_value with ⟨nextPC, hnextPC⟩
+  rcases h_sys.medeleg_readable.exists_value with ⟨medeleg, hmedeleg⟩
+  rcases h_sys.misa_readable.exists_value with ⟨misa, hmisa⟩
   have hJolt :=
     ecallProgram_run js pc nextPC misa hpc hnextPC hmisa
-      h_sys.trap_target_fetch_aligned
+      h_sys.trap_target_fetch_aligned.bit1_zero
   have hSail :=
     sailEcallTrapEntry_machine_run js pc nextPC medeleg misa hpc hmedeleg hmisa
-      h_sys.elp_zero h_sys.cur_privilege_machine
-      h_sys.mstatus_matches_zeroOS_trap h_sys.trap_vector_matches_jalr
+      h_sys.elp_zero h_sys.cur_privilege_machine.value
+      h_sys.mstatus_matches_zeroOS_trap.value_eq
+      h_sys.trap_vector_matches_jalr.value_eq
   unfold systemProjectResult
   rw [hJolt]
   exact hSail.symm

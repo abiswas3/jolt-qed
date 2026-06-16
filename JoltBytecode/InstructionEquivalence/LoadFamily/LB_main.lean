@@ -169,18 +169,34 @@ theorem lbProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
 /-- **Main program theorem for LB.**  The structured Jolt-ISA expansion
 `lbProgram`, interpreted by `execProgram`, agrees with Sail's signed byte-load
 execution. -/
-theorem lbProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
+private theorem lbProgram_project_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.lbProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd false 1).run js.sail := by
-  rcases lbProgram_concrete imm rs1 rd js h.cfg h.rs1_val h.rs1_read.value_eq
+  rcases lbProgram_concrete imm rs1 rd js h.cfg h.rs1_val h.rs1_read
       h.dwordPhys with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_LB_reduces imm rs1 rd js h.cfg h.rs1_val
-    h.rs1_read.value_eq h.bytePhys
+    h.rs1_read h.bytePhys
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]
+
+/-- **Main program theorem for LB.**  The structured Jolt-ISA expansion
+matches Sail and preserves every protected Jolt register on successful runs. -/
+theorem lbProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
+    (js : SailJoltState)
+    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.lbProgram imm rs1 rd)).run js)
+      ((execute_LOAD imm rs1 rd false 1).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact lbProgram_project_eq_sail imm rs1 rd js h
+  · unfold JoltISA.lbProgram JoltISA.slliBlock JoltISA.sllBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
 
 end LB_main

@@ -35,7 +35,8 @@ theorem joltMem
     (h : AmoDwordProgramEqSailAssumptions op rs2 rs1 rd js) :
     FlatLoadStoreMem h.rs1_val 8 js.sail :=
   FlatLoadStoreMem.ofReadWriteWindow h.rs1_val 8 js.sail
-    h.dword_window.bytes h.dword_window.load_pmp h.dword_window.store_pmp
+    (Assumptions.DwordPresent.memBytesPresent h.dword_window.bytes)
+    h.dword_window.load_pmp h.dword_window.store_pmp
     h.dword_window.not_readable_mmio h.dword_window.not_writable_mmio
 
 theorem sailAtomicMem
@@ -43,7 +44,8 @@ theorem sailAtomicMem
     (h : AmoDwordProgramEqSailAssumptions op rs2 rs1 rd js) :
     FlatAtomicMem op h.rs1_val 8 js.sail :=
   FlatAtomicMem.ofAtomicWindow op h.rs1_val 8 js.sail
-    h.dword_window.bytes h.dword_window.atomic_pmp
+    (Assumptions.DwordPresent.memBytesPresent h.dword_window.bytes)
+    h.dword_window.atomic_pmp
     h.dword_window.not_readable_mmio h.dword_window.not_writable_mmio
 
 /-- Derive the internal AMO dword memory context from the public primitive
@@ -73,7 +75,8 @@ theorem joltMem
     FlatLoadStoreMem (amoWordAssumptionBase h.rs1_val) 8 js.sail :=
   FlatLoadStoreMem.ofReadWriteWindow
     (amoWordAssumptionBase h.rs1_val) 8 js.sail
-    h.dword_window.bytes h.dword_window.load_pmp h.dword_window.store_pmp
+    (Assumptions.DwordPresent.memBytesPresent h.dword_window.bytes)
+    h.dword_window.load_pmp h.dword_window.store_pmp
     h.dword_window.not_readable_mmio h.dword_window.not_writable_mmio
 
 theorem sailAtomicMem
@@ -100,7 +103,7 @@ theorem sailAtomicMem
     omega
   have hmem :=
     FlatAtomicMem.ofAtomicWindowSubaccess op base 8 offset 4 js.sail
-      (by simpa [base] using h.dword_window.bytes)
+      (by simpa [base] using Assumptions.DwordPresent.memBytesPresent h.dword_window.bytes)
       (by simpa [base] using h.dword_window.atomic_pmp)
       (by simpa [base] using h.dword_window.not_readable_mmio)
       (by simpa [base] using h.dword_window.not_writable_mmio)

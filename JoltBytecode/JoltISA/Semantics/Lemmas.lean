@@ -114,6 +114,43 @@ theorem bind_pure_retire_of_onlyRetire_eq
       pure RETIRE_SUCCESS) = m := by
   funext js
   exact bind_pure_retire_of_onlyRetire m js hret
+
+theorem writeVReg_retire_run
+    (vd : VReg) (value : BitVec 64) (js : SailJoltState) :
+    (do
+      writeVReg vd value
+      pure RETIRE_SUCCESS : JoltMonad ExecutionResult).run js =
+      if vd.toNat < 32 then
+        .error (Error.Assertion "writeVReg: architectural xreg address") js
+      else
+        .ok RETIRE_SUCCESS
+          { js with vregs := fun r => if r = vd then value else js.vregs r } := by
+  simp only [EStateM.run, bind, EStateM.bind]
+  have hwrite :
+      writeVReg vd value js =
+        if vd.toNat < 32 then
+          EStateM.Result.error (Error.Assertion "writeVReg: architectural xreg address") js
+        else
+          EStateM.Result.ok ()
+            { js with vregs := fun r => if r = vd then value else js.vregs r } := by
+    simpa only [EStateM.run] using writeVReg_run vd value js
+  rw [hwrite]
+  by_cases h : vd.toNat < 32
+  · simp only [h, ↓reduceIte]
+  · simp only [h, ↓reduceIte, pure, EStateM.pure]
+
+theorem writeVReg_retire_run_of_writable
+    (vd : VReg) (value : BitVec 64) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
+    (do
+      writeVReg vd value
+      pure RETIRE_SUCCESS : JoltMonad ExecutionResult).run js =
+      .ok RETIRE_SUCCESS
+        { js with vregs := fun r => if r = vd then value else js.vregs r } := by
+  unfold WritableVReg at hvd
+  rw [writeVReg_retire_run]
+  simp only [hvd, ↓reduceIte]
+
 end JoltISA
 
 end

@@ -183,7 +183,8 @@ the corresponding `loaded_dword_at` value into `vd`. -/
 theorem vreg_LD_run_of_dword_evidence
     (vd vs1 : BitVec 7) (js : SailJoltState) (addr : BitVec 64)
     (hvs1 : js.vregs vs1 = addr) (hcfg : JoltConfig js.sail)
-    (hd : DwordLoadEvidence addr js.sail) :
+    (hd : DwordLoadEvidence addr js.sail)
+    (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.LD (.vreg vd) (.vreg vs1) 0)).run js = .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
@@ -206,4 +207,4 @@ theorem vreg_LD_run_of_dword_evidence
     exact hd.aligned.align
   exact
     JoltISA.ld_run_vreg_vreg_from_memory_read
-      vd vs1 0 js (loaded_dword_at js.sail addr) halign hread
+      vd vs1 0 js (loaded_dword_at js.sail addr) halign hread hvd

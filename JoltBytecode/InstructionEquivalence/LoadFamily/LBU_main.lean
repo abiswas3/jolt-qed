@@ -178,7 +178,7 @@ theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
 /-- **Main program theorem for LBU.**  The structured Jolt-ISA expansion
 `lbuProgram`, interpreted by `execProgram`, agrees with Sail's unsigned
 byte-load execution. -/
-theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
+private theorem lbuProgram_project_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js) =
@@ -188,12 +188,28 @@ theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
       (load_effective_address h.rs1_val imm) 1 js.sail
       (aligned_access_1 (load_effective_address h.rs1_val imm)) h.bytePhys
   rcases lbuProgram_concrete imm rs1 rd js h.cfg h.rs1_val
-      h.rs1_read.value_eq h.dwordPhys with
+      h.rs1_read h.dwordPhys with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_LBU_reduces imm rs1 rd js h.cfg h.rs1_val
-    h.rs1_read.value_eq hload
+    h.rs1_read hload
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]
+
+/-- **Main program theorem for LBU.**  The structured Jolt-ISA expansion
+matches Sail and preserves every protected Jolt register on successful runs. -/
+theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
+    (js : SailJoltState)
+    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js)
+      ((execute_LOAD imm rs1 rd true 1).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact lbuProgram_project_eq_sail imm rs1 rd js h
+  · unfold JoltISA.lbuProgram JoltISA.slliBlock JoltISA.sllBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
 
 end LBU_main

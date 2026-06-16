@@ -354,7 +354,7 @@ theorem lwProgram_eq_sail_of_setup (imm : BitVec 12)
 The public theorem takes one instruction-specific primitive assumption bundle. Internally
 the proof opens the bundle to recover the source-register value and the memory
 facts at the addresses computed from that value. -/
-theorem lwProgram_eq_sail (imm : BitVec 12)
+private theorem lwProgram_project_eq_sail (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
@@ -369,11 +369,30 @@ theorem lwProgram_eq_sail (imm : BitVec 12)
   · have h_sail_phys : FlatPhysMem ea 4 js.sail := by
       simpa [ea] using h.wordPhys (by simpa [ea] using h_align)
     exact lwProgram_eq_sail_aligned imm rs1 rd js h.rs1_val
-      h.rs1_read.value_eq hcfg
+      h.rs1_read hcfg
       (by simpa [base] using h_jolt_phys)
       (by simpa [ea] using h_sail_phys)
       (by simpa [ea] using h_align)
   · exact lwProgram_eq_sail_misaligned imm rs1 rd js h.rs1_val
-      h.rs1_read.value_eq (by simpa [ea] using h_align)
+      h.rs1_read (by simpa [ea] using h_align)
+
+/-- **Main program theorem for LW.**
+
+The public theorem takes one instruction-specific primitive assumption bundle,
+matches Sail, and preserves every protected Jolt register on successful runs. -/
+theorem lwProgram_eq_sail (imm : BitVec 12)
+    (rs1 rd : regidx)
+    (js : SailJoltState)
+    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js)
+      ((execute_LOAD imm rs1 rd false 4).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact lwProgram_project_eq_sail imm rs1 rd js h
+  · unfold JoltISA.lwProgram JoltISA.slliBlock JoltISA.srlBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
 
 end LW_main

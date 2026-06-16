@@ -140,29 +140,35 @@ theorem jolt_virtual_sign_extend_word_concrete (rd : regidx)
 the word-sign-extended scratch value used by word operations. -/
 theorem virtual_sign_extend_word_run_vreg_xreg (vd : VReg) (rs : regidx)
     (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     (execInstr (.VirtualSignExtendWord (.vreg vd) (.xreg rs))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>
             if r = vd then sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0)
             else js.vregs r } := by
+  unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst liftSail writeVReg
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- `VirtualSignExtendWord` from a virtual source to a virtual destination. -/
-theorem virtual_sign_extend_word_run_vreg_vreg (vd vs : VReg) (js : SailJoltState) :
+theorem virtual_sign_extend_word_run_vreg_vreg (vd vs : VReg) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     (execInstr (.VirtualSignExtendWord (.vreg vd) (.vreg vs))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>
             if r = vd then sign_extend (m := 64) (Sail.BitVec.extractLsb (js.vregs vs) 31 0)
             else js.vregs r } := by
+  unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg writeVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- `VirtualSignExtendWord` from a virtual source to a real destination. -/
 theorem virtual_sign_extend_word_run_xreg_vreg (rd : regidx) (vs : VReg)
@@ -181,7 +187,8 @@ packaged as an instruction step. It exposes the read, the virtual-register
 write, the unchanged Sail state, and the successful run. -/
 theorem exists_state_after_virtual_sign_extend_word_run_vreg_xreg
     (vd : VReg) (rs : regidx) (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     ∃ js',
       rX_bits rs js.sail = .ok x js.sail ∧
       js'.sail = js.sail ∧
@@ -198,7 +205,7 @@ theorem exists_state_after_virtual_sign_extend_word_run_vreg_xreg
   · simp [js']
   · intro r hne
     simp [js', hne]
-  · simpa only [js'] using virtual_sign_extend_word_run_vreg_xreg vd rs js x h
+  · simpa only [js'] using virtual_sign_extend_word_run_vreg_xreg vd rs js x h hvd
 
 end JoltISA
 

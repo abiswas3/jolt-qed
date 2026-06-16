@@ -1082,7 +1082,7 @@ theorem amoswapwProgram_eq_sail_of_memory_context
 The theorem takes one primitive-only atomic bundle. The aligned branch derives
 exact memory context from the enclosing dword window; the misaligned branch
 stops before memory context is needed. -/
-theorem amoswapwProgram_eq_sail
+private theorem amoswapwProgram_project_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
     projectResult ((JoltISA.execProgram
@@ -1098,11 +1098,30 @@ theorem amoswapwProgram_eq_sail
       simpa [amoWordBase, amoWordAssumptionBase] using h_mem_base
     exact amoswapwProgram_eq_sail_aligned
       rs2 rs1 rd js h.cfg addr rs2Val
-      h.rs1_read.value_eq h.rs2_read.value_eq h.rd_readable.exists_value
+      h.rs1_read h.rs2_read h.rd_readable.exists_value
       h_mem h_align
   · exact amoswapwProgram_eq_sail_misaligned
       rs2 rs1 rd js h.cfg addr rs2Val
-      h.rs1_read.value_eq h.rs2_read.value_eq h_align
+      h.rs1_read h.rs2_read h_align
+
+/-- Main public theorem for `AMOSWAP.W`. -/
+theorem amoswapwProgram_eq_sail
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (h : AmoWordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.amoswapwProgram rs2 rs1 rd)).run js)
+      ((execute_AMO amoop.AMOSWAP false false rs2 rs1 4 rd).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact amoswapwProgram_project_eq_sail rs2 rs1 rd js h
+  · simp [JoltISA.amoswapwProgram,
+      JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.amoWordSwapMaskVReg, JoltISA.amoWordSwapDwordVReg,
+      JoltISA.amoWordSwapShiftVReg, JoltISA.amoWordSwapOldVReg,
+      JoltISA.amoWordSwapInlineTmpVReg]
 
 end AtomicFamily
 

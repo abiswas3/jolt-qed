@@ -1,6 +1,7 @@
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Common
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
+import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Semantics.Lemmas
 import JoltBytecode.JoltISA.Semantics.Instructions.Add
 import JoltBytecode.JoltISA.Semantics.Instructions.ADDI
@@ -2205,12 +2206,12 @@ theorem amo_dword_double_binop_program_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Shared full theorem for dword AMO double-binop expansions.
+/-- Shared projection helper for dword AMO double-binop expansions.
 
 The theorem exposes no alignment hypothesis. It follows the exact leading
 dword alignment predicate used by both the Jolt expansion and native Sail AMO
 execution, then delegates to the shared aligned or misaligned branch. -/
-theorem amo_dword_double_binop_program_eq_sail
+theorem amo_dword_double_binop_program_project_eq_sail
     (op : amoop) (binop : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hcfg : JoltConfig js.sail)
@@ -2421,8 +2422,8 @@ theorem amo_dword_double_select_program_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Shared full theorem for dword AMO double-select expansions. -/
-theorem amo_dword_double_select_program_eq_sail
+/-- Shared projection helper for dword AMO double-select expansions. -/
+theorem amo_dword_double_select_program_project_eq_sail
     (op : amoop)
     (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
     (cmpLhs cmpRhs : JoltISA.Src)

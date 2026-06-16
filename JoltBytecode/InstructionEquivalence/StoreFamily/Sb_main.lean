@@ -242,7 +242,7 @@ theorem execute_SB_reduces (imm : BitVec 12) (rs2 rs1 : regidx)
 
 Both interpreters start from the same `SailJoltState`; after projection, the
 Jolt bytecode expansion and native Sail store step produce the same Sail state. -/
-theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
+private theorem sbProgram_project_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
     projectResult ((JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js) =
@@ -279,16 +279,33 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
           (load_effective_address h.rs1_val imm)
           (Sail.BitVec.extractLsb h.rs2_val 7 0)) :=
     StoreFamily.vmem_write_byte_store_reduces imm rs1 js.sail h.cfg
-      h.rs1_val h.rs1_read.value_eq (Sail.BitVec.extractLsb h.rs2_val 7 0)
+      h.rs1_val h.rs1_read (Sail.BitVec.extractLsb h.rs2_val 7 0)
       hmem.sail_store_mem
   rcases sbProgram_concrete imm rs2 rs1 js h.cfg h.rs1_val h.rs2_val
-      h.rs1_read.value_eq h.rs2_read.value_eq hsetup h_dword_phys hwrite_dword with
+      h.rs1_read h.rs2_read hsetup h_dword_phys hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_SB_reduces imm rs2 rs1 js h.rs1_val h.rs2_val
-    h.rs1_read.value_eq h.rs2_read.value_eq hwrite_byte
+    h.rs1_read h.rs2_read hwrite_byte
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]
+
+/-- **Public SB theorem.**  The Jolt bytecode expansion matches Sail and
+preserves every protected Jolt register on successful runs. -/
+theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState)
+    (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js)
+      ((execute_STORE imm rs2 rs1 1).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact sbProgram_project_eq_sail imm rs2 rs1 js h
+  · unfold JoltISA.sbProgram JoltISA.slliBlock JoltISA.sllBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3,
+      JoltISA.storeInlineTmp]
 
 end SB_main
 

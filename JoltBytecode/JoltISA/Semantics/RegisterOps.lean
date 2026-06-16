@@ -270,6 +270,178 @@ theorem rX_after_stateAfterWrite (rd : regidx) (v : BitVec 64) (s : SailState)
   unfold stateAfterWrite
   exact rX_after_wX rd v s hrd
 
+/-- Every 5-bit register index is definitionally equal to its `toNat`
+reconstruction. This keeps finite register-split proofs from depending on the
+shape of generated `regidx` terms. -/
+private theorem bitvec5_eq_ofNat_toNat (i : BitVec 5) :
+    i = BitVec.ofNat 5 i.toNat := by
+  apply BitVec.eq_of_toNat_eq
+  simp
+
+/-- The zero register read is independent of all architectural writes. -/
+private theorem rX_bits_stateAfterWrite_regidx_0
+    (rd : regidx) (writeVal readVal : BitVec 64) (s : SailState)
+    (_h_ne : rd ≠ regidx.Regidx (0#5))
+    (hread : rX_bits (regidx.Regidx (0#5)) s = .ok readVal s) :
+    rX_bits (regidx.Regidx (0#5)) (stateAfterWrite s rd writeVal) =
+      .ok readVal (stateAfterWrite s rd writeVal) := by
+  rw [show rX_bits (regidx.Regidx (0#5)) =
+      (fun s => .ok (0#64) s) from rfl] at hread ⊢
+  cases hread
+  rfl
+
+syntax "register_preserve_xreg " ident ", " term ", " term : command
+macro_rules
+  | `(register_preserve_xreg $thmName:ident, $srcIdx:term, $srcReg:term) => `(
+      private theorem $thmName
+          (rd : regidx) (writeVal readVal : BitVec 64) (s : SailState)
+          (h_ne : rd ≠ regidx.Regidx $srcIdx)
+          (hread : rX_bits (regidx.Regidx $srcIdx) s = .ok readVal s) :
+          rX_bits (regidx.Regidx $srcIdx) (stateAfterWrite s rd writeVal) =
+            .ok readVal (stateAfterWrite s rd writeVal) := by
+        have hpres :
+            (stateAfterWrite s rd writeVal).regs.get? $srcReg =
+              s.regs.get? $srcReg := by
+          unfold stateAfterWrite wX_update_regs
+          reg_cases rd
+          all_goals
+            rename_i i _hi hk
+            have hi_eq : i = BitVec.ofNat 5 i.toNat :=
+              bitvec5_eq_ofNat_toNat i
+            rw [hi_eq, hk] at h_ne ⊢
+            simp only [BitVec.toNat_ofNat, Nat.reducePow, Nat.reduceMod]
+              at h_ne ⊢
+            first
+            | contradiction
+            | simp [Std.ExtDHashMap.get?_insert]
+        rw [show rX_bits (regidx.Regidx $srcIdx) =
+            (fun s => (Sail.readReg $srcReg >>=
+              fun v => pure (regval_from_reg v)) s) from rfl] at hread ⊢
+        unfold Sail.readReg PreSail.readReg at hread ⊢
+        simp only [bind, EStateM.bind, pure, EStateM.pure, get, EStateM.get,
+          MonadStateOf.get, getThe] at hread ⊢
+        cases hget : s.regs.get? $srcReg with
+        | none =>
+            exfalso
+            revert hread
+            simp [hget, throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+        | some _ =>
+            simp [hget, pure, EStateM.pure] at hread
+            cases hread
+            simp [hpres, hget, pure, EStateM.pure]
+    )
+
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_1, (1#5), Register.x1
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_2, (2#5), Register.x2
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_3, (3#5), Register.x3
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_4, (4#5), Register.x4
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_5, (5#5), Register.x5
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_6, (6#5), Register.x6
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_7, (7#5), Register.x7
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_8, (8#5), Register.x8
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_9, (9#5), Register.x9
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_10, (10#5), Register.x10
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_11, (11#5), Register.x11
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_12, (12#5), Register.x12
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_13, (13#5), Register.x13
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_14, (14#5), Register.x14
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_15, (15#5), Register.x15
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_16, (16#5), Register.x16
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_17, (17#5), Register.x17
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_18, (18#5), Register.x18
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_19, (19#5), Register.x19
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_20, (20#5), Register.x20
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_21, (21#5), Register.x21
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_22, (22#5), Register.x22
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_23, (23#5), Register.x23
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_24, (24#5), Register.x24
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_25, (25#5), Register.x25
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_26, (26#5), Register.x26
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_27, (27#5), Register.x27
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_28, (28#5), Register.x28
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_29, (29#5), Register.x29
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_30, (30#5), Register.x30
+register_preserve_xreg rX_bits_stateAfterWrite_regidx_31, (31#5), Register.x31
+
+/-- Writing to one architectural register preserves a successful read from a
+different architectural register. -/
+theorem rX_bits_stateAfterWrite_of_ne
+    (rd rs : regidx) (writeVal readVal : BitVec 64) (s : SailState)
+    (h_ne : rd ≠ rs)
+    (hread : rX_bits rs s = .ok readVal s) :
+    rX_bits rs (stateAfterWrite s rd writeVal) =
+      .ok readVal (stateAfterWrite s rd writeVal) := by
+  reg_cases rs
+  all_goals
+    rename_i i _hi hk
+    have hi_eq : i = BitVec.ofNat 5 i.toNat := bitvec5_eq_ofNat_toNat i
+    rw [hi_eq, hk] at h_ne hread ⊢
+    first
+    | exact rX_bits_stateAfterWrite_regidx_0 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_1 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_2 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_3 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_4 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_5 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_6 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_7 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_8 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_9 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_10 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_11 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_12 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_13 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_14 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_15 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_16 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_17 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_18 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_19 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_20 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_21 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_22 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_23 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_24 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_25 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_26 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_27 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_28 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_29 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_30 rd writeVal readVal s
+        h_ne hread
+    | exact rX_bits_stateAfterWrite_regidx_31 rd writeVal readVal s
+        h_ne hread
+
 -- StateAfterWrite changes only rd with value v 
 theorem wX_bits_eq_stateAfterWrite (rd : regidx) (v : BitVec 64) (s s' : SailState)
     (hw : wX_bits rd v s = .ok () s') :
@@ -279,5 +451,13 @@ theorem wX_bits_eq_stateAfterWrite (rd : regidx) (v : BitVec 64) (s s' : SailSta
   have ⟨_, heq⟩ := eStateM_deterministic hw h_ok; subst heq
   have hmod := wX_eq_modify_regs rd v s s' hw
   rw [hmod, h_regs]
+
+/-- Running `wX_bits` reaches the pure `stateAfterWrite` model. -/
+theorem wX_bits_stateAfterWrite (rd : regidx) (v : BitVec 64) (s : SailState) :
+    wX_bits rd v s = .ok () (stateAfterWrite s rd v) := by
+  obtain ⟨s', hw⟩ := wX_shape rd v s
+  have hs' := wX_bits_eq_stateAfterWrite rd v s s' hw
+  rw [hs'] at hw
+  exact hw
 
 end

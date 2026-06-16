@@ -34,7 +34,8 @@ theorem dwordPhys
     FlatPhysMem (compute_aligned_dword_base_address h.rs1_val imm) 8 js.sail :=
   FlatPhysMem.ofReadWindow
     (compute_aligned_dword_base_address h.rs1_val imm) 8 js.sail
-    h.dword_window.bytes h.dword_window.load_pmp
+    (Assumptions.DwordPresent.memBytesPresent h.dword_window.bytes)
+    h.dword_window.load_pmp
     h.dword_window.not_readable_mmio
 
 /-- Derive an exact Sail read subaccess from the enclosing 8-byte Jolt read
@@ -64,7 +65,7 @@ theorem subaccessPhys
     omega
   have hphys :=
     FlatPhysMem.ofReadWindowSubaccess base 8 offset accessWidth js.sail
-      (by simpa [base] using h.dword_window.bytes)
+      (by simpa [base] using Assumptions.DwordPresent.memBytesPresent h.dword_window.bytes)
       (by simpa [base] using h.dword_window.load_pmp)
       (by simpa [base] using h.dword_window.not_readable_mmio)
       (by simpa [offset, ea] using hfits)

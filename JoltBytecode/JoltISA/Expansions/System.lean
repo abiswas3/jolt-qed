@@ -27,10 +27,20 @@ namespace JoltISA
 /-- Rust's first `allocate()` result for system expansions. -/
 def systemScratchVReg : VReg := inlineTmp0
 
-/-- Machine-mode CSRs supported by Rust's virtual-register system expansion
-whitelist. Unsupported CSR immediates are not valid Jolt expansion targets:
-Rust returns a `NoOp` only for default-constructed CSR `0`, and panics for other
-unsupported CSRs. -/
+/-- Machine-mode CSRs supported by Jolt's SYSTEM CSR expansion whitelist.
+
+Rust evidence:
+* `tracer/src/utils/virtual_registers.rs:120-128`
+  `VirtualRegisterAllocator::csr_to_virtual_register` maps exactly these six
+  CSR addresses to persistent virtual registers.
+* `tracer/src/utils/virtual_registers.rs:234-238`
+  `is_supported_csr` is exactly this six-address whitelist.
+* `tracer/src/instruction/mod.rs:1166-1174`
+  CSRRW decode rejects any CSR address outside `is_supported_csr`.
+* `crates/jolt-program/src/expand/allocator.rs:60-68`
+  the program expander's `virtual_register_for_csr` has the same six-address
+  whitelist and returns `None` otherwise.
+-/
 inductive SystemCSR where
   | mstatus
   | mtvec
@@ -59,6 +69,24 @@ def vreg : SystemCSR → VReg
   | .mepc => mepcVReg
   | .mcause => mcauseVReg
   | .mtval => mtvalVReg
+
+/-- Generated Sail register represented by the reserved virtual register for
+this supported System CSR.  This is Jolt ISA layout, not an assumption. -/
+def sailRegister : SystemCSR → Register
+  | .mstatus => Register.mstatus
+  | .mtvec => Register.mtvec
+  | .mscratch => Register.mscratch
+  | .mepc => Register.mepc
+  | .mcause => Register.mcause
+  | .mtval => Register.mtval
+
+@[simp] theorem vreg_sailTarget? (csr : SystemCSR) :
+    joltRegisterSailTarget? (vreg csr) = some (sailRegister csr) := by
+  cases csr <;> rfl
+
+@[simp] theorem vreg_csrAddress? (csr : SystemCSR) :
+    joltRegisterCsrAddress? (vreg csr) = some (address csr) := by
+  cases csr <;> rfl
 
 end SystemCSR
 

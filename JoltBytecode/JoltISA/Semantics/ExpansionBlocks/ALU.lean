@@ -110,7 +110,8 @@ the architectural source and writes the shifted value to the virtual register. -
 private theorem slli_block_run_vreg_xreg
     (vd : VReg) (rs : regidx) (shamt : BitVec 6)
     (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     (execInstr (.VirtualMULI (.vreg vd) (.xreg rs) (slliMultiplier shamt))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
@@ -118,9 +119,11 @@ private theorem slli_block_run_vreg_xreg
   have h_value :
       jolt_virtual_muli_value x (slliMultiplier shamt) = shift_bits_left x shamt :=
     slli_block_value_eq x shamt
+  unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst liftSail writeVReg
   simp only [h, h_value, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- The lowered `SLLI` block from a real source to a real destination reads the
 architectural source and writes the shifted value through Sail. -/
@@ -141,7 +144,7 @@ private theorem slli_block_run_xreg_xreg
 writes the shifted virtual-register value and leaves Sail unchanged. -/
 private theorem slli_block_run_vreg_vreg
     (vd vs : VReg) (shamt : BitVec 6)
-    (js : SailJoltState) :
+    (js : SailJoltState) (hvd : WritableVReg vd) :
     (execInstr (.VirtualMULI (.vreg vd) (.vreg vs) (slliMultiplier shamt))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
@@ -150,10 +153,12 @@ private theorem slli_block_run_vreg_vreg
       jolt_virtual_muli_value (js.vregs vs) (slliMultiplier shamt) =
         shift_bits_left (js.vregs vs) shamt :=
     slli_block_value_eq (js.vregs vs) shamt
+  unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg writeVReg
   simp only [h_value, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- Existential package for the lowered `SLLI` block from a real source to a
 virtual destination.  It exposes the source read, the virtual-register write,
@@ -162,7 +167,8 @@ continuation program. -/
 theorem exists_state_after_slli_block_run_vreg_xreg
     (vd : VReg) (rs : regidx) (shamt : BitVec 6)
     (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     ∃ js',
       rX_bits rs js.sail = .ok x js.sail ∧
       js'.sail = js.sail ∧
@@ -181,7 +187,7 @@ theorem exists_state_after_slli_block_run_vreg_xreg
   · intro tail
     unfold slliBlock
     rw [execProgram_instr_run_retire _ _ js js'
-      (by simpa only [js'] using slli_block_run_vreg_xreg vd rs shamt js x h)]
+      (by simpa only [js'] using slli_block_run_vreg_xreg vd rs shamt js x h hvd)]
 
 /-- Existential package for the lowered `SLLI` block from a real source to a
 real destination.  It exposes the source read, the architectural write,
@@ -215,7 +221,7 @@ virtual destination.  It exposes the shifted value, preservation of other
 virtual registers, and the block's effect on every continuation program. -/
 theorem exists_state_after_slli_block_run_vreg_vreg
     (vd vs : VReg) (shamt : BitVec 6)
-    (js : SailJoltState) :
+    (js : SailJoltState) (hvd : WritableVReg vd) :
     ∃ js',
       js'.sail = js.sail ∧
       js'.vregs vd = shift_bits_left (js.vregs vs) shamt ∧
@@ -233,14 +239,15 @@ theorem exists_state_after_slli_block_run_vreg_vreg
   · intro tail
     unfold slliBlock
     rw [execProgram_instr_run_retire _ _ js js'
-      (by simpa only [js'] using slli_block_run_vreg_vreg vd vs shamt js)]
+      (by simpa only [js'] using slli_block_run_vreg_vreg vd vs shamt js hvd)]
 
 /-- Existential package for the lowered `SLL` block from virtual sources to a
 virtual destination.  The scratch register first receives `2 ^ shift[5:0]`,
 then the destination receives the corresponding left shift. -/
 theorem exists_state_after_sll_block_run_vreg_vreg_vreg
     (vd value shift scratch : VReg) (js : SailJoltState)
-    (h_value_ne_scratch : value ≠ scratch) :
+    (h_value_ne_scratch : value ≠ scratch)
+    (hvd : WritableVReg vd) (hscratch : WritableVReg scratch) :
     ∃ js',
       js'.sail = js.sail ∧
       js'.vregs vd =
@@ -261,11 +268,11 @@ theorem exists_state_after_sll_block_run_vreg_vreg_vreg
   have hpow2 :
       (execInstr (.VirtualPow2 (.vreg scratch) (.vreg shift))).run js =
         .ok RETIRE_SUCCESS js_pow2 := by
-    simpa [js_pow2] using virtual_pow2_run_vreg_vreg scratch shift js
+    simpa [js_pow2] using virtual_pow2_run_vreg_vreg scratch shift js hscratch
   have hmul :
       (execInstr (.MUL (.vreg vd) (.vreg value) (.vreg scratch))).run js_pow2 =
         .ok RETIRE_SUCCESS js' := by
-    simpa [js'] using mul_run_vreg_vreg_vreg vd value scratch js_pow2
+    simpa [js'] using mul_run_vreg_vreg_vreg vd value scratch js_pow2 hvd
   refine ⟨js', rfl, ?_, ?_, ?_⟩
   · dsimp [js']
     simp only [↓reduceIte]
@@ -292,7 +299,8 @@ left shift of the real source value. -/
 theorem exists_state_after_sll_block_run_vreg_xreg_vreg
     (vd : VReg) (value : regidx) (shift scratch : VReg)
     (js : SailJoltState) (x : BitVec 64)
-    (h_read : rX_bits value js.sail = .ok x js.sail) :
+    (h_read : rX_bits value js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) (hscratch : WritableVReg scratch) :
     ∃ js',
       rX_bits value js.sail = .ok x js.sail ∧
       js'.sail = js.sail ∧
@@ -314,13 +322,13 @@ theorem exists_state_after_sll_block_run_vreg_xreg_vreg
   have hpow2 :
       (execInstr (.VirtualPow2 (.vreg scratch) (.vreg shift))).run js =
         .ok RETIRE_SUCCESS js_pow2 := by
-    simpa [js_pow2] using virtual_pow2_run_vreg_vreg scratch shift js
+    simpa [js_pow2] using virtual_pow2_run_vreg_vreg scratch shift js hscratch
   have h_read_pow2 : rX_bits value js_pow2.sail = .ok x js_pow2.sail := by
     exact h_read
   have hmul :
       (execInstr (.MUL (.vreg vd) (.xreg value) (.vreg scratch))).run js_pow2 =
         .ok RETIRE_SUCCESS js' := by
-    simpa [js'] using mul_run_vreg_xreg_vreg vd value scratch js_pow2 x h_read_pow2
+    simpa [js'] using mul_run_vreg_xreg_vreg vd value scratch js_pow2 x h_read_pow2 hvd
   refine ⟨js', h_read, rfl, ?_, ?_, ?_⟩
   · dsimp [js']
     simp only [↓reduceIte]
@@ -343,7 +351,7 @@ theorem exists_state_after_sll_block_run_vreg_xreg_vreg
 writes the logical right shift selected by the immediate. -/
 private theorem srli_block_run_vreg_vreg
     (vd vs : VReg) (shamt : BitVec 6)
-    (js : SailJoltState) :
+    (js : SailJoltState) (hvd : WritableVReg vd) :
     (execInstr (.VirtualSRLI (.vreg vd) (.vreg vs) (srliBitmask shamt))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
@@ -353,14 +361,14 @@ private theorem srli_block_run_vreg_vreg
       jolt_virtual_srli_value (js.vregs vs) (srliBitmask shamt) =
         shift_bits_right (js.vregs vs) shamt :=
     srli_block_value_eq (js.vregs vs) shamt
-  simpa [h_value] using virtual_srli_run_vreg_vreg vd vs (srliBitmask shamt) js
+  simpa [h_value] using virtual_srli_run_vreg_vreg vd vs (srliBitmask shamt) js hvd
 
 /-- Existential package for the lowered `SRLI` block from a virtual source to
 a virtual destination.  It exposes the virtual-register write, preservation of
 other virtual registers, and the block's effect on every continuation program. -/
 theorem exists_state_after_srli_block_run_vreg_vreg
     (vd vs : VReg) (shamt : BitVec 6)
-    (js : SailJoltState) :
+    (js : SailJoltState) (hvd : WritableVReg vd) :
     ∃ js',
       js'.sail = js.sail ∧
       js'.vregs vd = shift_bits_right (js.vregs vs) shamt ∧
@@ -378,14 +386,15 @@ theorem exists_state_after_srli_block_run_vreg_vreg
   · intro tail
     unfold srliBlock
     rw [execProgram_instr_run_retire _ _ js js'
-      (by simpa only [js'] using srli_block_run_vreg_vreg vd vs shamt js)]
+      (by simpa only [js'] using srli_block_run_vreg_vreg vd vs shamt js hvd)]
 
 /-- Existential package for the lowered `SRL` block from virtual sources to a
 virtual destination.  The scratch register first receives the encoded right
 shift bitmask, then the destination receives the logical right shift. -/
 theorem exists_state_after_srl_block_run_vreg_vreg_vreg
     (vd value shift scratch : VReg) (js : SailJoltState)
-    (h_value_ne_scratch : value ≠ scratch) :
+    (h_value_ne_scratch : value ≠ scratch)
+    (hvd : WritableVReg vd) (hscratch : WritableVReg scratch) :
     ∃ js',
       js'.sail = js.sail ∧
       js'.vregs vd =
@@ -409,11 +418,11 @@ theorem exists_state_after_srl_block_run_vreg_vreg_vreg
       (execInstr (.VirtualShiftRightBitmask (.vreg scratch) (.vreg shift))).run js =
         .ok RETIRE_SUCCESS js_bitmask := by
     simpa [js_bitmask] using
-      virtual_shift_right_bitmask_run_vreg_vreg scratch shift js
+      virtual_shift_right_bitmask_run_vreg_vreg scratch shift js hscratch
   have hsrl :
       (execInstr (.VirtualSRL (.vreg vd) (.vreg value) (.vreg scratch))).run js_bitmask =
         .ok RETIRE_SUCCESS js' := by
-    simpa [js'] using virtual_srl_run_vreg_vreg_vreg vd value scratch js_bitmask
+    simpa [js'] using virtual_srl_run_vreg_vreg_vreg vd value scratch js_bitmask hvd
   refine ⟨js', rfl, ?_, ?_, ?_⟩
   · dsimp [js']
     simp only [↓reduceIte]
@@ -438,7 +447,7 @@ theorem exists_state_after_srl_block_run_vreg_vreg_vreg
 writes the arithmetic right shift selected by the immediate. -/
 private theorem srai_block_run_vreg_vreg
     (vd vs : VReg) (shamt : BitVec 6)
-    (js : SailJoltState) :
+    (js : SailJoltState) (hvd : WritableVReg vd) :
     (execInstr (.VirtualSRAI (.vreg vd) (.vreg vs) (sraiBitmask shamt))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
@@ -448,17 +457,20 @@ private theorem srai_block_run_vreg_vreg
       jolt_virtual_srai_value (js.vregs vs) (sraiBitmask shamt) =
         shift_bits_right_arith (js.vregs vs) shamt :=
     srai_block_value_eq (js.vregs vs) shamt
+  unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg writeVReg
   simp only [h_value, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- The lowered `SRAI` block from a real source to a virtual destination reads
 the architectural source and writes the arithmetic right shift. -/
 private theorem srai_block_run_vreg_xreg
     (vd : VReg) (rs : regidx) (shamt : BitVec 6)
     (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     (execInstr (.VirtualSRAI (.vreg vd) (.xreg rs) (sraiBitmask shamt))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
@@ -467,16 +479,18 @@ private theorem srai_block_run_vreg_xreg
   have h_value :
       jolt_virtual_srai_value x (sraiBitmask shamt) = shift_bits_right_arith x shamt :=
     srai_block_value_eq x shamt
+  unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst liftSail writeVReg
   simp only [h, h_value, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
+    EStateM.modifyGet]
 
 /-- Existential package for the lowered `SRAI` block from a virtual source to
 a virtual destination.  It exposes the virtual-register write, preservation of
 other virtual registers, and the block's effect on every continuation program. -/
 theorem exists_state_after_srai_block_run_vreg_vreg
     (vd vs : VReg) (shamt : BitVec 6)
-    (js : SailJoltState) :
+    (js : SailJoltState) (hvd : WritableVReg vd) :
     ∃ js',
       js'.sail = js.sail ∧
       js'.vregs vd = shift_bits_right_arith (js.vregs vs) shamt ∧
@@ -494,7 +508,7 @@ theorem exists_state_after_srai_block_run_vreg_vreg
   · intro tail
     unfold sraiBlock
     rw [execProgram_instr_run_retire _ _ js js'
-      (by simpa only [js'] using srai_block_run_vreg_vreg vd vs shamt js)]
+      (by simpa only [js'] using srai_block_run_vreg_vreg vd vs shamt js hvd)]
 
 /-- Existential package for the lowered `SRAI` block from a real source to a
 virtual destination.  It exposes the source read, virtual-register write,
@@ -503,7 +517,8 @@ continuation program. -/
 theorem exists_state_after_srai_block_run_vreg_xreg
     (vd : VReg) (rs : regidx) (shamt : BitVec 6)
     (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits rs js.sail = .ok x js.sail) :
+    (h : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
     ∃ js',
       rX_bits rs js.sail = .ok x js.sail ∧
       js'.sail = js.sail ∧
@@ -522,7 +537,7 @@ theorem exists_state_after_srai_block_run_vreg_xreg
   · intro tail
     unfold sraiBlock
     rw [execProgram_instr_run_retire _ _ js js'
-      (by simpa only [js'] using srai_block_run_vreg_xreg vd rs shamt js x h)]
+      (by simpa only [js'] using srai_block_run_vreg_xreg vd rs shamt js x h hvd)]
 
 end JoltISA
 

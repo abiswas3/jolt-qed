@@ -16,14 +16,14 @@ noncomputable section
 namespace JoltISA
 
 /-- `VirtualAdvice` writes the supplied advice value into a virtual register. -/
-theorem virtual_advice_run (vd : VReg) (advice : BitVec 64) (js : SailJoltState) :
+theorem virtual_advice_run (vd : VReg) (advice : BitVec 64) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
     (execInstr (.VirtualAdvice vd advice)).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r => if r = vd then advice else js.vregs r } := by
-  unfold execInstr writeVReg
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+  unfold execInstr
+  exact writeVReg_retire_run_of_writable vd advice js hvd
 
 /-- `VirtualAdviceLoad` writes the supplied advice value to an architectural
 destination register. -/

@@ -19,6 +19,22 @@ set_option autoImplicit true
 
 noncomputable section
 
+namespace Assumptions.DwordPresent
+
+/-- The primitive dword-present assumption gives the byte-present helper for
+the whole 8-byte dword. -/
+theorem memBytesPresent
+    {addr : BitVec 64} {s : SailState}
+    (h : Assumptions.DwordPresent addr s) :
+    MemBytesPresent addr 8 s := by
+  rcases h.bytes with ⟨bytes, hbytes⟩
+  refine ⟨fun k hk => ?_⟩
+  have hget := hbytes ⟨k, hk⟩
+  rw [hget]
+  simp
+
+end Assumptions.DwordPresent
+
 namespace MemBytesPresent
 
 /-- Byte-present facts are monotone over explicit subwindows. -/
@@ -52,12 +68,16 @@ exact read-memory fact for any explicit subwindow. -/
 theorem ofReadWindowSubaccess
     (base : BitVec 64) (baseWidth offset accessWidth : Nat) (s : SailState)
     (hbytes : MemBytesPresent base baseWidth s)
-    (hpmp : LoadPmpOkInRange base baseWidth s)
-    (hmmio : NotReadableMmioInRange base baseWidth s)
+    (hpmp :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ baseWidth →
+        LoadPmpOk (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hmmio :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ baseWidth →
+        NotReadableMmio (base + BitVec.ofNat 64 offset) accessWidth s)
     (hfits : offset + accessWidth ≤ baseWidth)
     (h_no_ovf : base.toNat + offset < 2 ^ 64) :
     FlatPhysMem (base + BitVec.ofNat 64 offset) accessWidth s :=
-  { bytes := hbytes.subaccess hfits h_no_ovf
+  { bytes := MemBytesPresent.subaccess hbytes hfits h_no_ovf
     pmp := hpmp offset accessWidth hfits
     mmio := hmmio offset accessWidth hfits }
 
@@ -65,8 +85,12 @@ theorem ofReadWindowSubaccess
 theorem ofReadWindow
     (base : BitVec 64) (width : Nat) (s : SailState)
     (hbytes : MemBytesPresent base width s)
-    (hpmp : LoadPmpOkInRange base width s)
-    (hmmio : NotReadableMmioInRange base width s) :
+    (hpmp :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        LoadPmpOk (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hmmio :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        NotReadableMmio (base + BitVec.ofNat 64 offset) accessWidth s) :
     FlatPhysMem base width s := by
   have h := ofReadWindowSubaccess base width 0 width s
     hbytes hpmp hmmio (by omega) (by exact base.isLt)
@@ -80,8 +104,12 @@ namespace FlatStoreMem
 exact write-memory fact for any explicit subwindow. -/
 theorem ofWriteWindowSubaccess
     (base : BitVec 64) (baseWidth offset accessWidth : Nat) (s : SailState)
-    (hpmp : StorePmpOkInRange base baseWidth s)
-    (hmmio : NotWritableMmioInRange base baseWidth s)
+    (hpmp :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ baseWidth →
+        StorePmpOk (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hmmio :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ baseWidth →
+        NotWritableMmio (base + BitVec.ofNat 64 offset) accessWidth s)
     (hfits : offset + accessWidth ≤ baseWidth) :
     FlatStoreMem (base + BitVec.ofNat 64 offset) accessWidth s :=
   { pmp := hpmp offset accessWidth hfits
@@ -90,8 +118,12 @@ theorem ofWriteWindowSubaccess
 /-- The whole write window is also an exact write-memory fact. -/
 theorem ofWriteWindow
     (base : BitVec 64) (width : Nat) (s : SailState)
-    (hpmp : StorePmpOkInRange base width s)
-    (hmmio : NotWritableMmioInRange base width s) :
+    (hpmp :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        StorePmpOk (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hmmio :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        NotWritableMmio (base + BitVec.ofNat 64 offset) accessWidth s) :
     FlatStoreMem base width s := by
   have h := ofWriteWindowSubaccess base width 0 width s
     hpmp hmmio (by omega)
@@ -104,10 +136,18 @@ namespace FlatLoadStoreMem
 theorem ofReadWriteWindow
     (base : BitVec 64) (width : Nat) (s : SailState)
     (hbytes : MemBytesPresent base width s)
-    (hloadPmp : LoadPmpOkInRange base width s)
-    (hstorePmp : StorePmpOkInRange base width s)
-    (hreadable : NotReadableMmioInRange base width s)
-    (hwritable : NotWritableMmioInRange base width s) :
+    (hloadPmp :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        LoadPmpOk (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hstorePmp :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        StorePmpOk (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hreadable :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        NotReadableMmio (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hwritable :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        NotWritableMmio (base + BitVec.ofNat 64 offset) accessWidth s) :
     FlatLoadStoreMem base width s :=
   { bytes := hbytes
     load_pmp := by simpa using hloadPmp 0 width (by omega)
@@ -125,13 +165,19 @@ theorem ofAtomicWindowSubaccess
     (op : amoop) (base : BitVec 64) (baseWidth offset accessWidth : Nat)
     (s : SailState)
     (hbytes : MemBytesPresent base baseWidth s)
-    (hpmp : AtomicPmpOkInRange op base baseWidth s)
-    (hreadable : NotReadableMmioInRange base baseWidth s)
-    (hwritable : NotWritableMmioInRange base baseWidth s)
+    (hpmp :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ baseWidth →
+        AtomicPmpOk op (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hreadable :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ baseWidth →
+        NotReadableMmio (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hwritable :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ baseWidth →
+        NotWritableMmio (base + BitVec.ofNat 64 offset) accessWidth s)
     (hfits : offset + accessWidth ≤ baseWidth)
     (h_no_ovf : base.toNat + offset < 2 ^ 64) :
     FlatAtomicMem op (base + BitVec.ofNat 64 offset) accessWidth s :=
-  { bytes := hbytes.subaccess hfits h_no_ovf
+  { bytes := MemBytesPresent.subaccess hbytes hfits h_no_ovf
     pmp := hpmp offset accessWidth hfits
     readable := hreadable offset accessWidth hfits
     writable := hwritable offset accessWidth hfits }
@@ -140,9 +186,15 @@ theorem ofAtomicWindowSubaccess
 theorem ofAtomicWindow
     (op : amoop) (base : BitVec 64) (width : Nat) (s : SailState)
     (hbytes : MemBytesPresent base width s)
-    (hpmp : AtomicPmpOkInRange op base width s)
-    (hreadable : NotReadableMmioInRange base width s)
-    (hwritable : NotWritableMmioInRange base width s) :
+    (hpmp :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        AtomicPmpOk op (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hreadable :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        NotReadableMmio (base + BitVec.ofNat 64 offset) accessWidth s)
+    (hwritable :
+      ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+        NotWritableMmio (base + BitVec.ofNat 64 offset) accessWidth s) :
     FlatAtomicMem op base width s := by
   have h := ofAtomicWindowSubaccess op base width 0 width s
     hbytes hpmp hreadable hwritable (by omega) (by exact base.isLt)

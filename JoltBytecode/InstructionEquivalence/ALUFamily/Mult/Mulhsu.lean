@@ -722,37 +722,44 @@ has the same projected architectural result as Sail's `MULHSU` semantics. -/
 theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx)
     (js : SailJoltState)
     (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js) =
-    (execute_MUL rs2 rs1 rd mulhsuOp).run js.sail := by
-  let v1 := h.rs1_val
-  let v2 := h.rs2_val
-  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read.value_eq
-  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read.value_eq
-  by_cases hrd : rd = regidx.Regidx 0
-  · subst rd
-    unfold JoltISA.mulhsuProgram
-    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
-    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js)
+      ((execute_MUL rs2 rs1 rd mulhsuOp).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · let v1 := h.rs1_val
+    let v2 := h.rs2_val
+    have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
+    have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read
+    by_cases hrd : rd = regidx.Regidx 0
+    · subst rd
+      unfold JoltISA.mulhsuProgram
+      rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+      rw [JoltISA.pureWritebackRdZeroProgram_run js]
+      simp only [projectResult, project]
+      rw [execute_MULHSU_factored rs2 rs1 (regidx.Regidx 0)]
+      simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+      simp only [h_read_rs1, h_read_rs2]
+      simp only [wX_bits_regidx_zero]
+
+    obtain ⟨js_afterFinalAdd, h_program_succeeds, h_final_sail⟩ :=
+      mulhsuProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
+
+    rw [h_program_succeeds]
     simp only [projectResult, project]
-    rw [execute_MULHSU_factored rs2 rs1 (regidx.Regidx 0)]
+    rw [h_final_sail]
+
+    rw [execute_MULHSU_factored rs2 rs1 rd]
     simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
     simp only [h_read_rs1, h_read_rs2]
-    simp only [wX_bits_regidx_zero]
 
-  obtain ⟨js_afterFinalAdd, h_program_succeeds, h_final_sail⟩ :=
-    mulhsuProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
-
-  rw [h_program_succeeds]
-  simp only [projectResult, project]
-  rw [h_final_sail]
-
-  rw [execute_MULHSU_factored rs2 rs1 rd]
-  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-  simp only [h_read_rs1, h_read_rs2]
-
-  obtain ⟨s', h_write⟩ := wX_shape rd (mulhsu v1 v2) js.sail
-  simp only [h_write]
-  congr 1
-  exact (wX_bits_eq_stateAfterWrite rd (mulhsu v1 v2) js.sail s' h_write).symm
+    obtain ⟨s', h_write⟩ := wX_shape rd (mulhsu v1 v2) js.sail
+    simp only [h_write]
+    congr 1
+    exact (wX_bits_eq_stateAfterWrite rd (mulhsu v1 v2) js.sail s' h_write).symm
+  · unfold JoltISA.mulhsuProgram
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg]
 
 end

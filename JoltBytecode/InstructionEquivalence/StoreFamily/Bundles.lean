@@ -29,10 +29,10 @@ structure StoreRegisterConfigAssumptions
     (rs2 rs1 : regidx) (js : SailJoltState) where
   rs1_val : BitVec 64
   rs2_val : BitVec 64
-  rs1_read : XRegRead rs1 rs1_val js.sail
-  rs2_read : XRegRead rs2 rs2_val js.sail
-  cur_privilege : CurPrivilegeMachine js.sail
-  mstatus_mprv : MstatusMprvZero js.sail
+  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+  rs2_read : rX_bits rs2 js.sail = .ok rs2_val js.sail
+  cur_privilege : Assumptions.CurPrivilegeMachine js.sail
+  mstatus_mprv : Assumptions.MstatusMprvZero js.sail
 
 /-- Shared public assumptions for Jolt store-family equivalence theorems.
 

@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.AdviceFamily.Advice
+import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.Advice
 import JoltBytecode.JoltISA.Semantics.ExpansionBlocks.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions
@@ -94,7 +95,7 @@ theorem advicelwProgram_concrete (rd : regidx) (advice : BitVec 32)
   rw [stateAfterWrite_stateAfterWrite]
   rw [stateAfterWrite_stateAfterWrite]
 
-theorem advicelwProgram_eq_sail
+private theorem advicelwProgram_project_eq_sail
     (rd : regidx) (advice : BitVec 32) (js : SailJoltState) :
     projectResult ((JoltISA.execProgram (JoltISA.advicelwProgram rd advice)).run js) =
       (execute_ADVICELW rd advice).run js.sail := by
@@ -121,5 +122,18 @@ theorem advicelwProgram_eq_sail
   congr 1
   exact (wX_bits_eq_stateAfterWrite rd (sign_extend (m := 64) advice) js.sail s'
     h_write).symm
+
+theorem advicelwProgram_eq_sail
+    (rd : regidx) (advice : BitVec 32) (js : SailJoltState) :
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.advicelwProgram rd advice)).run js)
+      ((execute_ADVICELW rd advice).run js.sail) := by
+  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+  · exact advicelwProgram_project_eq_sail rd advice js
+  · unfold JoltISA.advicelwProgram JoltISA.slliBlock
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg]
 
 end

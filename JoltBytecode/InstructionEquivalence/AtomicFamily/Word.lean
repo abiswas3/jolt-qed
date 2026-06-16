@@ -2,6 +2,7 @@ import JoltBytecode.InstructionEquivalence.AtomicFamily.Common
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadDefUtils
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
+import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.StoreFamily.Splice
 import JoltBytecode.JoltISA.Semantics.ExpansionBlocks.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.Add
@@ -3967,8 +3968,8 @@ theorem amo_word_select_program_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Shared full theorem for word AMO select expansions. -/
-theorem amo_word_select_program_eq_sail
+/-- Shared projection helper for word AMO select expansions. -/
+theorem amo_word_select_program_project_eq_sail
     (op : amoop)
     (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
     (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)

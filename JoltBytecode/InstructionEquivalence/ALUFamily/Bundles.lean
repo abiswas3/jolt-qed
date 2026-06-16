@@ -24,7 +24,7 @@ This bundles exactly one source-register read: `rs1` has value `rs1_val` in the
 initial Sail state. -/
 structure UnarySourceReadAssumptions (rs1 : regidx) (js : SailJoltState) where
   rs1_val : BitVec 64
-  rs1_read : XRegRead rs1 rs1_val js.sail
+  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
 
 /-- Public assumptions for two-source ALU instructions.
 
@@ -34,8 +34,8 @@ structure BinarySourceReadAssumptions
     (rs2 rs1 : regidx) (js : SailJoltState) where
   rs1_val : BitVec 64
   rs2_val : BitVec 64
-  rs1_read : XRegRead rs1 rs1_val js.sail
-  rs2_read : XRegRead rs2 rs2_val js.sail
+  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+  rs2_read : rX_bits rs2 js.sail = .ok rs2_val js.sail
 
 end ALUFamily
 

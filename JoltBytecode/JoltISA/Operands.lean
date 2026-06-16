@@ -20,8 +20,37 @@ def readVReg (vr : BitVec 7) : JoltMonad (BitVec 64) := do
   let js ← get
   pure (js.vregs vr)
 
+def WritableVReg (vr : BitVec 7) : Prop :=
+  ¬ vr.toNat < 32
+
 def writeVReg (vr : BitVec 7) (val : BitVec 64) : JoltMonad Unit :=
-  modify fun js => { js with vregs := fun r => if r = vr then val else js.vregs r }
+  if vr.toNat < 32 then
+    throw (Error.Assertion "writeVReg: architectural xreg address")
+  else
+    modify fun js => { js with vregs := fun r => if r = vr then val else js.vregs r }
+
+theorem writeVReg_run
+    (vr : BitVec 7) (val : BitVec 64) (js : SailJoltState) :
+    (writeVReg vr val).run js =
+      if vr.toNat < 32 then
+        .error (Error.Assertion "writeVReg: architectural xreg address") js
+      else
+        .ok () { js with vregs := fun r => if r = vr then val else js.vregs r } := by
+  unfold writeVReg
+  by_cases h : vr.toNat < 32
+  · simp only [h, ↓reduceIte, EStateM.run, throw, throwThe,
+      MonadExceptOf.throw, EStateM.throw]
+  · simp only [h, ↓reduceIte, EStateM.run, modify, modifyGet,
+      MonadStateOf.modifyGet, EStateM.modifyGet]
+
+theorem writeVReg_run_of_writable
+    (vr : BitVec 7) (val : BitVec 64) (js : SailJoltState)
+    (h : WritableVReg vr) :
+    (writeVReg vr val).run js =
+      .ok () { js with vregs := fun r => if r = vr then val else js.vregs r } := by
+  unfold WritableVReg at h
+  rw [writeVReg_run]
+  simp only [h, ↓reduceIte]
 
 /-- Running a virtual-register read returns the value currently stored at that
 virtual register and leaves the whole Jolt state unchanged. -/

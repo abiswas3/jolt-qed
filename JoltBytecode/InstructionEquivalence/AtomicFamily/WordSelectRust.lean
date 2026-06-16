@@ -2001,8 +2001,8 @@ theorem amo_word_rust_select_program_eq_sail_misaligned
   symm
   exact hsail
 
-/-- Shared full theorem for word AMO select expansions. -/
-theorem amo_word_rust_select_program_eq_sail
+/-- Shared projection helper for word AMO select expansions. -/
+theorem amo_word_rust_select_program_project_eq_sail
     (op : amoop)
     (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
     (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
