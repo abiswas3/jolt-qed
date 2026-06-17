@@ -59,19 +59,19 @@ def phase_setup (rs1 rs2 : regidx) (quotient : BitVec 64) :
   .instr (.VirtualZeroExtendWord (.vreg rs1VReg) (.xreg rs1)) <|
   .instr (.VirtualZeroExtendWord (.vreg rs2VReg) (.xreg rs2)) <|
   .instr (.VirtualAdvice quoVReg quotient) <|
-  .instr (.VirtualAssertMulUNoOverflowV quoVReg rs2VReg) <|
+  .instr (.VirtualAssertMulUNoOverflow (.vreg quoVReg) (.vreg rs2VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 2 — `MUL v3, v2, v1` + `VirtualAssertLTE v3, v0`. -/
 def phase_quotient_product : JoltISA.Program :=
   .instr (.MUL (.vreg tempVReg) (.vreg quoVReg) (.vreg rs2VReg)) <|
-  .instr (.VirtualAssertLTE tempVReg rs1VReg) <|
+  .instr (.VirtualAssertLTE (.vreg tempVReg) (.vreg rs1VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 3 — `SUB v3, v0, v3` + `VirtualAssertValidUnsignedRemainder v3, v1`. -/
 def phase_remainder_bound : JoltISA.Program :=
   .instr (.SUB (.vreg tempVReg) (.vreg rs1VReg) (.vreg tempVReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder tempVReg rs2VReg) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg tempVReg) (.vreg rs2VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 4 — `SignExtendWord v3, v2` + `VirtualAssertValidDiv0 v1, v3`.
@@ -81,7 +81,7 @@ remainder), then asserts the div-by-zero special case
 `zext_divisor = 0 ⇒ sext(q) = -1` (i.e. `q = u32::MAX`). -/
 def phase_div0_check : JoltISA.Program :=
   .instr (.VirtualSignExtendWord (.vreg tempVReg) (.vreg quoVReg)) <|
-  .instr (.VirtualAssertValidDiv0V rs2VReg tempVReg) <|
+  .instr (.VirtualAssertValidDiv0 (.vreg rs2VReg) (.vreg tempVReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 5 — writeback `rd := v3` (the sign-extended quotient). -/
@@ -287,7 +287,7 @@ theorem phase_setup_run_sound
     (hs3_pres rs2VReg (by decide)).trans hs2_v1
   have hs3_sail_orig : s3.sail = js.sail := hs3_sail.trans (hs2_sail.trans hs1_sail)
   change (JoltISA.execProgram
-      (.instr (.VirtualAssertMulUNoOverflowV quoVReg rs2VReg) (.done RETIRE_SUCCESS))).run s3 =
+      (.instr (.VirtualAssertMulUNoOverflow (.vreg quoVReg) (.vreg rs2VReg)) (.done RETIRE_SUCCESS))).run s3 =
         .ok RETIRE_SUCCESS js₁ at hp
   by_cases hguard : (s3.vregs quoVReg).toNat * (s3.vregs rs2VReg).toNat < 2^64
   · have hok := JoltISA.virtual_assert_mulu_no_overflow_v_run_ok quoVReg rs2VReg s3 hguard
@@ -324,7 +324,7 @@ theorem phase_quotient_product_run_sound
   have hs1_v2 : s1.vregs quoVReg = q  := (hs1_pres quoVReg (by decide)).trans h_v2
   have hs1_v3_eq : s1.vregs tempVReg = q * zv := by rw [hs1_v3, h_v2, h_v1]
   change (JoltISA.execProgram
-      (.instr (.VirtualAssertLTE tempVReg rs1VReg) (.done RETIRE_SUCCESS))).run s1 =
+      (.instr (.VirtualAssertLTE (.vreg tempVReg) (.vreg rs1VReg)) (.done RETIRE_SUCCESS))).run s1 =
         .ok RETIRE_SUCCESS js₁ at hp
   by_cases hguard : (s1.vregs tempVReg).toNat ≤ (s1.vregs rs1VReg).toNat
   · have hok := JoltISA.virtual_assert_lte_run_ok tempVReg rs1VReg s1 hguard
@@ -360,7 +360,7 @@ theorem phase_remainder_bound_run_sound
   have hs1_v2 : s1.vregs quoVReg = q  := (hs1_pres quoVReg (by decide)).trans h_v2
   have hs1_v3_eq : s1.vregs tempVReg = zd - q * zv := by rw [hs1_v3, h_v0, h_v3]
   change (JoltISA.execProgram
-      (.instr (.VirtualAssertValidUnsignedRemainder tempVReg rs2VReg) (.done RETIRE_SUCCESS))).run s1 =
+      (.instr (.VirtualAssertValidUnsignedRemainder (.vreg tempVReg) (.vreg rs2VReg)) (.done RETIRE_SUCCESS))).run s1 =
         .ok RETIRE_SUCCESS js₁ at hp
   by_cases hguard : s1.vregs rs2VReg = 0#64 ∨ (s1.vregs tempVReg).toNat < (s1.vregs rs2VReg).toNat
   · have hok := JoltISA.virtual_assert_valid_unsigned_remainder_run_ok tempVReg rs2VReg s1 hguard
@@ -395,7 +395,7 @@ theorem phase_div0_check_run_sound
   have hs1_v3_eq : s1.vregs tempVReg = sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0) := by
     rw [hs1_v3, h_v2]
   change (JoltISA.execProgram
-      (.instr (.VirtualAssertValidDiv0V rs2VReg tempVReg) (.done RETIRE_SUCCESS))).run s1 =
+      (.instr (.VirtualAssertValidDiv0 (.vreg rs2VReg) (.vreg tempVReg)) (.done RETIRE_SUCCESS))).run s1 =
         .ok RETIRE_SUCCESS js₁ at hp
   by_cases hguard : s1.vregs rs2VReg = 0#64 ∧ s1.vregs tempVReg ≠ (-1 : BitVec 64)
   · exfalso

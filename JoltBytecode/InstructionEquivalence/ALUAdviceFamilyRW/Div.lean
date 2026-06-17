@@ -40,22 +40,22 @@ def divProgram (rs2 rs1 rd : regidx)
   pureWritebackTraceProgram rd <|
   .instr (.VirtualAdvice Div.a2VReg quotient) <|
   .instr (.VirtualAdvice Div.a3VReg remAbs) <|
-  .instr (.VirtualAssertValidDiv0 rs2 Div.a2VReg) <|
-  .instr (.VirtualChangeDivisor Div.t0VReg rs1 rs2) <|
+  .instr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg Div.a2VReg)) <|
+  .instr (.VirtualChangeDivisor (.vreg Div.t0VReg) (.xreg rs1) (.xreg rs2)) <|
   mulhBlock Div.t2VReg Div.t3VReg Div.t4VReg
     (.vreg Div.t1VReg) (.vreg Div.a2VReg) (.vreg Div.t0VReg) <|
   .instr (.MUL (.vreg Div.t2VReg) (.vreg Div.a2VReg) (.vreg Div.t0VReg)) <|
   sraiBlock (.vreg Div.t3VReg) (.vreg Div.t2VReg) (63 : BitVec 6) <|
-  .instr (.VirtualAssertEQ Div.t1VReg Div.t3VReg) <|
+  .instr (.VirtualAssertEQ (.vreg Div.t1VReg) (.vreg Div.t3VReg)) <|
   sraiBlock (.vreg Div.t1VReg) (.xreg rs1) (63 : BitVec 6) <|
   .instr (.XOR (.vreg Div.t3VReg) (.vreg Div.a3VReg) (.vreg Div.t1VReg)) <|
   .instr (.SUB (.vreg Div.t3VReg) (.vreg Div.t3VReg) (.vreg Div.t1VReg)) <|
   .instr (.ADD (.vreg Div.t2VReg) (.vreg Div.t2VReg) (.vreg Div.t3VReg)) <|
-  .instr (.VirtualAssertEQReal Div.t2VReg rs1) <|
+  .instr (.VirtualAssertEQ (.vreg Div.t2VReg) (.xreg rs1)) <|
   sraiBlock (.vreg Div.t1VReg) (.vreg Div.t0VReg) (63 : BitVec 6) <|
   .instr (.XOR (.vreg Div.t3VReg) (.vreg Div.t0VReg) (.vreg Div.t1VReg)) <|
   .instr (.SUB (.vreg Div.t3VReg) (.vreg Div.t3VReg) (.vreg Div.t1VReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder Div.a3VReg Div.t3VReg) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Div.a3VReg) (.vreg Div.t3VReg)) <|
   .instr (.ADDI (.xreg rd) (.vreg Div.a2VReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 

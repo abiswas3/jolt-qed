@@ -142,7 +142,7 @@ Pure. -/
 theorem vreg_change_divisor_w_run
     (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
     (hvd : WritableVReg vd) :
-    (JoltISA.execInstr (.VirtualChangeDivisorW vd vs1 vs2)).run js =
+    (JoltISA.execInstr (.VirtualChangeDivisorW (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
       .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
@@ -156,7 +156,7 @@ theorem vreg_change_divisor_w_run_ex
     (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
     (hvd : WritableVReg vd) :
     ∃ js',
-      (JoltISA.execInstr (.VirtualChangeDivisorW vd vs1 vs2)).run js =
+      (JoltISA.execInstr (.VirtualChangeDivisorW (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.vregs vd = change_divisor_w_value (js.vregs vs1) (js.vregs vs2) ∧
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
@@ -181,7 +181,7 @@ the assert passes through with no state change. -/
 theorem vreg_assert_valid_div0_v_run_ok
     (vd vq : BitVec 7) (js : SailJoltState)
     (hguard : ¬ (js.vregs vd = 0#64 ∧ js.vregs vq ≠ (-1 : BitVec 64))) :
-    (JoltISA.execInstr (.VirtualAssertValidDiv0V vd vq)).run js =
+    (JoltISA.execInstr (.VirtualAssertValidDiv0 (.vreg vd) (.vreg vq))).run js =
       .ok RETIRE_SUCCESS js :=
   JoltISA.virtual_assert_valid_div0_v_run_ok vd vq js hguard
 
@@ -189,7 +189,7 @@ theorem vreg_assert_valid_div0_v_run_ok
 theorem vreg_assert_valid_div0_v_run_err
     (vd vq : BitVec 7) (js : SailJoltState)
     (hguard : js.vregs vd = 0#64 ∧ js.vregs vq ≠ (-1 : BitVec 64)) :
-    (JoltISA.execInstr (.VirtualAssertValidDiv0V vd vq)).run js =
+    (JoltISA.execInstr (.VirtualAssertValidDiv0 (.vreg vd) (.vreg vq))).run js =
       .error
         (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
         js :=
@@ -252,7 +252,7 @@ def phase_setup (rs1 rs2 : regidx) (quotient rem_abs : BitVec 64) :
   .instr (.VirtualAdvice a3VReg rem_abs) <|
   .instr (.VirtualSignExtendWord (.vreg t4VReg) (.xreg rs1)) <|
   .instr (.VirtualSignExtendWord (.vreg t3VReg) (.xreg rs2)) <|
-  .instr (.VirtualAssertValidDiv0V t3VReg a2VReg) <|
+  .instr (.VirtualAssertValidDiv0 (.vreg t3VReg) (.vreg a2VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 2 — adjusted divisor + quotient-fits-in-32-bits check.
@@ -261,9 +261,9 @@ Computes `t0 = change_divisor_w(t4, t3)` (the `(i32::MIN, -1)` overflow
 fixup at 32-bit width), then asserts that the quotient advice itself
 fits in 32 bits via the round-trip `t1 = sext(a2); t1 = a2`. -/
 def phase_overflow_check : JoltISA.Program :=
-  .instr (.VirtualChangeDivisorW t0VReg t4VReg t3VReg) <|
+  .instr (.VirtualChangeDivisorW (.vreg t0VReg) (.vreg t4VReg) (.vreg t3VReg)) <|
   .instr (.VirtualSignExtendWord (.vreg t1VReg) (.vreg a2VReg)) <|
-  .instr (.VirtualAssertEQ t1VReg a2VReg) <|
+  .instr (.VirtualAssertEQ (.vreg t1VReg) (.vreg a2VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 3 — remainder-non-negative check (DIVW-only, no DIV analogue).
@@ -281,7 +281,7 @@ For DIVW the `|rem|` lives inside a 64-bit BitVec but represents a u32,
 so the high half must be checked explicitly. -/
 def phase_rem_nonneg : JoltISA.Program :=
   JoltISA.sraiBlock (.vreg t2VReg) (.vreg a3VReg) (32 : BitVec 6) <|
-  .instr (.VirtualAssertEQReal t2VReg (regidx.Regidx 0)) <|
+  .instr (.VirtualAssertEQ (.vreg t2VReg) (.xreg (regidx.Regidx 0))) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 4 — reconstruct signed remainder, sum, assert equals
@@ -297,7 +297,7 @@ def phase_quotient_product : JoltISA.Program :=
   .instr (.SUB (.vreg t3VReg) (.vreg t3VReg) (.vreg t2VReg)) <|
   .instr (.MUL (.vreg t1VReg) (.vreg a2VReg) (.vreg t0VReg)) <|
   .instr (.ADD (.vreg t1VReg) (.vreg t1VReg) (.vreg t3VReg)) <|
-  .instr (.VirtualAssertEQ t1VReg t4VReg) <|
+  .instr (.VirtualAssertEQ (.vreg t1VReg) (.vreg t4VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 5 — compute `|adj_div|` (32-bit shamt) + `|rem| < |adj_div|` check.
@@ -308,7 +308,7 @@ def phase_remainder_bound : JoltISA.Program :=
   JoltISA.sraiBlock (.vreg t2VReg) (.vreg t0VReg) (31 : BitVec 6) <|
   .instr (.XOR (.vreg t1VReg) (.vreg t0VReg) (.vreg t2VReg)) <|
   .instr (.SUB (.vreg t1VReg) (.vreg t1VReg) (.vreg t2VReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder a3VReg t1VReg) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg a3VReg) (.vreg t1VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 6 — sign-extend writeback `rd := SignExtendWord(a2)`.

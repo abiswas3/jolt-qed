@@ -30,11 +30,11 @@ def remuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   .instr (.VirtualZeroExtendWord (.vreg Remuw.rs1VReg) (.xreg rs1)) <|
   .instr (.VirtualZeroExtendWord (.vreg Remuw.rs2VReg) (.xreg rs2)) <|
   .instr (.VirtualAdvice Remuw.vTmpVReg quotient) <|
-  .instr (.VirtualAssertMulUNoOverflowV Remuw.vTmpVReg Remuw.rs2VReg) <|
+  .instr (.VirtualAssertMulUNoOverflow (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs2VReg)) <|
   .instr (.MUL (.vreg Remuw.vTmpVReg) (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs2VReg)) <|
-  .instr (.VirtualAssertLTE Remuw.tempVReg Remuw.rs1VReg) <|
+  .instr (.VirtualAssertLTE (.vreg Remuw.tempVReg) (.vreg Remuw.rs1VReg)) <|
   .instr (.SUB (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs1VReg) (.vreg Remuw.vTmpVReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder Remuw.vTmpVReg Remuw.rs2VReg) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs2VReg)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.vreg Remuw.vTmpVReg)) <|
   .done RETIRE_SUCCESS
 

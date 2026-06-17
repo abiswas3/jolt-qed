@@ -31,13 +31,13 @@ def divuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   .instr (.VirtualZeroExtendWord (.vreg Divuw.rs1VReg) (.xreg rs1)) <|
   .instr (.VirtualZeroExtendWord (.vreg Divuw.rs2VReg) (.xreg rs2)) <|
   .instr (.VirtualAdvice Divuw.quoVReg quotient) <|
-  .instr (.VirtualAssertMulUNoOverflowV Divuw.quoVReg Divuw.rs2VReg) <|
+  .instr (.VirtualAssertMulUNoOverflow (.vreg Divuw.quoVReg) (.vreg Divuw.rs2VReg)) <|
   .instr (.MUL (.vreg Divuw.tempVReg) (.vreg Divuw.quoVReg) (.vreg Divuw.rs2VReg)) <|
-  .instr (.VirtualAssertLTE Divuw.tempVReg Divuw.rs1VReg) <|
+  .instr (.VirtualAssertLTE (.vreg Divuw.tempVReg) (.vreg Divuw.rs1VReg)) <|
   .instr (.SUB (.vreg Divuw.tempVReg) (.vreg Divuw.rs1VReg) (.vreg Divuw.tempVReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder Divuw.tempVReg Divuw.rs2VReg) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Divuw.tempVReg) (.vreg Divuw.rs2VReg)) <|
   .instr (.VirtualSignExtendWord (.vreg Divuw.tempVReg) (.vreg Divuw.quoVReg)) <|
-  .instr (.VirtualAssertValidDiv0V Divuw.rs2VReg Divuw.tempVReg) <|
+  .instr (.VirtualAssertValidDiv0 (.vreg Divuw.rs2VReg) (.vreg Divuw.tempVReg)) <|
   .instr (.ADDI (.xreg rd) (.vreg Divuw.tempVReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 

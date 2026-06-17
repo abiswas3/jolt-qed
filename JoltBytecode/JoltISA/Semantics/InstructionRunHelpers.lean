@@ -65,7 +65,7 @@ theorem vreg_change_divisor_run (vd : BitVec 7) (rs1 rs2 : regidx)
     (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
     (hvd : WritableVReg vd) :
-    (JoltISA.execInstr (.VirtualChangeDivisor vd rs1 rs2)).run js = .ok RETIRE_SUCCESS
+    (JoltISA.execInstr (.VirtualChangeDivisor (.vreg vd) (.xreg rs1) (.xreg rs2))).run js = .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
           if r = vd then change_divisor_value dividend divisor
@@ -88,7 +88,7 @@ theorem vreg_assert_valid_div0_run_ok (rs2 : regidx) (vq : BitVec 7)
     (js : SailJoltState) (divisor : BitVec 64)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
     (hguard : ¬ (divisor = 0#64 ∧ js.vregs vq ≠ (-1 : BitVec 64))) :
-    (JoltISA.execInstr (.VirtualAssertValidDiv0 rs2 vq)).run js =
+    (JoltISA.execInstr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg vq))).run js =
       .ok RETIRE_SUCCESS js :=
   JoltISA.virtual_assert_valid_div0_run_ok rs2 vq js divisor hrs2 hguard
 
@@ -97,7 +97,7 @@ theorem vreg_assert_valid_div0_run_err (rs2 : regidx) (vq : BitVec 7)
     (js : SailJoltState) (divisor : BitVec 64)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
     (hguard : divisor = 0#64 ∧ js.vregs vq ≠ (-1 : BitVec 64)) :
-    (JoltISA.execInstr (.VirtualAssertValidDiv0 rs2 vq)).run js =
+    (JoltISA.execInstr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg vq))).run js =
       .error
         (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
         js :=
@@ -106,14 +106,14 @@ theorem vreg_assert_valid_div0_run_err (rs2 : regidx) (vq : BitVec 7)
 /-- `VirtualAssertEQ` success branch. -/
 theorem vreg_assert_eq_run_ok (va vb : BitVec 7) (js : SailJoltState)
     (hguard : js.vregs va = js.vregs vb) :
-    (JoltISA.execInstr (.VirtualAssertEQ va vb)).run js =
+    (JoltISA.execInstr (.VirtualAssertEQ (.vreg va) (.vreg vb))).run js =
       .ok RETIRE_SUCCESS js :=
   JoltISA.virtual_assert_eq_run_ok va vb js hguard
 
 /-- `VirtualAssertEQ` failure branch. -/
 theorem vreg_assert_eq_run_err (va vb : BitVec 7) (js : SailJoltState)
     (hguard : js.vregs va ≠ js.vregs vb) :
-    (JoltISA.execInstr (.VirtualAssertEQ va vb)).run js =
+    (JoltISA.execInstr (.VirtualAssertEQ (.vreg va) (.vreg vb))).run js =
       .error (Error.Assertion "VirtualAssertEQ") js :=
   JoltISA.virtual_assert_eq_run_err va vb js hguard
 
@@ -122,7 +122,7 @@ theorem vreg_assert_eq_real_run_ok (va : BitVec 7) (rb : regidx)
     (js : SailJoltState) (rb_val : BitVec 64)
     (hrb : rX_bits rb js.sail = .ok rb_val js.sail)
     (hguard : js.vregs va = rb_val) :
-    (JoltISA.execInstr (.VirtualAssertEQReal va rb)).run js =
+    (JoltISA.execInstr (.VirtualAssertEQ (.vreg va) (.xreg rb))).run js =
       .ok RETIRE_SUCCESS js :=
   JoltISA.virtual_assert_eq_real_run_ok va rb js rb_val hrb hguard
 
@@ -131,15 +131,15 @@ theorem vreg_assert_eq_real_run_err (va : BitVec 7) (rb : regidx)
     (js : SailJoltState) (rb_val : BitVec 64)
     (hrb : rX_bits rb js.sail = .ok rb_val js.sail)
     (hguard : js.vregs va ≠ rb_val) :
-    (JoltISA.execInstr (.VirtualAssertEQReal va rb)).run js =
-      .error (Error.Assertion "VirtualAssertEQ (vreg vs real)") js :=
+    (JoltISA.execInstr (.VirtualAssertEQ (.vreg va) (.xreg rb))).run js =
+      .error (Error.Assertion "VirtualAssertEQ") js :=
   JoltISA.virtual_assert_eq_real_run_err va rb js rb_val hrb hguard
 
 /-- `VirtualAssertValidUnsignedRemainder` success branch. -/
 theorem vreg_assert_valid_unsigned_remainder_run_ok
     (vr vd : BitVec 7) (js : SailJoltState)
     (hguard : js.vregs vd = 0#64 ∨ (js.vregs vr).toNat < (js.vregs vd).toNat) :
-    (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainder vr vd)).run js =
+    (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainder (.vreg vr) (.vreg vd))).run js =
       .ok RETIRE_SUCCESS js :=
   JoltISA.virtual_assert_valid_unsigned_remainder_run_ok vr vd js hguard
 
@@ -147,7 +147,7 @@ theorem vreg_assert_valid_unsigned_remainder_run_ok
 theorem vreg_assert_valid_unsigned_remainder_run_err
     (vr vd : BitVec 7) (js : SailJoltState)
     (hguard : ¬ (js.vregs vd = 0#64 ∨ (js.vregs vr).toNat < (js.vregs vd).toNat)) :
-    (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainder vr vd)).run js =
+    (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainder (.vreg vr) (.vreg vd))).run js =
       .error
         (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d ∧ d ≠ 0")
         js :=
@@ -200,7 +200,7 @@ theorem vreg_change_divisor_run_ex (vd : BitVec 7) (rs1 rs2 : regidx)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
     (hvd : WritableVReg vd) :
     ∃ js',
-      (JoltISA.execInstr (.VirtualChangeDivisor vd rs1 rs2)).run js =
+      (JoltISA.execInstr (.VirtualChangeDivisor (.vreg vd) (.xreg rs1) (.xreg rs2))).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.vregs vd = change_divisor_value dividend divisor ∧
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧

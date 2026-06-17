@@ -37,22 +37,22 @@ def remwProgram (rs2 rs1 rd : regidx)
   .instr (.VirtualAdvice Remw.a3VReg remAbs) <|
   .instr (.VirtualSignExtendWord (.vreg Remw.t4VReg) (.xreg rs1)) <|
   .instr (.VirtualSignExtendWord (.vreg Remw.t3VReg) (.xreg rs2)) <|
-  .instr (.VirtualAssertValidDiv0V Remw.t3VReg Remw.a2VReg) <|
-  .instr (.VirtualChangeDivisorW Remw.t0VReg Remw.t4VReg Remw.t3VReg) <|
+  .instr (.VirtualAssertValidDiv0 (.vreg Remw.t3VReg) (.vreg Remw.a2VReg)) <|
+  .instr (.VirtualChangeDivisorW (.vreg Remw.t0VReg) (.vreg Remw.t4VReg) (.vreg Remw.t3VReg)) <|
   .instr (.VirtualSignExtendWord (.vreg Remw.t1VReg) (.vreg Remw.a2VReg)) <|
-  .instr (.VirtualAssertEQ Remw.t1VReg Remw.a2VReg) <|
+  .instr (.VirtualAssertEQ (.vreg Remw.t1VReg) (.vreg Remw.a2VReg)) <|
   sraiBlock (.vreg Remw.t2VReg) (.vreg Remw.a3VReg) (32 : BitVec 6) <|
-  .instr (.VirtualAssertEQReal Remw.t2VReg (regidx.Regidx 0)) <|
+  .instr (.VirtualAssertEQ (.vreg Remw.t2VReg) (.xreg (regidx.Regidx 0))) <|
   sraiBlock (.vreg Remw.t2VReg) (.vreg Remw.t4VReg) (31 : BitVec 6) <|
   .instr (.XOR (.vreg Remw.t3VReg) (.vreg Remw.a3VReg) (.vreg Remw.t2VReg)) <|
   .instr (.SUB (.vreg Remw.t3VReg) (.vreg Remw.t3VReg) (.vreg Remw.t2VReg)) <|
   .instr (.MUL (.vreg Remw.t1VReg) (.vreg Remw.a2VReg) (.vreg Remw.t0VReg)) <|
   .instr (.ADD (.vreg Remw.t1VReg) (.vreg Remw.t1VReg) (.vreg Remw.t3VReg)) <|
-  .instr (.VirtualAssertEQ Remw.t1VReg Remw.t4VReg) <|
+  .instr (.VirtualAssertEQ (.vreg Remw.t1VReg) (.vreg Remw.t4VReg)) <|
   sraiBlock (.vreg Remw.t2VReg) (.vreg Remw.t0VReg) (31 : BitVec 6) <|
   .instr (.XOR (.vreg Remw.t1VReg) (.vreg Remw.t0VReg) (.vreg Remw.t2VReg)) <|
   .instr (.SUB (.vreg Remw.t1VReg) (.vreg Remw.t1VReg) (.vreg Remw.t2VReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder Remw.a3VReg Remw.t1VReg) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Remw.a3VReg) (.vreg Remw.t1VReg)) <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.vreg Remw.t3VReg)) <|
   .done RETIRE_SUCCESS
 

@@ -33,17 +33,17 @@ def phase_setup (quotient : BitVec 64) : JoltISA.Program :=
   .done RETIRE_SUCCESS
 
 def phase_overflow_check (rs2 : regidx) : JoltISA.Program :=
-  .instr (.VirtualAssertMulUNoOverflow v0VReg rs2) <|
+  .instr (.VirtualAssertMulUNoOverflow (.vreg v0VReg) (.xreg rs2)) <|
   .done RETIRE_SUCCESS
 
 def phase_quotient_product (rs1 rs2 : regidx) : JoltISA.Program :=
   .instr (.MUL (.vreg v0VReg) (.vreg v0VReg) (.xreg rs2)) <|
-  .instr (.VirtualAssertLTEReal v0VReg rs1) <|
+  .instr (.VirtualAssertLTE (.vreg v0VReg) (.xreg rs1)) <|
   .done RETIRE_SUCCESS
 
 def phase_remainder_bound (rs1 rs2 : regidx) : JoltISA.Program :=
   .instr (.SUB (.vreg v0VReg) (.xreg rs1) (.vreg v0VReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainderReal v0VReg rs2) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg v0VReg) (.xreg rs2)) <|
   .done RETIRE_SUCCESS
 
 def phase_writeback (rd : regidx) : JoltISA.Program :=
@@ -74,7 +74,7 @@ theorem phase_overflow_check_run
       js'.sail = js.sail := by
   unfold phase_overflow_check
   have hguard : (js.vregs v0VReg).toNat * divisor.toNat < 2^64 := h_v0 ▸ hguard_no_overflow
-  have hrun : (JoltISA.execInstr (.VirtualAssertMulUNoOverflow v0VReg rs2)).run js =
+  have hrun : (JoltISA.execInstr (.VirtualAssertMulUNoOverflow (.vreg v0VReg) (.xreg rs2))).run js =
       .ok RETIRE_SUCCESS js :=
     vreg_assert_mulu_no_overflow_run_ok v0VReg rs2 js divisor hrs2 hguard
   refine ⟨js, ?_, h_v0, rfl⟩
@@ -101,7 +101,7 @@ theorem phase_quotient_product_run
   have hguard : (s1.vregs v0VReg).toNat ≤ dividend.toNat := by
     rw [hs1_v0_eq]
     exact hguard_lte
-  have h2 : (JoltISA.execInstr (.VirtualAssertLTEReal v0VReg rs1)).run s1 =
+  have h2 : (JoltISA.execInstr (.VirtualAssertLTE (.vreg v0VReg) (.xreg rs1))).run s1 =
       .ok RETIRE_SUCCESS s1 :=
     vreg_assert_lte_real_run_ok v0VReg rs1 s1 dividend hrs1_s1 hguard
   refine ⟨s1, ?_, hs1_v0_eq, hs1_sail⟩
@@ -130,7 +130,7 @@ theorem phase_remainder_bound_run
   have hguard : divisor = 0#64 ∨ (s1.vregs v0VReg).toNat < divisor.toNat := by
     rw [hs1_v0_eq]
     exact hguard_rem_bound
-  have h2 : (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainderReal v0VReg rs2)).run s1 =
+  have h2 : (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainder (.vreg v0VReg) (.xreg rs2))).run s1 =
       .ok RETIRE_SUCCESS s1 :=
     vreg_assert_valid_unsigned_remainder_real_run_ok v0VReg rs2 s1 divisor hrs2_s1 hguard
   refine ⟨s1, ?_, hs1_v0_eq, hs1_sail⟩

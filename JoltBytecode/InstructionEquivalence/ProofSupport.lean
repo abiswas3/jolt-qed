@@ -64,6 +64,7 @@ def VRegWritesNoProtectedVReg (vr : VReg) : Prop :=
   ¬ IsProtectedJoltRegister vr
 
 def InstrWritesNoProtectedVReg : Instr → Prop
+  | .NoOp => True
   | .ADDI dst _ _ => DstWritesNoProtectedVReg dst
   | .ANDI dst _ _ => DstWritesNoProtectedVReg dst
   | .ORI dst _ _ => DstWritesNoProtectedVReg dst
@@ -120,23 +121,16 @@ def InstrWritesNoProtectedVReg : Instr → Prop
   | .VirtualAssertWordAlignment _ _ _ => True
   | .LD dst _ _ => DstWritesNoProtectedVReg dst
   | .SD _ _ _ => True
-  | .VirtualLW _ _ _ => False
-  | .VirtualSW _ _ _ => False
   | .VirtualAdvice vd _ => VRegWritesNoProtectedVReg vd
   | .VirtualAdviceLoad dst _ => DstWritesNoProtectedVReg dst
   | .VirtualAdviceLen _ _ => False
   | .VirtualHostIO => False
   | .VirtualAssertEQ _ _ => True
-  | .VirtualAssertEQReal _ _ => True
   | .VirtualAssertValidDiv0 _ _ => True
-  | .VirtualAssertValidDiv0V _ _ => True
-  | .VirtualChangeDivisor dst _ _ => VRegWritesNoProtectedVReg dst
-  | .VirtualChangeDivisorW dst _ _ => VRegWritesNoProtectedVReg dst
-  | .VirtualAssertValidUnsignedRemainderReal _ _ => True
+  | .VirtualChangeDivisor dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualChangeDivisorW dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualAssertValidUnsignedRemainder _ _ => True
   | .VirtualAssertMulUNoOverflow _ _ => True
-  | .VirtualAssertMulUNoOverflowV _ _ => True
-  | .VirtualAssertLTEReal _ _ => True
   | .VirtualAssertLTE _ _ => True
 
 def ProgramWritesNoProtectedVReg : Program → Prop
@@ -429,6 +423,96 @@ private theorem binaryWrite_preserves_protected
       simp only at hrun
       cases hrun
 
+private theorem binaryReadIfPureElseThrow_preserves_protected
+    {lhs rhs : Src} {js js' : SailJoltState}
+    {result : ExecutionResult}
+    {p : BitVec 64 → BitVec 64 → Prop} [DecidableRel p]
+    {msg : String}
+    (hrun : (do
+        let x ← readSrc lhs
+        let y ← readSrc rhs
+        if p x y then
+          pure RETIRE_SUCCESS
+        else
+          throw (Error.Assertion msg) : JoltMonad ExecutionResult).run js =
+      .ok result js') :
+    ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
+  simp only [EStateM.run, bind, EStateM.bind] at hrun
+  cases hread_lhs : (readSrc lhs).run js with
+  | ok x js_afterLhs =>
+      change readSrc lhs js = .ok x js_afterLhs at hread_lhs
+      rw [hread_lhs] at hrun
+      simp only at hrun
+      cases hread_rhs : (readSrc rhs).run js_afterLhs with
+      | ok y js_afterRhs =>
+          change readSrc rhs js_afterLhs = .ok y js_afterRhs at hread_rhs
+          rw [hread_rhs] at hrun
+          by_cases hp : p x y
+          · simp only [hp, ↓reduceIte, pure, EStateM.pure] at hrun
+            cases hrun
+            have hlhs_frame := readSrc_preserves_vregs hread_lhs
+            have hrhs_frame := readSrc_preserves_vregs hread_rhs
+            intro vr hprotected
+            rw [hrhs_frame, hlhs_frame]
+          · simp only [hp, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
+              EStateM.throw] at hrun
+            cases hrun
+      | error e js_error =>
+          change readSrc rhs js_afterLhs = .error e js_error at hread_rhs
+          rw [hread_rhs] at hrun
+          simp only at hrun
+          cases hrun
+  | error e js_error =>
+      change readSrc lhs js = .error e js_error at hread_lhs
+      rw [hread_lhs] at hrun
+      simp only at hrun
+      cases hrun
+
+private theorem binaryReadIfThrowElsePure_preserves_protected
+    {lhs rhs : Src} {js js' : SailJoltState}
+    {result : ExecutionResult}
+    {p : BitVec 64 → BitVec 64 → Prop} [DecidableRel p]
+    {msg : String}
+    (hrun : (do
+        let x ← readSrc lhs
+        let y ← readSrc rhs
+        if p x y then
+          throw (Error.Assertion msg)
+        else
+          pure RETIRE_SUCCESS : JoltMonad ExecutionResult).run js =
+      .ok result js') :
+    ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
+  simp only [EStateM.run, bind, EStateM.bind] at hrun
+  cases hread_lhs : (readSrc lhs).run js with
+  | ok x js_afterLhs =>
+      change readSrc lhs js = .ok x js_afterLhs at hread_lhs
+      rw [hread_lhs] at hrun
+      simp only at hrun
+      cases hread_rhs : (readSrc rhs).run js_afterLhs with
+      | ok y js_afterRhs =>
+          change readSrc rhs js_afterLhs = .ok y js_afterRhs at hread_rhs
+          rw [hread_rhs] at hrun
+          by_cases hp : p x y
+          · simp only [hp, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
+              EStateM.throw] at hrun
+            cases hrun
+          · simp only [hp, ↓reduceIte, pure, EStateM.pure] at hrun
+            cases hrun
+            have hlhs_frame := readSrc_preserves_vregs hread_lhs
+            have hrhs_frame := readSrc_preserves_vregs hread_rhs
+            intro vr hprotected
+            rw [hrhs_frame, hlhs_frame]
+      | error e js_error =>
+          change readSrc rhs js_afterLhs = .error e js_error at hread_rhs
+          rw [hread_rhs] at hrun
+          simp only at hrun
+          cases hrun
+  | error e js_error =>
+      change readSrc lhs js = .error e js_error at hread_lhs
+      rw [hread_lhs] at hrun
+      simp only at hrun
+      cases hrun
+
 private theorem liftLiftVRegWrite_preserves_protected
     {m₁ m₂ : SailM (BitVec 64)} {scratch : VReg}
     {js js' : SailJoltState} {result : ExecutionResult}
@@ -655,6 +739,11 @@ theorem execInstr_preserves_protected
     (hrun : (execInstr instr).run js = .ok result js') :
     ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
   cases instr with
+  | NoOp =>
+      simp only [execInstr, pure] at hrun
+      cases hrun
+      intro vr hprotected
+      rfl
   | ADDI dst src imm =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | ANDI dst src imm =>
@@ -769,10 +858,6 @@ theorem execInstr_preserves_protected
       exact ld_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | SD base value imm =>
       exact sd_preserves_protected (by simpa [execInstr] using hrun)
-  | VirtualLW dst base imm =>
-      cases hsafe
-  | VirtualSW base value imm =>
-      cases hsafe
   | VirtualAdvice vd value =>
       exact vregWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualAdviceLoad dst value =>
@@ -782,168 +867,34 @@ theorem execInstr_preserves_protected
   | VirtualHostIO =>
       cases hsafe
   | VirtualAssertEQ lhs rhs =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      by_cases hEq : js.vregs lhs = js.vregs rhs
-      · simp only [hEq, ↓reduceIte, pure, EStateM.pure] at hrun
-        cases hrun
-        intro vr hprotected
-        rfl
-      · simp only [hEq, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
-          EStateM.throw] at hrun
-        cases hrun
-  | VirtualAssertEQReal lhs rhs =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      cases hread : (liftSail (rX_bits rhs)).run js with
-      | ok y js_afterRead =>
-          change liftSail (rX_bits rhs) js = .ok y js_afterRead at hread
-          rw [hread] at hrun
-          by_cases hEq : js.vregs lhs = y
-          · simp only [hEq, ↓reduceIte, pure, EStateM.pure] at hrun
-            cases hrun
-            have hread_frame := liftSail_preserves_vregs hread
-            intro vr hprotected
-            rw [hread_frame]
-          · simp only [hEq, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
-              EStateM.throw] at hrun
-            cases hrun
-      | error e js_error =>
-          change liftSail (rX_bits rhs) js = .error e js_error at hread
-          rw [hread] at hrun
-          simp only at hrun
-          cases hrun
+      exact binaryReadIfPureElseThrow_preserves_protected
+        (p := fun x y => x = y)
+        (msg := "VirtualAssertEQ")
+        (by simpa [execInstr] using hrun)
   | VirtualAssertValidDiv0 divisor quotient =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      cases hread : (liftSail (rX_bits divisor)).run js with
-      | ok d js_afterRead =>
-          change liftSail (rX_bits divisor) js = .ok d js_afterRead at hread
-          rw [hread] at hrun
-          change
-            (if d = 0#64 ∧ js_afterRead.vregs quotient ≠ (-1 : BitVec 64) then
-              throw (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
-            else
-              pure RETIRE_SUCCESS : JoltMonad ExecutionResult) js_afterRead =
-              .ok result js' at hrun
-          by_cases hbad : d = 0#64 ∧ js_afterRead.vregs quotient ≠ (-1 : BitVec 64)
-          · rw [if_pos hbad] at hrun
-            simp only [throw, throwThe, MonadExceptOf.throw] at hrun
-            cases hrun
-          · rw [if_neg hbad] at hrun
-            simp only [pure, EStateM.pure] at hrun
-            cases hrun
-            have hread_frame := liftSail_preserves_vregs hread
-            intro vr hprotected
-            rw [hread_frame]
-      | error e js_error =>
-          change liftSail (rX_bits divisor) js = .error e js_error at hread
-          rw [hread] at hrun
-          simp only at hrun
-          cases hrun
-  | VirtualAssertValidDiv0V divisor quotient =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      by_cases hbad : js.vregs divisor = 0#64 ∧ js.vregs quotient ≠ (-1 : BitVec 64)
-      · rw [if_pos hbad] at hrun
-        simp only [throw, throwThe, MonadExceptOf.throw] at hrun
-        cases hrun
-      · rw [if_neg hbad] at hrun
-        simp only [pure, EStateM.pure] at hrun
-        cases hrun
-        intro vr hprotected
-        rfl
+      exact binaryReadIfThrowElsePure_preserves_protected
+        (p := fun d q => d = 0#64 ∧ q ≠ (-1 : BitVec 64))
+        (msg := "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
+        (by simpa [execInstr] using hrun)
   | VirtualChangeDivisor dst dividend divisor =>
-      exact liftLiftVRegWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualChangeDivisorW dst dividend divisor =>
-      exact vregVregWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
-  | VirtualAssertValidUnsignedRemainderReal remainder divisor =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      cases hread : (liftSail (rX_bits divisor)).run js with
-      | ok d js_afterRead =>
-          change liftSail (rX_bits divisor) js = .ok d js_afterRead at hread
-          rw [hread] at hrun
-          by_cases hok : d = 0#64 ∨ (js.vregs remainder).toNat < d.toNat
-          · simp only [hok, ↓reduceIte, pure, EStateM.pure] at hrun
-            cases hrun
-            have hread_frame := liftSail_preserves_vregs hread
-            intro vr hprotected
-            rw [hread_frame]
-          · simp only [hok, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
-              EStateM.throw] at hrun
-            cases hrun
-      | error e js_error =>
-          change liftSail (rX_bits divisor) js = .error e js_error at hread
-          rw [hread] at hrun
-          simp only at hrun
-          cases hrun
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualAssertValidUnsignedRemainder remainder divisor =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      by_cases hok : js.vregs divisor = 0#64 ∨
-          (js.vregs remainder).toNat < (js.vregs divisor).toNat
-      · simp only [hok, ↓reduceIte, pure, EStateM.pure] at hrun
-        cases hrun
-        intro vr hprotected
-        rfl
-      · simp only [hok, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
-          EStateM.throw] at hrun
-        cases hrun
+      exact binaryReadIfPureElseThrow_preserves_protected
+        (p := fun r d => d = 0#64 ∨ r.toNat < d.toNat)
+        (msg := "VirtualAssertValidUnsignedRemainder: r ≥ d ∧ d ≠ 0")
+        (by simpa [execInstr] using hrun)
   | VirtualAssertMulUNoOverflow lhs rhs =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      cases hread : (liftSail (rX_bits rhs)).run js with
-      | ok y js_afterRead =>
-          change liftSail (rX_bits rhs) js = .ok y js_afterRead at hread
-          rw [hread] at hrun
-          by_cases hok : (js.vregs lhs).toNat * y.toNat < 2 ^ 64
-          · simp only [hok, ↓reduceIte, pure, EStateM.pure] at hrun
-            cases hrun
-            have hread_frame := liftSail_preserves_vregs hread
-            intro vr hprotected
-            rw [hread_frame]
-          · simp only [hok, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
-              EStateM.throw] at hrun
-            cases hrun
-      | error e js_error =>
-          change liftSail (rX_bits rhs) js = .error e js_error at hread
-          rw [hread] at hrun
-          simp only at hrun
-          cases hrun
-  | VirtualAssertMulUNoOverflowV lhs rhs =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      by_cases hok : (js.vregs lhs).toNat * (js.vregs rhs).toNat < 2 ^ 64
-      · simp only [hok, ↓reduceIte, pure, EStateM.pure] at hrun
-        cases hrun
-        intro vr hprotected
-        rfl
-      · simp only [hok, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
-          EStateM.throw] at hrun
-        cases hrun
-  | VirtualAssertLTEReal lhs rhs =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      cases hread : (liftSail (rX_bits rhs)).run js with
-      | ok y js_afterRead =>
-          change liftSail (rX_bits rhs) js = .ok y js_afterRead at hread
-          rw [hread] at hrun
-          by_cases hok : (js.vregs lhs).toNat ≤ y.toNat
-          · simp only [hok, ↓reduceIte, pure, EStateM.pure] at hrun
-            cases hrun
-            have hread_frame := liftSail_preserves_vregs hread
-            intro vr hprotected
-            rw [hread_frame]
-          · simp only [hok, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
-              EStateM.throw] at hrun
-            cases hrun
-      | error e js_error =>
-          change liftSail (rX_bits rhs) js = .error e js_error at hread
-          rw [hread] at hrun
-          simp only at hrun
-          cases hrun
+      exact binaryReadIfPureElseThrow_preserves_protected
+        (p := fun x y => x.toNat * y.toNat < 2 ^ 64)
+        (msg := "VirtualAssertMulUNoOverflow")
+        (by simpa [execInstr] using hrun)
   | VirtualAssertLTE lhs rhs =>
-      simp only [execInstr, readVReg_run, EStateM.run, bind, EStateM.bind] at hrun
-      by_cases hok : (js.vregs lhs).toNat ≤ (js.vregs rhs).toNat
-      · simp only [hok, ↓reduceIte, pure, EStateM.pure] at hrun
-        cases hrun
-        intro vr hprotected
-        rfl
-      · simp only [hok, ↓reduceIte, throw, throwThe, MonadExceptOf.throw,
-          EStateM.throw] at hrun
-        cases hrun
+      exact binaryReadIfPureElseThrow_preserves_protected
+        (p := fun x y => x.toNat ≤ y.toNat)
+        (msg := "VirtualAssertLTE")
+        (by simpa [execInstr] using hrun)
 
 theorem execProgram_preserves_protected
     {program : Program} {js js' : SailJoltState} {result : ExecutionResult}
