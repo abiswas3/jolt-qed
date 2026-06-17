@@ -107,7 +107,7 @@ theorem ebreak_jal_run
   unfold RETIRE_SUCCESS
   simp only [hnextPC, hpc, hJump, jal_zero_target, bind, EStateM.bind,
     pure, EStateM.pure, EStateM.run, get, getThe, MonadStateOf.get,
-    EStateM.get, modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    EStateM.get, modify, modifyGet, MonadStateOf.modifyGet]
   unfold setNextPCState
   rfl
 

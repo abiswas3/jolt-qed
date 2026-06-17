@@ -143,7 +143,7 @@ theorem mret_jalr_run
   unfold RETIRE_SUCCESS
   simp only [hnextPC, hJump, mretJalrTarget_zero_imm, bind, EStateM.bind,
     pure, EStateM.pure, EStateM.run, get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    modify, modifyGet]
   unfold setNextPCState
   rfl
 

@@ -1419,7 +1419,7 @@ theorem amo_word_add_middle_run
       writeVReg liftSail
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
-      modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+      modify, modifyGet, MonadStateOf.modifyGet,
       h_old, hrs2]
     rfl
   · rfl
@@ -1467,7 +1467,7 @@ theorem amo_word_and_middle_run
       writeVReg liftSail
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
-      modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+      modify, modifyGet, MonadStateOf.modifyGet,
       h_old, hrs2]
     rfl
   · rfl
@@ -1515,7 +1515,7 @@ theorem amo_word_or_middle_run
       writeVReg liftSail
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
-      modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+      modify, modifyGet, MonadStateOf.modifyGet,
       h_old, hrs2]
     rfl
   · rfl
@@ -1563,7 +1563,7 @@ theorem amo_word_xor_middle_run
       writeVReg liftSail
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
-      modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+      modify, modifyGet, MonadStateOf.modifyGet,
       h_old, hrs2]
     rfl
   · rfl
