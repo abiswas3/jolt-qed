@@ -48,7 +48,7 @@ theorem amo_dword_zero_offset_addr (addr : BitVec 64) :
       sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by
     decide
   rw [hsext0]
-  bv_decide
+  norm_num
 
 /-- Sail's generated zero AMO offset leaves the effective address unchanged. -/
 theorem amo_dword_zero_sail_addr (addr : BitVec 64) :
@@ -106,14 +106,24 @@ theorem amo_dword_ld_xreg_misaligned_run
 theorem amo_dword_sign_extend_64_eq_self (value : BitVec 64) :
     sign_extend (m := 64) value = value := by
   unfold sign_extend Sail.BitVec.signExtend
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hi_bool : (i <b 64) = true := by
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+  simp (disch := omega) only [BitVec.getLsbD_signExtend, hi_bool, Bool.true_and,
+    if_pos]
 
 /-- A 64-bit value is unchanged by Sail sign-extension at the generated `8 * 8`
 width. -/
 theorem amo_dword_sign_extend_8x8_eq_self (value : BitVec 64) :
     sign_extend (m := 8 * 8) value = value := by
   unfold sign_extend Sail.BitVec.signExtend
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hi_bool : (i <b 64) = true := by
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+  simp (disch := omega) only [BitVec.getLsbD_signExtend, Nat.reduceMul, hi_bool,
+    Bool.true_and, if_pos]
 
 /-- The generated dword width cast leaves an already-64-bit value unchanged. -/
 theorem amo_dword_setWidth_8x8_eq_self (value : BitVec 64) :
@@ -158,7 +168,7 @@ theorem amo_dword_ld_old_run_into
     have haddr0 :
         addr + sign_extend (m := 64) (0 : BitVec 12) = addr := by
       rw [hsext0]
-      bv_decide
+      norm_num
     have hread :
         vmem_read_addr
           (Virtaddr (addr + sign_extend (m := 64) (0 : BitVec 12))) 0 8
@@ -227,7 +237,7 @@ theorem amo_dword_sd_result_run
     have haddr0 :
         addr + sign_extend (m := 64) (0 : BitVec 12) = addr := by
       rw [hsext0]
-      bv_decide
+      norm_num
     have hwrite' :
         vmem_write_addr
           (Virtaddr (addr + sign_extend (m := 64) (0 : BitVec 12))) 8
@@ -300,7 +310,7 @@ theorem amo_dword_sd_vreg_result_run
     have haddr0 :
         addr + sign_extend (m := 64) (0 : BitVec 12) = addr := by
       rw [hsext0]
-      bv_decide
+      norm_num
     have hwrite' :
         vmem_write_addr
           (Virtaddr (addr + sign_extend (m := 64) (0 : BitVec 12))) 8
@@ -346,7 +356,7 @@ theorem amo_dword_addi_writeback_old_run_from
         js_afterStore.vregs oldReg +
           sign_extend (m := 64) (0 : BitVec 12) = oldVal := by
       rw [hold, hsext0]
-      bv_decide
+      norm_num
     have hw' :
         wX_bits rd
           (js_afterStore.vregs oldReg +
@@ -492,12 +502,12 @@ structure AmoDwordMiddleStep
 /-- Dword addition is commutative at the bitvector level. -/
 theorem amo_dword_add_comm (lhs rhs : BitVec 64) :
     lhs + rhs = rhs + lhs := by
-  bv_decide
+  exact BitVec.add_comm lhs rhs
 
 /-- Dword xor is commutative at the bitvector level. -/
 theorem amo_dword_xor_comm (lhs rhs : BitVec 64) :
     lhs ^^^ rhs = rhs ^^^ lhs := by
-  bv_decide
+  exact BitVec.xor_comm lhs rhs
 
 /-- Dword and is commutative at the bitvector level. -/
 theorem amo_dword_and_comm (lhs rhs : BitVec 64) :

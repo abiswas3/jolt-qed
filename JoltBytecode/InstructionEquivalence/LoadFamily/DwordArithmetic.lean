@@ -67,10 +67,21 @@ def word_of_dword (d : BitVec 64) (k : Nat) : BitVec 32 :=
     load at `V + k`. Case-bashes on `k ∈ 0..7`. -/
 theorem loaded_dword_byte_k (s : SailState) (V : BitVec 64) (k : Nat)
     (hk : k < 8) :
-    byte_of_dword (loaded_dword_at s V) k =
+  byte_of_dword (loaded_dword_at s V) k =
     loaded_byte_at s (V + BitVec.ofNat 64 k) := by
   unfold byte_of_dword loaded_dword_at
-  interval_cases k <;> bv_decide
+  interval_cases k
+  all_goals
+    apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    have hi_bool : (i <b 8) = true := by
+      simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+    simp (disch := omega) only [hi_bool, Bool.true_and, BitVec.getLsbD_setWidth,
+      BitVec.getLsbD_ushiftRight, Nat.reduceMul, Nat.reduceAdd]
+    repeat rw [BitVec.getLsbD_append]
+    simp (disch := omega) only [if_pos, if_neg, BitVec.add_zero]
+    congr 1
+    omega
 
 /-- A 16-bit halfword of a dword is the concatenation of its two bytes
     (little-endian). Side condition `k < 7` because the halfword must fit
@@ -102,10 +113,10 @@ theorem loaded_dword_halfword_k (s : SailState) (V : BitVec 64) (k : Nat)
   unfold loaded_halfword_at
   rw [loaded_dword_byte_k s V (k + 1) (by omega), loaded_dword_byte_k s V k (by omega)]
   have haddr : V + BitVec.ofNat 64 (k + 1) = (1 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
-    interval_cases k <;> bv_decide
+    interval_cases k <;> norm_num <;> ac_rfl
   rw [haddr]
   have haddr' : (1 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 1 := by
-    interval_cases k <;> bv_decide
+    interval_cases k <;> norm_num <;> ac_rfl
   rw [haddr']
 
 /-- A 32-bit word of a dword is the concatenation of its four bytes (little-
@@ -143,18 +154,18 @@ theorem loaded_dword_word_k (s : SailState) (V : BitVec 64) (k : Nat)
   rw [loaded_dword_byte_k s V (k + 1) (by omega)]
   rw [loaded_dword_byte_k s V k (by omega)]
   have h3 : V + BitVec.ofNat 64 (k + 3) = (3 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
-    interval_cases k <;> bv_decide
+    interval_cases k <;> norm_num <;> ac_rfl
   have h2 : V + BitVec.ofNat 64 (k + 2) = (2 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
-    interval_cases k <;> bv_decide
+    interval_cases k <;> norm_num <;> ac_rfl
   have h1 : V + BitVec.ofNat 64 (k + 1) = (1 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
-    interval_cases k <;> bv_decide
+    interval_cases k <;> norm_num <;> ac_rfl
   rw [h3, h2, h1]
   have h3' : (3 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 3 := by
-    interval_cases k <;> bv_decide
+    interval_cases k <;> norm_num <;> ac_rfl
   have h2' : (2 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 2 := by
-    interval_cases k <;> bv_decide
+    interval_cases k <;> norm_num <;> ac_rfl
   have h1' : (1 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 1 := by
-    interval_cases k <;> bv_decide
+    interval_cases k <;> norm_num <;> ac_rfl
   rw [h3', h2', h1']
 
 -- ============================================================================

@@ -875,9 +875,16 @@ theorem amoswapw_store_data_eq (rs2Val : BitVec 64) :
       (show BitVec (4 * 8) from
         trunc (m := (((4 : Nat) : Int) * (8 : Int)).toNat) rs2Val) =
     (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32) := by
-  unfold trunc Sail.BitVec.truncate sign_extend Sail.BitVec.signExtend
-    Sail.BitVec.extractLsb
-  bv_decide
+  change sign_extend (m := 32) (trunc (m := 32) rs2Val) =
+    (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+  rw [amo_word_sign_extend_4x8_eq_self]
+  unfold trunc Sail.BitVec.truncate BitVec.truncate Sail.BitVec.extractLsb BitVec.extractLsb
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hi32_bool : (i <b 32) = true := by
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+  simp only [BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb', Nat.zero_add,
+    hi32_bool, Bool.true_and]
 
 /-- Sail writes the low word of `rs2` for aligned native `AMOSWAP.W`. -/
 theorem amoswapw_mem_write_value_eq_state_after_word_store

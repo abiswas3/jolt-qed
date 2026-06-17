@@ -48,6 +48,26 @@ def state_after_dword_store (s : SailState) (base : BitVec 64) (dword_new : BitV
     |>.insert (base.toNat + 6) (dword_byte dword_new 6)
     |>.insert (base.toNat + 7) (dword_byte dword_new 7) }
 
+/-- Selecting byte `k` from a directly loaded dword recovers the corresponding
+direct byte load. -/
+theorem dword_byte_loaded_dword_at (s : SailState) (base : BitVec 64)
+    (k : Nat) (hk : k < 8) :
+    dword_byte (loaded_dword_at s base) k =
+      loaded_byte_at s (base + BitVec.ofNat 64 k) := by
+  unfold dword_byte loaded_dword_at
+  interval_cases k
+  all_goals
+    apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    have hi_bool : (i <b 8) = true := by
+      simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+    simp (disch := omega) only [hi_bool, Bool.true_and, BitVec.getLsbD_extractLsb',
+      Nat.reduceMul, Nat.reduceAdd]
+    repeat rw [BitVec.getLsbD_append]
+    simp (disch := omega) only [if_pos, if_neg, BitVec.add_zero]
+    congr 1
+    omega
+
 /-- Sail's plain RAM dword write is the canonical direct hashmap update used by
 the store/atomic proofs. -/
 theorem write_ram_dword_eq_state_after_dword_store
@@ -166,7 +186,12 @@ theorem vmem_write_addr_dword_store_bridge
   have hdata_full :
       BitVec.setWidth 64 (Sail.BitVec.extractLsb data 63 0) = data := by
     unfold Sail.BitVec.extractLsb
-    bv_decide
+    apply BitVec.eq_of_getLsbD_eq
+    intro i hi
+    have hi_bool : (i <b 64) = true := by
+      simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+    simp only [BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb, Nat.reduceSub,
+      Nat.reduceAdd, hi_bool, Bool.true_and, Nat.zero_add]
   have hdata_loop :
       BitVec.setWidth (8 * (((1 : Int), (8 : Int)).2.toNat))
         (Sail.BitVec.extractLsb data

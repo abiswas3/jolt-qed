@@ -705,7 +705,10 @@ theorem vmem_read_addr_byte_bridge (addr : BitVec 64) (offset : BitVec 64) (s : 
         Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange',
         liftM, monadLift, Functor.map,
         ha.split, htranslate, h_mem]
-  bv_decide
+  change 0#8 ||| (loaded_byte_at s addr).shiftLeft 0 = loaded_byte_at s addr
+  rw [BitVec.shiftLeft_eq]
+  rw [BitVec.shiftLeft_zero]
+  rw [BitVec.zero_or]
 
 theorem vmem_read_byte_reduces (imm : BitVec 12) (rs1 : regidx)
     (s : SailState) (hcfg : JoltConfig s)
@@ -747,7 +750,10 @@ theorem vmem_read_addr_halfword_bridge (addr : BitVec 64) (offset : BitVec 64) (
         Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange',
         liftM, monadLift, Functor.map,
         ha.split, htranslate, h_mem]
-  bv_decide
+  change 0#16 ||| (loaded_halfword_at s addr).shiftLeft 0 = loaded_halfword_at s addr
+  rw [BitVec.shiftLeft_eq]
+  rw [BitVec.shiftLeft_zero]
+  rw [BitVec.zero_or]
 
 theorem vmem_read_addr_word_bridge (addr : BitVec 64) (offset : BitVec 64) (s : SailState)
     (hcfg : JoltConfig s) (ha : AlignedAccess addr 4)
@@ -771,7 +777,10 @@ theorem vmem_read_addr_word_bridge (addr : BitVec 64) (offset : BitVec 64) (s : 
         Sail.BitVec.updateSubrange, Sail.BitVec.updateSubrange',
         liftM, monadLift, Functor.map,
         ha.split, htranslate, h_mem]
-  bv_decide
+  change 0#32 ||| (loaded_word_at s addr).shiftLeft 0 = loaded_word_at s addr
+  rw [BitVec.shiftLeft_eq]
+  rw [BitVec.shiftLeft_zero]
+  rw [BitVec.zero_or]
 
 theorem read_ram_eq_loaded_dword (addr : BitVec 64) (s : SailState)
     (hbytes : DwordBytesPresent addr s)

@@ -92,12 +92,15 @@ These are settled for handoff; update this section when they change.
    The Lean ISA and AMO.D expansions now remove that row and model the dword
    `LD`/`SD` row itself as the alignment boundary.
 
-4. **Memory inhabitance — repaired for load/store/AMO theorem boundaries.**
+4. **Impossible memory precondition — repaired; no follow-on witness workstream.**
    The old `JoltConfig.mem_populated` field (`∀ addr : Nat, s.mem.get? addr ≠
    none` over Sail's finite `Std.ExtHashMap Nat (BitVec 8)`) was unsatisfiable.
    It has been removed from `JoltConfig`. Load/store/AMO public theorem bundles
    now assume only finite primitive windows for the bytes each instruction can
-   touch, and derive exact `Flat*` memory evidence internally.
+   touch, and derive exact `Flat*` memory evidence internally. The broader
+   "prove every remaining precondition has a toy witness" framing is not retained:
+   it does not prove the preconditions are established by Jolt and is not a
+   meaningful hardening workstream.
 
 5. **ALU / ALUAdvice public assumption boundary — repaired.** Ordinary ALU and
    advice-backed DIV/REM public equivalence theorems now take only source-register
@@ -113,12 +116,11 @@ rebuild/recheck cycle, not authoring; size estimates assume that bottleneck.
 
 ### Current triage
 
-Only three items are active trust issues:
+Only two items are active trust issues:
 
 | Workstream | Decision | Why |
 | --- | --- | --- |
 | W1 — Rust to Lean conformance | **Active** | We already found real drift: AMO.D's Lean program had a row Rust did not emit. |
-| W2 — anti-vacuity / witnesses | **Partly done / active** | The impossible `JoltConfig.mem_populated` memory boundary has been replaced for load/store/AMO by finite primitive windows, and ALU/ALUAdvice theorem boundaries expose only source-register reads. Remaining W2 work is witness/co-satisfiability coverage for surviving bundles, especially system/CSR bundles. |
 | W10 — system/CSR assumptions | **Active** | Several system theorem hypotheses assume the Sail/Jolt CSR correspondence the theorem name appears to prove. |
 | W11 — composition/frame lemmas | **Later / conditional** | Real only if we want multi-instruction or trace-level chaining. Not a blocker for current per-instruction claims. |
 
@@ -127,13 +129,13 @@ the current cycle:
 
 | Workstream | Decision | Why we are not pursuing it now |
 | --- | --- | --- |
-| W3 — mutation testing | **Rejected as standalone work** | This is a testing technique, not a discovered flaw. It becomes useful only after W1/W2/W10 define the real target. |
+| W3 — mutation testing | **Rejected as standalone work** | This is a testing technique, not a discovered flaw. It becomes useful only after W1/W10 define the real target. |
 | W4 — projection/frame documentation | **Folded into W10/W11** | The only real projection problem is the CSR/system theorem shape. Generic scratch-register documentation is not a separate trust repair. |
 | W5 — trusted-base provenance | **Deferred / low priority** | Git proves the only semantic post-import `LeanRV64D/` edit, and the broader generated-Sail provenance is documented externally. |
 | W6 — misaligned flag | **Done / not an issue** | Jolt rejects misaligned multi-byte accesses rather than splitting them. The flag is intentional. |
 | W7 — native solver TCB | **Closed; guard only** | The public theorem scan is already clean: `native_dep_theorems=0`, `native_axioms_unique=0`. Keep a regression gate later if desired. |
 | W8 — coverage manifest | **Guard only, not soundness repair** | Useful to prevent future coverage drift, but it does not show any current theorem is false or weak. Do it only as part of W1 manifest work. |
-| W9 — spec hygiene | **Folded into W2** | The real part is memory-envelope cleanup required by `mem_populated`; the rest is housekeeping. |
+| W9 — spec hygiene | **Rejected as standalone work** | The memory-envelope issue was the only soundness-relevant part and is already repaired; the rest is housekeeping. |
 
 ---
 
@@ -261,60 +263,6 @@ and closes part of T10.
 
 ---
 
-### W2 — Anti-vacuity: inhabitance witnesses (VACUITY)
-
-**Status: partly done. Effort: M.**
-
-The urgent memory-boundary repair is complete for load/store/AMO:
-`JoltConfig.mem_populated` has been removed, and public theorem bundles now use
-finite primitive windows. The ALU and ALUAdvice public theorem boundaries have
-also been reduced to minimal source-register read bundles. Remaining W2 work is
-to add checked inhabitance / co-satisfiability witnesses for the surviving
-bundles, especially system/CSR bundles.
-
-Goal: prove every assumption bundle is satisfiable, so no family's theorems are
-vacuously true.
-
-Rationale: a proof under contradictory hypotheses is indistinguishable from a
-real one. There is currently no inhabitance check anywhere in `JoltBytecode/`.
-
-Tasks:
-
-- First produce a complete inventory of surviving public hypothesis bundles,
-  not only the obvious ones. Include `JoltConfig`,
-  `LoadFamily.LoadProgramEqSailAssumptions`,
-  `StoreFamily.StoreProgramEqSailAssumptions`,
-  `AtomicFamily.AmoDwordProgramEqSailAssumptions`,
-  `AtomicFamily.AmoWordProgramEqSailAssumptions`,
-  `ALUFamily.UnarySourceReadAssumptions`,
-  `ALUFamily.BinarySourceReadAssumptions`,
-  `EcallSystemAssumptions`, `CsrrwSystemAssumptions`,
-  `MretSystemAssumptions`, and the CSR access/legalizer assumptions.
-- For each inventoried predicate/structure used as a theorem hypothesis,
-  construct a concrete witness as a checked `example`, or document why the
-  current predicate is intentionally uninhabited and replace it before relying
-  on any theorem that uses it.
-- Prefer a single realistic `initialJoltState` builder from which the bundles
-  are *jointly* derivable, so co-satisfiability (not just per-predicate
-  satisfiability) is demonstrated.
-- The old `JoltConfig.mem_populated` issue is **resolved for load/store/AMO**:
-  public memory assumptions are finite primitive windows, and exact read/write
-  evidence is derived in `LoadFamily.Derived`, `StoreFamily.Derived`, and
-  `AtomicFamily.Derived`.
-- The ALU/ALUAdvice public theorem boundary is **resolved as a vacuity concern**:
-  public assumptions are exactly source-register reads. The remaining hard
-  assumption-boundary problem is the system/CSR family.
-
-Acceptance criteria: a file (for example
-`JoltBytecode/InstructionEquivalence/AssumptionsAreSatisfiable.lean`) containing
-a witness `example` for every surviving hypothesis bundle, in the root build;
-or a smaller, proved finite-footprint memory contract replacing the global
-`mem_populated` assumption before the witness file is finalized.
-
-Dependencies: none.
-
----
-
 ### W3 — Statement-strength validation: mutation testing (WEAK STATEMENT)
 
 **Status: rejected as standalone active work. Effort: none in the active plan.**
@@ -324,11 +272,11 @@ NOTE: (ari) -- This is the CSRRs virtual mapping i think
 Decision: do not pursue W3 as a workflow.
 
 Why: mutation testing is a technique, not an identified trust bug. Running a
-mutation harness before fixing W1/W2/W10 would mostly measure known problems:
-Rust/Lean drift, vacuous memory hypotheses, and proof-shaped CSR assumptions.
+mutation harness before fixing W1/W10 would mostly measure known problems:
+Rust/Lean drift and proof-shaped CSR assumptions.
 It would add process without clarifying the actual proof boundary.
 
-Where the useful part goes: after W1/W2/W10 land, a small mutation spot-check can
+Where the useful part goes: after W1/W10 land, a small mutation spot-check can
 be used as validation evidence. It should not be planned as independent
 14-day proof work.
 
@@ -476,7 +424,7 @@ Completed in June 2026:
 
 Why not pursuing now: there is no remaining public-theorem native-axiom leak to
 fix. Additional work would be process hardening, not a new proof issue. It is
-reasonable to add a CI gate later, but it should not compete with W1/W2/W10.
+reasonable to add a CI gate later, but it should not compete with W1/W10.
 
 Important recorded fact: `bv_decide` is *not*
   kernel-only. When `bv_normalize` closes the goal it adds no extra axioms
@@ -525,28 +473,28 @@ Dependencies: W1 if revived as a guard.
 
 ### W9 — Spec hygiene (process)
 
-**Status: not pursuing standalone; useful part folded into W2. Effort: none as
-a separate workflow.**
+**Status: not pursuing standalone. Effort: none as a separate workflow.**
 
 Goal: no active W9 workstream.
 
 Rationale: W9 is mostly housekeeping. Housekeeping is not the same as a trust
-bug. The only part that matters for soundness is memory-envelope unification,
-because `JoltConfig.mem_populated` is impossible and must be replaced by finite
-footprint assumptions. That belongs directly under W2.
+bug. The only part that mattered for soundness was the impossible
+`JoltConfig.mem_populated` memory envelope; that has already been replaced by
+finite-footprint assumptions.
 
 Not pursuing:
 
 - Removing every dead helper or unused predicate as a standalone effort.
-- Documentation cleanup disconnected from W1/W2/W10.
+- Documentation cleanup disconnected from W1/W10.
 - A general spec-hygiene pass during the current proof cycle.
 
-Where the useful part goes: W2 should introduce the finite memory-footprint
-contract and update any stale memory-envelope docs as part of that change.
+Where the useful part went: the finite memory-footprint contract is already part
+of the load/store/AMO theorem boundary. Any stale memory-envelope docs can be
+fixed opportunistically with nearby work.
 
 Acceptance criteria: none as W9.
 
-Dependencies: W2 if revived as cleanup.
+Dependencies: none.
 
 ---
 
@@ -565,8 +513,8 @@ Rationale: the deep audit found 8 of ~30 fields across
 *correspondence assumptions*: they hypothesize the very Sail↔Jolt equality the
 theorem exists to establish. A comment at `Csrrw.lean:326` already records that
 these are provisional and "should be discharged from concrete ZeroOS
-invariants"; nothing tracks that debt today. This is distinct from vacuity (the
-bundles are satisfiable) — the theorems are valid but under-claim.
+invariants"; nothing tracks that debt today. This is not a vacuity issue: the
+theorems are valid, but they under-claim.
 
 The eight red-flag fields:
 
@@ -592,10 +540,9 @@ Tasks:
 
 - For each red-flag field, decide: provable from genuine initial-state
   environment invariants (privilege, ZeroOS CSR whitelist, loader-set trap
-  vector), or hiding a real Sail-vs-Jolt mismatch (legalization). The W2 witness
-  construction is the forcing function: building a concrete witness for each
-  bundle *requires proving* these fields for a concrete state, which immediately
-  separates the dischargeable from the genuinely-assumed.
+  vector), or hiding a real Sail-vs-Jolt mismatch (legalization). The forcing
+  function is direct discharge against documented ZeroOS/Jolt environment
+  invariants, not toy inhabitance witnesses for the bundles.
 - Prove the CSR legalization lemmas for the ZeroOS-whitelisted CSRs (`mstatus`,
   `mtvec`, `mepc`, `mscratch`, `mcause`, `mtval`): Sail's read/write applied to a
   Jolt-written raw value returns the value Jolt expects (or document the exact
@@ -609,8 +556,8 @@ environment invariant and removed from the bundle, or explicitly reclassified in
 reason it cannot be discharged against the current Sail model. No correspondence
 field silently remains in a public theorem's hypotheses.
 
-Dependencies: pairs with W2. Witness construction surfaces these assumptions
-without needing mutation testing as a separate workflow.
+Dependencies: none. Direct source/environment discharge surfaces these
+assumptions without needing mutation testing as a separate workflow.
 
 ---
 
@@ -643,7 +590,7 @@ intra-instruction scratch scope; W11 proves the inter-instruction frame.
 Why not active now: current theorem names and proof statements are
 per-instruction. W11 becomes necessary if we want to claim that two or more
 proved instructions compose into a trace-level theorem. Until then, it should
-not compete with W1/W2/W10.
+not compete with W1/W10.
 
 Tasks:
 
@@ -662,27 +609,26 @@ for each non-system family; full scratch-vs-CSR vreg disjointness; one proved
 two-instruction composition.
 
 Dependencies: none for the protected-vreg frame. Future composition with memory
-instructions may still rely on the W2 finite-memory assumptions already present
-in those theorem statements.
+instructions may still rely on the finite-memory assumptions already present in
+those theorem statements.
 
 ## Sequencing
 
 Dependency-ordered, optimized for the issues we now agree are real:
 
-1. **W2 first.** Replace impossible `mem_populated` with finite memory
-   footprints. This removes the clearest vacuity problem.
-2. **W1 next or in parallel.** Rust/Lean drift is proven real by the AMO.D row
+1. **Memory precondition repair is already done.** The impossible
+   `mem_populated` field has been replaced with finite memory footprints.
+2. **W1 next.** Rust/Lean drift is proven real by the AMO.D row
    mismatch. Start with expansion conformance; decode differential can run
    independently if cheap.
-3. **W10 with/after W2.** Constructing system-bundle witnesses forces the
-   proof-shaped CSR fields into the open. This is the real theorem-strength
-   problem.
+3. **W10 after or alongside W1.** Discharge proof-shaped CSR fields against real
+   ZeroOS/Jolt environment invariants, or name them as trusted contracts.
 4. **W11 later, only if trace composition becomes a goal.** It is real for
    multi-instruction claims, but not required for the current per-instruction
    theorem surface.
 
 Not in the active sequence: W3, W4, W5, W6, W7, W8, W9. Their useful pieces are
-either done, deferred, or folded into W1/W2/W10/W11 as described above.
+either done, deferred, or folded into W1/W10/W11 as described above.
 
 ## Focused unknowns — resolutions (June 2026 deep audit)
 
@@ -698,9 +644,9 @@ original questions; each item records the evidence and the action it implies.
    contains only Machine-mode / MPRV facts, `JoltBytecode.Assumptions` contains
    finite primitive memory windows, and family public bundles derive exact
    `Flat*` evidence internally. Ordinary ALU and ALUAdvice public theorem
-   boundaries now expose only source-register read bundles. W2 remains open only
-   for checked witness / co-satisfiability coverage of the surviving bundles,
-   especially system/CSR bundles.
+   boundaries now expose only source-register read bundles. There is no remaining
+   anti-vacuity workstream: blanket witness/co-satisfiability coverage for
+   surviving bundles is deleted as non-useful hardening.
 2. **AMO.D conformance target — RESOLVED: real drift; Lean now matches Rust.**
    Verified in source: `expand_amo_d`
    (`crates/jolt-program/src/expand/memory/shared.rs:182`) emits LD / op / SD /
@@ -788,13 +734,13 @@ original questions; each item records the evidence and the action it implies.
    else. The broader generated-Sail provenance story is documented externally in
    the project blog, so reconstructing a local regeneration CI path is deferred
    and not part of the active hardening work.
-9. **System/CSR joint satisfiability — STILL NEEDS ATTENTION.** The memory,
-   ALU, and ALUAdvice theorem boundaries have been tightened, but the system
-   bundles remain the open assumption-boundary work. Each bundle
+9. **System/CSR contract mismatch — STILL NEEDS ATTENTION.** The memory, ALU,
+   and ALUAdvice theorem boundaries have been tightened, but the system bundles
+   remain the open assumption-boundary work. Each bundle
    (`EcallSystemAssumptions`, `System/Common.lean:1683`;
    `CsrrwSystemAssumptions`, `Csrrw.lean:335`; `MretSystemAssumptions`,
-   `Mret.lean:580`) appears individually satisfiable — W2 should construct the
-   witnesses. But ECALL leaves the mstatus vreg at
+   `Mret.lean:580`) can have toy witnesses, but that is not the issue. ECALL
+   leaves the mstatus vreg at
    `zeroOSMstatus = 0x1800` (MPIE=0, MIE=0; `Common.lean:36`), while MRET
    assumes `MPIE = 1` and `MIE = MPIE` (`Mret.lean:563–567`) precisely so that
    Sail's xret mstatus update is a no-op. The modeled ECALL → handler → MRET
@@ -804,7 +750,7 @@ original questions; each item records the evidence and the action it implies.
    required intermediate mstatus write as part of the environment contract, or
    rework the MRET assumptions / Jolt mstatus modeling. Relatedly, ECALL's
    `trap_vector_matches_jalr` and `trap_target_fetch_aligned` are loader-time
-   environment invariants and belong in the W10/W2 system-contract repair.
+   environment invariants and belong in the W10 system-contract repair.
 10. **Scratch-register invariants — RESOLVED: no global work needed.** No
     public theorem exposes vregs: `projectResult` (`JoltISA/Core.lean:51`)
     discards all vregs; `systemProjectResult` (`System/Common.lean:78`)
@@ -875,7 +821,7 @@ prove it structurally.
 
 The effort has materially improved trust when:
 
-- no equivalence theorem can be vacuous (W2);
+- no known impossible precondition remains in a public theorem boundary;
 - Lean and Rust expansions are continuously cross-checked, ideally generated
   from one source (W1), and decode agreement is differentially tested (W1d);
 - no public theorem hypothesizes the Sail↔Jolt correspondence it claims to
@@ -889,7 +835,7 @@ The effort has materially improved trust when:
 
 - `planning/roadmap.md` — coverage and scope status.
 - `planning/LEAN_BYTECODE_MODEL_LIMITATIONS.md` — current scope risks and the
-  ordinary-memory-envelope cleanup folded into W2.
+  ordinary-memory-envelope cleanup already completed.
 - `planning/JOLT_EXPANSION_DSL_DESIGN.md` — input to W1c.
 - `planning/JOLT_SPECIAL_MEMORY_REGION_PLAN.md`,
   `planning/JOLT_TRACE_METADATA_PLAN.md` — out-of-scope boundaries this plan

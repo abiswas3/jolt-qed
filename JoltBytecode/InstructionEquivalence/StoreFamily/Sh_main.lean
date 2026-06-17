@@ -154,7 +154,7 @@ theorem sh_spliced_dword_store_eq_halfword_store (imm : BitVec 12)
   have hload : ∀ k : Nat, k < 8 →
       dword_byte dword_orig k = loaded_byte_at s (base + BitVec.ofNat 64 k) := by
     intro k hk
-    interval_cases k <;> simp [dword_orig, loaded_dword_at, dword_byte] <;> bv_decide
+    simpa only [dword_orig] using dword_byte_loaded_dword_at s base k hk
   have hmem_eq :
       (state_after_dword_store s base dword_new).mem =
       (state_after_halfword_store s ea halfword_val).mem := by

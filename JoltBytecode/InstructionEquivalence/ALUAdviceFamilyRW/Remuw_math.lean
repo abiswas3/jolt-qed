@@ -45,7 +45,15 @@ private lemma zeroExtend32_64_toNat_remuw (x : BitVec 32) :
 private lemma extractLsb_zeroExtend_32_64_remuw (x : BitVec 32) :
     Sail.BitVec.extractLsb (zero_extend (m := 64) x) 31 0 = x := by
   unfold zero_extend Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hi32_bool : (i <b 32) = true := by
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+  have hi64_bool : (i <b 64) = true := by
+    have : i < 64 := by omega
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using this
+  simp only [BitVec.getLsbD_extractLsb, BitVec.getLsbD_setWidth, Nat.reduceSub,
+    Nat.reduceAdd, hi32_bool, hi64_bool, Bool.true_and, Nat.zero_add]
 
 private theorem trunc32_of_toNat_remuw (x : BitVec 32) :
     to_bits_truncate (l := 32) (Int.ofNat x.toNat) = x := by
@@ -133,7 +141,7 @@ private lemma zeroExtend32_eq_zero_iff_remuw (x : BitVec 32) :
   · intro h
     rw [h]
     unfold zero_extend Sail.BitVec.zeroExtend
-    bv_decide
+    decide
 
 /-- The 64-bit REMU result over zero-extended low words sign-extends to
 Sail's REMUW result. -/
@@ -157,7 +165,7 @@ theorem signExtend_extract_sail_rem_value_zext_eq_sail_remw_uw
   · have hzv_zero : zv = 0#64 := by
       rw [hzv, hzero]
       unfold zero_extend Sail.BitVec.zeroExtend
-      bv_decide
+      decide
     have hrem : sail_rem_value zd zv true = zd :=
       sail_rem_value_of_zero_remu zd zv hzv_zero
     have hsail : sail_remw_value dividend divisor true =
