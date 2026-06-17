@@ -83,272 +83,86 @@ inductive Instr where
   | VirtualAssertLTE (lhs rhs : Src)
   deriving Repr
 
-/-- No-operand final Jolt instruction kind.
 
-This mirrors Rust's `JoltInstructionKind = JoltInstruction<()>` in
-`crates/jolt-riscv/src/kind.rs`; source-only instructions that Rust expands
-must not appear here. -/
-inductive InstrKind where
-  | Noop
-  | Add
-  | Addi
-  | Sub
-  | Lui
-  | Auipc
-  | Mul
-  | MulHU
-  | And
-  | AndI
-  | Or
-  | OrI
-  | Xor
-  | XorI
-  | Andn
-  | Slt
-  | SltI
-  | SltU
-  | SltIU
-  | Beq
-  | Bne
-  | Blt
-  | Bge
-  | BltU
-  | BgeU
-  | Ld
-  | Sd
-  | Fence
-  | Jal
-  | Jalr
-  | AssertEq
-  | AssertLte
-  | AssertValidDiv0
-  | AssertValidUnsignedRemainder
-  | AssertMulUNoOverflow
-  | AssertWordAlignment
-  | AssertHalfwordAlignment
-  | Pow2
-  | Pow2I
-  | Pow2W
-  | Pow2IW
-  | MulI
-  | MovSign
-  | VirtualRev8W
-  | VirtualChangeDivisor
-  | VirtualChangeDivisorW
-  | VirtualSignExtendWord
-  | VirtualZeroExtendWord
-  | VirtualSrl
-  | VirtualSrli
-  | VirtualSra
-  | VirtualSrai
-  | VirtualShiftRightBitmask
-  | VirtualShiftRightBitmaski
-  | VirtualRotri
-  | VirtualRotriw
-  | VirtualXorRot32
-  | VirtualXorRot24
-  | VirtualXorRot16
-  | VirtualXorRot63
-  | VirtualXorRotW16
-  | VirtualXorRotW12
-  | VirtualXorRotW8
-  | VirtualXorRotW7
-  | VirtualAdvice
-  | VirtualAdviceLen
-  | VirtualAdviceLoad
-  | VirtualHostIO
-  deriving Repr, DecidableEq
+/-- Source instructions that Rust expands before final Jolt bytecode.
 
-namespace InstrKind
+This mirrors the built-in `SourceInstructionKind` cases handled by
+`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/mod.rs`
+in `expand_source_only_instruction`. -/
+inductive Expanded where
+  | ADDIW (dst : Dst) (src : Src) (imm : BitVec 12)
+  | ADDW (dst : Dst) (lhs rhs : Src)
+  | SUBW (dst : Dst) (lhs rhs : Src)
+  | MULH (dst : Dst) (lhs rhs : Src)
+  | MULHSU (dst : Dst) (lhs rhs : Src)
+  | MULW (dst : Dst) (lhs rhs : Src)
+  | LB (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LBU (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LH (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LHU (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LW (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LWU (dst : Dst) (base : Src) (imm : BitVec 12)
+  | AdviceLB (dst : Dst) (advice : BitVec 8)
+  | AdviceLH (dst : Dst) (advice : BitVec 16)
+  | AdviceLW (dst : Dst) (advice : BitVec 32)
+  | AdviceLD (dst : Dst) (advice : BitVec 64)
+  | AMOADDD (dst : Dst) (addr value : Src)
+  | AMOANDD (dst : Dst) (addr value : Src)
+  | AMOORD (dst : Dst) (addr value : Src)
+  | AMOXORD (dst : Dst) (addr value : Src)
+  | AMOSWAPD (dst : Dst) (addr value : Src)
+  | AMOMAXD (dst : Dst) (addr value : Src)
+  | AMOMAXUD (dst : Dst) (addr value : Src)
+  | AMOMIND (dst : Dst) (addr value : Src)
+  | AMOMINUD (dst : Dst) (addr value : Src)
+  | AMOADDW (dst : Dst) (addr value : Src)
+  | AMOANDW (dst : Dst) (addr value : Src)
+  | AMOORW (dst : Dst) (addr value : Src)
+  | AMOXORW (dst : Dst) (addr value : Src)
+  | AMOSWAPW (dst : Dst) (addr value : Src)
+  | AMOMAXW (dst : Dst) (addr value : Src)
+  | AMOMAXUW (dst : Dst) (addr value : Src)
+  | AMOMINW (dst : Dst) (addr value : Src)
+  | AMOMINUW (dst : Dst) (addr value : Src)
+  | LRD (dst : Dst) (addr : Src)
+  | LRW (dst : Dst) (addr : Src)
+  | DIV (dst : Dst) (lhs rhs : Src)
+  | DIVU (dst : Dst) (lhs rhs : Src)
+  | DIVW (dst : Dst) (lhs rhs : Src)
+  | DIVUW (dst : Dst) (lhs rhs : Src)
+  | REM (dst : Dst) (lhs rhs : Src)
+  | REMU (dst : Dst) (lhs rhs : Src)
+  | REMW (dst : Dst) (lhs rhs : Src)
+  | REMUW (dst : Dst) (lhs rhs : Src)
+  | SB (base value : Src) (imm : BitVec 12)
+  | SCD (dst : Dst) (addr value : Src)
+  | SCW (dst : Dst) (addr value : Src)
+  | SH (base value : Src) (imm : BitVec 12)
+  | SW (base value : Src) (imm : BitVec 12)
+  | CSRRW (dst : Dst) (src : Src) (csr : BitVec 12)
+  | CSRRS (dst : Dst) (src : Src) (csr : BitVec 12)
+  | EBREAK
+  | ECALL
+  | MRET
+  | SLL (dst : Dst) (value shamt : Src)
+  | SLLI (dst : Dst) (src : Src) (shamt : BitVec 6)
+  | SLLW (dst : Dst) (value shamt : Src)
+  | SLLIW (dst : Dst) (src : Src) (shamt : BitVec 5)
+  | SRL (dst : Dst) (value shamt : Src)
+  | SRLI (dst : Dst) (src : Src) (shamt : BitVec 6)
+  | SRA (dst : Dst) (value shamt : Src)
+  | SRAI (dst : Dst) (src : Src) (shamt : BitVec 6)
+  | SRLIW (dst : Dst) (src : Src) (shamt : BitVec 5)
+  | SRAIW (dst : Dst) (src : Src) (shamt : BitVec 5)
+  | SRLW (dst : Dst) (value shamt : Src)
+  | SRAW (dst : Dst) (value shamt : Src)
+  deriving Repr
 
-/-- Rust final enum order from
-`crates/jolt-riscv/src/instructions/mod.rs::JoltInstruction`.
-
-`Noop` is included here because it is in `JoltInstruction`; Rust's
-`for_each_jolt_instruction_kind!` macro handles `Noop` separately. -/
-def rustOrder : List InstrKind :=
-  [.Noop, .Add, .Addi, .Sub, .Lui, .Auipc, .Mul, .MulHU, .And, .AndI, .Or, .OrI,
-    .Xor, .XorI, .Andn, .Slt, .SltI, .SltU, .SltIU, .Beq, .Bne, .Blt, .Bge,
-    .BltU, .BgeU, .Ld, .Sd, .Fence, .Jal, .Jalr, .AssertEq, .AssertLte,
-    .AssertValidDiv0, .AssertValidUnsignedRemainder, .AssertMulUNoOverflow,
-    .AssertWordAlignment, .AssertHalfwordAlignment, .Pow2, .Pow2I, .Pow2W,
-    .Pow2IW, .MulI, .MovSign, .VirtualRev8W, .VirtualChangeDivisor,
-    .VirtualChangeDivisorW, .VirtualSignExtendWord, .VirtualZeroExtendWord,
-    .VirtualSrl, .VirtualSrli, .VirtualSra, .VirtualSrai,
-    .VirtualShiftRightBitmask, .VirtualShiftRightBitmaski, .VirtualRotri,
-    .VirtualRotriw, .VirtualXorRot32, .VirtualXorRot24, .VirtualXorRot16,
-    .VirtualXorRot63, .VirtualXorRotW16, .VirtualXorRotW12, .VirtualXorRotW8,
-    .VirtualXorRotW7, .VirtualAdvice, .VirtualAdviceLen, .VirtualAdviceLoad,
-    .VirtualHostIO]
-
-theorem mem_rustOrder (kind : InstrKind) : kind ∈ rustOrder := by
-  cases kind <;> decide
-
-end InstrKind
-
-namespace Instr
-
-/-- Forget operands and recover the final Rust instruction kind. -/
-def kind : Instr → InstrKind
-  | .NoOp => .Noop
-  | .ADDI _ _ _ => .Addi
-  | .ANDI _ _ _ => .AndI
-  | .ORI _ _ _ => .OrI
-  | .XORI _ _ _ => .XorI
-  | .SLTI _ _ _ => .SltI
-  | .SLTIU _ _ _ => .SltIU
-  | .LUI _ _ => .Lui
-  | .AUIPC _ _ => .Auipc
-  | .JAL _ _ => .Jal
-  | .JALR _ _ _ => .Jalr
-  | .BEQ _ _ _ => .Beq
-  | .BNE _ _ _ => .Bne
-  | .BLT _ _ _ => .Blt
-  | .BGE _ _ _ => .Bge
-  | .BLTU _ _ _ => .BltU
-  | .BGEU _ _ _ => .BgeU
-  | .FENCE => .Fence
-  | .ADD _ _ _ => .Add
-  | .SUB _ _ _ => .Sub
-  | .MUL _ _ _ => .Mul
-  | .MULHU _ _ _ => .MulHU
-  | .ANDN _ _ _ => .Andn
-  | .VirtualMULI _ _ _ => .MulI
-  | .VirtualPow2 _ _ => .Pow2
-  | .VirtualPow2W _ _ => .Pow2W
-  | .VirtualPow2I _ _ => .Pow2I
-  | .VirtualPow2IW _ _ => .Pow2IW
-  | .VirtualShiftRightBitmask _ _ => .VirtualShiftRightBitmask
-  | .VirtualShiftRightBitmaskI _ _ => .VirtualShiftRightBitmaski
-  | .VirtualSRLI _ _ _ => .VirtualSrli
-  | .VirtualSRAI _ _ _ => .VirtualSrai
-  | .VirtualSRL _ _ _ => .VirtualSrl
-  | .VirtualSRA _ _ _ => .VirtualSra
-  | .VirtualROTRI _ _ _ => .VirtualRotri
-  | .VirtualROTRIW _ _ _ => .VirtualRotriw
-  | .VirtualRev8W _ _ => .VirtualRev8W
-  | .VirtualXORROT32 _ _ _ => .VirtualXorRot32
-  | .VirtualXORROT24 _ _ _ => .VirtualXorRot24
-  | .VirtualXORROT16 _ _ _ => .VirtualXorRot16
-  | .VirtualXORROT63 _ _ _ => .VirtualXorRot63
-  | .VirtualXORROTW16 _ _ _ => .VirtualXorRotW16
-  | .VirtualXORROTW12 _ _ _ => .VirtualXorRotW12
-  | .VirtualXORROTW8 _ _ _ => .VirtualXorRotW8
-  | .VirtualXORROTW7 _ _ _ => .VirtualXorRotW7
-  | .OR _ _ _ => .Or
-  | .XOR _ _ _ => .Xor
-  | .AND _ _ _ => .And
-  | .SLT _ _ _ => .Slt
-  | .SLTU _ _ _ => .SltU
-  | .VirtualSignExtendWord _ _ => .VirtualSignExtendWord
-  | .VirtualZeroExtendWord _ _ => .VirtualZeroExtendWord
-  | .VirtualMovsign _ _ => .MovSign
-  | .VirtualAssertHalfwordAlignment _ _ _ => .AssertHalfwordAlignment
-  | .VirtualAssertWordAlignment _ _ _ => .AssertWordAlignment
-  | .LD _ _ _ => .Ld
-  | .SD _ _ _ => .Sd
-  | .VirtualAdvice _ _ => .VirtualAdvice
-  | .VirtualAdviceLoad _ _ => .VirtualAdviceLoad
-  | .VirtualAdviceLen _ _ => .VirtualAdviceLen
-  | .VirtualHostIO => .VirtualHostIO
-  | .VirtualAssertEQ _ _ => .AssertEq
-  | .VirtualAssertValidDiv0 _ _ => .AssertValidDiv0
-  | .VirtualChangeDivisor _ _ _ => .VirtualChangeDivisor
-  | .VirtualChangeDivisorW _ _ _ => .VirtualChangeDivisorW
-  | .VirtualAssertValidUnsignedRemainder _ _ => .AssertValidUnsignedRemainder
-  | .VirtualAssertMulUNoOverflow _ _ => .AssertMulUNoOverflow
-  | .VirtualAssertLTE _ _ => .AssertLte
-
-theorem kind_mem_rustOrder (instr : Instr) : instr.kind ∈ InstrKind.rustOrder :=
-  InstrKind.mem_rustOrder instr.kind
-
-end Instr
-
-namespace InstrKind
 
 private def x0 : regidx := regidx.Regidx 0
 private def dst : Dst := .xreg x0
 private def src : Src := .xreg x0
 private def vreg : VReg := 32
-
-/-- A dummy operand witness for each final kind. This fails to define if the
-Lean final instruction syntax is missing a Rust kind. -/
-def witness : InstrKind → Instr
-  | .Noop => .NoOp
-  | .Add => .ADD dst src src
-  | .Addi => .ADDI dst src 0
-  | .Sub => .SUB dst src src
-  | .Lui => .LUI dst 0
-  | .Auipc => .AUIPC dst 0
-  | .Mul => .MUL dst src src
-  | .MulHU => .MULHU dst src src
-  | .And => .AND dst src src
-  | .AndI => .ANDI dst src 0
-  | .Or => .OR dst src src
-  | .OrI => .ORI dst src 0
-  | .Xor => .XOR dst src src
-  | .XorI => .XORI dst src 0
-  | .Andn => .ANDN dst src src
-  | .Slt => .SLT dst src src
-  | .SltI => .SLTI dst src 0
-  | .SltU => .SLTU dst src src
-  | .SltIU => .SLTIU dst src 0
-  | .Beq => .BEQ src src 0
-  | .Bne => .BNE src src 0
-  | .Blt => .BLT src src 0
-  | .Bge => .BGE src src 0
-  | .BltU => .BLTU src src 0
-  | .BgeU => .BGEU src src 0
-  | .Ld => .LD dst src 0
-  | .Sd => .SD src src 0
-  | .Fence => .FENCE
-  | .Jal => .JAL dst 0
-  | .Jalr => .JALR dst src 0
-  | .AssertEq => .VirtualAssertEQ src src
-  | .AssertLte => .VirtualAssertLTE src src
-  | .AssertValidDiv0 => .VirtualAssertValidDiv0 src src
-  | .AssertValidUnsignedRemainder => .VirtualAssertValidUnsignedRemainder src src
-  | .AssertMulUNoOverflow => .VirtualAssertMulUNoOverflow src src
-  | .AssertWordAlignment =>
-      .VirtualAssertWordAlignment x0 0 (ExceptionType.E_Load_Addr_Align ())
-  | .AssertHalfwordAlignment =>
-      .VirtualAssertHalfwordAlignment x0 0 (ExceptionType.E_Load_Addr_Align ())
-  | .Pow2 => .VirtualPow2 dst src
-  | .Pow2I => .VirtualPow2I dst 0
-  | .Pow2W => .VirtualPow2W dst src
-  | .Pow2IW => .VirtualPow2IW dst 0
-  | .MulI => .VirtualMULI dst src 0
-  | .MovSign => .VirtualMovsign dst src
-  | .VirtualRev8W => .VirtualRev8W dst src
-  | .VirtualChangeDivisor => .VirtualChangeDivisor dst src src
-  | .VirtualChangeDivisorW => .VirtualChangeDivisorW dst src src
-  | .VirtualSignExtendWord => .VirtualSignExtendWord dst src
-  | .VirtualZeroExtendWord => .VirtualZeroExtendWord dst src
-  | .VirtualSrl => .VirtualSRL dst src src
-  | .VirtualSrli => .VirtualSRLI dst src 0
-  | .VirtualSra => .VirtualSRA dst src src
-  | .VirtualSrai => .VirtualSRAI dst src 0
-  | .VirtualShiftRightBitmask => .VirtualShiftRightBitmask dst src
-  | .VirtualShiftRightBitmaski => .VirtualShiftRightBitmaskI dst 0
-  | .VirtualRotri => .VirtualROTRI dst src 0
-  | .VirtualRotriw => .VirtualROTRIW dst src 0
-  | .VirtualXorRot32 => .VirtualXORROT32 dst src src
-  | .VirtualXorRot24 => .VirtualXORROT24 dst src src
-  | .VirtualXorRot16 => .VirtualXORROT16 dst src src
-  | .VirtualXorRot63 => .VirtualXORROT63 dst src src
-  | .VirtualXorRotW16 => .VirtualXORROTW16 dst src src
-  | .VirtualXorRotW12 => .VirtualXORROTW12 dst src src
-  | .VirtualXorRotW8 => .VirtualXORROTW8 dst src src
-  | .VirtualXorRotW7 => .VirtualXORROTW7 dst src src
-  | .VirtualAdvice => .VirtualAdvice vreg 0
-  | .VirtualAdviceLen => .VirtualAdviceLen dst 0
-  | .VirtualAdviceLoad => .VirtualAdviceLoad dst 0
-  | .VirtualHostIO => .VirtualHostIO
-
-theorem witness_kind (kind : InstrKind) : kind.witness.kind = kind := by
-  cases kind <;> rfl
-
-end InstrKind
 
 /-- Structured Jolt bytecode programs.
 
@@ -441,5 +255,3 @@ theorem pureWritebackTraceProgram_of_ne_zero
   unfold pureWritebackTraceProgram
   rw [isX0_eq_false_of_ne_zero hrd]
   simp only [Bool.false_eq_true, ↓reduceIte]
-
-end JoltISA

@@ -1,5 +1,5 @@
 import JoltBytecode.JoltISA.Core
-
+--TODO: This needs to be unified with environmment as well into helpers.
 /-!
 # Jolt ISA operands
 

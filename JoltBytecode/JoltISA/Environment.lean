@@ -1,5 +1,5 @@
 import JoltBytecode.Derived
-
+-- TODO: This file will be moved.
 /-!
 # Jolt execution environment helpers
 
@@ -44,23 +44,6 @@ def sailReadDword (addr : BitVec 64) : SailM (BitVec 64) := do
   let lo ← sailReadWord addr
   let hi ← sailReadWord (addr + 4)
   pure ((hi ++ lo : BitVec 64))
-
--- ============================================================================
--- Focused bridge lemmas for the vmem_read pipeline
--- ============================================================================
-
-/- STALE:
-These two older load-factoring bridge lemmas are not referenced anywhere in the
-current instruction-equivalence development. The active load proofs use the
-newer local lemmas in `InstructionEquivalence/LoadDefUtils.lean` and the
-instruction-specific files instead.
-
-Keeping the old sorried declarations here only pollutes the build status, so
-they are commented out until there is a reason to revive them.
-
-theorem translateAddr_machine_bare ...
-theorem execute_LOAD_LW_factored ...
--/
 
 -- ============================================================================
 -- sail_cases tactic
