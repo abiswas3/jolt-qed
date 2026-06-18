@@ -16,6 +16,24 @@ import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Rem
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remu
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remuw
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoaddd
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoaddw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoandd
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoandw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxd
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxud
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxuw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomind
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amominud
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amominuw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amominw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoord
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoorw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoswapd
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoswapw
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoxord
+import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoxorw
 
 /-!
 # RISC-V Instructions
@@ -172,309 +190,6 @@ namespace RiscvInstruction
 
 abbrev SailExecution := SailM ExecutionResult
 
-private def pureResult (result : ExecutionResult) : SailExecution :=
-  pure result
-
-private def mulLow : mul_op :=
-  { result_part := VectorHalf.Low
-    signed_rs1 := Signedness.Signed
-    signed_rs2 := Signedness.Signed }
-
-private def mulHighSigned : mul_op :=
-  { result_part := VectorHalf.High
-    signed_rs1 := Signedness.Signed
-    signed_rs2 := Signedness.Signed }
-
-private def mulHighSignedUnsigned : mul_op :=
-  { result_part := VectorHalf.High
-    signed_rs1 := Signedness.Signed
-    signed_rs2 := Signedness.Unsigned }
-
-private def mulHighUnsigned : mul_op :=
-  { result_part := VectorHalf.High
-    signed_rs1 := Signedness.Unsigned
-    signed_rs2 := Signedness.Unsigned }
-
-/-- Generated LeanRV64D/Sail execution for the instruction, when this Sail model
-has a direct execution entry for that constructor. -/
-noncomputable def sailExecution : RiscvInstruction → Option SailExecution
-  | .LUI rd imm => some (LeanRV64D.Functions.execute_UTYPE imm rd uop.LUI)
-  | .AUIPC rd imm => some (LeanRV64D.Functions.execute_UTYPE imm rd uop.AUIPC)
-  | .JAL rd imm => some (LeanRV64D.Functions.execute_JAL imm rd)
-  | .JALR rd rs1 imm => some (LeanRV64D.Functions.execute_JALR imm rs1 rd)
-  | .BEQ rs1 rs2 imm => some (LeanRV64D.Functions.execute_BTYPE imm rs2 rs1 bop.BEQ)
-  | .BNE rs1 rs2 imm => some (LeanRV64D.Functions.execute_BTYPE imm rs2 rs1 bop.BNE)
-  | .BLT rs1 rs2 imm => some (LeanRV64D.Functions.execute_BTYPE imm rs2 rs1 bop.BLT)
-  | .BGE rs1 rs2 imm => some (LeanRV64D.Functions.execute_BTYPE imm rs2 rs1 bop.BGE)
-  | .BLTU rs1 rs2 imm => some (LeanRV64D.Functions.execute_BTYPE imm rs2 rs1 bop.BLTU)
-  | .BGEU rs1 rs2 imm => some (LeanRV64D.Functions.execute_BTYPE imm rs2 rs1 bop.BGEU)
-  | .LB rd rs1 imm => some (LeanRV64D.Functions.execute_LOAD imm rs1 rd false 1)
-  | .LH rd rs1 imm => some (LeanRV64D.Functions.execute_LOAD imm rs1 rd false 2)
-  | .LW rd rs1 imm => some (LeanRV64D.Functions.execute_LOAD imm rs1 rd false 4)
-  | .LBU rd rs1 imm => some (LeanRV64D.Functions.execute_LOAD imm rs1 rd true 1)
-  | .LHU rd rs1 imm => some (LeanRV64D.Functions.execute_LOAD imm rs1 rd true 2)
-  | .SB rs2 rs1 imm => some (LeanRV64D.Functions.execute_STORE imm rs2 rs1 1)
-  | .SH rs2 rs1 imm => some (LeanRV64D.Functions.execute_STORE imm rs2 rs1 2)
-  | .SW rs2 rs1 imm => some (LeanRV64D.Functions.execute_STORE imm rs2 rs1 4)
-  | .ADDI rd rs1 imm => some (LeanRV64D.Functions.execute_ITYPE imm rs1 rd iop.ADDI)
-  | .SLTI rd rs1 imm => some (LeanRV64D.Functions.execute_ITYPE imm rs1 rd iop.SLTI)
-  | .SLTIU rd rs1 imm => some (LeanRV64D.Functions.execute_ITYPE imm rs1 rd iop.SLTIU)
-  | .XORI rd rs1 imm => some (LeanRV64D.Functions.execute_ITYPE imm rs1 rd iop.XORI)
-  | .ORI rd rs1 imm => some (LeanRV64D.Functions.execute_ITYPE imm rs1 rd iop.ORI)
-  | .ANDI rd rs1 imm => some (LeanRV64D.Functions.execute_ITYPE imm rs1 rd iop.ANDI)
-  | .SLLI rd rs1 shamt => some (LeanRV64D.Functions.execute_SHIFTIOP shamt rs1 rd sop.SLLI)
-  | .SRLI rd rs1 shamt => some (LeanRV64D.Functions.execute_SHIFTIOP shamt rs1 rd sop.SRLI)
-  | .SRAI rd rs1 shamt => some (LeanRV64D.Functions.execute_SHIFTIOP shamt rs1 rd sop.SRAI)
-  | .ADD rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.ADD)
-  | .SUB rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.SUB)
-  | .SLL rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.SLL)
-  | .SLT rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.SLT)
-  | .SLTU rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.SLTU)
-  | .XOR rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.XOR)
-  | .SRL rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.SRL)
-  | .SRA rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.SRA)
-  | .OR rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.OR)
-  | .AND rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPE rs2 rs1 rd rop.AND)
-  | .FENCE rd rs1 fm pred succ => some (LeanRV64D.Functions.execute_FENCE fm pred succ rs1 rd)
-  | .ECALL => some (LeanRV64D.Functions.execute_ECALL ())
-  | .EBREAK => some (LeanRV64D.Functions.execute_EBREAK ())
-  | .LWU rd rs1 imm => some (LeanRV64D.Functions.execute_LOAD imm rs1 rd true 4)
-  | .LD rd rs1 imm => some (LeanRV64D.Functions.execute_LOAD imm rs1 rd false 8)
-  | .SD rs2 rs1 imm => some (LeanRV64D.Functions.execute_STORE imm rs2 rs1 8)
-  | .ADDIW rd rs1 imm => some (LeanRV64D.Functions.execute_ADDIW imm rs1 rd)
-  | .SLLIW rd rs1 shamt => some (LeanRV64D.Functions.execute_SHIFTIWOP shamt rs1 rd sopw.SLLIW)
-  | .SRLIW rd rs1 shamt => some (LeanRV64D.Functions.execute_SHIFTIWOP shamt rs1 rd sopw.SRLIW)
-  | .SRAIW rd rs1 shamt => some (LeanRV64D.Functions.execute_SHIFTIWOP shamt rs1 rd sopw.SRAIW)
-  | .ADDW rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPEW rs2 rs1 rd ropw.ADDW)
-  | .SUBW rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPEW rs2 rs1 rd ropw.SUBW)
-  | .SLLW rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPEW rs2 rs1 rd ropw.SLLW)
-  | .SRLW rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPEW rs2 rs1 rd ropw.SRLW)
-  | .SRAW rd rs1 rs2 => some (LeanRV64D.Functions.execute_RTYPEW rs2 rs1 rd ropw.SRAW)
-  | .MUL rd rs1 rs2 => some (LeanRV64D.Functions.execute_MUL rs2 rs1 rd mulLow)
-  | .MULH rd rs1 rs2 => some (LeanRV64D.Functions.execute_MUL rs2 rs1 rd mulHighSigned)
-  | .MULHU rd rs1 rs2 => some (LeanRV64D.Functions.execute_MUL rs2 rs1 rd mulHighUnsigned)
-  | .MULHSU rd rs1 rs2 => some (LeanRV64D.Functions.execute_MUL rs2 rs1 rd mulHighSignedUnsigned)
-  | .DIV rd rs1 rs2 _quotient _remAbs => some (LeanRV64D.Functions.execute_DIV rs2 rs1 rd false)
-  | .DIVU rd rs1 rs2 _quotient => some (LeanRV64D.Functions.execute_DIV rs2 rs1 rd true)
-  | .REM rd rs1 rs2 _quotient _remAbs => some (LeanRV64D.Functions.execute_REM rs2 rs1 rd false)
-  | .REMU rd rs1 rs2 _quotient => some (LeanRV64D.Functions.execute_REM rs2 rs1 rd true)
-  | .MULW rd rs1 rs2 => some (LeanRV64D.Functions.execute_MULW rs2 rs1 rd)
-  | .DIVW rd rs1 rs2 _quotient _remAbs => some (LeanRV64D.Functions.execute_DIVW rs2 rs1 rd false)
-  | .DIVUW rd rs1 rs2 _quotient => some (LeanRV64D.Functions.execute_DIVW rs2 rs1 rd true)
-  | .REMW rd rs1 rs2 _quotient _remAbs => some (LeanRV64D.Functions.execute_REMW rs2 rs1 rd false)
-  | .REMUW rd rs1 rs2 _quotient => some (LeanRV64D.Functions.execute_REMW rs2 rs1 rd true)
-  | .LR_W rd rs1 aq rl => some (LeanRV64D.Functions.execute_LOADRES aq rl rs1 4 rd)
-  | .SC_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_STORECON aq rl rs2 rs1 4 rd)
-  | .AMOSWAP_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOSWAP aq rl rs2 rs1 4 rd)
-  | .AMOADD_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOADD aq rl rs2 rs1 4 rd)
-  | .AMOXOR_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOXOR aq rl rs2 rs1 4 rd)
-  | .AMOAND_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOAND aq rl rs2 rs1 4 rd)
-  | .AMOOR_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOOR aq rl rs2 rs1 4 rd)
-  | .AMOMIN_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMIN aq rl rs2 rs1 4 rd)
-  | .AMOMAX_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMAX aq rl rs2 rs1 4 rd)
-  | .AMOMINU_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMINU aq rl rs2 rs1 4 rd)
-  | .AMOMAXU_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMAXU aq rl rs2 rs1 4 rd)
-  | .LR_D rd rs1 aq rl => some (LeanRV64D.Functions.execute_LOADRES aq rl rs1 8 rd)
-  | .SC_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_STORECON aq rl rs2 rs1 8 rd)
-  | .AMOSWAP_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOSWAP aq rl rs2 rs1 8 rd)
-  | .AMOADD_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOADD aq rl rs2 rs1 8 rd)
-  | .AMOXOR_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOXOR aq rl rs2 rs1 8 rd)
-  | .AMOAND_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOAND aq rl rs2 rs1 8 rd)
-  | .AMOOR_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOOR aq rl rs2 rs1 8 rd)
-  | .AMOMIN_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMIN aq rl rs2 rs1 8 rd)
-  | .AMOMAX_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMAX aq rl rs2 rs1 8 rd)
-  | .AMOMINU_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMINU aq rl rs2 rs1 8 rd)
-  | .AMOMAXU_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMAXU aq rl rs2 rs1 8 rd)
-  | .CSRRW rd csr rs1 => some (LeanRV64D.Functions.execute_CSRReg csr rs1 rd csrop.CSRRW)
-  | .CSRRS rd csr rs1 => some (LeanRV64D.Functions.execute_CSRReg csr rs1 rd csrop.CSRRS)
-  | .MRET => some (LeanRV64D.Functions.execute_MRET ())
-
-private def expandedProgram? : Option JoltISA.Program → Option JoltISA.JoltExecution
-  | some program => some (.expandedInstr program)
-  | none => none
-
-/-- Jolt-side execution for the guest source instruction.
-
-`none` marks instructions that are in the Rust source profile but whose Jolt
-program is intentionally left unwired here for now. -/
-def joltExecution : RiscvInstruction → Option JoltISA.JoltExecution
-  | .LUI rd imm =>
-      some (.nativeInstr (.LUI (.xreg rd) (imm.setWidth 64)))
-  | .AUIPC rd imm =>
-      some (.nativeInstr (.AUIPC (.xreg rd) imm))
-  | .JAL rd imm =>
-      some (.nativeInstr (.JAL (.xreg rd) imm))
-  | .JALR rd rs1 imm =>
-      some (.nativeInstr (.JALR (.xreg rd) (.xreg rs1) imm))
-  | .BEQ rs1 rs2 imm =>
-      some (.nativeInstr (.BEQ (.xreg rs1) (.xreg rs2) imm))
-  | .BNE rs1 rs2 imm =>
-      some (.nativeInstr (.BNE (.xreg rs1) (.xreg rs2) imm))
-  | .BLT rs1 rs2 imm =>
-      some (.nativeInstr (.BLT (.xreg rs1) (.xreg rs2) imm))
-  | .BGE rs1 rs2 imm =>
-      some (.nativeInstr (.BGE (.xreg rs1) (.xreg rs2) imm))
-  | .BLTU rs1 rs2 imm =>
-      some (.nativeInstr (.BLTU (.xreg rs1) (.xreg rs2) imm))
-  | .BGEU rs1 rs2 imm =>
-      some (.nativeInstr (.BGEU (.xreg rs1) (.xreg rs2) imm))
-  | .LB rd rs1 imm =>
-      some (.expandedInstr (JoltISA.lbProgram imm rs1 rd))
-  | .LH rd rs1 imm =>
-      some (.expandedInstr (JoltISA.lhProgram imm rs1 rd))
-  | .LW rd rs1 imm =>
-      some (.expandedInstr (JoltISA.lwProgram imm rs1 rd))
-  | .LBU rd rs1 imm =>
-      some (.expandedInstr (JoltISA.lbuProgram imm rs1 rd))
-  | .LHU rd rs1 imm =>
-      some (.expandedInstr (JoltISA.lhuProgram imm rs1 rd))
-  | .SB rs2 rs1 imm =>
-      some (.expandedInstr (JoltISA.sbProgram imm rs2 rs1))
-  | .SH rs2 rs1 imm =>
-      some (.expandedInstr (JoltISA.shProgram imm rs2 rs1))
-  | .SW rs2 rs1 imm =>
-      some (.expandedInstr (JoltISA.swProgram imm rs2 rs1))
-  | .ADDI rd rs1 imm =>
-      some (.nativeInstr (.ADDI (.xreg rd) (.xreg rs1) imm))
-  | .SLTI rd rs1 imm =>
-      some (.nativeInstr (.SLTI (.xreg rd) (.xreg rs1) imm))
-  | .SLTIU rd rs1 imm =>
-      some (.nativeInstr (.SLTIU (.xreg rd) (.xreg rs1) imm))
-  | .XORI rd rs1 imm =>
-      some (.nativeInstr (.XORI (.xreg rd) (.xreg rs1) imm))
-  | .ORI rd rs1 imm =>
-      some (.nativeInstr (.ORI (.xreg rd) (.xreg rs1) imm))
-  | .ANDI rd rs1 imm =>
-      some (.nativeInstr (.ANDI (.xreg rd) (.xreg rs1) imm))
-  | .SLLI rd rs1 shamt =>
-      some (.expandedInstr (JoltISA.slliProgram shamt rs1 rd))
-  | .SRLI rd rs1 shamt =>
-      some (.expandedInstr (JoltISA.srliProgram shamt rs1 rd))
-  | .SRAI rd rs1 shamt =>
-      some (.expandedInstr (JoltISA.sraiProgram shamt rs1 rd))
-  | .ADD rd rs1 rs2 =>
-      some (.nativeInstr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2)))
-  | .SUB rd rs1 rs2 =>
-      some (.nativeInstr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2)))
-  | .SLL rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.sllProgram rs2 rs1 rd))
-  | .SLT rd rs1 rs2 =>
-      some (.nativeInstr (.SLT (.xreg rd) (.xreg rs1) (.xreg rs2)))
-  | .SLTU rd rs1 rs2 =>
-      some (.nativeInstr (.SLTU (.xreg rd) (.xreg rs1) (.xreg rs2)))
-  | .XOR rd rs1 rs2 =>
-      some (.nativeInstr (.XOR (.xreg rd) (.xreg rs1) (.xreg rs2)))
-  | .SRL rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.srlProgram rs2 rs1 rd))
-  | .SRA rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.sraProgram rs2 rs1 rd))
-  | .OR rd rs1 rs2 =>
-      some (.nativeInstr (.OR (.xreg rd) (.xreg rs1) (.xreg rs2)))
-  | .AND rd rs1 rs2 =>
-      some (.nativeInstr (.AND (.xreg rd) (.xreg rs1) (.xreg rs2)))
-  | .FENCE _rd _rs1 _fm _pred _succ =>
-      some (.nativeInstr .FENCE)
-  | .ECALL =>
-      some (.expandedInstr JoltISA.ecallProgram)
-  | .EBREAK =>
-      some (.expandedInstr JoltISA.ebreakProgram)
-  | .LWU rd rs1 imm =>
-      some (.expandedInstr (JoltISA.lwuProgram imm rs1 rd))
-  | .LD rd rs1 imm =>
-      some (.nativeInstr (.LD (.xreg rd) (.xreg rs1) imm))
-  | .SD rs2 rs1 imm =>
-      some (.nativeInstr (.SD (.xreg rs1) (.xreg rs2) imm))
-  | .ADDIW rd rs1 imm =>
-      some (.expandedInstr (JoltISA.addiwProgram imm rs1 rd))
-  | .SLLIW rd rs1 shamt =>
-      some (.expandedInstr (JoltISA.slliwProgram shamt rs1 rd))
-  | .SRLIW rd rs1 shamt =>
-      some (.expandedInstr (JoltISA.srliwProgram shamt rs1 rd))
-  | .SRAIW rd rs1 shamt =>
-      some (.expandedInstr (JoltISA.sraiwProgram shamt rs1 rd))
-  | .ADDW rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.addwProgram rs2 rs1 rd))
-  | .SUBW rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.subwProgram rs2 rs1 rd))
-  | .SLLW rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.sllwProgram rs2 rs1 rd))
-  | .SRLW rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.srlwProgram rs2 rs1 rd))
-  | .SRAW rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.srawProgram rs2 rs1 rd))
-  | .MUL rd rs1 rs2 =>
-      some (.nativeInstr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2)))
-  | .MULH rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.mulhProgram rs2 rs1 rd))
-  | .MULHU rd rs1 rs2 =>
-      some (.nativeInstr (.MULHU (.xreg rd) (.xreg rs1) (.xreg rs2)))
-  | .MULHSU rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.mulhsuProgram rs2 rs1 rd))
-  | .DIV rd rs1 rs2 quotient remAbs =>
-      some (.expandedInstr (JoltISA.divProgram rs2 rs1 rd quotient remAbs))
-  | .DIVU rd rs1 rs2 quotient =>
-      some (.expandedInstr (JoltISA.divuProgram rs2 rs1 rd quotient))
-  | .REM rd rs1 rs2 quotient remAbs =>
-      some (.expandedInstr (JoltISA.remProgram rs2 rs1 rd quotient remAbs))
-  | .REMU rd rs1 rs2 quotient =>
-      some (.expandedInstr (JoltISA.remuProgram rs2 rs1 rd quotient))
-  | .MULW rd rs1 rs2 =>
-      some (.expandedInstr (JoltISA.mulwProgram rs2 rs1 rd))
-  | .DIVW rd rs1 rs2 quotient remAbs =>
-      some (.expandedInstr (JoltISA.divwProgram rs2 rs1 rd quotient remAbs))
-  | .DIVUW rd rs1 rs2 quotient =>
-      some (.expandedInstr (JoltISA.divuwProgram rs2 rs1 rd quotient))
-  | .REMW rd rs1 rs2 quotient remAbs =>
-      some (.expandedInstr (JoltISA.remwProgram rs2 rs1 rd quotient remAbs))
-  | .REMUW rd rs1 rs2 quotient =>
-      some (.expandedInstr (JoltISA.remuwProgram rs2 rs1 rd quotient))
-  | .LR_W _rd _rs1 _aq _rl => none
-  | .SC_W _rd _rs1 _rs2 _aq _rl => none
-  | .AMOSWAP_W rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoswapwProgram rs2 rs1 rd))
-  | .AMOADD_W rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoaddwProgram rs2 rs1 rd))
-  | .AMOXOR_W rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoxorwProgram rs2 rs1 rd))
-  | .AMOAND_W rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoandwProgram rs2 rs1 rd))
-  | .AMOOR_W rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoorwProgram rs2 rs1 rd))
-  | .AMOMIN_W rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amominwProgram rs2 rs1 rd))
-  | .AMOMAX_W rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amomaxwProgram rs2 rs1 rd))
-  | .AMOMINU_W rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amominuwProgram rs2 rs1 rd))
-  | .AMOMAXU_W rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amomaxuwProgram rs2 rs1 rd))
-  | .LR_D _rd _rs1 _aq _rl => none
-  | .SC_D _rd _rs1 _rs2 _aq _rl => none
-  | .AMOSWAP_D rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoswapdProgram rs2 rs1 rd))
-  | .AMOADD_D rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoadddProgram rs2 rs1 rd))
-  | .AMOXOR_D rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoxordProgram rs2 rs1 rd))
-  | .AMOAND_D rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoanddProgram rs2 rs1 rd))
-  | .AMOOR_D rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amoordProgram rs2 rs1 rd))
-  | .AMOMIN_D rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amomindProgram rs2 rs1 rd))
-  | .AMOMAX_D rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amomaxdProgram rs2 rs1 rd))
-  | .AMOMINU_D rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amominudProgram rs2 rs1 rd))
-  | .AMOMAXU_D rd rs1 rs2 _aq _rl =>
-      some (.expandedInstr (JoltISA.amomaxudProgram rs2 rs1 rd))
-  | .CSRRW rd csr rs1 =>
-      expandedProgram? (JoltISA.csrrwProgram? csr rs1 rd)
-  | .CSRRS rd csr rs1 =>
-      expandedProgram? (JoltISA.csrrsProgram? csr rs1 rd)
-  | .MRET =>
-      some (.expandedInstr JoltISA.mretProgram)
-
 /-- Assumption payload for the equivalence statement.
 
 The advice-backed ALU instructions all need source-register read facts; their
@@ -498,6 +213,42 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .REMUW _rd rs1 rs2 _quotient, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .AMOSWAP_W rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js
+  | .AMOADD_W rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOADD rs2 rs1 rd js
+  | .AMOXOR_W rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOXOR rs2 rs1 rd js
+  | .AMOAND_W rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOAND rs2 rs1 rd js
+  | .AMOOR_W rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOOR rs2 rs1 rd js
+  | .AMOMIN_W rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOMIN rs2 rs1 rd js
+  | .AMOMAX_W rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOMAX rs2 rs1 rd js
+  | .AMOMINU_W rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOMINU rs2 rs1 rd js
+  | .AMOMAXU_W rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOMAXU rs2 rs1 rd js
+  | .AMOSWAP_D rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js
+  | .AMOADD_D rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOADD rs2 rs1 rd js
+  | .AMOXOR_D rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOXOR rs2 rs1 rd js
+  | .AMOAND_D rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOAND rs2 rs1 rd js
+  | .AMOOR_D rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOOR rs2 rs1 rd js
+  | .AMOMIN_D rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOMIN rs2 rs1 rd js
+  | .AMOMAX_D rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOMAX rs2 rs1 rd js
+  | .AMOMINU_D rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOMINU rs2 rs1 rd js
+  | .AMOMAXU_D rd rs1 rs2 _aq _rl, js =>
+      AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOMAXU rs2 rs1 rd js
   | _, _ => Unit
 
 /-- Equivalence proposition selected by the operand-bearing instruction.
@@ -529,6 +280,42 @@ def equivalenceStatement :
       remwProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
     | .REMUW rd rs1 rs2 quotient =>
       remuwProgramEqSailStatement rs2 rs1 rd quotient js _h
+    | .AMOSWAP_W rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoswapwProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOADD_W rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoaddwProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOXOR_W rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoxorwProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOAND_W rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoandwProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOOR_W rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoorwProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOMIN_W rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amominwProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOMAX_W rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amomaxwProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOMINU_W rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amominuwProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOMAXU_W rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amomaxuwProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOSWAP_D rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoswapdProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOADD_D rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoadddProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOXOR_D rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoxordProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOAND_D rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoanddProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOOR_D rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amoordProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOMIN_D rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amomindProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOMAX_D rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amomaxdProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOMINU_D rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amominudProgramEqSailStatement rs2 rs1 rd js _h
+    | .AMOMAXU_D rd rs1 rs2 _aq _rl =>
+      AtomicFamily.amomaxudProgramEqSailStatement rs2 rs1 rd js _h
     | _ => False
 
 /-- Proof selector for the equivalence statement.
@@ -558,6 +345,42 @@ theorem equivalenceStatement_holds :
       remwProgram_eq_sail rs2 rs1 rd quotient remAbs js h
   | .REMUW rd rs1 rs2 quotient, js, h =>
       remuwProgram_eq_sail rs2 rs1 rd quotient js h
+  | .AMOSWAP_W rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoswapwProgram_eq_sail rs2 rs1 rd js h
+  | .AMOADD_W rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoaddwProgram_eq_sail rs2 rs1 rd js h
+  | .AMOXOR_W rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoxorwProgram_eq_sail rs2 rs1 rd js h
+  | .AMOAND_W rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoandwProgram_eq_sail rs2 rs1 rd js h
+  | .AMOOR_W rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoorwProgram_eq_sail rs2 rs1 rd js h
+  | .AMOMIN_W rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amominwProgram_eq_sail rs2 rs1 rd js h
+  | .AMOMAX_W rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amomaxwProgram_eq_sail rs2 rs1 rd js h
+  | .AMOMINU_W rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amominuwProgram_eq_sail rs2 rs1 rd js h
+  | .AMOMAXU_W rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amomaxuwProgram_eq_sail rs2 rs1 rd js h
+  | .AMOSWAP_D rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoswapdProgram_eq_sail rs2 rs1 rd js h
+  | .AMOADD_D rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoadddProgram_eq_sail rs2 rs1 rd js h
+  | .AMOXOR_D rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoxordProgram_eq_sail rs2 rs1 rd js h
+  | .AMOAND_D rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoanddProgram_eq_sail rs2 rs1 rd js h
+  | .AMOOR_D rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amoordProgram_eq_sail rs2 rs1 rd js h
+  | .AMOMIN_D rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amomindProgram_eq_sail rs2 rs1 rd js h
+  | .AMOMAX_D rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amomaxdProgram_eq_sail rs2 rs1 rd js h
+  | .AMOMINU_D rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amominudProgram_eq_sail rs2 rs1 rd js h
+  | .AMOMAXU_D rd rs1 rs2 _aq _rl, js, h =>
+      AtomicFamily.amomaxudProgram_eq_sail rs2 rs1 rd js h
   | _, _, _ => by
       sorry
 
