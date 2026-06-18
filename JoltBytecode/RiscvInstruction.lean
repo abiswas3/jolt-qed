@@ -475,19 +475,35 @@ def joltExecution : RiscvInstruction → Option JoltISA.JoltExecution
   | .MRET =>
       some (.expandedInstr JoltISA.mretProgram)
 
-/-- Assumption payload for the equivalence statement, sampled only for `ADDW`
-and `DIV` while we test this shape. -/
+/-- Assumption payload for the equivalence statement.
+
+The advice-backed ALU instructions all need source-register read facts; their
+advice operands live in the `RiscvInstruction` constructor itself. -/
 def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
   | .ADDW _rd rs1 rs2, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .DIV _rd rs1 rs2 _quotient _remAbs, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .DIVU _rd rs1 rs2 _quotient, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .REM _rd rs1 rs2 _quotient _remAbs, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .REMU _rd rs1 rs2 _quotient, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .DIVW _rd rs1 rs2 _quotient _remAbs, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .DIVUW _rd rs1 rs2 _quotient, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .REMW _rd rs1 rs2 _quotient _remAbs, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .REMUW _rd rs1 rs2 _quotient, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | _, _ => Unit
 
 /-- Equivalence proposition selected by the operand-bearing instruction.
 
-Only `ADDW` and `DIV` are wired here. The fallback is deliberately `False` so
-unwired opcodes are visible gaps, not vacuous successes. -/
+The fallback is deliberately `False` so unwired opcodes are visible gaps, not
+vacuous successes. -/
 def equivalenceStatement :
     (instr : RiscvInstruction) →
     (js : SailJoltState) →
@@ -499,13 +515,26 @@ def equivalenceStatement :
       addwProgramEqSailStatement rs2 rs1 rd js _h
     | .DIV rd rs1 rs2 quotient remAbs =>
       divProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
+    | .DIVU rd rs1 rs2 quotient =>
+      divuProgramEqSailStatement rs2 rs1 rd quotient js _h
+    | .REM rd rs1 rs2 quotient remAbs =>
+      remProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
+    | .REMU rd rs1 rs2 quotient =>
+      remuProgramEqSailStatement rs2 rs1 rd quotient js _h
+    | .DIVW rd rs1 rs2 quotient remAbs =>
+      divwProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
+    | .DIVUW rd rs1 rs2 quotient =>
+      divuwProgramEqSailStatement rs2 rs1 rd quotient js _h
+    | .REMW rd rs1 rs2 quotient remAbs =>
+      remwProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
+    | .REMUW rd rs1 rs2 quotient =>
+      remuwProgramEqSailStatement rs2 rs1 rd quotient js _h
     | _ => False
 
 /-- Proof selector for the equivalence statement.
 
-Only `ADDW` and `DIV` are wired for now. The fallback marks the remaining
-instruction branches that still need to be connected to their existing
-instruction-equivalence theorems. -/
+The fallback marks the remaining instruction branches that still need to be
+connected to their existing instruction-equivalence theorems. -/
 theorem equivalenceStatement_holds :
     (instr : RiscvInstruction) →
     (js : SailJoltState) →
@@ -515,6 +544,20 @@ theorem equivalenceStatement_holds :
       addwProgram_eq_sail rs2 rs1 rd js h
   | .DIV rd rs1 rs2 quotient remAbs, js, h =>
       divProgram_eq_sail rs2 rs1 rd quotient remAbs js h
+  | .DIVU rd rs1 rs2 quotient, js, h =>
+      divuProgram_eq_sail rs2 rs1 rd quotient js h
+  | .REM rd rs1 rs2 quotient remAbs, js, h =>
+      remProgram_eq_sail rs2 rs1 rd quotient remAbs js h
+  | .REMU rd rs1 rs2 quotient, js, h =>
+      remuProgram_eq_sail rs2 rs1 rd quotient js h
+  | .DIVW rd rs1 rs2 quotient remAbs, js, h =>
+      divwProgram_eq_sail rs2 rs1 rd quotient remAbs js h
+  | .DIVUW rd rs1 rs2 quotient, js, h =>
+      divuwProgram_eq_sail rs2 rs1 rd quotient js h
+  | .REMW rd rs1 rs2 quotient remAbs, js, h =>
+      remwProgram_eq_sail rs2 rs1 rd quotient remAbs js h
+  | .REMUW rd rs1 rs2 quotient, js, h =>
+      remuwProgram_eq_sail rs2 rs1 rd quotient js h
   | _, _, _ => by
       sorry
 

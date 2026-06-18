@@ -240,20 +240,56 @@ private theorem remuwProgram_project_eq_sail (rs2 rs1 rd : regidx) (js : SailJol
   exact JoltISA.remuwProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
 
 /-- Main program-level equivalence for `REMUW` with honest advice. -/
-theorem remuwProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+def remuwProgramCompletenessStatement
+    (rs2 rs1 rd : regidx)
+    (quotient : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+  quotient = sail_divuw_advice h.rs1_val h.rs2_val →
     ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.remuwProgram rs2 rs1 rd
-        (sail_divuw_advice h.rs1_val h.rs2_val))).run js)
-      ((execute_REMW rs2 rs1 rd true).run js.sail) := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact remuwProgram_project_eq_sail rs2 rs1 rd js h
-  · unfold JoltISA.remuwProgram
-    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.VRegWritesNoProtectedVReg,
-      Remuw.rs1VReg, Remuw.rs2VReg, Remuw.vTmpVReg, Remuw.tempVReg]
+      ((JoltISA.execProgram (JoltISA.remuwProgram rs2 rs1 rd quotient)).run js)
+      ((execute_REMW rs2 rs1 rd true).run js.sail)
+
+def remuwProgramSoundnessStatement
+    (rs2 rs1 rd : regidx)
+    (quotient : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+  rd ≠ regidx.Regidx 0 →
+    ∀ js',
+      (JoltISA.execProgram (JoltISA.remuwProgram rs2 rs1 rd quotient)).run js =
+          .ok RETIRE_SUCCESS js' →
+        js'.sail = stateAfterWrite js.sail rd
+          (sail_remw_value h.rs1_val h.rs2_val true)
+
+def remuwProgramEqSailStatement
+    (rs2 rs1 rd : regidx)
+    (quotient : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+  remuwProgramCompletenessStatement rs2 rs1 rd quotient js h ∧
+  remuwProgramSoundnessStatement rs2 rs1 rd quotient js h
+
+theorem remuwProgram_eq_sail
+    (rs2 rs1 rd : regidx)
+    (quotient : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+    remuwProgramEqSailStatement rs2 rs1 rd quotient js h := by
+  constructor
+  · intro hquotient
+    subst quotient
+    apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+    · exact remuwProgram_project_eq_sail rs2 rs1 rd js h
+    · unfold JoltISA.remuwProgram
+      apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+      simp [JoltISA.ProgramWritesNoProtectedVReg,
+        JoltISA.InstrWritesNoProtectedVReg,
+        JoltISA.DstWritesNoProtectedVReg,
+        JoltISA.VRegWritesNoProtectedVReg,
+        Remuw.rs1VReg, Remuw.rs2VReg, Remuw.vTmpVReg, Remuw.tempVReg]
+  · intro hrd js' hok
+    exact JoltISA.remuwProgram_sound rs2 rs1 rd quotient js
+      h.rs1_val h.rs2_val h.rs1_read h.rs2_read hrd js' hok
 
 end
