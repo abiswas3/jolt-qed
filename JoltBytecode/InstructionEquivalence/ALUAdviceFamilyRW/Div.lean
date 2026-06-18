@@ -259,22 +259,60 @@ private theorem divProgram_project_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltS
   exact JoltISA.divProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
 
 /-- Main program-level equivalence for `DIV` with honest advice. -/
-theorem divProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+def divProgramCompletenessStatement
+    (rs2 rs1 rd : regidx)
+    (quotient remAbs : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+  (quotient = sail_div_value h.rs1_val h.rs2_val false ∧
+      remAbs = bv_abs (sail_rem_value h.rs1_val h.rs2_val false)) →
     ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.divProgram rs2 rs1 rd
-        (sail_div_value h.rs1_val h.rs2_val false)
-        (bv_abs (sail_rem_value h.rs1_val h.rs2_val false)))).run js)
-      ((execute_DIV rs2 rs1 rd false).run js.sail) := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact divProgram_project_eq_sail rs2 rs1 rd js h
-  · unfold JoltISA.divProgram JoltISA.mulhBlock JoltISA.sraiBlock
-    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.VRegWritesNoProtectedVReg,
-      Div.a2VReg, Div.a3VReg, Div.t0VReg, Div.t1VReg,
-      Div.t2VReg, Div.t3VReg, Div.t4VReg]
+      ((JoltISA.execProgram (JoltISA.divProgram rs2 rs1 rd quotient remAbs)).run js)
+      ((execute_DIV rs2 rs1 rd false).run js.sail)
+
+def divProgramSoundnessStatement
+    (rs2 rs1 rd : regidx)
+    (quotient remAbs : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+  rd ≠ regidx.Regidx 0 →
+    ∀ js',
+      (JoltISA.execProgram (JoltISA.divProgram rs2 rs1 rd quotient remAbs)).run js =
+          .ok RETIRE_SUCCESS js' →
+        quotient = sail_div_value h.rs1_val h.rs2_val false ∧
+        remAbs = bv_abs (sail_rem_value h.rs1_val h.rs2_val false)
+
+def divProgramEqSailStatement
+    (rs2 rs1 rd : regidx)
+    (quotient remAbs : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+  divProgramCompletenessStatement rs2 rs1 rd quotient remAbs js h ∧
+  divProgramSoundnessStatement rs2 rs1 rd quotient remAbs js h
+
+theorem divProgram_eq_sail
+    (rs2 rs1 rd : regidx)
+    (quotient remAbs : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+    divProgramEqSailStatement rs2 rs1 rd quotient remAbs js h := by
+  constructor
+  · intro hadvice
+    rcases hadvice with ⟨hquotient, hremAbs⟩
+    subst quotient
+    subst remAbs
+    apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+    · exact divProgram_project_eq_sail rs2 rs1 rd js h
+    · unfold JoltISA.divProgram JoltISA.mulhBlock JoltISA.sraiBlock
+      apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+      simp [JoltISA.ProgramWritesNoProtectedVReg,
+        JoltISA.InstrWritesNoProtectedVReg,
+        JoltISA.DstWritesNoProtectedVReg,
+        JoltISA.VRegWritesNoProtectedVReg,
+        Div.a2VReg, Div.a3VReg, Div.t0VReg, Div.t1VReg,
+        Div.t2VReg, Div.t3VReg, Div.t4VReg]
+  · intro hrd js' hok
+    exact JoltISA.divProgram_sound rs2 rs1 rd quotient remAbs js
+      h.rs1_val h.rs2_val h.rs1_read h.rs2_read hrd js' hok
 
 end

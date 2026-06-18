@@ -1,13 +1,30 @@
 import LeanRV64D.InstsEnd
+import JoltBytecode.JoltISA.Execution
+import JoltBytecode.JoltISA.Expansions.ALU
+import JoltBytecode.JoltISA.Expansions.Atomics
+import JoltBytecode.JoltISA.Expansions.Load
+import JoltBytecode.JoltISA.Expansions.LoadReserved
+import JoltBytecode.JoltISA.Expansions.Mul
+import JoltBytecode.JoltISA.Expansions.Store
+import JoltBytecode.JoltISA.Expansions.System
+import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Addw
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divu
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divuw
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divw
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Rem
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remu
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remuw
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remw
 
 /-!
 # RISC-V Instructions
 
-This file records an operand-bearing RISC-V instruction universe from the
-official RISC-V ISA documentation only.
+This file records the operand-bearing guest RISC-V instruction universe accepted
+by Jolt's Rust `RV64IMAC_JOLT` source profile.
 
-Rust/Jolt code is intentionally not cited here. Rust is the source of truth for
-`JoltISA`; the RISC-V ISA docs are the source of truth for this file.
+Rust is the source of truth for which guest opcodes Jolt accepts; the RISC-V ISA
+docs are cited for the meaning of those opcodes.
 -/
 
 open Sail PreSail
@@ -15,18 +32,18 @@ open Sail PreSail
 /-- A CSR address is the 12-bit `csr` field used by Zicsr instructions. -/
 abbrev CsrAddr := BitVec 12
 
-/-- The 5-bit unsigned immediate operand used by Zicsr immediate forms. -/
-abbrev CsrUImm := BitVec 5
-
 /-- `fm`, `pred`, and `succ` are 4-bit FENCE fields. -/
 abbrev FenceField := BitVec 4
 
-/-- Compressed primed registers denote the architectural register subset `x8`-`x15`. -/
-abbrev CReg := cregidx
-
-/-- Official RISC-V instruction constructors with operands.
+/-- Guest RISC-V instruction constructors with operands.
 
 Sources:
+* Jolt accepted source instruction list:
+  `/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-riscv/src/lib.rs`,
+  `for_each_instruction_kind!`.
+* Jolt source extension assignment:
+  `/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-riscv/src/kind.rs`,
+  `source_extension_for_marker`.
 * RV32I base integer instructions:
   https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html
 * RV64I base integer additions:
@@ -35,11 +52,9 @@ Sources:
   https://docs.riscv.org/reference/isa/v20260120/unpriv/m-st-ext.html
 * A extension:
   https://docs.riscv.org/reference/isa/v20260120/unpriv/a-st-ext.html
-* C extension:
-  https://docs.riscv.org/reference/isa/v20260120/unpriv/c-st-ext.html
 * Zicsr extension:
   https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html
-* Privileged instruction listings:
+* MRET privileged instruction listing:
   https://docs.riscv.org/reference/isa/v20260120/priv/priv-insns.html
 -/
 inductive RiscvInstruction where
@@ -107,15 +122,15 @@ inductive RiscvInstruction where
   | MULH (rd rs1 rs2 : regidx)
   | MULHU (rd rs1 rs2 : regidx)
   | MULHSU (rd rs1 rs2 : regidx)
-  | DIV (rd rs1 rs2 : regidx)
-  | DIVU (rd rs1 rs2 : regidx)
-  | REM (rd rs1 rs2 : regidx)
-  | REMU (rd rs1 rs2 : regidx)
+  | DIV (rd rs1 rs2 : regidx) (quotient remAbs : BitVec 64)
+  | DIVU (rd rs1 rs2 : regidx) (quotient : BitVec 64)
+  | REM (rd rs1 rs2 : regidx) (quotient remAbs : BitVec 64)
+  | REMU (rd rs1 rs2 : regidx) (quotient : BitVec 64)
   | MULW (rd rs1 rs2 : regidx)
-  | DIVW (rd rs1 rs2 : regidx)
-  | DIVUW (rd rs1 rs2 : regidx)
-  | REMW (rd rs1 rs2 : regidx)
-  | REMUW (rd rs1 rs2 : regidx)
+  | DIVW (rd rs1 rs2 : regidx) (quotient remAbs : BitVec 64)
+  | DIVUW (rd rs1 rs2 : regidx) (quotient : BitVec 64)
+  | REMW (rd rs1 rs2 : regidx) (quotient remAbs : BitVec 64)
+  | REMUW (rd rs1 rs2 : regidx) (quotient : BitVec 64)
 
   /- A extension for atomic instructions. The `aq` and `rl` operands are the
      acquire and release bits in the atomic instruction encoding.
@@ -143,79 +158,14 @@ inductive RiscvInstruction where
   | AMOMINU_D (rd rs1 rs2 : regidx) (aq rl : Bool)
   | AMOMAXU_D (rd rs1 rs2 : regidx) (aq rl : Bool)
 
-  /- C extension for compressed instructions, RV64 integer subset.
-     Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/c-st-ext.html -/
-  | C_ADDI4SPN (rd' : CReg) (nzuimm : BitVec 8)
-  | C_LW (rd' rs1' : CReg) (uimm : BitVec 5)
-  | C_LD (rd' rs1' : CReg) (uimm : BitVec 5)
-  | C_SW (rs2' rs1' : CReg) (uimm : BitVec 5)
-  | C_SD (rs2' rs1' : CReg) (uimm : BitVec 5)
-  | C_NOP
-  | C_ADDI (rd : regidx) (nzimm : BitVec 6)
-  | C_ADDIW (rd : regidx) (imm : BitVec 6)
-  | C_LI (rd : regidx) (imm : BitVec 6)
-  | C_ADDI16SP (nzimm : BitVec 6)
-  | C_LUI (rd : regidx) (nzimm : BitVec 6)
-  | C_SRLI (rd' : CReg) (shamt : BitVec 6)
-  | C_SRAI (rd' : CReg) (shamt : BitVec 6)
-  | C_ANDI (rd' : CReg) (imm : BitVec 6)
-  | C_SUB (rd' rs2' : CReg)
-  | C_XOR (rd' rs2' : CReg)
-  | C_OR (rd' rs2' : CReg)
-  | C_AND (rd' rs2' : CReg)
-  | C_SUBW (rd' rs2' : CReg)
-  | C_ADDW (rd' rs2' : CReg)
-  | C_J (imm : BitVec 11)
-  | C_BEQZ (rs1' : CReg) (imm : BitVec 8)
-  | C_BNEZ (rs1' : CReg) (imm : BitVec 8)
-  | C_SLLI (rd : regidx) (shamt : BitVec 6)
-  | C_LWSP (rd : regidx) (uimm : BitVec 6)
-  | C_LDSP (rd : regidx) (uimm : BitVec 6)
-  | C_JR (rs1 : regidx)
-  | C_MV (rd rs2 : regidx)
-  | C_EBREAK
-  | C_JALR (rs1 : regidx)
-  | C_ADD (rd rs2 : regidx)
-  | C_SWSP (rs2 : regidx) (uimm : BitVec 6)
-  | C_SDSP (rs2 : regidx) (uimm : BitVec 6)
-
-  /- Zicsr extension for control and status register instructions.
+  /- Jolt-supported Zicsr source instructions.
      Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html -/
   | CSRRW (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
   | CSRRS (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
-  | CSRRC (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
-  | CSRRWI (rd : regidx) (csr : CsrAddr) (uimm : CsrUImm)
-  | CSRRSI (rd : regidx) (csr : CsrAddr) (uimm : CsrUImm)
-  | CSRRCI (rd : regidx) (csr : CsrAddr) (uimm : CsrUImm)
 
-  /- Privileged instruction set listings.
+  /- Jolt-supported RvPrivileged source instruction.
      Source: https://docs.riscv.org/reference/isa/v20260120/priv/priv-insns.html -/
-  | SRET
   | MRET
-  | MNRET
-  | WFI
-  | SCTRCLR
-  | SFENCE_VMA (rs1 rs2 : regidx)
-  | HFENCE_VVMA (rs1 rs2 : regidx)
-  | HFENCE_GVMA (rs1 rs2 : regidx)
-  | HLV_B (rd rs1 : regidx)
-  | HLV_BU (rd rs1 : regidx)
-  | HLV_H (rd rs1 : regidx)
-  | HLV_HU (rd rs1 : regidx)
-  | HLV_W (rd rs1 : regidx)
-  | HLV_WU (rd rs1 : regidx)
-  | HLV_D (rd rs1 : regidx)
-  | HLVX_HU (rd rs1 : regidx)
-  | HLVX_WU (rd rs1 : regidx)
-  | HSV_B (rs2 rs1 : regidx)
-  | HSV_H (rs2 rs1 : regidx)
-  | HSV_W (rs2 rs1 : regidx)
-  | HSV_D (rs2 rs1 : regidx)
-  | SINVAL_VMA (rs1 rs2 : regidx)
-  | SFENCE_W_INVAL
-  | SFENCE_INVAL_IR
-  | HINVAL_VVMA (rs1 rs2 : regidx)
-  | HINVAL_GVMA (rs1 rs2 : regidx)
   deriving Repr
 
 namespace RiscvInstruction
@@ -304,15 +254,15 @@ noncomputable def sailExecution : RiscvInstruction → Option SailExecution
   | .MULH rd rs1 rs2 => some (LeanRV64D.Functions.execute_MUL rs2 rs1 rd mulHighSigned)
   | .MULHU rd rs1 rs2 => some (LeanRV64D.Functions.execute_MUL rs2 rs1 rd mulHighUnsigned)
   | .MULHSU rd rs1 rs2 => some (LeanRV64D.Functions.execute_MUL rs2 rs1 rd mulHighSignedUnsigned)
-  | .DIV rd rs1 rs2 => some (LeanRV64D.Functions.execute_DIV rs2 rs1 rd false)
-  | .DIVU rd rs1 rs2 => some (LeanRV64D.Functions.execute_DIV rs2 rs1 rd true)
-  | .REM rd rs1 rs2 => some (LeanRV64D.Functions.execute_REM rs2 rs1 rd false)
-  | .REMU rd rs1 rs2 => some (LeanRV64D.Functions.execute_REM rs2 rs1 rd true)
+  | .DIV rd rs1 rs2 _quotient _remAbs => some (LeanRV64D.Functions.execute_DIV rs2 rs1 rd false)
+  | .DIVU rd rs1 rs2 _quotient => some (LeanRV64D.Functions.execute_DIV rs2 rs1 rd true)
+  | .REM rd rs1 rs2 _quotient _remAbs => some (LeanRV64D.Functions.execute_REM rs2 rs1 rd false)
+  | .REMU rd rs1 rs2 _quotient => some (LeanRV64D.Functions.execute_REM rs2 rs1 rd true)
   | .MULW rd rs1 rs2 => some (LeanRV64D.Functions.execute_MULW rs2 rs1 rd)
-  | .DIVW rd rs1 rs2 => some (LeanRV64D.Functions.execute_DIVW rs2 rs1 rd false)
-  | .DIVUW rd rs1 rs2 => some (LeanRV64D.Functions.execute_DIVW rs2 rs1 rd true)
-  | .REMW rd rs1 rs2 => some (LeanRV64D.Functions.execute_REMW rs2 rs1 rd false)
-  | .REMUW rd rs1 rs2 => some (LeanRV64D.Functions.execute_REMW rs2 rs1 rd true)
+  | .DIVW rd rs1 rs2 _quotient _remAbs => some (LeanRV64D.Functions.execute_DIVW rs2 rs1 rd false)
+  | .DIVUW rd rs1 rs2 _quotient => some (LeanRV64D.Functions.execute_DIVW rs2 rs1 rd true)
+  | .REMW rd rs1 rs2 _quotient _remAbs => some (LeanRV64D.Functions.execute_REMW rs2 rs1 rd false)
+  | .REMUW rd rs1 rs2 _quotient => some (LeanRV64D.Functions.execute_REMW rs2 rs1 rd true)
   | .LR_W rd rs1 aq rl => some (LeanRV64D.Functions.execute_LOADRES aq rl rs1 4 rd)
   | .SC_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_STORECON aq rl rs2 rs1 4 rd)
   | .AMOSWAP_W rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOSWAP aq rl rs2 rs1 4 rd)
@@ -335,70 +285,237 @@ noncomputable def sailExecution : RiscvInstruction → Option SailExecution
   | .AMOMAX_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMAX aq rl rs2 rs1 8 rd)
   | .AMOMINU_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMINU aq rl rs2 rs1 8 rd)
   | .AMOMAXU_D rd rs1 rs2 aq rl => some (LeanRV64D.Functions.execute_AMO amoop.AMOMAXU aq rl rs2 rs1 8 rd)
-  | .C_ADDI4SPN rd' nzuimm => some (pureResult (LeanRV64D.Functions.execute_C_ADDI4SPN rd' nzuimm))
-  | .C_LW rd' rs1' uimm => some (pureResult (LeanRV64D.Functions.execute_C_LW uimm rs1' rd'))
-  | .C_LD rd' rs1' uimm => some (pureResult (LeanRV64D.Functions.execute_C_LD uimm rs1' rd'))
-  | .C_SW rs2' rs1' uimm => some (pureResult (LeanRV64D.Functions.execute_C_SW uimm rs1' rs2'))
-  | .C_SD rs2' rs1' uimm => some (pureResult (LeanRV64D.Functions.execute_C_SD uimm rs1' rs2'))
-  | .C_NOP => some (pureResult (LeanRV64D.Functions.execute_C_NOP 0b000000#6))
-  | .C_ADDI rd nzimm => some (pureResult (LeanRV64D.Functions.execute_C_ADDI nzimm rd))
-  | .C_ADDIW rd imm => some (pureResult (LeanRV64D.Functions.execute_C_ADDIW imm rd))
-  | .C_LI rd imm => some (pureResult (LeanRV64D.Functions.execute_C_LI imm rd))
-  | .C_ADDI16SP nzimm => some (pureResult (LeanRV64D.Functions.execute_C_ADDI16SP nzimm))
-  | .C_LUI rd nzimm => some (pureResult (LeanRV64D.Functions.execute_C_LUI nzimm rd))
-  | .C_SRLI rd' shamt => some (pureResult (LeanRV64D.Functions.execute_C_SRLI shamt rd'))
-  | .C_SRAI rd' shamt => some (pureResult (LeanRV64D.Functions.execute_C_SRAI shamt rd'))
-  | .C_ANDI rd' imm => some (pureResult (LeanRV64D.Functions.execute_C_ANDI imm rd'))
-  | .C_SUB rd' rs2' => some (pureResult (LeanRV64D.Functions.execute_C_SUB rd' rs2'))
-  | .C_XOR rd' rs2' => some (pureResult (LeanRV64D.Functions.execute_C_XOR rd' rs2'))
-  | .C_OR rd' rs2' => some (pureResult (LeanRV64D.Functions.execute_C_OR rd' rs2'))
-  | .C_AND rd' rs2' => some (pureResult (LeanRV64D.Functions.execute_C_AND rd' rs2'))
-  | .C_SUBW rd' rs2' => some (pureResult (LeanRV64D.Functions.execute_C_SUBW rd' rs2'))
-  | .C_ADDW rd' rs2' => some (pureResult (LeanRV64D.Functions.execute_C_ADDW rd' rs2'))
-  | .C_J imm => some (pureResult (LeanRV64D.Functions.execute_C_J imm))
-  | .C_BEQZ rs1' imm => some (pureResult (LeanRV64D.Functions.execute_C_BEQZ imm rs1'))
-  | .C_BNEZ rs1' imm => some (pureResult (LeanRV64D.Functions.execute_C_BNEZ imm rs1'))
-  | .C_SLLI rd shamt => some (pureResult (LeanRV64D.Functions.execute_C_SLLI shamt rd))
-  | .C_LWSP rd uimm => some (pureResult (LeanRV64D.Functions.execute_C_LWSP uimm rd))
-  | .C_LDSP rd uimm => some (pureResult (LeanRV64D.Functions.execute_C_LDSP uimm rd))
-  | .C_JR rs1 => some (pureResult (LeanRV64D.Functions.execute_C_JR rs1))
-  | .C_MV rd rs2 => some (pureResult (LeanRV64D.Functions.execute_C_MV rd rs2))
-  | .C_EBREAK => some (pureResult (LeanRV64D.Functions.execute_C_EBREAK ()))
-  | .C_JALR rs1 => some (pureResult (LeanRV64D.Functions.execute_C_JALR rs1))
-  | .C_ADD rd rs2 => some (pureResult (LeanRV64D.Functions.execute_C_ADD rd rs2))
-  | .C_SWSP rs2 uimm => some (pureResult (LeanRV64D.Functions.execute_C_SWSP uimm rs2))
-  | .C_SDSP rs2 uimm => some (pureResult (LeanRV64D.Functions.execute_C_SDSP uimm rs2))
   | .CSRRW rd csr rs1 => some (LeanRV64D.Functions.execute_CSRReg csr rs1 rd csrop.CSRRW)
   | .CSRRS rd csr rs1 => some (LeanRV64D.Functions.execute_CSRReg csr rs1 rd csrop.CSRRS)
-  | .CSRRC rd csr rs1 => some (LeanRV64D.Functions.execute_CSRReg csr rs1 rd csrop.CSRRC)
-  | .CSRRWI rd csr uimm => some (LeanRV64D.Functions.execute_CSRImm csr uimm rd csrop.CSRRW)
-  | .CSRRSI rd csr uimm => some (LeanRV64D.Functions.execute_CSRImm csr uimm rd csrop.CSRRS)
-  | .CSRRCI rd csr uimm => some (LeanRV64D.Functions.execute_CSRImm csr uimm rd csrop.CSRRC)
-  | .SRET => some (LeanRV64D.Functions.execute_SRET ())
   | .MRET => some (LeanRV64D.Functions.execute_MRET ())
-  | .MNRET => none
-  | .WFI => some (LeanRV64D.Functions.execute_WFI ())
-  | .SCTRCLR => none
-  | .SFENCE_VMA rs1 rs2 => some (LeanRV64D.Functions.execute_SFENCE_VMA rs1 rs2)
-  | .HFENCE_VVMA _ _ => none
-  | .HFENCE_GVMA _ _ => none
-  | .HLV_B _ _ => none
-  | .HLV_BU _ _ => none
-  | .HLV_H _ _ => none
-  | .HLV_HU _ _ => none
-  | .HLV_W _ _ => none
-  | .HLV_WU _ _ => none
-  | .HLV_D _ _ => none
-  | .HLVX_HU _ _ => none
-  | .HLVX_WU _ _ => none
-  | .HSV_B _ _ => none
-  | .HSV_H _ _ => none
-  | .HSV_W _ _ => none
-  | .HSV_D _ _ => none
-  | .SINVAL_VMA rs1 rs2 => some (LeanRV64D.Functions.execute_SINVAL_VMA rs1 rs2)
-  | .SFENCE_W_INVAL => some (LeanRV64D.Functions.execute_SFENCE_W_INVAL ())
-  | .SFENCE_INVAL_IR => some (LeanRV64D.Functions.execute_SFENCE_INVAL_IR ())
-  | .HINVAL_VVMA _ _ => none
-  | .HINVAL_GVMA _ _ => none
+
+private def expandedProgram? : Option JoltISA.Program → Option JoltISA.JoltExecution
+  | some program => some (.expandedInstr program)
+  | none => none
+
+/-- Jolt-side execution for the guest source instruction.
+
+`none` marks instructions that are in the Rust source profile but whose Jolt
+program is intentionally left unwired here for now. -/
+def joltExecution : RiscvInstruction → Option JoltISA.JoltExecution
+  | .LUI rd imm =>
+      some (.nativeInstr (.LUI (.xreg rd) (imm.setWidth 64)))
+  | .AUIPC rd imm =>
+      some (.nativeInstr (.AUIPC (.xreg rd) imm))
+  | .JAL rd imm =>
+      some (.nativeInstr (.JAL (.xreg rd) imm))
+  | .JALR rd rs1 imm =>
+      some (.nativeInstr (.JALR (.xreg rd) (.xreg rs1) imm))
+  | .BEQ rs1 rs2 imm =>
+      some (.nativeInstr (.BEQ (.xreg rs1) (.xreg rs2) imm))
+  | .BNE rs1 rs2 imm =>
+      some (.nativeInstr (.BNE (.xreg rs1) (.xreg rs2) imm))
+  | .BLT rs1 rs2 imm =>
+      some (.nativeInstr (.BLT (.xreg rs1) (.xreg rs2) imm))
+  | .BGE rs1 rs2 imm =>
+      some (.nativeInstr (.BGE (.xreg rs1) (.xreg rs2) imm))
+  | .BLTU rs1 rs2 imm =>
+      some (.nativeInstr (.BLTU (.xreg rs1) (.xreg rs2) imm))
+  | .BGEU rs1 rs2 imm =>
+      some (.nativeInstr (.BGEU (.xreg rs1) (.xreg rs2) imm))
+  | .LB rd rs1 imm =>
+      some (.expandedInstr (JoltISA.lbProgram imm rs1 rd))
+  | .LH rd rs1 imm =>
+      some (.expandedInstr (JoltISA.lhProgram imm rs1 rd))
+  | .LW rd rs1 imm =>
+      some (.expandedInstr (JoltISA.lwProgram imm rs1 rd))
+  | .LBU rd rs1 imm =>
+      some (.expandedInstr (JoltISA.lbuProgram imm rs1 rd))
+  | .LHU rd rs1 imm =>
+      some (.expandedInstr (JoltISA.lhuProgram imm rs1 rd))
+  | .SB rs2 rs1 imm =>
+      some (.expandedInstr (JoltISA.sbProgram imm rs2 rs1))
+  | .SH rs2 rs1 imm =>
+      some (.expandedInstr (JoltISA.shProgram imm rs2 rs1))
+  | .SW rs2 rs1 imm =>
+      some (.expandedInstr (JoltISA.swProgram imm rs2 rs1))
+  | .ADDI rd rs1 imm =>
+      some (.nativeInstr (.ADDI (.xreg rd) (.xreg rs1) imm))
+  | .SLTI rd rs1 imm =>
+      some (.nativeInstr (.SLTI (.xreg rd) (.xreg rs1) imm))
+  | .SLTIU rd rs1 imm =>
+      some (.nativeInstr (.SLTIU (.xreg rd) (.xreg rs1) imm))
+  | .XORI rd rs1 imm =>
+      some (.nativeInstr (.XORI (.xreg rd) (.xreg rs1) imm))
+  | .ORI rd rs1 imm =>
+      some (.nativeInstr (.ORI (.xreg rd) (.xreg rs1) imm))
+  | .ANDI rd rs1 imm =>
+      some (.nativeInstr (.ANDI (.xreg rd) (.xreg rs1) imm))
+  | .SLLI rd rs1 shamt =>
+      some (.expandedInstr (JoltISA.slliProgram shamt rs1 rd))
+  | .SRLI rd rs1 shamt =>
+      some (.expandedInstr (JoltISA.srliProgram shamt rs1 rd))
+  | .SRAI rd rs1 shamt =>
+      some (.expandedInstr (JoltISA.sraiProgram shamt rs1 rd))
+  | .ADD rd rs1 rs2 =>
+      some (.nativeInstr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2)))
+  | .SUB rd rs1 rs2 =>
+      some (.nativeInstr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2)))
+  | .SLL rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.sllProgram rs2 rs1 rd))
+  | .SLT rd rs1 rs2 =>
+      some (.nativeInstr (.SLT (.xreg rd) (.xreg rs1) (.xreg rs2)))
+  | .SLTU rd rs1 rs2 =>
+      some (.nativeInstr (.SLTU (.xreg rd) (.xreg rs1) (.xreg rs2)))
+  | .XOR rd rs1 rs2 =>
+      some (.nativeInstr (.XOR (.xreg rd) (.xreg rs1) (.xreg rs2)))
+  | .SRL rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.srlProgram rs2 rs1 rd))
+  | .SRA rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.sraProgram rs2 rs1 rd))
+  | .OR rd rs1 rs2 =>
+      some (.nativeInstr (.OR (.xreg rd) (.xreg rs1) (.xreg rs2)))
+  | .AND rd rs1 rs2 =>
+      some (.nativeInstr (.AND (.xreg rd) (.xreg rs1) (.xreg rs2)))
+  | .FENCE _rd _rs1 _fm _pred _succ =>
+      some (.nativeInstr .FENCE)
+  | .ECALL =>
+      some (.expandedInstr JoltISA.ecallProgram)
+  | .EBREAK =>
+      some (.expandedInstr JoltISA.ebreakProgram)
+  | .LWU rd rs1 imm =>
+      some (.expandedInstr (JoltISA.lwuProgram imm rs1 rd))
+  | .LD rd rs1 imm =>
+      some (.nativeInstr (.LD (.xreg rd) (.xreg rs1) imm))
+  | .SD rs2 rs1 imm =>
+      some (.nativeInstr (.SD (.xreg rs1) (.xreg rs2) imm))
+  | .ADDIW rd rs1 imm =>
+      some (.expandedInstr (JoltISA.addiwProgram imm rs1 rd))
+  | .SLLIW rd rs1 shamt =>
+      some (.expandedInstr (JoltISA.slliwProgram shamt rs1 rd))
+  | .SRLIW rd rs1 shamt =>
+      some (.expandedInstr (JoltISA.srliwProgram shamt rs1 rd))
+  | .SRAIW rd rs1 shamt =>
+      some (.expandedInstr (JoltISA.sraiwProgram shamt rs1 rd))
+  | .ADDW rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.addwProgram rs2 rs1 rd))
+  | .SUBW rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.subwProgram rs2 rs1 rd))
+  | .SLLW rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.sllwProgram rs2 rs1 rd))
+  | .SRLW rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.srlwProgram rs2 rs1 rd))
+  | .SRAW rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.srawProgram rs2 rs1 rd))
+  | .MUL rd rs1 rs2 =>
+      some (.nativeInstr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2)))
+  | .MULH rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.mulhProgram rs2 rs1 rd))
+  | .MULHU rd rs1 rs2 =>
+      some (.nativeInstr (.MULHU (.xreg rd) (.xreg rs1) (.xreg rs2)))
+  | .MULHSU rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.mulhsuProgram rs2 rs1 rd))
+  | .DIV rd rs1 rs2 quotient remAbs =>
+      some (.expandedInstr (JoltISA.divProgram rs2 rs1 rd quotient remAbs))
+  | .DIVU rd rs1 rs2 quotient =>
+      some (.expandedInstr (JoltISA.divuProgram rs2 rs1 rd quotient))
+  | .REM rd rs1 rs2 quotient remAbs =>
+      some (.expandedInstr (JoltISA.remProgram rs2 rs1 rd quotient remAbs))
+  | .REMU rd rs1 rs2 quotient =>
+      some (.expandedInstr (JoltISA.remuProgram rs2 rs1 rd quotient))
+  | .MULW rd rs1 rs2 =>
+      some (.expandedInstr (JoltISA.mulwProgram rs2 rs1 rd))
+  | .DIVW rd rs1 rs2 quotient remAbs =>
+      some (.expandedInstr (JoltISA.divwProgram rs2 rs1 rd quotient remAbs))
+  | .DIVUW rd rs1 rs2 quotient =>
+      some (.expandedInstr (JoltISA.divuwProgram rs2 rs1 rd quotient))
+  | .REMW rd rs1 rs2 quotient remAbs =>
+      some (.expandedInstr (JoltISA.remwProgram rs2 rs1 rd quotient remAbs))
+  | .REMUW rd rs1 rs2 quotient =>
+      some (.expandedInstr (JoltISA.remuwProgram rs2 rs1 rd quotient))
+  | .LR_W _rd _rs1 _aq _rl => none
+  | .SC_W _rd _rs1 _rs2 _aq _rl => none
+  | .AMOSWAP_W rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoswapwProgram rs2 rs1 rd))
+  | .AMOADD_W rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoaddwProgram rs2 rs1 rd))
+  | .AMOXOR_W rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoxorwProgram rs2 rs1 rd))
+  | .AMOAND_W rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoandwProgram rs2 rs1 rd))
+  | .AMOOR_W rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoorwProgram rs2 rs1 rd))
+  | .AMOMIN_W rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amominwProgram rs2 rs1 rd))
+  | .AMOMAX_W rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amomaxwProgram rs2 rs1 rd))
+  | .AMOMINU_W rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amominuwProgram rs2 rs1 rd))
+  | .AMOMAXU_W rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amomaxuwProgram rs2 rs1 rd))
+  | .LR_D _rd _rs1 _aq _rl => none
+  | .SC_D _rd _rs1 _rs2 _aq _rl => none
+  | .AMOSWAP_D rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoswapdProgram rs2 rs1 rd))
+  | .AMOADD_D rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoadddProgram rs2 rs1 rd))
+  | .AMOXOR_D rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoxordProgram rs2 rs1 rd))
+  | .AMOAND_D rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoanddProgram rs2 rs1 rd))
+  | .AMOOR_D rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amoordProgram rs2 rs1 rd))
+  | .AMOMIN_D rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amomindProgram rs2 rs1 rd))
+  | .AMOMAX_D rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amomaxdProgram rs2 rs1 rd))
+  | .AMOMINU_D rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amominudProgram rs2 rs1 rd))
+  | .AMOMAXU_D rd rs1 rs2 _aq _rl =>
+      some (.expandedInstr (JoltISA.amomaxudProgram rs2 rs1 rd))
+  | .CSRRW rd csr rs1 =>
+      expandedProgram? (JoltISA.csrrwProgram? csr rs1 rd)
+  | .CSRRS rd csr rs1 =>
+      expandedProgram? (JoltISA.csrrsProgram? csr rs1 rd)
+  | .MRET =>
+      some (.expandedInstr JoltISA.mretProgram)
+
+/-- Assumption payload for the equivalence statement, sampled only for `ADDW`
+and `DIV` while we test this shape. -/
+def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
+  | .ADDW _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .DIV _rd rs1 rs2 _quotient _remAbs, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | _, _ => Unit
+
+/-- Equivalence proposition selected by the operand-bearing instruction.
+
+Only `ADDW` and `DIV` are wired here. The fallback is deliberately `False` so
+unwired opcodes are visible gaps, not vacuous successes. -/
+def equivalenceStatement :
+    (instr : RiscvInstruction) →
+    (js : SailJoltState) →
+    equivAssumptions instr js →
+    Prop
+  | instr, js, _h =>
+    match instr with
+    | .ADDW rd rs1 rs2 =>
+      addwProgramEqSailStatement rs2 rs1 rd js _h
+    | .DIV rd rs1 rs2 quotient remAbs =>
+      divProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
+    | _ => False
+
+/-- Proof selector for the equivalence statement.
+
+Only `ADDW` and `DIV` are wired for now. The fallback marks the remaining
+instruction branches that still need to be connected to their existing
+instruction-equivalence theorems. -/
+theorem equivalenceStatement_holds :
+    (instr : RiscvInstruction) →
+    (js : SailJoltState) →
+    (h : equivAssumptions instr js) →
+    equivalenceStatement instr js h
+  | .ADDW rd rs1 rs2, js, h =>
+      addwProgram_eq_sail rs2 rs1 rd js h
+  | .DIV rd rs1 rs2 quotient remAbs, js, h =>
+      divProgram_eq_sail rs2 rs1 rd quotient remAbs js h
+  | _, _, _ => by
+      sorry
 
 end RiscvInstruction
