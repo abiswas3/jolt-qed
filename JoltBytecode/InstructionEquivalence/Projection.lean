@@ -1,12 +1,10 @@
-import JoltBytecode.JoltISA.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.System.Bundles
 
 /-!
 # Projection proof facts
 
-These are proof-facing facts about `JoltISA.project2`.  They intentionally live
-outside `JoltISA` because they mention public proof assumptions.
+These are proof-facing facts about `System.systemProject`.
 -/
 
 open Sail PreSail LeanRV64D.Functions
@@ -27,7 +25,7 @@ abbrev LinkedCSRs (js : SailJoltState) : Prop :=
   Assumptions.McauseVRegMatchesSail js ∧
   Assumptions.MtvalVRegMatchesSail js
 
-/-- The persistent CSR virtual registers materialized by `project2` are
+/-- The persistent CSR virtual registers materialized by `systemProject` are
 unchanged between two Jolt states. -/
 def ProjectedVRegsPreserved (before after : SailJoltState) : Prop :=
   after.vregs JoltISA.trapHandlerVReg = before.vregs JoltISA.trapHandlerVReg ∧
@@ -37,47 +35,43 @@ def ProjectedVRegsPreserved (before after : SailJoltState) : Prop :=
   after.vregs JoltISA.mtvalVReg = before.vregs JoltISA.mtvalVReg ∧
   after.vregs JoltISA.mstatusVReg = before.vregs JoltISA.mstatusVReg
 
-/-- Under the linked-CSR invariant, `project2` agrees with the old plain
+/-- Under the linked-CSR invariant, `systemProject` agrees with the old plain
 projection on the initial state. -/
-theorem project2_eq_project_of_compatible
+theorem systemProject_eq_project_of_compatible
     (js : SailJoltState)
     (h : LinkedCSRs js) :
-    JoltISA.project2 js = project js := by
-  change System.systemProject js = project js
-  exact System.systemProject_eq_project_of_compatible js h
+    System.systemProject js = project js :=
+  System.systemProject_eq_project_of_compatible js h
 
 /-- Projecting after an architectural x-register write is the same as writing
 that x-register after projecting. -/
-theorem project2_stateAfterWrite
+theorem systemProject_stateAfterWrite
     (js : SailJoltState) (rd : regidx) (value : BitVec 64) :
-    JoltISA.project2 { js with sail := stateAfterWrite js.sail rd value } =
-      stateAfterWrite (JoltISA.project2 js) rd value := by
-  change System.systemProject { js with sail := stateAfterWrite js.sail rd value } =
-    stateAfterWrite (System.systemProject js) rd value
-  exact System.systemProject_stateAfterWrite js rd value
+    System.systemProject { js with sail := stateAfterWrite js.sail rd value } =
+      stateAfterWrite (System.systemProject js) rd value :=
+  System.systemProject_stateAfterWrite js rd value
 
 /-- If an instruction updates only the embedded Sail state and preserves the
-CSR virtual registers projected by `project2`, then projection commutes with
+CSR virtual registers projected by `systemProject`, then projection commutes with
 that architectural x-register write. -/
-theorem project2_stateAfterWrite_of_projected_vregs_preserved
+theorem systemProject_stateAfterWrite_of_projected_vregs_preserved
     (before after : SailJoltState) (rd : regidx) (value : BitVec 64)
     (hsail : after.sail = stateAfterWrite before.sail rd value)
     (hprojected : ProjectedVRegsPreserved before after) :
-    JoltISA.project2 after = stateAfterWrite (JoltISA.project2 before) rd value := by
+    System.systemProject after = stateAfterWrite (System.systemProject before) rd value := by
   have hsame :
-      JoltISA.project2 after =
-        JoltISA.project2 { before with sail := stateAfterWrite before.sail rd value } := by
+      System.systemProject after =
+        System.systemProject { before with sail := stateAfterWrite before.sail rd value } := by
     rcases hprojected with
       ⟨hmtvec, hmscratch, hmepc, hmcause, hmtval, hmstatus⟩
-    unfold JoltISA.project2
+    unfold System.systemProject
     simp only [hsail, hmtvec, hmscratch, hmepc, hmcause, hmtval, hmstatus]
   rw [hsame]
-  exact project2_stateAfterWrite before rd value
+  exact systemProject_stateAfterWrite before rd value
 
 /-- Generic projected-vreg preservation theorem for any successful program run
 whose instructions avoid protected Jolt registers.  The old classifier is
-stronger than needed for `project2`, but it gives a reusable bridge while the
-projection contract is being rolled out. -/
+stronger than needed for `systemProject`, but it gives a reusable bridge. -/
 theorem execProgram_preserves_projected_vregs_of_no_protected_writes
     {program : JoltISA.Program}
     {js js' : SailJoltState}

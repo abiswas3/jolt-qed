@@ -276,7 +276,7 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
   | .MULHSU _rd rs1 rs2, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .MULW _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      MulwProgramEqSailAssumptions rs2 rs1 js
   | .DIV _rd rs1 rs2 _quotient _remAbs, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .DIVU _rd rs1 rs2 _quotient, js =>

@@ -2,7 +2,6 @@ import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
 import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.ALU
-import JoltBytecode.JoltISA.Projection
 import JoltBytecode.JoltISA.Semantics.Instructions.Add
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualSignExtendWord
 import JoltBytecode.JoltISA.Semantics.Instructions
@@ -62,11 +61,11 @@ private theorem addw_value_eq_sail (v1 v2 : BitVec 64) :
   simp only [addw_jolt_val, addw_sail_operation]
   rw [extractLsb_add]
 
-/-- Public assumptions for `ADDW` under the `project2` contract.
+/-- Public assumptions for `ADDW` under the `systemProject` contract.
 
 The source-read fields drive the ADDW execution proof.  The linked-CSR fields
 state that the persistent CSR virtual registers already agree with the Sail CSR
-registers, so projecting Jolt state with `project2` starts from the same Sail
+registers, so projecting Jolt state with `systemProject` starts from the same Sail
 state as the Sail instruction. -/
 structure AddwProgramEqSailAssumptions
     (rs2 rs1 : regidx) (js : SailJoltState) : Type where
@@ -171,7 +170,7 @@ private theorem addw_rd_zero_noop_concrete
   exact JoltISA.pureWritebackRdZeroProgram_run js
 
 /-- `ADDW` never writes the persistent CSR virtual registers materialized by
-`project2`. -/
+`systemProject`. -/
 theorem addwProgram_preserves_projected_vregs
     (rs2 rs1 rd : regidx)
     {js js' : SailJoltState}
@@ -197,7 +196,7 @@ def addwProgramEqSailStatement
     (rd : regidx)
     (js : SailJoltState)
     (_h : AddwProgramEqSailAssumptions rs2 rs1 js) : Prop :=
-  JoltISA.projectResult2
+  System.systemProjectResult
       ((JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run js.sail
 
@@ -215,13 +214,13 @@ theorem addwProgram_eq_sail
     h.source_reads.rs1_read
   have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail :=
     h.source_reads.rs2_read
-  have h_project_initial : JoltISA.project2 js = js.sail := by
+  have h_project_initial : System.systemProject js = js.sail := by
     simpa [project] using
-      Projection.project2_eq_project_of_compatible js h.linked_csrs
+      Projection.systemProject_eq_project_of_compatible js h.linked_csrs
   by_cases hrd : rd = regidx.Regidx 0
   · subst rd
     rw [addw_rd_zero_noop_concrete rs2 rs1 js]
-    simp only [JoltISA.projectResult2]
+    simp only [System.systemProjectResult]
     rw [h_project_initial]
     rw [execute_RTYPEW_ADDW_factored rs2 rs1 (regidx.Regidx 0)]
     simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
@@ -236,7 +235,7 @@ theorem addwProgram_eq_sail
     addwProgram_preserves_projected_vregs rs2 rs1 rd h_program_succeeds
 
   rw [h_program_succeeds]
-  simp only [JoltISA.projectResult2]
+  simp only [System.systemProjectResult]
 
   rw [execute_RTYPEW_ADDW_factored rs2 rs1 rd]
   simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
@@ -246,7 +245,7 @@ theorem addwProgram_eq_sail
   simp only [h_write]
   congr 1
 
-  rw [Projection.project2_stateAfterWrite_of_projected_vregs_preserved
+  rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
     js js_afterSignExtend rd (addw_sail_operation v1 v2)
     h_final_sail h_projected_vregs]
   rw [h_project_initial]
