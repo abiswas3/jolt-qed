@@ -99,11 +99,16 @@ theorem addiwProgram_concrete (imm : BitVec 12) (rs1 rd : regidx) (js : SailJolt
   exact h_final_jolt_value
 
 /-- Main program-level equivalence for `ADDIW`. -/
-theorem addiwProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
-    (h : ALUFamily.UnarySourceReadAssumptions rs1 js) :
+def addiwProgramEqSailStatement (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
+    (_h : ALUFamily.UnarySourceReadAssumptions rs1 js) : Prop :=
     ProgramMatchesSailWithProtectedFrame js
       ((JoltISA.execProgram (JoltISA.addiwProgram imm rs1 rd)).run js)
-      ((execute_ADDIW imm rs1 rd).run js.sail) := by
+      ((execute_ADDIW imm rs1 rd).run js.sail)
+
+/-- Main program-level equivalence for `ADDIW`. -/
+theorem addiwProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
+    (h : ALUFamily.UnarySourceReadAssumptions rs1 js) :
+    addiwProgramEqSailStatement imm rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · let v := h.rs1_val
     have h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail := h.rs1_read

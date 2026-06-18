@@ -125,15 +125,24 @@ theorem sraProgram_concrete
   exact h_final_jolt_value
 
 /-- Main program-level equivalence for `SRA`. -/
+def sraProgramEqSailStatement
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (js : SailJoltState)
+    (_h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.sraProgram rs2 rs1 rd)).run js)
+      ((execute_RTYPE rs2 rs1 rd rop.SRA).run js.sail)
+
+/-- Main program-level equivalence for `SRA`. -/
 theorem sraProgram_eq_sail
     (rs2 : regidx)
     (rs1 : regidx)
     (rd : regidx)
     (js : SailJoltState)
     (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.sraProgram rs2 rs1 rd)).run js)
-      ((execute_RTYPE rs2 rs1 rd rop.SRA).run js.sail) := by
+    sraProgramEqSailStatement rs2 rs1 rd js h := by
   constructor
   · let v1 := h.rs1_val
     let v2 := h.rs2_val
