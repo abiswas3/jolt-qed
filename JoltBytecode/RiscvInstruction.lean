@@ -262,7 +262,7 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
   | .SRAIW _rd rs1 _shamt, js =>
       ALUFamily.UnarySourceReadAssumptions rs1 js
   | .ADDW _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      AddwProgramEqSailAssumptions rs2 rs1 js
   | .SUBW _rd rs1 rs2, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .SLLW _rd rs1 rs2, js =>
