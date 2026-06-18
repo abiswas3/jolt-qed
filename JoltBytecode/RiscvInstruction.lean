@@ -55,6 +55,7 @@ import JoltBytecode.InstructionEquivalence.StoreFamily.Sb_main
 import JoltBytecode.InstructionEquivalence.StoreFamily.Sh_main
 import JoltBytecode.InstructionEquivalence.StoreFamily.Sw_main
 import JoltBytecode.InstructionEquivalence.System.Csrrw
+import JoltBytecode.InstructionEquivalence.Natives.Lui
 import JoltBytecode.InstructionEquivalence.LoadFamily.LB_main
 import JoltBytecode.InstructionEquivalence.LoadFamily.LBU_main
 import JoltBytecode.InstructionEquivalence.LoadFamily.LH_main
@@ -345,8 +346,8 @@ def equivalenceStatement :
     Prop
   | instr, js, _h =>
     match instr with
-    | .LUI _rd _imm =>
-      True -- WARNING: For natives
+    | .LUI rd imm =>
+      Natives.luiInstrEqSailStatement imm rd js _h
     | .AUIPC _rd _imm =>
       True -- WARNING: For natives
     | .JAL _rd _imm =>
@@ -553,8 +554,8 @@ theorem equivalenceStatement_holds :
       remwProgram_eq_sail rs2 rs1 rd quotient remAbs js h
   | .REMUW rd rs1 rs2 quotient, js, h =>
       remuwProgram_eq_sail rs2 rs1 rd quotient js h
-  | .LUI _rd _imm, _js, _h =>
-      trivial
+  | .LUI rd imm, js, h =>
+      Natives.luiInstr_eq_sail imm rd js h
   | .AUIPC _rd _imm, _js, _h =>
       trivial
   | .LB rd rs1 imm, js, h =>
