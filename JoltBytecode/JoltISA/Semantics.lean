@@ -26,6 +26,8 @@ noncomputable section
 namespace JoltISA
 
 def execInstr : Instr → JoltMonad ExecutionResult
+  | .NoOp =>
+      pure RETIRE_SUCCESS
   | .ADDI dst src imm => do
       let x ← readSrc src
       writeDst dst (x + sign_extend (m := 64) imm)
@@ -320,22 +322,6 @@ def execInstr : Instr → JoltMonad ExecutionResult
       else
         pure (ExecutionResult.Memory_Exception
           (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ()))
-  | .VirtualLW dst base imm => do
-      let baseValue ← readSrc base
-      let addr := baseValue + sign_extend (m := 64) imm
-      match ← liftSail (vmem_read_addr (Virtaddr addr) 0 4 (Load Data) false false false) with
-      | .Ok word =>
-          writeDst dst (sign_extend (m := 64) word)
-          pure RETIRE_SUCCESS
-      | .Err e => pure e
-  | .VirtualSW base value imm => do
-      let baseValue ← readSrc base
-      let addr := baseValue + sign_extend (m := 64) imm
-      let stored ← readSrc value
-      let word : BitVec 32 := Sail.BitVec.extractLsb stored 31 0
-      match ← liftSail (vmem_write_addr (Virtaddr addr) 4 word (Store Data) false false false) with
-      | .Ok _ => pure RETIRE_SUCCESS
-      | .Err e => pure e
   | .VirtualAdvice vd value => do
       writeVReg vd value
       pure RETIRE_SUCCESS
@@ -348,77 +334,44 @@ def execInstr : Instr → JoltMonad ExecutionResult
   | .VirtualHostIO =>
       pure RETIRE_SUCCESS
   | .VirtualAssertEQ lhs rhs => do
-      let x ← readVReg lhs
-      let y ← readVReg rhs
+      let x ← readSrc lhs
+      let y ← readSrc rhs
       if x = y then pure RETIRE_SUCCESS
       else throw (Error.Assertion "VirtualAssertEQ")
-  | .VirtualAssertEQReal lhs rhs => do
-      let x ← readVReg lhs
-      let y ← liftSail (rX_bits rhs)
-      if x = y then pure RETIRE_SUCCESS
-      else throw (Error.Assertion "VirtualAssertEQ (vreg vs real)")
   | .VirtualAssertValidDiv0 divisor quotient => do
-      let d ← liftSail (rX_bits divisor)
-      let q ← readVReg quotient
-      if d = 0#64 ∧ q ≠ (-1 : BitVec 64) then
-        throw (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
-      else
-        pure RETIRE_SUCCESS
-  | .VirtualAssertValidDiv0V divisor quotient => do
-      let d ← readVReg divisor
-      let q ← readVReg quotient
+      let d ← readSrc divisor
+      let q ← readSrc quotient
       if d = 0#64 ∧ q ≠ (-1 : BitVec 64) then
         throw (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
       else
         pure RETIRE_SUCCESS
   | .VirtualChangeDivisor dst dividend divisor => do
-      let a ← liftSail (rX_bits dividend)
-      let b ← liftSail (rX_bits divisor)
-      writeVReg dst (change_divisor_value a b)
+      let a ← readSrc dividend
+      let b ← readSrc divisor
+      writeDst dst (change_divisor_value a b)
       pure RETIRE_SUCCESS
   | .VirtualChangeDivisorW dst dividend divisor => do
-      let a ← readVReg dividend
-      let b ← readVReg divisor
-      writeVReg dst (change_divisor_w_value a b)
+      let a ← readSrc dividend
+      let b ← readSrc divisor
+      writeDst dst (change_divisor_w_value a b)
       pure RETIRE_SUCCESS
   | .VirtualAssertValidUnsignedRemainder remainder divisor => do
-      let r ← readVReg remainder
-      let d ← readVReg divisor
-      if d = 0#64 ∨ r.toNat < d.toNat then
-        pure RETIRE_SUCCESS
-      else
-        throw (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d ∧ d ≠ 0")
-  | .VirtualAssertValidUnsignedRemainderReal remainder divisor => do
-      let r ← readVReg remainder
-      let d ← liftSail (rX_bits divisor)
+      let r ← readSrc remainder
+      let d ← readSrc divisor
       if d = 0#64 ∨ r.toNat < d.toNat then
         pure RETIRE_SUCCESS
       else
         throw (Error.Assertion "VirtualAssertValidUnsignedRemainder: r ≥ d ∧ d ≠ 0")
   | .VirtualAssertMulUNoOverflow lhs rhs => do
-      let x ← readVReg lhs
-      let y ← liftSail (rX_bits rhs)
+      let x ← readSrc lhs
+      let y ← readSrc rhs
       if x.toNat * y.toNat < 2^64 then
         pure RETIRE_SUCCESS
       else
         throw (Error.Assertion "VirtualAssertMulUNoOverflow")
-  | .VirtualAssertMulUNoOverflowV lhs rhs => do
-      let x ← readVReg lhs
-      let y ← readVReg rhs
-      if x.toNat * y.toNat < 2^64 then
-        pure RETIRE_SUCCESS
-      else
-        throw (Error.Assertion "VirtualAssertMulUNoOverflow")
-  | .VirtualAssertLTEReal lhs rhs => do
-      let x ← readVReg lhs
-      let y ← liftSail (rX_bits rhs)
-      if x.toNat ≤ y.toNat then
-        pure RETIRE_SUCCESS
-      else
-        throw (Error.Assertion "VirtualAssertLTE")
   | .VirtualAssertLTE lhs rhs => do
-      let x ← readVReg lhs
-      let y ← readVReg rhs
+      let x ← readSrc lhs
+      let y ← readSrc rhs
       if x.toNat ≤ y.toNat then
         pure RETIRE_SUCCESS
       else

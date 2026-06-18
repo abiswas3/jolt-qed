@@ -192,11 +192,16 @@ theorem sraiwProgram_concrete (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJol
   exact h_final_jolt_value
 
 /-- Main program-level equivalence for `SRAIW`. -/
-theorem sraiwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState)
-    (h : ALUFamily.UnarySourceReadAssumptions rs1 js) :
+def sraiwProgramEqSailStatement (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState)
+    (_h : ALUFamily.UnarySourceReadAssumptions rs1 js) : Prop :=
     ProgramMatchesSailWithProtectedFrame js
       ((JoltISA.execProgram (JoltISA.sraiwProgram shamt rs1 rd)).run js)
-      ((execute_SHIFTIWOP shamt rs1 rd sopw.SRAIW).run js.sail) := by
+      ((execute_SHIFTIWOP shamt rs1 rd sopw.SRAIW).run js.sail)
+
+/-- Main program-level equivalence for `SRAIW`. -/
+theorem sraiwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJoltState)
+    (h : ALUFamily.UnarySourceReadAssumptions rs1 js) :
+    sraiwProgramEqSailStatement shamt rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · let v := h.rs1_val
     have h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail := h.rs1_read

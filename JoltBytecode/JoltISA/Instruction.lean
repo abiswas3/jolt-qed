@@ -13,6 +13,7 @@ open Sail PreSail LeanRV64D.Functions
 namespace JoltISA
 
 inductive Instr where
+  | NoOp
   | ADDI (dst : Dst) (src : Src) (imm : BitVec 12)
   | ANDI (dst : Dst) (src : Src) (imm : BitVec 12)
   | ORI  (dst : Dst) (src : Src) (imm : BitVec 12)
@@ -69,25 +70,99 @@ inductive Instr where
   | VirtualAssertWordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
   | LD (dst : Dst) (base : Src) (imm : BitVec 12)
   | SD (base value : Src) (imm : BitVec 12)
-  | VirtualLW (dst : Dst) (base : Src) (imm : BitVec 12)
-  | VirtualSW (base value : Src) (imm : BitVec 12)
   | VirtualAdvice (vd : VReg) (value : BitVec 64)
   | VirtualAdviceLoad (dst : Dst) (value : BitVec 64)
   | VirtualAdviceLen (dst : Dst) (remaining : BitVec 64)
   | VirtualHostIO
-  | VirtualAssertEQ (lhs rhs : VReg)
-  | VirtualAssertEQReal (lhs : VReg) (rhs : regidx)
-  | VirtualAssertValidDiv0 (divisor : regidx) (quotient : VReg)
-  | VirtualAssertValidDiv0V (divisor quotient : VReg)
-  | VirtualChangeDivisor (dst : VReg) (dividend divisor : regidx)
-  | VirtualChangeDivisorW (dst dividend divisor : VReg)
-  | VirtualAssertValidUnsignedRemainderReal (remainder : VReg) (divisor : regidx)
-  | VirtualAssertValidUnsignedRemainder (remainder divisor : VReg)
-  | VirtualAssertMulUNoOverflow (lhs : VReg) (rhs : regidx)
-  | VirtualAssertMulUNoOverflowV (lhs rhs : VReg)
-  | VirtualAssertLTEReal (lhs : VReg) (rhs : regidx)
-  | VirtualAssertLTE (lhs rhs : VReg)
+  | VirtualAssertEQ (lhs rhs : Src)
+  | VirtualAssertValidDiv0 (divisor quotient : Src)
+  | VirtualChangeDivisor (dst : Dst) (dividend divisor : Src)
+  | VirtualChangeDivisorW (dst : Dst) (dividend divisor : Src)
+  | VirtualAssertValidUnsignedRemainder (remainder divisor : Src)
+  | VirtualAssertMulUNoOverflow (lhs rhs : Src)
+  | VirtualAssertLTE (lhs rhs : Src)
   deriving Repr
+
+
+/-- Source instructions that Rust expands before final Jolt bytecode.
+
+This mirrors the built-in `SourceInstructionKind` cases handled by
+`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/mod.rs`
+in `expand_source_only_instruction`. -/
+inductive Expanded where
+  | ADDIW (dst : Dst) (src : Src) (imm : BitVec 12)
+  | ADDW (dst : Dst) (lhs rhs : Src)
+  | SUBW (dst : Dst) (lhs rhs : Src)
+  | MULH (dst : Dst) (lhs rhs : Src)
+  | MULHSU (dst : Dst) (lhs rhs : Src)
+  | MULW (dst : Dst) (lhs rhs : Src)
+  | LB (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LBU (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LH (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LHU (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LW (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LWU (dst : Dst) (base : Src) (imm : BitVec 12)
+  | AdviceLB (dst : Dst) (advice : BitVec 8)
+  | AdviceLH (dst : Dst) (advice : BitVec 16)
+  | AdviceLW (dst : Dst) (advice : BitVec 32)
+  | AdviceLD (dst : Dst) (advice : BitVec 64)
+  | AMOADDD (dst : Dst) (addr value : Src)
+  | AMOANDD (dst : Dst) (addr value : Src)
+  | AMOORD (dst : Dst) (addr value : Src)
+  | AMOXORD (dst : Dst) (addr value : Src)
+  | AMOSWAPD (dst : Dst) (addr value : Src)
+  | AMOMAXD (dst : Dst) (addr value : Src)
+  | AMOMAXUD (dst : Dst) (addr value : Src)
+  | AMOMIND (dst : Dst) (addr value : Src)
+  | AMOMINUD (dst : Dst) (addr value : Src)
+  | AMOADDW (dst : Dst) (addr value : Src)
+  | AMOANDW (dst : Dst) (addr value : Src)
+  | AMOORW (dst : Dst) (addr value : Src)
+  | AMOXORW (dst : Dst) (addr value : Src)
+  | AMOSWAPW (dst : Dst) (addr value : Src)
+  | AMOMAXW (dst : Dst) (addr value : Src)
+  | AMOMAXUW (dst : Dst) (addr value : Src)
+  | AMOMINW (dst : Dst) (addr value : Src)
+  | AMOMINUW (dst : Dst) (addr value : Src)
+  | LRD (dst : Dst) (addr : Src)
+  | LRW (dst : Dst) (addr : Src)
+  | DIV (dst : Dst) (lhs rhs : Src)
+  | DIVU (dst : Dst) (lhs rhs : Src)
+  | DIVW (dst : Dst) (lhs rhs : Src)
+  | DIVUW (dst : Dst) (lhs rhs : Src)
+  | REM (dst : Dst) (lhs rhs : Src)
+  | REMU (dst : Dst) (lhs rhs : Src)
+  | REMW (dst : Dst) (lhs rhs : Src)
+  | REMUW (dst : Dst) (lhs rhs : Src)
+  | SB (base value : Src) (imm : BitVec 12)
+  | SCD (dst : Dst) (addr value : Src)
+  | SCW (dst : Dst) (addr value : Src)
+  | SH (base value : Src) (imm : BitVec 12)
+  | SW (base value : Src) (imm : BitVec 12)
+  | CSRRW (dst : Dst) (src : Src) (csr : BitVec 12)
+  | CSRRS (dst : Dst) (src : Src) (csr : BitVec 12)
+  | EBREAK
+  | ECALL
+  | MRET
+  | SLL (dst : Dst) (value shamt : Src)
+  | SLLI (dst : Dst) (src : Src) (shamt : BitVec 6)
+  | SLLW (dst : Dst) (value shamt : Src)
+  | SLLIW (dst : Dst) (src : Src) (shamt : BitVec 5)
+  | SRL (dst : Dst) (value shamt : Src)
+  | SRLI (dst : Dst) (src : Src) (shamt : BitVec 6)
+  | SRA (dst : Dst) (value shamt : Src)
+  | SRAI (dst : Dst) (src : Src) (shamt : BitVec 6)
+  | SRLIW (dst : Dst) (src : Src) (shamt : BitVec 5)
+  | SRAIW (dst : Dst) (src : Src) (shamt : BitVec 5)
+  | SRLW (dst : Dst) (value shamt : Src)
+  | SRAW (dst : Dst) (value shamt : Src)
+  deriving Repr
+
+
+private def x0 : regidx := regidx.Regidx 0
+private def dst : Dst := .xreg x0
+private def src : Src := .xreg x0
+private def vreg : VReg := 32
 
 /-- Structured Jolt bytecode programs.
 
@@ -180,5 +255,3 @@ theorem pureWritebackTraceProgram_of_ne_zero
   unfold pureWritebackTraceProgram
   rw [isX0_eq_false_of_ne_zero hrd]
   simp only [Bool.false_eq_true, ↓reduceIte]
-
-end JoltISA

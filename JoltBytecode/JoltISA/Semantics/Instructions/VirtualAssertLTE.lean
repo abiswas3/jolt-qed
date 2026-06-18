@@ -19,9 +19,9 @@ theorem virtual_assert_lte_real_run_ok (lhs : VReg) (rhs : regidx)
     (js : SailJoltState) (value : BitVec 64)
     (hread : rX_bits rhs js.sail = .ok value js.sail)
     (hguard : (js.vregs lhs).toNat ≤ value.toNat) :
-    (execInstr (.VirtualAssertLTEReal lhs rhs)).run js =
+    (execInstr (.VirtualAssertLTE (.vreg lhs) (.xreg rhs))).run js =
       .ok RETIRE_SUCCESS js := by
-  unfold execInstr readVReg liftSail
+  unfold execInstr readSrc readVReg liftSail
   simp only [hread, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [if_pos hguard]
@@ -32,9 +32,9 @@ theorem virtual_assert_lte_real_run_err (lhs : VReg) (rhs : regidx)
     (js : SailJoltState) (value : BitVec 64)
     (hread : rX_bits rhs js.sail = .ok value js.sail)
     (hguard : ¬ ((js.vregs lhs).toNat ≤ value.toNat)) :
-    (execInstr (.VirtualAssertLTEReal lhs rhs)).run js =
+    (execInstr (.VirtualAssertLTE (.vreg lhs) (.xreg rhs))).run js =
       .error (Error.Assertion "VirtualAssertLTE") js := by
-  unfold execInstr readVReg liftSail
+  unfold execInstr readSrc readVReg liftSail
   simp only [hread, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [if_neg hguard]
@@ -43,9 +43,9 @@ theorem virtual_assert_lte_real_run_err (lhs : VReg) (rhs : regidx)
 /-- Successful virtual-source unsigned LTE assertion. -/
 theorem virtual_assert_lte_run_ok (lhs rhs : VReg) (js : SailJoltState)
     (hguard : (js.vregs lhs).toNat ≤ (js.vregs rhs).toNat) :
-    (execInstr (.VirtualAssertLTE lhs rhs)).run js =
+    (execInstr (.VirtualAssertLTE (.vreg lhs) (.vreg rhs))).run js =
       .ok RETIRE_SUCCESS js := by
-  unfold execInstr readVReg
+  unfold execInstr readSrc readVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [if_pos hguard]
@@ -54,9 +54,9 @@ theorem virtual_assert_lte_run_ok (lhs rhs : VReg) (js : SailJoltState)
 /-- Failed virtual-source unsigned LTE assertion. -/
 theorem virtual_assert_lte_run_err (lhs rhs : VReg) (js : SailJoltState)
     (hguard : ¬ ((js.vregs lhs).toNat ≤ (js.vregs rhs).toNat)) :
-    (execInstr (.VirtualAssertLTE lhs rhs)).run js =
+    (execInstr (.VirtualAssertLTE (.vreg lhs) (.vreg rhs))).run js =
       .error (Error.Assertion "VirtualAssertLTE") js := by
-  unfold execInstr readVReg
+  unfold execInstr readSrc readVReg
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [if_neg hguard]

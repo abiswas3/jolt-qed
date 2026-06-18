@@ -56,7 +56,7 @@ theorem ecall_mepc_run
     unfold WritableVReg
     decide
   unfold WritableVReg at hwr
-  simp only [if_true, addi_zero_value,
+  simp only [addi_zero_value,
     bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
     hwr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
@@ -131,8 +131,7 @@ theorem ecall_mstatus_run
     unfold WritableVReg
     decide
   unfold WritableVReg at hwr
-  simp only [if_true,
-    bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
     hwr, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
     EStateM.modifyGet]
@@ -165,7 +164,7 @@ theorem ecall_jalr_run
   simp only [ecallAfterMstatus_sail, hnextPC, hJump, ecallAfterMstatus_trapHandler,
     ecallJalrTarget_zero_imm, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    modify, modifyGet]
   unfold setNextPCState
   rfl
 

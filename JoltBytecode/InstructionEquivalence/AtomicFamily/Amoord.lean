@@ -165,12 +165,17 @@ private theorem amoordProgram_project_eq_sail
     h.rs1_read h.rs2_read h.rd_readable.exists_value h_mem
 
 /-- Main public theorem for `AMOOR.D`. -/
+def amoordProgramEqSailStatement
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (_h : AmoDwordProgramEqSailAssumptions amoop.AMOOR rs2 rs1 rd js) : Prop :=
+  ProgramMatchesSailWithProtectedFrame js
+    ((JoltISA.execProgram (JoltISA.amoordProgram rs2 rs1 rd)).run js)
+    ((execute_AMO amoop.AMOOR false false rs2 rs1 8 rd).run js.sail)
+
 theorem amoordProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOOR rs2 rs1 rd js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.amoordProgram rs2 rs1 rd)).run js)
-      ((execute_AMO amoop.AMOOR false false rs2 rs1 8 rd).run js.sail) := by
+    amoordProgramEqSailStatement rs2 rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact amoordProgram_project_eq_sail rs2 rs1 rd js h
   · simp [JoltISA.amoordProgram, JoltISA.amoDoubleBinopProgram,

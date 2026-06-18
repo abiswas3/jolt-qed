@@ -139,6 +139,20 @@ private lemma extractLsb_signExtend_32_64 (x : BitVec 32) :
   have hi64 : i < 64 := by omega
   simp [hi32, hi64]
 
+private lemma extractLsb_sail_signExtend_32_64 (x : BitVec 32) :
+    Sail.BitVec.extractLsb (sign_extend (m := 64) x) 31 0 = x := by
+  unfold sign_extend Sail.BitVec.signExtend Sail.BitVec.extractLsb
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hi32_bool : (i <b 32) = true := by
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+  have hi64_bool : (i <b 64) = true := by
+    have : i < 64 := by omega
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using this
+  simp (disch := omega) only [BitVec.getLsbD_extractLsb, BitVec.getLsbD_signExtend,
+    Nat.reduceSub, Nat.reduceAdd, hi32_bool, hi64_bool, Bool.true_and, Nat.zero_add,
+    if_pos]
+
 /-- For a sign-extended 32-bit value, `sshiftRight 31 = sshiftRight 63`.
 Both produce the sign-broadcast (all-zeros or all-ones). -/
 private lemma sshiftRight31_eq_63_of_sext32 (x : BitVec 32) :
@@ -355,15 +369,29 @@ private lemma sext32_sdiv_mul_add_srem
 private lemma change_divisor_w_value_of_zero (x : BitVec 32) :
     change_divisor_w_value (sign_extend (m := 64) x)
       (sign_extend (m := 64) (0#32)) = 0#64 := by
-  unfold change_divisor_w_value sign_extend Sail.BitVec.signExtend
-  bv_decide
+  have hzero : sign_extend (m := 64) (0#32 : BitVec 32) = 0#64 := by
+    unfold sign_extend Sail.BitVec.signExtend
+    decide
+  rw [hzero]
+  unfold change_divisor_w_value
+  rw [if_neg (by
+    intro h
+    exact (by decide : (0#64 : BitVec 64) ≠ -1) h.2)]
 
 private lemma change_divisor_w_value_of_overflow :
     change_divisor_w_value
         (sign_extend (m := 64) (BitVec.intMin 32 : BitVec 32))
         (sign_extend (m := 64) (-1#32 : BitVec 32)) = 1#64 := by
-  unfold change_divisor_w_value sign_extend Sail.BitVec.signExtend
-  bv_decide
+  have hmin : sign_extend (m := 64) (BitVec.intMin 32 : BitVec 32) =
+      -((1 : BitVec 64) <<< 31) := by
+    decide
+  have hneg : sign_extend (m := 64) (-1#32 : BitVec 32) = (-1 : BitVec 64) := by
+    unfold sign_extend Sail.BitVec.signExtend
+    decide
+  rw [hmin, hneg]
+  unfold change_divisor_w_value
+  rw [if_pos (by constructor <;> rfl)]
+  rfl
 
 private lemma change_divisor_w_value_of_normal (x y : BitVec 32)
     (hno : ¬ (x = BitVec.intMin 32 ∧ y = -1#32)) :
@@ -601,8 +629,8 @@ hence it satisfies the round-trip identity
 theorem hguard_q_fits_of_honest_w (dividend divisor : BitVec 64) :
     sign_extend (m := 64) (Sail.BitVec.extractLsb (q_w dividend divisor) 31 0)
       = q_w dividend divisor := by
-  unfold q_w sail_divw_value sign_extend Sail.BitVec.signExtend Sail.BitVec.extractLsb
-  bv_decide
+  unfold q_w sail_divw_value
+  rw [extractLsb_sail_signExtend_32_64]
 
 -- WARNING: MISALIGNED — Rust inline sequence uses SRAI rem 31 but must be SRAI rem 32.
 -- With shift 31 this theorem is FALSE: rs1_low = i32::MIN, rs2_low = 0 gives
@@ -785,7 +813,10 @@ private theorem sshiftRight63_of_msb_true_w {x : BitVec 64}
 private lemma msb_signExtend32_64 (x : BitVec 32) :
     (sign_extend (m := 64) x).msb = x.msb := by
   unfold sign_extend Sail.BitVec.signExtend
-  bv_decide
+  rw [BitVec.msb_eq_getLsbD_last]
+  rw [BitVec.getLsbD_signExtend]
+  simp (disch := omega) only [Nat.reduceSub, if_neg]
+  norm_num
 
 private theorem rem_from_sign_fixup_eq_w (rem y : BitVec 64)
     (h : (rem ^^^ y.sshiftRight 63) - y.sshiftRight 63 = y) :
@@ -1152,7 +1183,7 @@ theorem advice_unique_of_guards_w
   · have hsv_zero : sign_extend (m := 64) y32 = 0#64 := by
       rw [hzero]
       unfold sign_extend Sail.BitVec.signExtend
-      bv_decide
+      decide
     have hq_eq : q = (-1 : BitVec 64) := by
       by_contra hq_ne
       exact h1 ⟨hsv_zero, hq_ne⟩

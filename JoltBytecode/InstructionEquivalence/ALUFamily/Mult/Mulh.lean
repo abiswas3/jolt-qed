@@ -355,12 +355,19 @@ theorem mulhProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
 
 /-- Main program-level theorem: interpreting the Jolt ISA `MULH` expansion has
 the same projected architectural result as Sail's `MULH` semantics. -/
+def mulhProgramEqSailStatement (rs2 rs1 rd : regidx)
+    (js : SailJoltState)
+    (_h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js)
+      ((execute_MUL rs2 rs1 rd mulhOp).run js.sail)
+
+/-- Main program-level theorem: interpreting the Jolt ISA `MULH` expansion has
+the same projected architectural result as Sail's `MULH` semantics. -/
 theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx)
     (js : SailJoltState)
     (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js)
-      ((execute_MUL rs2 rs1 rd mulhOp).run js.sail) := by
+    mulhProgramEqSailStatement rs2 rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · let v1 := h.rs1_val
     let v2 := h.rs2_val

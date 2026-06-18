@@ -875,9 +875,16 @@ theorem amoswapw_store_data_eq (rs2Val : BitVec 64) :
       (show BitVec (4 * 8) from
         trunc (m := (((4 : Nat) : Int) * (8 : Int)).toNat) rs2Val) =
     (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32) := by
-  unfold trunc Sail.BitVec.truncate sign_extend Sail.BitVec.signExtend
-    Sail.BitVec.extractLsb
-  bv_decide
+  change sign_extend (m := 32) (trunc (m := 32) rs2Val) =
+    (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+  rw [amo_word_sign_extend_4x8_eq_self]
+  unfold trunc Sail.BitVec.truncate BitVec.truncate Sail.BitVec.extractLsb BitVec.extractLsb
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hi32_bool : (i <b 32) = true := by
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+  simp only [BitVec.getLsbD_setWidth, BitVec.getLsbD_extractLsb', Nat.zero_add,
+    hi32_bool, Bool.true_and]
 
 /-- Sail writes the low word of `rs2` for aligned native `AMOSWAP.W`. -/
 theorem amoswapw_mem_write_value_eq_state_after_word_store
@@ -1111,12 +1118,17 @@ private theorem amoswapwProgram_project_eq_sail
       h.rs1_read h.rs2_read h_align
 
 /-- Main public theorem for `AMOSWAP.W`. -/
+def amoswapwProgramEqSailStatement
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (_h : AmoWordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) : Prop :=
+  ProgramMatchesSailWithProtectedFrame js
+    ((JoltISA.execProgram (JoltISA.amoswapwProgram rs2 rs1 rd)).run js)
+    ((execute_AMO amoop.AMOSWAP false false rs2 rs1 4 rd).run js.sail)
+
 theorem amoswapwProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.amoswapwProgram rs2 rs1 rd)).run js)
-      ((execute_AMO amoop.AMOSWAP false false rs2 rs1 4 rd).run js.sail) := by
+    amoswapwProgramEqSailStatement rs2 rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact amoswapwProgram_project_eq_sail rs2 rs1 rd js h
   · simp [JoltISA.amoswapwProgram,

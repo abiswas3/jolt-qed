@@ -166,12 +166,17 @@ private theorem amoadddProgram_project_eq_sail
 
 The theorem takes one primitive-only atomic bundle, matches Sail, and preserves
 every protected Jolt register on successful runs. -/
+def amoadddProgramEqSailStatement
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (_h : AmoDwordProgramEqSailAssumptions amoop.AMOADD rs2 rs1 rd js) : Prop :=
+  ProgramMatchesSailWithProtectedFrame js
+    ((JoltISA.execProgram (JoltISA.amoadddProgram rs2 rs1 rd)).run js)
+    ((execute_AMO amoop.AMOADD false false rs2 rs1 8 rd).run js.sail)
+
 theorem amoadddProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOADD rs2 rs1 rd js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.amoadddProgram rs2 rs1 rd)).run js)
-      ((execute_AMO amoop.AMOADD false false rs2 rs1 8 rd).run js.sail) := by
+    amoadddProgramEqSailStatement rs2 rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact amoadddProgram_project_eq_sail rs2 rs1 rd js h
   · simp [JoltISA.amoadddProgram, JoltISA.amoDoubleBinopProgram,

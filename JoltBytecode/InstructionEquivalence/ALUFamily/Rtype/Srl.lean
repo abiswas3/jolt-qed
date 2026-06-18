@@ -124,6 +124,17 @@ theorem srlProgram_concrete
   rw [← h_srl_value]
   exact h_final_jolt_value
 
+/-- Main program-level statement for `SRL`. -/
+def srlProgramEqSailStatement
+    (rs2 : regidx)
+    (rs1 : regidx)
+    (rd : regidx)
+    (js : SailJoltState)
+    (_h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.srlProgram rs2 rs1 rd)).run js)
+      ((execute_RTYPE rs2 rs1 rd rop.SRL).run js.sail)
+
 /-- Main program-level theorem for `SRL`: projected Sail behavior matches, and
 the Jolt run preserves every protected Jolt register address. Scratch registers
 allocated by the SRL expansion are deliberately outside the protected
@@ -134,9 +145,7 @@ theorem srlProgram_eq_sail
     (rd : regidx)
     (js : SailJoltState)
     (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.srlProgram rs2 rs1 rd)).run js)
-      ((execute_RTYPE rs2 rs1 rd rop.SRL).run js.sail) := by
+    srlProgramEqSailStatement rs2 rs1 rd js h := by
   constructor
   · let v1 := h.rs1_val
     let v2 := h.rs2_val

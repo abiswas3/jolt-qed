@@ -555,7 +555,7 @@ theorem setupBlock (rest : JoltISA.Program)
     have h0 : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
     have haddr0 : base + sign_extend (m := 64) (0 : BitVec 12) = base := by
       rw [h0]
-      bv_decide
+      norm_num
     have hread := aligned_dword_vmem_read_reduces base js.sail hcfg hd
     rw [show js1.sail = js.sail by rfl]
     have hv1 : js1.vregs JoltISA.inlineTmp1 = base := by
@@ -574,7 +574,7 @@ theorem setupBlock (rest : JoltISA.Program)
       have hv1 : js1.vregs JoltISA.inlineTmp1 = base := by
         simp [js1]
       have haddr0 : base + (0 : BitVec 64) = base := by
-        bv_decide
+        norm_num
       rw [hv1, h0, haddr0]
       exact h_base_aligned.align
     simpa [js_load, dword] using
@@ -1529,7 +1529,7 @@ theorem sdWriteBlock (rest : JoltISA.Program)
   have hzero : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
   have haddr : js_store.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12) = base := by
     rw [hzero, hbase]
-    bv_decide
+    norm_num
   have hwrite' :
       vmem_write_addr
         (Virtaddr (js_store.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12)))

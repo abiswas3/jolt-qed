@@ -45,17 +45,17 @@ def phase_setup (rs1 rs2 : regidx) (quotient : BitVec 64) :
   .instr (.VirtualZeroExtendWord (.vreg rs1VReg) (.xreg rs1)) <|
   .instr (.VirtualZeroExtendWord (.vreg rs2VReg) (.xreg rs2)) <|
   .instr (.VirtualAdvice vTmpVReg quotient) <|
-  .instr (.VirtualAssertMulUNoOverflowV vTmpVReg rs2VReg) <|
+  .instr (.VirtualAssertMulUNoOverflow (.vreg vTmpVReg) (.vreg rs2VReg)) <|
   .done RETIRE_SUCCESS
 
 def phase_quotient_product : JoltISA.Program :=
   .instr (.MUL (.vreg vTmpVReg) (.vreg vTmpVReg) (.vreg rs2VReg)) <|
-  .instr (.VirtualAssertLTE vTmpVReg rs1VReg) <|
+  .instr (.VirtualAssertLTE (.vreg vTmpVReg) (.vreg rs1VReg)) <|
   .done RETIRE_SUCCESS
 
 def phase_remainder_bound : JoltISA.Program :=
   .instr (.SUB (.vreg vTmpVReg) (.vreg rs1VReg) (.vreg vTmpVReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder vTmpVReg rs2VReg) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg vTmpVReg) (.vreg rs2VReg)) <|
   .done RETIRE_SUCCESS
 
 def phase_writeback (rd : regidx) : JoltISA.Program :=
@@ -220,7 +220,7 @@ theorem phase_setup_run_sound
     (hs3_pres rs2VReg (by decide)).trans hs2_v1
   have hs3_sail_orig : s3.sail = js.sail := hs3_sail.trans (hs2_sail.trans hs1_sail)
   change (JoltISA.execProgram
-      (.instr (.VirtualAssertMulUNoOverflowV vTmpVReg rs2VReg) (.done RETIRE_SUCCESS))).run s3 =
+      (.instr (.VirtualAssertMulUNoOverflow (.vreg vTmpVReg) (.vreg rs2VReg)) (.done RETIRE_SUCCESS))).run s3 =
         .ok RETIRE_SUCCESS js₁ at hp
   by_cases hguard : (s3.vregs vTmpVReg).toNat * (s3.vregs rs2VReg).toNat < 2^64
   · have hok := JoltISA.virtual_assert_mulu_no_overflow_v_run_ok vTmpVReg rs2VReg s3 hguard
@@ -256,7 +256,7 @@ theorem phase_quotient_product_run_sound
   have hs1_v1 : s1.vregs rs2VReg = zv := (hs1_pres rs2VReg (by decide)).trans h_v1
   have hs1_v3_eq : s1.vregs tempVReg = q * zv := by rw [hs1_v3, h_v2, h_v1]
   change (JoltISA.execProgram
-      (.instr (.VirtualAssertLTE vTmpVReg rs1VReg) (.done RETIRE_SUCCESS))).run s1 =
+      (.instr (.VirtualAssertLTE (.vreg vTmpVReg) (.vreg rs1VReg)) (.done RETIRE_SUCCESS))).run s1 =
         .ok RETIRE_SUCCESS js₁ at hp
   by_cases hguard : (s1.vregs vTmpVReg).toNat ≤ (s1.vregs rs1VReg).toNat
   · have hok := JoltISA.virtual_assert_lte_run_ok vTmpVReg rs1VReg s1 hguard
@@ -289,7 +289,7 @@ theorem phase_remainder_bound_run_sound
   have hs1_v1 : s1.vregs rs2VReg = zv := (hs1_pres rs2VReg (by decide)).trans h_v1
   have hs1_v3_eq : s1.vregs tempVReg = zd - q * zv := by rw [hs1_v3, h_v0, h_v3]
   change (JoltISA.execProgram
-      (.instr (.VirtualAssertValidUnsignedRemainder tempVReg rs2VReg)
+      (.instr (.VirtualAssertValidUnsignedRemainder (.vreg tempVReg) (.vreg rs2VReg))
         (.done RETIRE_SUCCESS))).run s1 =
         .ok RETIRE_SUCCESS js₁ at hp
   by_cases hguard : s1.vregs rs2VReg = 0#64 ∨ (s1.vregs tempVReg).toNat < (s1.vregs rs2VReg).toNat

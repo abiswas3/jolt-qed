@@ -100,14 +100,14 @@ theorem ebreak_jal_run
       .ok RETIRE_SUCCESS (ebreakAfterJal js pc nextPC) := by
   have hJump := jump_to_pc_run js pc misa hmisa hpc0 hpc1
   rw [RETIRE_SUCCESS] at hJump
-  unfold JoltISA.execInstr JoltISA.writeDst readVReg writeVReg
+  unfold JoltISA.execInstr JoltISA.writeDst writeVReg
   unfold liftSail get_next_pc
   unfold Sail.readReg PreSail.readReg
   unfold ebreakAfterJal setNextPCState joltSetVReg vregWrite
   unfold RETIRE_SUCCESS
   simp only [hnextPC, hpc, hJump, jal_zero_target, bind, EStateM.bind,
     pure, EStateM.pure, EStateM.run, get, getThe, MonadStateOf.get,
-    EStateM.get, modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+    EStateM.get, modify, modifyGet, MonadStateOf.modifyGet]
   unfold setNextPCState
   rfl
 

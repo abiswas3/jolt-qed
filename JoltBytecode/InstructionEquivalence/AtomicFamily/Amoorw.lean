@@ -211,12 +211,17 @@ private theorem amoorwProgram_project_eq_sail
       h.rs1_read h.rs2_read h_align
 
 /-- Main public theorem for `AMOOR.W`. -/
+def amoorwProgramEqSailStatement
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (_h : AmoWordProgramEqSailAssumptions amoop.AMOOR rs2 rs1 rd js) : Prop :=
+  ProgramMatchesSailWithProtectedFrame js
+    ((JoltISA.execProgram (JoltISA.amoorwProgram rs2 rs1 rd)).run js)
+    ((execute_AMO amoop.AMOOR false false rs2 rs1 4 rd).run js.sail)
+
 theorem amoorwProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOOR rs2 rs1 rd js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.amoorwProgram rs2 rs1 rd)).run js)
-      ((execute_AMO amoop.AMOOR false false rs2 rs1 4 rd).run js.sail) := by
+    amoorwProgramEqSailStatement rs2 rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact amoorwProgram_project_eq_sail rs2 rs1 rd js h
   · simp [JoltISA.amoorwProgram, JoltISA.amoWordBinopProgram,

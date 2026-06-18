@@ -27,12 +27,12 @@ namespace JoltISA
 def divuProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
   .instr (.VirtualAdvice Divu.v0VReg quotient) <|
-  .instr (.VirtualAssertValidDiv0 rs2 Divu.v0VReg) <|
-  .instr (.VirtualAssertMulUNoOverflow Divu.v0VReg rs2) <|
+  .instr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg Divu.v0VReg)) <|
+  .instr (.VirtualAssertMulUNoOverflow (.vreg Divu.v0VReg) (.xreg rs2)) <|
   .instr (.MUL (.vreg Divu.v1VReg) (.vreg Divu.v0VReg) (.xreg rs2)) <|
-  .instr (.VirtualAssertLTEReal Divu.v1VReg rs1) <|
+  .instr (.VirtualAssertLTE (.vreg Divu.v1VReg) (.xreg rs1)) <|
   .instr (.SUB (.vreg Divu.v1VReg) (.xreg rs1) (.vreg Divu.v1VReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainderReal Divu.v1VReg rs2) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Divu.v1VReg) (.xreg rs2)) <|
   .instr (.ADDI (.xreg rd) (.vreg Divu.v0VReg) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
@@ -241,20 +241,54 @@ private theorem divuProgram_project_eq_sail (rs2 rs1 rd : regidx) (js : SailJolt
   exact JoltISA.divuProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
 
 /-- Main program-level equivalence for `DIVU` with honest advice. -/
-theorem divuProgram_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+def divuProgramCompletenessStatement
+    (rs2 rs1 rd : regidx)
+    (quotient : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+  quotient = sail_div_value h.rs1_val h.rs2_val true →
     ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.divuProgram rs2 rs1 rd
-        (sail_div_value h.rs1_val h.rs2_val true))).run js)
-      ((execute_DIV rs2 rs1 rd true).run js.sail) := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact divuProgram_project_eq_sail rs2 rs1 rd js h
-  · unfold JoltISA.divuProgram
-    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.VRegWritesNoProtectedVReg,
-      Divu.v0VReg, Divu.v1VReg]
+      ((JoltISA.execProgram (JoltISA.divuProgram rs2 rs1 rd quotient)).run js)
+      ((execute_DIV rs2 rs1 rd true).run js.sail)
+
+def divuProgramSoundnessStatement
+    (rs2 rs1 rd : regidx)
+    (quotient : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+  rd ≠ regidx.Regidx 0 →
+    ∀ js',
+      (JoltISA.execProgram (JoltISA.divuProgram rs2 rs1 rd quotient)).run js =
+          .ok RETIRE_SUCCESS js' →
+        quotient = sail_div_value h.rs1_val h.rs2_val true
+
+def divuProgramEqSailStatement
+    (rs2 rs1 rd : regidx)
+    (quotient : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+  divuProgramCompletenessStatement rs2 rs1 rd quotient js h ∧
+  divuProgramSoundnessStatement rs2 rs1 rd quotient js h
+
+theorem divuProgram_eq_sail (rs2 rs1 rd : regidx)
+    (quotient : BitVec 64)
+    (js : SailJoltState)
+    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+    divuProgramEqSailStatement rs2 rs1 rd quotient js h := by
+  constructor
+  · intro hquotient
+    subst quotient
+    apply programMatchesSailWithProtectedFrame_of_projectResult_eq
+    · exact divuProgram_project_eq_sail rs2 rs1 rd js h
+    · unfold JoltISA.divuProgram
+      apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+      simp [JoltISA.ProgramWritesNoProtectedVReg,
+        JoltISA.InstrWritesNoProtectedVReg,
+        JoltISA.DstWritesNoProtectedVReg,
+        JoltISA.VRegWritesNoProtectedVReg,
+        Divu.v0VReg, Divu.v1VReg]
+  · intro hrd js' hok
+    exact JoltISA.divuProgram_sound rs2 rs1 rd quotient js
+      h.rs1_val h.rs2_val h.rs1_read h.rs2_read hrd js' hok
 
 end

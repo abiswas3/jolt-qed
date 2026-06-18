@@ -54,7 +54,7 @@ def phase_quotient_product (rs1 : regidx) : JoltISA.Program :=
   .instr (.XOR (.vreg t3VReg) (.vreg a3VReg) (.vreg t1VReg)) <|
   .instr (.SUB (.vreg t3VReg) (.vreg t3VReg) (.vreg t1VReg)) <|
   .instr (.ADD (.vreg t2VReg) (.vreg t2VReg) (.vreg t3VReg)) <|
-  .instr (.VirtualAssertEQReal t2VReg rs1) <|
+  .instr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 4 — compute `|adj_div|` into Rust `t2`, preserving signed remainder in `t3`. -/
@@ -62,7 +62,7 @@ def phase_remainder_bound : JoltISA.Program :=
   JoltISA.sraiBlock (.vreg t1VReg) (.vreg t0VReg) (63 : BitVec 6) <|
   .instr (.XOR (.vreg t2VReg) (.vreg t0VReg) (.vreg t1VReg)) <|
   .instr (.SUB (.vreg t2VReg) (.vreg t2VReg) (.vreg t1VReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder a3VReg t2VReg) <|
+  .instr (.VirtualAssertValidUnsignedRemainder (.vreg a3VReg) (.vreg t2VReg)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 5 — move Rust `t3`, the reconstructed signed remainder, into real register `rd`. -/
@@ -155,7 +155,7 @@ theorem phase_quotient_product_run
     rw [h4_v7, hs3_v7, hs3_v8]
     exact hguard_quotient_product
   have hrs1_s4 : rX_bits rs1 s4.sail = .ok dividend s4.sail := hs4_sail.symm ▸ hrs1
-  have h5 : (JoltISA.execInstr (.VirtualAssertEQReal t2VReg rs1)).run s4 =
+  have h5 : (JoltISA.execInstr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1))).run s4 =
       .ok RETIRE_SUCCESS s4 :=
     vreg_assert_eq_real_run_ok t2VReg rs1 s4 dividend hrs1_s4 hs4_v7
   have hs4_v0 : s4.vregs a2VReg = q :=
@@ -209,7 +209,7 @@ theorem phase_remainder_bound_run
   have hguard_lt : s3.vregs t2VReg = 0#64 ∨ (s3.vregs a3VReg).toNat < (s3.vregs t2VReg).toNat := by
     rw [hs3_v1, hs3_v7]
     exact hguard_rem_bound
-  have h4 : (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainder a3VReg t2VReg)).run s3
+  have h4 : (JoltISA.execInstr (.VirtualAssertValidUnsignedRemainder (.vreg a3VReg) (.vreg t2VReg))).run s3
               = .ok RETIRE_SUCCESS s3 :=
     vreg_assert_valid_unsigned_remainder_run_ok a3VReg t2VReg s3 hguard_lt
   have hs3_v8 : s3.vregs t3VReg = signedRem :=

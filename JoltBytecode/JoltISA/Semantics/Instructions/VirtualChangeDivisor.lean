@@ -20,19 +20,19 @@ theorem virtual_change_divisor_run (vd : VReg) (dividend divisor : regidx)
     (hdividend : rX_bits dividend js.sail = .ok x js.sail)
     (hdivisor : rX_bits divisor js.sail = .ok y js.sail)
     (hvd : WritableVReg vd) :
-    (execInstr (.VirtualChangeDivisor vd dividend divisor)).run js =
+    (execInstr (.VirtualChangeDivisor (.vreg vd) (.xreg dividend) (.xreg divisor))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>
             if r = vd then change_divisor_value x y else js.vregs r } := by
-  unfold execInstr readVReg liftSail
+  unfold execInstr readSrc writeDst readVReg liftSail
   simp only [hdividend, hdivisor, bind, EStateM.bind, EStateM.run]
   exact writeVReg_retire_run_of_writable vd (change_divisor_value x y) js hvd
 
 /-- `VirtualChangeDivisorW` reads virtual dividend/divisor and writes the adjusted divisor. -/
 theorem virtual_change_divisor_w_run (vd dividend divisor : VReg)
     (js : SailJoltState) (hvd : WritableVReg vd) :
-    (execInstr (.VirtualChangeDivisorW vd dividend divisor)).run js =
+    (execInstr (.VirtualChangeDivisorW (.vreg vd) (.vreg dividend) (.vreg divisor))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>

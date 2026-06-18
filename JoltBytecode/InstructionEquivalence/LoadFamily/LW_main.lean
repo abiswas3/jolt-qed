@@ -380,13 +380,23 @@ private theorem lwProgram_project_eq_sail (imm : BitVec 12)
 
 The public theorem takes one instruction-specific primitive assumption bundle,
 matches Sail, and preserves every protected Jolt register on successful runs. -/
+def lwProgramEqSailStatement (imm : BitVec 12)
+    (rs1 rd : regidx)
+    (js : SailJoltState)
+    (_h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js)
+      ((execute_LOAD imm rs1 rd false 4).run js.sail)
+
+/-- **Main program theorem for LW.**
+
+The public theorem takes one instruction-specific primitive assumption bundle,
+matches Sail, and preserves every protected Jolt register on successful runs. -/
 theorem lwProgram_eq_sail (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js)
-      ((execute_LOAD imm rs1 rd false 4).run js.sail) := by
+    lwProgramEqSailStatement imm rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact lwProgram_project_eq_sail imm rs1 rd js h
   · unfold JoltISA.lwProgram JoltISA.slliBlock JoltISA.srlBlock

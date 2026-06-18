@@ -1,6 +1,6 @@
 import JoltBytecode.JoltISA.Operands
 import JoltBytecode.JoltISA.Values.Shift
-
+-- NOTE: i'll likely keep them as these values are useful
 /-!
 # Pure Jolt ISA values
 

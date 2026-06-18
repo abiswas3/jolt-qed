@@ -457,7 +457,15 @@ theorem ecall_mcause_machine_write_value (old : BitVec 64) :
   rw [hcause63, hcause64]
   unfold trapCause_is_interrupt bool_to_bit bool_bit_forwards
   unfold Sail.BitVec.updateSubrange Sail.BitVec.updateSubrange'
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  interval_cases i <;>
+    simp only [BitVec.getLsbD_or, BitVec.getLsbD_and,
+      BitVec.getLsbD_not, BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+      BitVec.getLsbD_allOnes, BitVec.getLsbD_ofNat, Bool.true_and, Bool.false_and,
+      Bool.true_or, Bool.false_or, Bool.not_true, Bool.not_false] <;>
+    norm_num <;>
+    decide
 
 /-- Machine ECALL has no trap-value payload, so Sail writes zero to `mtval`. -/
 theorem ecall_tval_none :
@@ -707,7 +715,7 @@ theorem auipc_zero_offset (pc : BitVec 64) :
   have hoff : sign_extend (m := 64) ((0 : BitVec 20) +++ 0#12) = 0#64 := by
     decide
   rw [hoff]
-  bv_decide
+  norm_num
 
 /-- ECALL's trap target already has bit 0 cleared by the JALR rule. -/
 theorem ecallTrapTarget_bit0_zero (js : SailJoltState) :
@@ -715,7 +723,8 @@ theorem ecallTrapTarget_bit0_zero (js : SailJoltState) :
   unfold ecallTrapTarget
   unfold Sail.BitVec.access Sail.BitVec.update Sail.BitVec.updateSubrange'
   rw [getElem!_pos (h := by decide)]
-  bv_decide
+  norm_num
+  rfl
 
 /-- Writing a virtual register and reading that same register returns the new
 value. -/
@@ -739,7 +748,7 @@ theorem addi_zero_value (x : BitVec 64) :
   have hzero : sign_extend (m := 64) (0 : BitVec 12) = 0#64 := by
     decide
   rw [hzero]
-  bv_decide
+  norm_num
 
 /-- JALR with immediate zero computes the ECALL trap target. -/
 theorem ecallJalrTarget_zero_imm (js : SailJoltState) :
@@ -754,7 +763,7 @@ theorem ecallJalrTarget_zero_imm (js : SailJoltState) :
 theorem addi_ecall_machine_cause_value :
     0#64 + sign_extend (m := 64) (11 : BitVec 12) = ecallMachineCause := by
   rw [ecallMachineCause_eq_jolt_imm]
-  bv_decide
+  decide
 
 /-- `ADDI x0, 3` produces the scratch value used by the lowered `SLLI`. -/
 theorem addi_three_value :

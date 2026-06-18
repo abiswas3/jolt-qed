@@ -277,13 +277,21 @@ private theorem lhuProgram_project_eq_sail (imm : BitVec 12)
 
 /-- **Main program theorem for LHU.**  The structured Jolt-ISA expansion
 matches Sail and preserves every protected Jolt register on successful runs. -/
+def lhuProgramEqSailStatement (imm : BitVec 12)
+    (rs1 rd : regidx)
+    (js : SailJoltState)
+    (_h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.lhuProgram imm rs1 rd)).run js)
+      ((execute_LOAD imm rs1 rd true 2).run js.sail)
+
+/-- **Main program theorem for LHU.**  The structured Jolt-ISA expansion
+matches Sail and preserves every protected Jolt register on successful runs. -/
 theorem lhuProgram_eq_sail (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.lhuProgram imm rs1 rd)).run js)
-      ((execute_LOAD imm rs1 rd true 2).run js.sail) := by
+    lhuProgramEqSailStatement imm rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact lhuProgram_project_eq_sail imm rs1 rd js h
   · unfold JoltISA.lhuProgram JoltISA.slliBlock JoltISA.sllBlock

@@ -157,7 +157,7 @@ theorem sb_spliced_dword_store_eq_byte_store (imm : BitVec 12)
   have hload : ∀ k : Nat, k < 8 →
       dword_byte dword_orig k = loaded_byte_at s (base + BitVec.ofNat 64 k) := by
     intro k hk
-    interval_cases k <;> simp [dword_orig, loaded_dword_at, dword_byte] <;> bv_decide
+    simpa only [dword_orig] using dword_byte_loaded_dword_at s base k hk
   have hmem_eq :
       (state_after_dword_store s base dword_new).mem =
       (state_after_byte_store s ea byte_val).mem := by
@@ -292,12 +292,19 @@ private theorem sbProgram_project_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
 
 /-- **Public SB theorem.**  The Jolt bytecode expansion matches Sail and
 preserves every protected Jolt register on successful runs. -/
+def sbProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState)
+    (_h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js)
+      ((execute_STORE imm rs2 rs1 1).run js.sail)
+
+/-- **Public SB theorem.**  The Jolt bytecode expansion matches Sail and
+preserves every protected Jolt register on successful runs. -/
 theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js)
-      ((execute_STORE imm rs2 rs1 1).run js.sail) := by
+    sbProgramEqSailStatement imm rs2 rs1 js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact sbProgram_project_eq_sail imm rs2 rs1 js h
   · unfold JoltISA.sbProgram JoltISA.slliBlock JoltISA.sllBlock

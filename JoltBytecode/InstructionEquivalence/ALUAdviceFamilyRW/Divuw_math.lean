@@ -80,12 +80,29 @@ private lemma zeroExtend32_64_toNat_uw (x : BitVec 32) :
 private lemma extractLsb_zeroExtend_32_64_uw (x : BitVec 32) :
     Sail.BitVec.extractLsb (zero_extend (m := 64) x) 31 0 = x := by
   unfold zero_extend Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hi32_bool : (i <b 32) = true := by
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+  have hi64_bool : (i <b 64) = true := by
+    have : i < 64 := by omega
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using this
+  simp only [BitVec.getLsbD_extractLsb, BitVec.getLsbD_setWidth, Nat.reduceSub,
+    Nat.reduceAdd, hi32_bool, hi64_bool, Bool.true_and, Nat.zero_add]
 
 private lemma extractLsb_signExtend_32_64_uw (x : BitVec 32) :
     Sail.BitVec.extractLsb (sign_extend (m := 64) x) 31 0 = x := by
   unfold sign_extend Sail.BitVec.signExtend Sail.BitVec.extractLsb
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hi32_bool : (i <b 32) = true := by
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+  have hi64_bool : (i <b 64) = true := by
+    have : i < 64 := by omega
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using this
+  simp (disch := omega) only [BitVec.getLsbD_extractLsb, BitVec.getLsbD_signExtend,
+    Nat.reduceSub, Nat.reduceAdd, hi32_bool, hi64_bool, Bool.true_and, Nat.zero_add,
+    if_pos]
 
 private lemma eq_zero_of_zeroExtend32_eq_zero_uw (x : BitVec 32)
     (h : zero_extend (m := 64) x = 0#64) : x = 0#32 := by
@@ -160,7 +177,7 @@ private theorem signExtend_extract_sail_divuw_advice_of_zero
   rw [sail_divuw_advice_of_zero dividend divisor hzero,
     extractLsb_zeroExtend_32_64_uw]
   unfold sign_extend Sail.BitVec.signExtend
-  bv_decide
+  decide
 
 private theorem sail_divuw_advice_toNat_lt_u32 (dividend divisor : BitVec 64) :
     (sail_divuw_advice dividend divisor).toNat < 2^32 := by
@@ -222,9 +239,9 @@ theorem sext_advice_eq_sail_divw_value (dividend divisor : BitVec 64) :
     sign_extend (m := 64)
         (Sail.BitVec.extractLsb (sail_divuw_advice dividend divisor) 31 0)
       = sail_divw_value dividend divisor true := by
-  unfold sail_divuw_advice sail_divw_value sign_extend zero_extend
-    Sail.BitVec.signExtend Sail.BitVec.zeroExtend Sail.BitVec.extractLsb
-  bv_decide
+  unfold sail_divuw_advice sail_divw_value
+  rw [extractLsb_zeroExtend_32_64_uw]
+  rw [extractLsb_signExtend_32_64_uw]
 
 -- ----------------------------------------------------------------------------
 -- Honest-advice guards
@@ -262,7 +279,7 @@ theorem hguard_q_times_d_le_dividend_of_honest_uw (dividend divisor : BitVec 64)
       change zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0) = 0#64
       rw [← hy32, hzero]
       unfold zero_extend Sail.BitVec.zeroExtend
-      bv_decide
+      decide
     rw [hzv, BitVec.mul_zero]
     simp
   · have hq : q = zero_extend (m := 64) (x32 / y32) := by
@@ -298,7 +315,7 @@ theorem hguard_rem_bound_of_honest_uw (dividend divisor : BitVec 64) :
     change zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0) = 0#64
     rw [← hy32, hzero]
     unfold zero_extend Sail.BitVec.zeroExtend
-    bv_decide
+    decide
   · right
     have hyNat_ne : y32.toNat ≠ 0 := by
       intro h
@@ -457,7 +474,7 @@ theorem sext_advice_eq_sail_divw_value_of_guards_uw
   · have hzv : zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0) = 0#64 := by
       rw [hzero]
       unfold zero_extend Sail.BitVec.zeroExtend
-      bv_decide
+      decide
     have hsext_q :
         sign_extend (m := 64) (Sail.BitVec.extractLsb q 31 0) =
           (-1 : BitVec 64) := by

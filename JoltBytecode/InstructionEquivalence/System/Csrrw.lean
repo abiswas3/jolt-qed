@@ -630,13 +630,27 @@ starts from the actual Sail state. The CSRRW assumption bundle includes the
 explicit conjunction that the persistent CSR virtual registers already agree
 with the Sail CSR registers before the instruction, so the internal projected
 theorem can be specialized back to `js.sail` on the Sail side. -/
-theorem csrrwProgram_eq_sail
+def csrrwProgramEqSailStatement
     (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
-    (h_sys : CsrrwSystemAssumptions js csr rs1 rd) :
+    (_h_sys : CsrrwSystemAssumptions js csr rs1 rd) : Prop :=
     systemProjectResult
         ((JoltISA.execProgram (JoltISA.csrrwProgram csr rs1 rd)).run js) =
       (execute_CSRReg (JoltISA.SystemCSR.address csr) rs1 rd csrop.CSRRW).run
-        js.sail := by
+        js.sail
+
+/-- Public CSRRW theorem.
+
+The Jolt side is decoded through `systemProjectResult` because CSRRW writes
+the selected CSR through Jolt's persistent virtual CSR register. The Sail side
+starts from the actual Sail state. The CSRRW assumption bundle includes the
+explicit conjunction that the persistent CSR virtual registers already agree
+with the Sail CSR registers before the instruction, so the internal projected
+theorem can be specialized back to `js.sail` on the Sail side. -/
+theorem csrrwProgram_eq_sail
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
+    (h_sys : CsrrwSystemAssumptions js csr rs1 rd) :
+    csrrwProgramEqSailStatement js csr rs1 rd h_sys := by
+  unfold csrrwProgramEqSailStatement
   have hProject : systemProject js = js.sail := by
     simpa [project] using
       systemProject_eq_project_of_compatible js h_sys.linked_csrs

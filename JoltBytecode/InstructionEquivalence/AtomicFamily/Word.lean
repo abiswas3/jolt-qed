@@ -70,7 +70,7 @@ theorem amo_word_zero_offset_addr (addr : BitVec 64) :
       sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by
     decide
   rw [hsext0]
-  bv_decide
+  norm_num
 
 /-- `ANDI` with `-8` computes the enclosing dword base used by `.W` AMOs. -/
 theorem amo_word_base_mask (addr : BitVec 64) :
@@ -101,7 +101,7 @@ theorem amo_word_zero_offset_misaligned (addr : BitVec 64)
 theorem amo_word_base_aligned (addr : BitVec 64) :
     amoWordBase addr &&& (7 : BitVec 64) = 0 := by
   unfold amoWordBase
-  bv_decide
+  exact align_down_8_and_7_eq_zero addr
 
 /-- The enclosing dword base of a word AMO has room for its full 8-byte
 window. -/
@@ -337,10 +337,7 @@ theorem amo_word_loaded_dword_byte
     (s : SailState) (base : BitVec 64) (k : Nat) (hk : k < 8) :
     dword_byte (loaded_dword_at s base) k =
       loaded_byte_at s (base + BitVec.ofNat 64 k) := by
-  interval_cases k
-  all_goals
-    unfold dword_byte loaded_dword_at loaded_byte_at
-    bv_decide
+  exact dword_byte_loaded_dword_at s base k hk
 
 /-- Writing the `.W` AMO spliced enclosing dword is the same memory update as
 Sail's native word store at the AMO address. -/
@@ -682,7 +679,12 @@ theorem amo_word_setWidth_4x8_eq_self (value : BitVec 32) :
 theorem amo_word_sign_extend_4x8_eq_self (value : BitVec 32) :
     sign_extend (m := 4 * 8) value = value := by
   unfold sign_extend Sail.BitVec.signExtend
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  have hi_bool : (i <b 32) = true := by
+    simpa only [Nat.blt_eq, decide_eq_true_eq] using hi
+  simp (disch := omega) only [BitVec.getLsbD_signExtend, Nat.reduceMul, hi_bool,
+    Bool.true_and, if_pos]
 
 /-- The generated word-width writeback cast leaves the old word writeback
 unchanged. -/
@@ -846,8 +848,14 @@ theorem amo_word_extract_add_low
     (Sail.BitVec.extractLsb (lhs + rhs) 31 0 : BitVec 32) =
       (Sail.BitVec.extractLsb lhs 31 0 : BitVec 32) +
         (Sail.BitVec.extractLsb rhs 31 0 : BitVec 32) := by
-  unfold Sail.BitVec.extractLsb
-  bv_decide
+  simp only [Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.extractLsb',
+    Nat.shiftRight_zero, BitVec.toNat_add]
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_ofNat, BitVec.toNat_add, Nat.reduceSub, Nat.reduceAdd,
+    Nat.reducePow]
+  rw [Nat.mod_mod_of_dvd]
+  · rw [Nat.add_mod]
+  · exact ⟨2 ^ 32, by norm_num [pow_add, pow_mul]⟩
 
 /-- Extracting the low word of a 64-bit bitwise-and is the same as anding the
 low words. -/
@@ -857,7 +865,7 @@ theorem amo_word_extract_and_low
       (Sail.BitVec.extractLsb lhs 31 0 : BitVec 32) &&&
         (Sail.BitVec.extractLsb rhs 31 0 : BitVec 32) := by
   unfold Sail.BitVec.extractLsb
-  bv_decide
+  rw [BitVec.extractLsb_and]
 
 /-- Extracting the low word of a 64-bit bitwise-or is the same as oring the
 low words. -/
@@ -867,7 +875,7 @@ theorem amo_word_extract_or_low
       (Sail.BitVec.extractLsb lhs 31 0 : BitVec 32) |||
         (Sail.BitVec.extractLsb rhs 31 0 : BitVec 32) := by
   unfold Sail.BitVec.extractLsb
-  bv_decide
+  rw [BitVec.extractLsb_or]
 
 /-- Extracting the low word of a 64-bit bitwise-xor is the same as xoring the
 low words. -/
@@ -877,7 +885,7 @@ theorem amo_word_extract_xor_low
       (Sail.BitVec.extractLsb lhs 31 0 : BitVec 32) ^^^
         (Sail.BitVec.extractLsb rhs 31 0 : BitVec 32) := by
   unfold Sail.BitVec.extractLsb
-  bv_decide
+  rw [BitVec.extractLsb_xor]
 
 /-- The Jolt `AMOADD.W` middle result has the same low word as Sail's native
 word addition result. -/
@@ -1411,7 +1419,7 @@ theorem amo_word_add_middle_run
       writeVReg liftSail
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
-      modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+      modify, modifyGet, MonadStateOf.modifyGet,
       h_old, hrs2]
     rfl
   · rfl
@@ -1459,7 +1467,7 @@ theorem amo_word_and_middle_run
       writeVReg liftSail
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
-      modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+      modify, modifyGet, MonadStateOf.modifyGet,
       h_old, hrs2]
     rfl
   · rfl
@@ -1507,7 +1515,7 @@ theorem amo_word_or_middle_run
       writeVReg liftSail
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
-      modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+      modify, modifyGet, MonadStateOf.modifyGet,
       h_old, hrs2]
     rfl
   · rfl
@@ -1555,7 +1563,7 @@ theorem amo_word_xor_middle_run
       writeVReg liftSail
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
-      modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
+      modify, modifyGet, MonadStateOf.modifyGet,
       h_old, hrs2]
     rfl
   · rfl
@@ -1781,7 +1789,7 @@ theorem amo_word_low_word_mask_value :
     shift_bits_right (-1 : BitVec 64) (32 : BitVec 6) =
       (0x00000000FFFFFFFF : BitVec 64) := by
   unfold shift_bits_right
-  bv_decide
+  decide
 
 /-- `AND` on virtual registers packaged with source values and preservation. -/
 theorem amo_word_exists_state_after_and_run_vreg_vreg_vreg

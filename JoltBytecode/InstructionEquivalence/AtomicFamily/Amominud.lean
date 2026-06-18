@@ -194,12 +194,17 @@ private theorem amominudProgram_project_eq_sail
     h.rs1_read h.rs2_read h.rd_readable.exists_value h_mem
 
 /-- Main public theorem for `AMOMINU.D`. -/
+def amominudProgramEqSailStatement
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (_h : AmoDwordProgramEqSailAssumptions amoop.AMOMINU rs2 rs1 rd js) : Prop :=
+  ProgramMatchesSailWithProtectedFrame js
+    ((JoltISA.execProgram (JoltISA.amominudProgram rs2 rs1 rd)).run js)
+    ((execute_AMO amoop.AMOMINU false false rs2 rs1 8 rd).run js.sail)
+
 theorem amominudProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOMINU rs2 rs1 rd js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.amominudProgram rs2 rs1 rd)).run js)
-      ((execute_AMO amoop.AMOMINU false false rs2 rs1 8 rd).run js.sail) := by
+    amominudProgramEqSailStatement rs2 rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact amominudProgram_project_eq_sail rs2 rs1 rd js h
   · simp [JoltISA.amominudProgram, JoltISA.amoDoubleSelectProgram,

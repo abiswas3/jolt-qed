@@ -105,12 +105,18 @@ theorem slliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
   exact h_final_shiftedSource
 
 /-- Main program-level equivalence for `SLLI`. -/
+def slliProgramEqSailStatement (shamt : BitVec 6) (rs1 rd : regidx)
+    (js : SailJoltState)
+    (_h : ALUFamily.UnarySourceReadAssumptions rs1 js) : Prop :=
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js)
+      ((execute_SHIFTIOP shamt rs1 rd sop.SLLI).run js.sail)
+
+/-- Main program-level equivalence for `SLLI`. -/
 theorem slliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
     (js : SailJoltState)
     (h : ALUFamily.UnarySourceReadAssumptions rs1 js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.slliProgram shamt rs1 rd)).run js)
-      ((execute_SHIFTIOP shamt rs1 rd sop.SLLI).run js.sail) := by
+    slliProgramEqSailStatement shamt rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · let v := h.rs1_val
     have h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail := h.rs1_read

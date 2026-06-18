@@ -4,6 +4,7 @@ import JoltBytecode.JoltISA.Values
 import JoltBytecode.JoltISA.VirtualRegisters
 import JoltBytecode.JoltISA.Instruction
 import JoltBytecode.JoltISA.Semantics
+import JoltBytecode.JoltISA.Execution
 import JoltBytecode.JoltISA.Semantics.Lemmas
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 import JoltBytecode.JoltISA.Semantics.StateLemmas
