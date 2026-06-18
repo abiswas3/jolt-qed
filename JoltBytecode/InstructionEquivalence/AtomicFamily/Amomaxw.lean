@@ -246,12 +246,17 @@ private theorem amomaxwProgram_project_eq_sail
       h.rs1_read h.rs2_read h_align
 
 /-- Main public theorem for `AMOMAX.W`. -/
+def amomaxwProgramEqSailStatement
+    (rs2 rs1 rd : regidx) (js : SailJoltState)
+    (_h : AmoWordProgramEqSailAssumptions amoop.AMOMAX rs2 rs1 rd js) : Prop :=
+  ProgramMatchesSailWithProtectedFrame js
+    ((JoltISA.execProgram (JoltISA.amomaxwProgram rs2 rs1 rd)).run js)
+    ((execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail)
+
 theorem amomaxwProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOMAX rs2 rs1 rd js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.amomaxwProgram rs2 rs1 rd)).run js)
-      ((execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail) := by
+    amomaxwProgramEqSailStatement rs2 rs1 rd js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact amomaxwProgram_project_eq_sail rs2 rs1 rd js h
   · simp [JoltISA.amomaxwProgram, JoltISA.amoWordSelectRustProgram,
