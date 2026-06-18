@@ -55,7 +55,9 @@ import JoltBytecode.InstructionEquivalence.StoreFamily.Sb_main
 import JoltBytecode.InstructionEquivalence.StoreFamily.Sh_main
 import JoltBytecode.InstructionEquivalence.StoreFamily.Sw_main
 import JoltBytecode.InstructionEquivalence.System.Csrrw
+import JoltBytecode.InstructionEquivalence.Natives.Add
 import JoltBytecode.InstructionEquivalence.Natives.Lui
+import JoltBytecode.InstructionEquivalence.Natives.Sub
 import JoltBytecode.InstructionEquivalence.LoadFamily.LB_main
 import JoltBytecode.InstructionEquivalence.LoadFamily.LBU_main
 import JoltBytecode.InstructionEquivalence.LoadFamily.LH_main
@@ -241,6 +243,10 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       ALUFamily.UnarySourceReadAssumptions rs1 js
   | .SRAI _rd rs1 _shamt, js =>
       ALUFamily.UnarySourceReadAssumptions rs1 js
+  | .ADD _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .SUB _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .SLL _rd rs1 rs2, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .SRL _rd rs1 rs2, js =>
@@ -394,10 +400,10 @@ def equivalenceStatement :
       srliProgramEqSailStatement shamt rs1 rd js _h
     | .SRAI rd rs1 shamt =>
       sraiProgramEqSailStatement shamt rs1 rd js _h
-    | .ADD _rd _rs1 _rs2 =>
-      True -- WARNING: For natives
-    | .SUB _rd _rs1 _rs2 =>
-      True -- WARNING: For natives
+    | .ADD rd rs1 rs2 =>
+      Natives.addInstrEqSailStatement rs2 rs1 rd js _h
+    | .SUB rd rs1 rs2 =>
+      Natives.subInstrEqSailStatement rs2 rs1 rd js _h
     | .SLL rd rs1 rs2 =>
       sllProgramEqSailStatement rs2 rs1 rd js _h
     | .SLT _rd _rs1 _rs2 =>
@@ -586,10 +592,10 @@ theorem equivalenceStatement_holds :
       srliProgram_eq_sail shamt rs1 rd js h
   | .SRAI rd rs1 shamt, js, h =>
       sraiProgram_eq_sail shamt rs1 rd js h
-  | .ADD _rd _rs1 _rs2, _js, _h =>
-      trivial
-  | .SUB _rd _rs1 _rs2, _js, _h =>
-      trivial
+  | .ADD rd rs1 rs2, js, h =>
+      Natives.addInstr_eq_sail rs2 rs1 rd js h
+  | .SUB rd rs1 rs2, js, h =>
+      Natives.subInstr_eq_sail rs2 rs1 rd js h
   | .SLL rd rs1 rs2, js, h =>
       sllProgram_eq_sail rs2 rs1 rd js h
   | .SLT _rd _rs1 _rs2, _js, _h =>
