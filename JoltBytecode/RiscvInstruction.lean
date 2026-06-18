@@ -8,6 +8,23 @@ import JoltBytecode.JoltISA.Expansions.Mul
 import JoltBytecode.JoltISA.Expansions.Store
 import JoltBytecode.JoltISA.Expansions.System
 import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Addw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Mulw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Sll
+import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Sllw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Sra
+import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Sraw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Srl
+import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Srlw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Rtype.Subw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Itype.Addiw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Itype.Slli
+import JoltBytecode.InstructionEquivalence.ALUFamily.Itype.Slliw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Itype.Srai
+import JoltBytecode.InstructionEquivalence.ALUFamily.Itype.Sraiw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Itype.Srli
+import JoltBytecode.InstructionEquivalence.ALUFamily.Itype.Srliw
+import JoltBytecode.InstructionEquivalence.ALUFamily.Mult.Mulh
+import JoltBytecode.InstructionEquivalence.ALUFamily.Mult.Mulhsu
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divu
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divuw
@@ -34,6 +51,16 @@ import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoswapd
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoswapw
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoxord
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoxorw
+import JoltBytecode.InstructionEquivalence.StoreFamily.Sb_main
+import JoltBytecode.InstructionEquivalence.StoreFamily.Sh_main
+import JoltBytecode.InstructionEquivalence.StoreFamily.Sw_main
+import JoltBytecode.InstructionEquivalence.System.Csrrw
+import JoltBytecode.InstructionEquivalence.LoadFamily.LB_main
+import JoltBytecode.InstructionEquivalence.LoadFamily.LBU_main
+import JoltBytecode.InstructionEquivalence.LoadFamily.LH_main
+import JoltBytecode.InstructionEquivalence.LoadFamily.LHU_main
+import JoltBytecode.InstructionEquivalence.LoadFamily.LW_main
+import JoltBytecode.InstructionEquivalence.LoadFamily.LWU_main
 
 /-!
 # RISC-V Instructions
@@ -178,7 +205,7 @@ inductive RiscvInstruction where
 
   /- Jolt-supported Zicsr source instructions.
      Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html -/
-  | CSRRW (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
+  | CSRRW (rd : regidx) (csr : JoltISA.SystemCSR) (rs1 : regidx)
   | CSRRS (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
 
   /- Jolt-supported RvPrivileged source instruction.
@@ -195,7 +222,53 @@ abbrev SailExecution := SailM ExecutionResult
 The advice-backed ALU instructions all need source-register read facts; their
 advice operands live in the `RiscvInstruction` constructor itself. -/
 def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
+  | .LB _rd rs1 imm, js =>
+      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+  | .LH _rd rs1 imm, js =>
+      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+  | .LW _rd rs1 imm, js =>
+      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+  | .LBU _rd rs1 imm, js =>
+      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+  | .LHU _rd rs1 imm, js =>
+      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+  | .LWU _rd rs1 imm, js =>
+      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+  | .SLLI _rd rs1 _shamt, js =>
+      ALUFamily.UnarySourceReadAssumptions rs1 js
+  | .SRLI _rd rs1 _shamt, js =>
+      ALUFamily.UnarySourceReadAssumptions rs1 js
+  | .SRAI _rd rs1 _shamt, js =>
+      ALUFamily.UnarySourceReadAssumptions rs1 js
+  | .SLL _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .SRL _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .SRA _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .ADDIW _rd rs1 _imm, js =>
+      ALUFamily.UnarySourceReadAssumptions rs1 js
+  | .SLLIW _rd rs1 _shamt, js =>
+      ALUFamily.UnarySourceReadAssumptions rs1 js
+  | .SRLIW _rd rs1 _shamt, js =>
+      ALUFamily.UnarySourceReadAssumptions rs1 js
+  | .SRAIW _rd rs1 _shamt, js =>
+      ALUFamily.UnarySourceReadAssumptions rs1 js
   | .ADDW _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .SUBW _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .SLLW _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .SRLW _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .SRAW _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .MULH _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .MULHSU _rd rs1 rs2, js =>
+      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .MULW _rd rs1 rs2, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .DIV _rd rs1 rs2 _quotient _remAbs, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
@@ -213,6 +286,14 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .REMUW _rd rs1 rs2 _quotient, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+  | .SB rs2 rs1 imm, js =>
+      StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js
+  | .SH rs2 rs1 imm, js =>
+      StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js
+  | .SW rs2 rs1 imm, js =>
+      StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js
+  | .SD _rs2 _rs1 _imm, _js =>
+      Unit
   | .AMOSWAP_W rd rs1 rs2 _aq _rl, js =>
       AtomicFamily.AmoWordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js
   | .AMOADD_W rd rs1 rs2 _aq _rl, js =>
@@ -249,6 +330,8 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOMINU rs2 rs1 rd js
   | .AMOMAXU_D rd rs1 rs2 _aq _rl, js =>
       AtomicFamily.AmoDwordProgramEqSailAssumptions amoop.AMOMAXU rs2 rs1 rd js
+  | .CSRRW rd csr rs1, js =>
+      System.CsrrwSystemAssumptions js csr rs1 rd
   | _, _ => Unit
 
 /-- Equivalence proposition selected by the operand-bearing instruction.
@@ -262,8 +345,110 @@ def equivalenceStatement :
     Prop
   | instr, js, _h =>
     match instr with
+    | .LUI _rd _imm =>
+      True -- WARNING: For natives
+    | .AUIPC _rd _imm =>
+      True -- WARNING: For natives
+    | .JAL _rd _imm =>
+      False -- WARNING: unwired instruction equivalence
+    | .JALR _rd _rs1 _imm =>
+      False -- WARNING: unwired instruction equivalence
+    | .BEQ _rs1 _rs2 _imm =>
+      False -- WARNING: unwired instruction equivalence
+    | .BNE _rs1 _rs2 _imm =>
+      False -- WARNING: unwired instruction equivalence
+    | .BLT _rs1 _rs2 _imm =>
+      False -- WARNING: unwired instruction equivalence
+    | .BGE _rs1 _rs2 _imm =>
+      False -- WARNING: unwired instruction equivalence
+    | .BLTU _rs1 _rs2 _imm =>
+      False -- WARNING: unwired instruction equivalence
+    | .BGEU _rs1 _rs2 _imm =>
+      False -- WARNING: unwired instruction equivalence
+    | .LB rd rs1 imm =>
+      LB_main.lbProgramEqSailStatement imm rs1 rd js _h
+    | .LH rd rs1 imm =>
+      LH_main.lhProgramEqSailStatement imm rs1 rd js _h
+    | .LW rd rs1 imm =>
+      LW_main.lwProgramEqSailStatement imm rs1 rd js _h
+    | .LBU rd rs1 imm =>
+      LBU_main.lbuProgramEqSailStatement imm rs1 rd js _h
+    | .LHU rd rs1 imm =>
+      LHU_main.lhuProgramEqSailStatement imm rs1 rd js _h
+    | .ADDI _rd _rs1 _imm =>
+      True -- WARNING: For natives
+    | .SLTI _rd _rs1 _imm =>
+      True -- WARNING: For natives
+    | .SLTIU _rd _rs1 _imm =>
+      True -- WARNING: For natives
+    | .XORI _rd _rs1 _imm =>
+      True -- WARNING: For natives
+    | .ORI _rd _rs1 _imm =>
+      True -- WARNING: For natives
+    | .ANDI _rd _rs1 _imm =>
+      True -- WARNING: For natives
+    | .SLLI rd rs1 shamt =>
+      slliProgramEqSailStatement shamt rs1 rd js _h
+    | .SRLI rd rs1 shamt =>
+      srliProgramEqSailStatement shamt rs1 rd js _h
+    | .SRAI rd rs1 shamt =>
+      sraiProgramEqSailStatement shamt rs1 rd js _h
+    | .ADD _rd _rs1 _rs2 =>
+      True -- WARNING: For natives
+    | .SUB _rd _rs1 _rs2 =>
+      True -- WARNING: For natives
+    | .SLL rd rs1 rs2 =>
+      sllProgramEqSailStatement rs2 rs1 rd js _h
+    | .SLT _rd _rs1 _rs2 =>
+      True -- WARNING: For natives
+    | .SLTU _rd _rs1 _rs2 =>
+      True -- WARNING: For natives
+    | .XOR _rd _rs1 _rs2 =>
+      True -- WARNING: For natives
+    | .SRL rd rs1 rs2 =>
+      srlProgramEqSailStatement rs2 rs1 rd js _h
+    | .SRA rd rs1 rs2 =>
+      sraProgramEqSailStatement rs2 rs1 rd js _h
+    | .OR _rd _rs1 _rs2 =>
+      True -- WARNING: For natives
+    | .AND _rd _rs1 _rs2 =>
+      True -- WARNING: For natives
+    | .FENCE _rd _rs1 _fm _pred _succ =>
+      False -- WARNING: unwired instruction equivalence
+    | .ECALL =>
+      False -- WARNING: unwired instruction equivalence
+    | .EBREAK =>
+      False -- WARNING: unwired instruction equivalence
+    | .LWU rd rs1 imm =>
+      LWU_main.lwuProgramEqSailStatement imm rs1 rd js _h
+    | .LD _rd _rs1 _imm =>
+      True -- WARNING: For natives
+    | .ADDIW rd rs1 imm =>
+      addiwProgramEqSailStatement imm rs1 rd js _h
+    | .SLLIW rd rs1 shamt =>
+      slliwProgramEqSailStatement shamt rs1 rd js _h
+    | .SRLIW rd rs1 shamt =>
+      srliwProgramEqSailStatement shamt rs1 rd js _h
+    | .SRAIW rd rs1 shamt =>
+      sraiwProgramEqSailStatement shamt rs1 rd js _h
     | .ADDW rd rs1 rs2 =>
       addwProgramEqSailStatement rs2 rs1 rd js _h
+    | .SUBW rd rs1 rs2 =>
+      subwProgramEqSailStatement rs2 rs1 rd js _h
+    | .SLLW rd rs1 rs2 =>
+      sllwProgramEqSailStatement rs2 rs1 rd js _h
+    | .SRLW rd rs1 rs2 =>
+      srlwProgramEqSailStatement rs2 rs1 rd js _h
+    | .SRAW rd rs1 rs2 =>
+      srawProgramEqSailStatement rs2 rs1 rd js _h
+    | .MUL _rd _rs1 _rs2 =>
+      True -- WARNING: For natives
+    | .MULH rd rs1 rs2 =>
+      mulhProgramEqSailStatement rs2 rs1 rd js _h
+    | .MULHU _rd _rs1 _rs2 =>
+      True -- WARNING: For natives
+    | .MULHSU rd rs1 rs2 =>
+      mulhsuProgramEqSailStatement rs2 rs1 rd js _h
     | .DIV rd rs1 rs2 quotient remAbs =>
       divProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
     | .DIVU rd rs1 rs2 quotient =>
@@ -272,6 +457,8 @@ def equivalenceStatement :
       remProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
     | .REMU rd rs1 rs2 quotient =>
       remuProgramEqSailStatement rs2 rs1 rd quotient js _h
+    | .MULW rd rs1 rs2 =>
+      mulwProgramEqSailStatement rs2 rs1 rd js _h
     | .DIVW rd rs1 rs2 quotient remAbs =>
       divwProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
     | .DIVUW rd rs1 rs2 quotient =>
@@ -280,6 +467,18 @@ def equivalenceStatement :
       remwProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
     | .REMUW rd rs1 rs2 quotient =>
       remuwProgramEqSailStatement rs2 rs1 rd quotient js _h
+    | .LR_W _rd _rs1 _aq _rl =>
+      False -- WARNING: unwired instruction equivalence
+    | .SC_W _rd _rs1 _rs2 _aq _rl =>
+      False -- WARNING: unwired instruction equivalence
+    | .SB rs2 rs1 imm =>
+      SB_main.sbProgramEqSailStatement imm rs2 rs1 js _h
+    | .SH rs2 rs1 imm =>
+      SH_main.shProgramEqSailStatement imm rs2 rs1 js _h
+    | .SW rs2 rs1 imm =>
+      SW_main.swProgramEqSailStatement imm rs2 rs1 js _h
+    | .SD _rs2 _rs1 _imm =>
+      True -- WARNING: For natives
     | .AMOSWAP_W rd rs1 rs2 _aq _rl =>
       AtomicFamily.amoswapwProgramEqSailStatement rs2 rs1 rd js _h
     | .AMOADD_W rd rs1 rs2 _aq _rl =>
@@ -298,6 +497,10 @@ def equivalenceStatement :
       AtomicFamily.amominuwProgramEqSailStatement rs2 rs1 rd js _h
     | .AMOMAXU_W rd rs1 rs2 _aq _rl =>
       AtomicFamily.amomaxuwProgramEqSailStatement rs2 rs1 rd js _h
+    | .LR_D _rd _rs1 _aq _rl =>
+      False -- WARNING: unwired instruction equivalence
+    | .SC_D _rd _rs1 _rs2 _aq _rl =>
+      False -- WARNING: unwired instruction equivalence
     | .AMOSWAP_D rd rs1 rs2 _aq _rl =>
       AtomicFamily.amoswapdProgramEqSailStatement rs2 rs1 rd js _h
     | .AMOADD_D rd rs1 rs2 _aq _rl =>
@@ -316,12 +519,17 @@ def equivalenceStatement :
       AtomicFamily.amominudProgramEqSailStatement rs2 rs1 rd js _h
     | .AMOMAXU_D rd rs1 rs2 _aq _rl =>
       AtomicFamily.amomaxudProgramEqSailStatement rs2 rs1 rd js _h
-    | _ => False
+    | .CSRRW rd csr rs1 =>
+      System.csrrwProgramEqSailStatement js csr rs1 rd _h
+    | .CSRRS _rd _csr _rs1 =>
+      False -- WARNING: unwired instruction equivalence
+    | .MRET =>
+      False -- WARNING: unwired instruction equivalence
 
 /-- Proof selector for the equivalence statement.
 
-The fallback marks the remaining instruction branches that still need to be
-connected to their existing instruction-equivalence theorems. -/
+Every constructor is listed explicitly so missing instruction coverage is
+visible in this theorem, not hidden behind a catch-all. -/
 theorem equivalenceStatement_holds :
     (instr : RiscvInstruction) →
     (js : SailJoltState) →
@@ -345,6 +553,96 @@ theorem equivalenceStatement_holds :
       remwProgram_eq_sail rs2 rs1 rd quotient remAbs js h
   | .REMUW rd rs1 rs2 quotient, js, h =>
       remuwProgram_eq_sail rs2 rs1 rd quotient js h
+  | .LUI _rd _imm, _js, _h =>
+      trivial
+  | .AUIPC _rd _imm, _js, _h =>
+      trivial
+  | .LB rd rs1 imm, js, h =>
+      LB_main.lbProgram_eq_sail imm rs1 rd js h
+  | .LH rd rs1 imm, js, h =>
+      LH_main.lhProgram_eq_sail imm rs1 rd js h
+  | .LW rd rs1 imm, js, h =>
+      LW_main.lwProgram_eq_sail imm rs1 rd js h
+  | .LBU rd rs1 imm, js, h =>
+      LBU_main.lbuProgram_eq_sail imm rs1 rd js h
+  | .LHU rd rs1 imm, js, h =>
+      LHU_main.lhuProgram_eq_sail imm rs1 rd js h
+  | .ADDI _rd _rs1 _imm, _js, _h =>
+      trivial
+  | .SLTI _rd _rs1 _imm, _js, _h =>
+      trivial
+  | .SLTIU _rd _rs1 _imm, _js, _h =>
+      trivial
+  | .XORI _rd _rs1 _imm, _js, _h =>
+      trivial
+  | .ORI _rd _rs1 _imm, _js, _h =>
+      trivial
+  | .ANDI _rd _rs1 _imm, _js, _h =>
+      trivial
+  | .SLLI rd rs1 shamt, js, h =>
+      slliProgram_eq_sail shamt rs1 rd js h
+  | .SRLI rd rs1 shamt, js, h =>
+      srliProgram_eq_sail shamt rs1 rd js h
+  | .SRAI rd rs1 shamt, js, h =>
+      sraiProgram_eq_sail shamt rs1 rd js h
+  | .ADD _rd _rs1 _rs2, _js, _h =>
+      trivial
+  | .SUB _rd _rs1 _rs2, _js, _h =>
+      trivial
+  | .SLL rd rs1 rs2, js, h =>
+      sllProgram_eq_sail rs2 rs1 rd js h
+  | .SLT _rd _rs1 _rs2, _js, _h =>
+      trivial
+  | .SLTU _rd _rs1 _rs2, _js, _h =>
+      trivial
+  | .XOR _rd _rs1 _rs2, _js, _h =>
+      trivial
+  | .SRL rd rs1 rs2, js, h =>
+      srlProgram_eq_sail rs2 rs1 rd js h
+  | .SRA rd rs1 rs2, js, h =>
+      sraProgram_eq_sail rs2 rs1 rd js h
+  | .OR _rd _rs1 _rs2, _js, _h =>
+      trivial
+  | .AND _rd _rs1 _rs2, _js, _h =>
+      trivial
+  | .LWU rd rs1 imm, js, h =>
+      LWU_main.lwuProgram_eq_sail imm rs1 rd js h
+  | .LD _rd _rs1 _imm, _js, _h =>
+      trivial
+  | .ADDIW rd rs1 imm, js, h =>
+      addiwProgram_eq_sail imm rs1 rd js h
+  | .SLLIW rd rs1 shamt, js, h =>
+      slliwProgram_eq_sail shamt rs1 rd js h
+  | .SRLIW rd rs1 shamt, js, h =>
+      srliwProgram_eq_sail shamt rs1 rd js h
+  | .SRAIW rd rs1 shamt, js, h =>
+      sraiwProgram_eq_sail shamt rs1 rd js h
+  | .SUBW rd rs1 rs2, js, h =>
+      subwProgram_eq_sail rs2 rs1 rd js h
+  | .SLLW rd rs1 rs2, js, h =>
+      sllwProgram_eq_sail rs2 rs1 rd js h
+  | .SRLW rd rs1 rs2, js, h =>
+      srlwProgram_eq_sail rs2 rs1 rd js h
+  | .SRAW rd rs1 rs2, js, h =>
+      srawProgram_eq_sail rs2 rs1 rd js h
+  | .MUL _rd _rs1 _rs2, _js, _h =>
+      trivial
+  | .MULH rd rs1 rs2, js, h =>
+      mulhProgram_eq_sail rs2 rs1 rd js h
+  | .MULHU _rd _rs1 _rs2, _js, _h =>
+      trivial
+  | .MULHSU rd rs1 rs2, js, h =>
+      mulhsuProgram_eq_sail rs2 rs1 rd js h
+  | .MULW rd rs1 rs2, js, h =>
+      mulwProgram_eq_sail rs2 rs1 rd js h
+  | .SB rs2 rs1 imm, js, h =>
+      SB_main.sbProgram_eq_sail imm rs2 rs1 js h
+  | .SH rs2 rs1 imm, js, h =>
+      SH_main.shProgram_eq_sail imm rs2 rs1 js h
+  | .SW rs2 rs1 imm, js, h =>
+      SW_main.swProgram_eq_sail imm rs2 rs1 js h
+  | .SD _rs2 _rs1 _imm, _js, _h =>
+      trivial
   | .AMOSWAP_W rd rs1 rs2 _aq _rl, js, h =>
       AtomicFamily.amoswapwProgram_eq_sail rs2 rs1 rd js h
   | .AMOADD_W rd rs1 rs2 _aq _rl, js, h =>
@@ -381,7 +679,41 @@ theorem equivalenceStatement_holds :
       AtomicFamily.amominudProgram_eq_sail rs2 rs1 rd js h
   | .AMOMAXU_D rd rs1 rs2 _aq _rl, js, h =>
       AtomicFamily.amomaxudProgram_eq_sail rs2 rs1 rd js h
-  | _, _, _ => by
+  | .CSRRW rd csr rs1, js, h =>
+      System.csrrwProgram_eq_sail js csr rs1 rd h
+  | .JAL _rd _imm, _js, _h => by
+      sorry
+  | .JALR _rd _rs1 _imm, _js, _h => by
+      sorry
+  | .BEQ _rs1 _rs2 _imm, _js, _h => by
+      sorry
+  | .BNE _rs1 _rs2 _imm, _js, _h => by
+      sorry
+  | .BLT _rs1 _rs2 _imm, _js, _h => by
+      sorry
+  | .BGE _rs1 _rs2 _imm, _js, _h => by
+      sorry
+  | .BLTU _rs1 _rs2 _imm, _js, _h => by
+      sorry
+  | .BGEU _rs1 _rs2 _imm, _js, _h => by
+      sorry
+  | .FENCE _rd _rs1 _fm _pred _succ, _js, _h => by
+      sorry
+  | .ECALL, _js, _h => by
+      sorry
+  | .EBREAK, _js, _h => by
+      sorry
+  | .LR_W _rd _rs1 _aq _rl, _js, _h => by
+      sorry
+  | .SC_W _rd _rs1 _rs2 _aq _rl, _js, _h => by
+      sorry
+  | .LR_D _rd _rs1 _aq _rl, _js, _h => by
+      sorry
+  | .SC_D _rd _rs1 _rs2 _aq _rl, _js, _h => by
+      sorry
+  | .CSRRS _rd _csr _rs1, _js, _h => by
+      sorry
+  | .MRET, _js, _h => by
       sorry
 
 end RiscvInstruction

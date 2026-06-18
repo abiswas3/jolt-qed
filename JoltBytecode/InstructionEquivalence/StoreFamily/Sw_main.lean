@@ -452,12 +452,19 @@ private theorem swProgram_project_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
 
 /-- **Main public SW theorem.**  The Jolt bytecode expansion matches Sail and
 preserves every protected Jolt register on successful runs. -/
+def swProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState)
+    (_h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
+    ProgramMatchesSailWithProtectedFrame js
+      ((JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js)
+      ((execute_STORE imm rs2 rs1 4).run js.sail)
+
+/-- **Main public SW theorem.**  The Jolt bytecode expansion matches Sail and
+preserves every protected Jolt register on successful runs. -/
 theorem swProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js)
-      ((execute_STORE imm rs2 rs1 4).run js.sail) := by
+    swProgramEqSailStatement imm rs2 rs1 js h := by
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact swProgram_project_eq_sail imm rs2 rs1 js h
   · unfold JoltISA.swProgram JoltISA.slliBlock JoltISA.sllBlock JoltISA.srliBlock
