@@ -1,16 +1,36 @@
-import JoltBytecode.JoltISA.Instruction
-import JoltBytecode.InstructionEquivalence.ProofSupport
+import LeanRV64D.Defs
+
 /-!
-# Guest RV64IMAC Opcode Universe
+# RISC-V Instructions
 
-Guest compiler target evidence:
-`riscv64imac-unknown-none-elf`
+This file records an operand-bearing RISC-V instruction universe from the
+official RISC-V ISA documentation only.
 
-This says the guest program target ISA is RV64IMAC: RV64I base integer
-instructions plus the M, A, and C extensions.
+Rust/Jolt code is intentionally not cited here. Rust is the source of truth for
+`JoltISA`; the RISC-V ISA docs are the source of truth for this file.
+-/
 
-Official ISA references, RISC-V Ratified Specifications Library:
-* RV64I base:
+open Sail PreSail
+
+/-- A CSR address is the 12-bit `csr` field used by Zicsr instructions. -/
+abbrev CsrAddr := BitVec 12
+
+/-- The 5-bit unsigned immediate operand used by Zicsr immediate forms. -/
+abbrev CsrUImm := BitVec 5
+
+/-- `fm`, `pred`, and `succ` are 4-bit FENCE fields. -/
+abbrev FenceField := BitVec 4
+
+/-- Compressed primed registers denote the architectural register subset
+`x8`-`x15`; the subset constraint is recorded later as a predicate. -/
+abbrev CReg := regidx
+
+/-- Official RISC-V instruction constructors with operands.
+
+Sources:
+* RV32I base integer instructions:
+  https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html
+* RV64I base integer additions:
   https://docs.riscv.org/reference/isa/v20260120/unpriv/rv64.html
 * M extension:
   https://docs.riscv.org/reference/isa/v20260120/unpriv/m-st-ext.html
@@ -18,330 +38,183 @@ Official ISA references, RISC-V Ratified Specifications Library:
   https://docs.riscv.org/reference/isa/v20260120/unpriv/a-st-ext.html
 * C extension:
   https://docs.riscv.org/reference/isa/v20260120/unpriv/c-st-ext.html
-
-This file only records the guest-side opcode universe.  It deliberately does
-not include Zicsr, privileged instructions, Jolt virtual/custom/advice
-instructions, or proof/coverage metadata.
+* Zicsr extension:
+  https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html
+* Privileged instruction listings:
+  https://docs.riscv.org/reference/isa/v20260120/priv/priv-insns.html
 -/
-
-
-/-- Architectural instruction mnemonics that may appear in an
-`riscv64imac-unknown-none-elf` guest program. -/
-inductive GuestRV64IMACOpcode where
-  -- RV64I base integer instructions.
-  | LUI
-  | AUIPC
-  | JAL
-  | JALR
-  | BEQ
-  | BNE
-  | BLT
-  | BGE
-  | BLTU
-  | BGEU
-  | LB
-  | LH
-  | LW
-  | LBU
-  | LHU
-  | SB
-  | SH
-  | SW
-  | ADDI
-  | SLTI
-  | SLTIU
-  | XORI
-  | ORI
-  | ANDI
-  | SLLI
-  | SRLI
-  | SRAI
-  | ADD
-  | SUB
-  | SLL
-  | SLT
-  | SLTU
-  | XOR
-  | SRL
-  | SRA
-  | OR
-  | AND
-  | FENCE
+inductive RiscvInstruction where
+  /- RV32I base integer instruction set, inherited by RV64I.
+     Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/rv32.html -/
+  | LUI (rd : regidx) (imm : BitVec 20)
+  | AUIPC (rd : regidx) (imm : BitVec 20)
+  | JAL (rd : regidx) (imm : BitVec 21)
+  | JALR (rd rs1 : regidx) (imm : BitVec 12)
+  | BEQ (rs1 rs2 : regidx) (imm : BitVec 13)
+  | BNE (rs1 rs2 : regidx) (imm : BitVec 13)
+  | BLT (rs1 rs2 : regidx) (imm : BitVec 13)
+  | BGE (rs1 rs2 : regidx) (imm : BitVec 13)
+  | BLTU (rs1 rs2 : regidx) (imm : BitVec 13)
+  | BGEU (rs1 rs2 : regidx) (imm : BitVec 13)
+  | LB (rd rs1 : regidx) (imm : BitVec 12)
+  | LH (rd rs1 : regidx) (imm : BitVec 12)
+  | LW (rd rs1 : regidx) (imm : BitVec 12)
+  | LBU (rd rs1 : regidx) (imm : BitVec 12)
+  | LHU (rd rs1 : regidx) (imm : BitVec 12)
+  | SB (rs2 rs1 : regidx) (imm : BitVec 12)
+  | SH (rs2 rs1 : regidx) (imm : BitVec 12)
+  | SW (rs2 rs1 : regidx) (imm : BitVec 12)
+  | ADDI (rd rs1 : regidx) (imm : BitVec 12)
+  | SLTI (rd rs1 : regidx) (imm : BitVec 12)
+  | SLTIU (rd rs1 : regidx) (imm : BitVec 12)
+  | XORI (rd rs1 : regidx) (imm : BitVec 12)
+  | ORI (rd rs1 : regidx) (imm : BitVec 12)
+  | ANDI (rd rs1 : regidx) (imm : BitVec 12)
+  | SLLI (rd rs1 : regidx) (shamt : BitVec 5)
+  | SRLI (rd rs1 : regidx) (shamt : BitVec 5)
+  | SRAI (rd rs1 : regidx) (shamt : BitVec 5)
+  | ADD (rd rs1 rs2 : regidx)
+  | SUB (rd rs1 rs2 : regidx)
+  | SLL (rd rs1 rs2 : regidx)
+  | SLT (rd rs1 rs2 : regidx)
+  | SLTU (rd rs1 rs2 : regidx)
+  | XOR (rd rs1 rs2 : regidx)
+  | SRL (rd rs1 rs2 : regidx)
+  | SRA (rd rs1 rs2 : regidx)
+  | OR (rd rs1 rs2 : regidx)
+  | AND (rd rs1 rs2 : regidx)
+  | FENCE (rd rs1 : regidx) (fm pred succ : FenceField)
   | ECALL
   | EBREAK
-  | LWU
-  | LD
-  | SD
-  | ADDIW
-  | SLLIW
-  | SRLIW
-  | SRAIW
-  | ADDW
-  | SUBW
-  | SLLW
-  | SRLW
-  | SRAW
 
-  -- M extension.
-  | MUL
-  | MULH
-  | MULHSU
-  | MULHU
-  | DIV
-  | DIVU
-  | REM
-  | REMU
-  | MULW
-  | DIVW
-  | DIVUW
-  | REMW
-  | REMUW
+  /- RV64I base integer additions.
+     Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/rv64.html -/
+  | LWU (rd rs1 : regidx) (imm : BitVec 12)
+  | LD (rd rs1 : regidx) (imm : BitVec 12)
+  | SD (rs2 rs1 : regidx) (imm : BitVec 12)
+  | ADDIW (rd rs1 : regidx) (imm : BitVec 12)
+  | SLLIW (rd rs1 : regidx) (shamt : BitVec 5)
+  | SRLIW (rd rs1 : regidx) (shamt : BitVec 5)
+  | SRAIW (rd rs1 : regidx) (shamt : BitVec 5)
+  | ADDW (rd rs1 rs2 : regidx)
+  | SUBW (rd rs1 rs2 : regidx)
+  | SLLW (rd rs1 rs2 : regidx)
+  | SRLW (rd rs1 rs2 : regidx)
+  | SRAW (rd rs1 rs2 : regidx)
 
-  -- A extension.
-  | LR_W
-  | SC_W
-  | AMOSWAP_W
-  | AMOADD_W
-  | AMOXOR_W
-  | AMOAND_W
-  | AMOOR_W
-  | AMOMIN_W
-  | AMOMAX_W
-  | AMOMINU_W
-  | AMOMAXU_W
-  | LR_D
-  | SC_D
-  | AMOSWAP_D
-  | AMOADD_D
-  | AMOXOR_D
-  | AMOAND_D
-  | AMOOR_D
-  | AMOMIN_D
-  | AMOMAX_D
-  | AMOMINU_D
-  | AMOMAXU_D
+  /- M extension for integer multiplication and division.
+     Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/m-st-ext.html -/
+  | MUL (rd rs1 rs2 : regidx)
+  | MULH (rd rs1 rs2 : regidx)
+  | MULHU (rd rs1 rs2 : regidx)
+  | MULHSU (rd rs1 rs2 : regidx)
+  | DIV (rd rs1 rs2 : regidx)
+  | DIVU (rd rs1 rs2 : regidx)
+  | REM (rd rs1 rs2 : regidx)
+  | REMU (rd rs1 rs2 : regidx)
+  | MULW (rd rs1 rs2 : regidx)
+  | DIVW (rd rs1 rs2 : regidx)
+  | DIVUW (rd rs1 rs2 : regidx)
+  | REMW (rd rs1 rs2 : regidx)
+  | REMUW (rd rs1 rs2 : regidx)
 
-  -- C extension, restricted to RV64IMAC integer compressed instructions.
-  | C_ADDI4SPN
-  | C_LW
-  | C_LD
-  | C_SW
-  | C_SD
+  /- A extension for atomic instructions. The `aq` and `rl` operands are the
+     acquire and release bits in the atomic instruction encoding.
+     Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/a-st-ext.html -/
+  | LR_W (rd rs1 : regidx) (aq rl : Bool)
+  | SC_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOSWAP_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOADD_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOXOR_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOAND_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOOR_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOMIN_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOMAX_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOMINU_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOMAXU_W (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | LR_D (rd rs1 : regidx) (aq rl : Bool)
+  | SC_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOSWAP_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOADD_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOXOR_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOAND_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOOR_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOMIN_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOMAX_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOMINU_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+  | AMOMAXU_D (rd rs1 rs2 : regidx) (aq rl : Bool)
+
+  /- C extension for compressed instructions, RV64 integer subset.
+     Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/c-st-ext.html -/
+  | C_ADDI4SPN (rd' : CReg) (nzuimm : BitVec 10)
+  | C_LW (rd' rs1' : CReg) (uimm : BitVec 7)
+  | C_LD (rd' rs1' : CReg) (uimm : BitVec 8)
+  | C_SW (rs2' rs1' : CReg) (uimm : BitVec 7)
+  | C_SD (rs2' rs1' : CReg) (uimm : BitVec 8)
   | C_NOP
-  | C_ADDI
-  | C_ADDIW
-  | C_LI
-  | C_ADDI16SP
-  | C_LUI
-  | C_SRLI
-  | C_SRAI
-  | C_ANDI
-  | C_SUB
-  | C_XOR
-  | C_OR
-  | C_AND
-  | C_SUBW
-  | C_ADDW
-  | C_J
-  | C_BEQZ
-  | C_BNEZ
-  | C_SLLI
-  | C_LWSP
-  | C_LDSP
-  | C_JR
-  | C_MV
+  | C_ADDI (rd : regidx) (nzimm : BitVec 6)
+  | C_ADDIW (rd : regidx) (imm : BitVec 6)
+  | C_LI (rd : regidx) (imm : BitVec 6)
+  | C_ADDI16SP (nzimm : BitVec 10)
+  | C_LUI (rd : regidx) (nzimm : BitVec 6)
+  | C_SRLI (rd' : CReg) (shamt : BitVec 6)
+  | C_SRAI (rd' : CReg) (shamt : BitVec 6)
+  | C_ANDI (rd' : CReg) (imm : BitVec 6)
+  | C_SUB (rd' rs2' : CReg)
+  | C_XOR (rd' rs2' : CReg)
+  | C_OR (rd' rs2' : CReg)
+  | C_AND (rd' rs2' : CReg)
+  | C_SUBW (rd' rs2' : CReg)
+  | C_ADDW (rd' rs2' : CReg)
+  | C_J (imm : BitVec 12)
+  | C_BEQZ (rs1' : CReg) (imm : BitVec 9)
+  | C_BNEZ (rs1' : CReg) (imm : BitVec 9)
+  | C_SLLI (rd : regidx) (shamt : BitVec 6)
+  | C_LWSP (rd : regidx) (uimm : BitVec 8)
+  | C_LDSP (rd : regidx) (uimm : BitVec 9)
+  | C_JR (rs1 : regidx)
+  | C_MV (rd rs2 : regidx)
   | C_EBREAK
-  | C_JALR
-  | C_ADD
-  | C_SWSP
-  | C_SDSP
-  deriving Repr, DecidableEq
+  | C_JALR (rs1 : regidx)
+  | C_ADD (rd rs2 : regidx)
+  | C_SWSP (rs2 : regidx) (uimm : BitVec 8)
+  | C_SDSP (rs2 : regidx) (uimm : BitVec 9)
 
-/-!
-# Guest Opcode Interpretation Scaffold
+  /- Zicsr extension for control and status register instructions.
+     Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html -/
+  | CSRRW (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
+  | CSRRS (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
+  | CSRRC (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
+  | CSRRWI (rd : regidx) (csr : CsrAddr) (uimm : CsrUImm)
+  | CSRRSI (rd : regidx) (csr : CsrAddr) (uimm : CsrUImm)
+  | CSRRCI (rd : regidx) (csr : CsrAddr) (uimm : CsrUImm)
 
-`Completness.lean` owns only the guest RV64IMAC opcode universe.
-This file is for connecting those opcodes to the Jolt side, Sail side, and
-existing equivalence theorems.
--/
-
-namespace JoltISA
-
-/-- No-operand native Jolt targets used when interpreting guest RISC-V opcodes. -/
-inductive NativeInstr where
-  | Lui
-  | Auipc
-  | Jal
-  | Jalr
-  | Beq
-  | Bne
-  | Blt
-  | Bge
-  | BltU
-  | BgeU
-  | Addi
-  | SltI
-  | SltIU
-  | XorI
-  | OrI
-  | AndI
-  | Add
-  | Sub
-  | Slt
-  | SltU
-  | Xor
-  | Or
-  | And
-  | Fence
-  | Ld
-  | Sd
-  | Mul
-  | MulHU
-  deriving Repr, DecidableEq
-
-/-- A guest RISC-V opcode is either native in the final Jolt ISA or expanded
-before final Jolt bytecode. -/
-inductive Implementation where
-  | native (kind : NativeInstr)
-  | expanded (kind : Expanded)
-  deriving Repr, DecidableEq
-
-namespace Completeness
-
-/-- In Jolt, compressed guest instructions are uncompressed before Jolt handling. -/
-def uncompressedInstruction : GuestRV64IMACOpcode → JoltISA.Implementation
-  | .LUI => .native .Lui
-  | .AUIPC => .native .Auipc
-  | .JAL => .native .Jal
-  | .JALR => .native .Jalr
-  | .BEQ => .native .Beq
-  | .BNE => .native .Bne
-  | .BLT => .native .Blt
-  | .BGE => .native .Bge
-  | .BLTU => .native .BltU
-  | .BGEU => .native .BgeU
-  | .LB => .expanded .LB
-  | .LH => .expanded .LH
-  | .LW => .expanded .LW
-  | .LBU => .expanded .LBU
-  | .LHU => .expanded .LHU
-  | .SB => .expanded .SB
-  | .SH => .expanded .SH
-  | .SW => .expanded .SW
-  | .ADDI => .native .Addi
-  | .SLTI => .native .SltI
-  | .SLTIU => .native .SltIU
-  | .XORI => .native .XorI
-  | .ORI => .native .OrI
-  | .ANDI => .native .AndI
-  | .SLLI => .expanded .SLLI
-  | .SRLI => .expanded .SRLI
-  | .SRAI => .expanded .SRAI
-  | .ADD => .native .Add
-  | .SUB => .native .Sub
-  | .SLL => .expanded .SLL
-  | .SLT => .native .Slt
-  | .SLTU => .native .SltU
-  | .XOR => .native .Xor
-  | .SRL => .expanded .SRL
-  | .SRA => .expanded .SRA
-  | .OR => .native .Or
-  | .AND => .native .And
-  | .FENCE => .native .Fence
-  | .ECALL => .expanded .ECALL
-  | .EBREAK => .expanded .EBREAK
-  | .LWU => .expanded .LWU
-  | .LD => .native .Ld
-  | .SD => .native .Sd
-  | .ADDIW => .expanded .ADDIW
-  | .SLLIW => .expanded .SLLIW
-  | .SRLIW => .expanded .SRLIW
-  | .SRAIW => .expanded .SRAIW
-  | .ADDW => .expanded .ADDW
-  | .SUBW => .expanded .SUBW
-  | .SLLW => .expanded .SLLW
-  | .SRLW => .expanded .SRLW
-  | .SRAW => .expanded .SRAW
-  | .MUL => .native .Mul
-  | .MULH => .expanded .MULH
-  | .MULHSU => .expanded .MULHSU
-  | .MULHU => .native .MulHU
-  | .DIV => .expanded .DIV
-  | .DIVU => .expanded .DIVU
-  | .REM => .expanded .REM
-  | .REMU => .expanded .REMU
-  | .MULW => .expanded .MULW
-  | .DIVW => .expanded .DIVW
-  | .DIVUW => .expanded .DIVUW
-  | .REMW => .expanded .REMW
-  | .REMUW => .expanded .REMUW
-  | .LR_W => .expanded .LRW
-  | .SC_W => .expanded .SCW
-  | .AMOSWAP_W => .expanded .AMOSWAPW
-  | .AMOADD_W => .expanded .AMOADDW
-  | .AMOXOR_W => .expanded .AMOXORW
-  | .AMOAND_W => .expanded .AMOANDW
-  | .AMOOR_W => .expanded .AMOORW
-  | .AMOMIN_W => .expanded .AMOMINW
-  | .AMOMAX_W => .expanded .AMOMAXW
-  | .AMOMINU_W => .expanded .AMOMINUW
-  | .AMOMAXU_W => .expanded .AMOMAXUW
-  | .LR_D => .expanded .LRD
-  | .SC_D => .expanded .SCD
-  | .AMOSWAP_D => .expanded .AMOSWAPD
-  | .AMOADD_D => .expanded .AMOADDD
-  | .AMOXOR_D => .expanded .AMOXORD
-  | .AMOAND_D => .expanded .AMOANDD
-  | .AMOOR_D => .expanded .AMOORD
-  | .AMOMIN_D => .expanded .AMOMIND
-  | .AMOMAX_D => .expanded .AMOMAXD
-  | .AMOMINU_D => .expanded .AMOMINUD
-  | .AMOMAXU_D => .expanded .AMOMAXUD
-  | .C_ADDI4SPN => .native .Addi
-  | .C_LW => .expanded .LW
-  | .C_LD => .native .Ld
-  | .C_SW => .expanded .SW
-  | .C_SD => .native .Sd
-  | .C_NOP => .native .Addi
-  | .C_ADDI => .native .Addi
-  | .C_ADDIW => .expanded .ADDIW
-  | .C_LI => .native .Addi
-  | .C_ADDI16SP => .native .Addi
-  | .C_LUI => .native .Lui
-  | .C_SRLI => .expanded .SRLI
-  | .C_SRAI => .expanded .SRAI
-  | .C_ANDI => .native .AndI
-  | .C_SUB => .native .Sub
-  | .C_XOR => .native .Xor
-  | .C_OR => .native .Or
-  | .C_AND => .native .And
-  | .C_SUBW => .expanded .SUBW
-  | .C_ADDW => .expanded .ADDW
-  | .C_J => .native .Jal
-  | .C_BEQZ => .native .Beq
-  | .C_BNEZ => .native .Bne
-  | .C_SLLI => .expanded .SLLI
-  | .C_LWSP => .expanded .LW
-  | .C_LDSP => .native .Ld
-  | .C_JR => .native .Jalr
-  | .C_MV => .native .Add
-  | .C_EBREAK => .expanded .EBREAK
-  | .C_JALR => .native .Jalr
-  | .C_ADD => .native .Add
-  | .C_SWSP => .expanded .SW
-  | .C_SDSP => .native .Sd
-
-/-- Minimal per-opcode interpretation entry. -/
-structure RiscvInstruction (op : GuestRV64IMACOpcode) where
-  implementation : JoltISA.Implementation
-
-def instructionOf : (op : GuestRV64IMACOpcode) → RiscvInstruction op
-  | .ADDW => { implementation := .expanded .ADDW }
-  | .SRL => { implementation := .expanded .SRL }
-  | .ADD => { implementation := .native .Add }
-  | .C_ADDW => { implementation := .expanded .ADDW }
-  | .C_ADD => { implementation := .native .Add }
-  | op => { implementation := uncompressedInstruction op }
-
-end Completeness
-end JoltISA
+  /- Privileged instruction set listings.
+     Source: https://docs.riscv.org/reference/isa/v20260120/priv/priv-insns.html -/
+  | SRET
+  | MRET
+  | MNRET
+  | WFI
+  | SCTRCLR
+  | SFENCE_VMA (rs1 rs2 : regidx)
+  | HFENCE_VVMA (rs1 rs2 : regidx)
+  | HFENCE_GVMA (rs1 rs2 : regidx)
+  | HLV_B (rd rs1 : regidx)
+  | HLV_BU (rd rs1 : regidx)
+  | HLV_H (rd rs1 : regidx)
+  | HLV_HU (rd rs1 : regidx)
+  | HLV_W (rd rs1 : regidx)
+  | HLV_WU (rd rs1 : regidx)
+  | HLV_D (rd rs1 : regidx)
+  | HLVX_HU (rd rs1 : regidx)
+  | HLVX_WU (rd rs1 : regidx)
+  | HSV_B (rs2 rs1 : regidx)
+  | HSV_H (rs2 rs1 : regidx)
+  | HSV_W (rs2 rs1 : regidx)
+  | HSV_D (rs2 rs1 : regidx)
+  | SINVAL_VMA (rs1 rs2 : regidx)
+  | SFENCE_W_INVAL
+  | SFENCE_INVAL_IR
+  | HINVAL_VVMA (rs1 rs2 : regidx)
+  | HINVAL_GVMA (rs1 rs2 : regidx)
+  deriving Repr
