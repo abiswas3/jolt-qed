@@ -1,4 +1,5 @@
 import LeanRV64D.InstsEnd
+import JoltBytecode.Bundles
 import JoltBytecode.JoltISA.Execution
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Expansions.Atomics
@@ -238,61 +239,61 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
   | .LWU _rd rs1 imm, js =>
       LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
   | .SLLI _rd rs1 _shamt, js =>
-      ALUFamily.UnarySourceReadAssumptions rs1 js
+      UnarySourceReadWithLinkedCSRs rs1 js
   | .SRLI _rd rs1 _shamt, js =>
-      ALUFamily.UnarySourceReadAssumptions rs1 js
+      UnarySourceReadWithLinkedCSRs rs1 js
   | .SRAI _rd rs1 _shamt, js =>
-      ALUFamily.UnarySourceReadAssumptions rs1 js
+      UnarySourceReadWithLinkedCSRs rs1 js
   | .ADD _rd rs1 rs2, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .SUB _rd rs1 rs2, js =>
       ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
   | .SLL _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SRL _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SRA _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .ADDIW _rd rs1 _imm, js =>
-      ALUFamily.UnarySourceReadAssumptions rs1 js
+      UnarySourceReadWithLinkedCSRs rs1 js
   | .SLLIW _rd rs1 _shamt, js =>
-      ALUFamily.UnarySourceReadAssumptions rs1 js
+      UnarySourceReadWithLinkedCSRs rs1 js
   | .SRLIW _rd rs1 _shamt, js =>
-      ALUFamily.UnarySourceReadAssumptions rs1 js
+      UnarySourceReadWithLinkedCSRs rs1 js
   | .SRAIW _rd rs1 _shamt, js =>
-      ALUFamily.UnarySourceReadAssumptions rs1 js
+      UnarySourceReadWithLinkedCSRs rs1 js
   | .ADDW _rd rs1 rs2, js =>
-      AddwProgramEqSailAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SUBW _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SLLW _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SRLW _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SRAW _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .MULH _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .MULHSU _rd rs1 rs2, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .MULW _rd rs1 rs2, js =>
-      MulwProgramEqSailAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .DIV _rd rs1 rs2 _quotient _remAbs, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .DIVU _rd rs1 rs2 _quotient, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .REM _rd rs1 rs2 _quotient _remAbs, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .REMU _rd rs1 rs2 _quotient, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .DIVW _rd rs1 rs2 _quotient _remAbs, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .DIVUW _rd rs1 rs2 _quotient, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .REMW _rd rs1 rs2 _quotient _remAbs, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .REMUW _rd rs1 rs2 _quotient, js =>
-      ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SB rs2 rs1 imm, js =>
       StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js
   | .SH rs2 rs1 imm, js =>
@@ -340,7 +341,6 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
   | .CSRRW rd csr rs1, js =>
       System.CsrrwSystemAssumptions js csr rs1 rd
   | _, _ => Unit
-
 /-- Equivalence proposition selected by the operand-bearing instruction.
 
 The fallback is deliberately `False` so unwired opcodes are visible gaps, not

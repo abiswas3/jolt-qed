@@ -5,6 +5,7 @@ import JoltBytecode.InstructionEquivalence.StoreDefUtils
 import JoltBytecode.InstructionEquivalence.StoreFamily.ProgramBlocks
 import JoltBytecode.InstructionEquivalence.StoreFamily.MemoryPipeline
 import JoltBytecode.InstructionEquivalence.StoreFamily.Derived
+import JoltBytecode.InstructionEquivalence.Projection
 
 /-!
 # SW: top-down store-word equivalence
@@ -427,52 +428,105 @@ theorem swProgram_eq_sail_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
   symm
   exact hsail
 
-/-- **Main public SW theorem.**
-
-The caller supplies only the compact memory bundle. The proof cases on the
-word alignment guard and reuses the aligned or misaligned branch theorem. -/
-private theorem swProgram_project_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState)
-    (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js) =
-      (execute_STORE imm rs2 rs1 4).run js.sail := by
-  let ea := load_effective_address h.rs1_val imm
-  by_cases halign :
-      ea &&& (3 : BitVec 64) = 0
-  · have hmem : StoreFamily.StoreMemoryContext
-        (load_effective_address h.rs1_val imm)
-        (compute_aligned_dword_base_address h.rs1_val imm) 4 js.sail :=
-      h.accessContext 4
-        (h.wordStore (by simpa [ea] using halign))
-    exact swProgram_eq_sail_aligned imm rs2 rs1 js h.rs1_val h.rs2_val
-      h.rs1_read h.rs2_read hmem
-      (by simpa [ea] using halign)
-  · exact swProgram_eq_sail_misaligned imm rs2 rs1 js h.rs1_val h.rs2_val
-      h.rs1_read h.rs2_read (by simpa [ea] using halign)
-
-/-- **Main public SW theorem.**  The Jolt bytecode expansion matches Sail and
-preserves every protected Jolt register on successful runs. -/
-def swProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState)
-    (_h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js)
-      ((execute_STORE imm rs2 rs1 4).run js.sail)
-
-/-- **Main public SW theorem.**  The Jolt bytecode expansion matches Sail and
-preserves every protected Jolt register on successful runs. -/
-theorem swProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState)
-    (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
-    swProgramEqSailStatement imm rs2 rs1 js h := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact swProgram_project_eq_sail imm rs2 rs1 js h
-  · unfold JoltISA.swProgram JoltISA.slliBlock JoltISA.sllBlock JoltISA.srliBlock
+/-- Successful `SW` expansions do not modify the persistent CSR virtual
+registers materialized by `systemProject`. -/
+theorem swProgram_preserves_projected_vregs
+    (imm : BitVec 12) (rs2 rs1 : regidx)
+    {js js' : SailJoltState} {result : ExecutionResult}
+    (hrun : (JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js =
+      .ok result js') :
+    Projection.ProjectedVRegsPreserved js js' := by
+  have hsafe : JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.swProgram imm rs2 rs1) := by
+    unfold JoltISA.swProgram JoltISA.slliBlock JoltISA.srliBlock JoltISA.sllBlock
     simp [JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
       JoltISA.DstWritesNoProtectedVReg,
       JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3,
       JoltISA.storeInlineTmp]
+  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+    hsafe hrun
+
+/-- **Main public SW theorem.**  The Jolt bytecode expansion matches Sail after
+materializing Jolt's persistent CSR virtual registers. -/
+def swProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState)
+    (_h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
+    System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js) =
+    (execute_STORE imm rs2 rs1 4).run js.sail
+
+/-- **Main public SW theorem.**  The Jolt bytecode expansion matches Sail after
+materializing Jolt's persistent CSR virtual registers. -/
+theorem swProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState)
+    (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
+    swProgramEqSailStatement imm rs2 rs1 js h := by
+  unfold swProgramEqSailStatement
+  let ea := load_effective_address h.rs1_val imm
+  have h_project_initial : System.systemProject js = js.sail :=
+    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
+  by_cases halign : ea &&& (3 : BitVec 64) = 0
+  · have hmem : StoreFamily.StoreMemoryContext
+        (load_effective_address h.rs1_val imm)
+        (compute_aligned_dword_base_address h.rs1_val imm) 4 js.sail :=
+      h.accessContext 4
+        (h.wordStore (by simpa [ea] using halign))
+    have hsetup : StoreSplice.WordStoreSetup
+        (load_effective_address h.rs1_val imm)
+        (compute_aligned_dword_base_address h.rs1_val imm) :=
+      StoreFamily.wordStoreSetup_of_effective_address
+        h.rs1_val imm (by simpa [ea] using halign)
+    have h_dword_phys :
+        FlatPhysMem (compute_aligned_dword_base_address h.rs1_val imm) 8 js.sail :=
+      hmem.jolt_load_mem
+    have hwrite_dword :
+        vmem_write_addr
+          (Virtaddr (compute_aligned_dword_base_address h.rs1_val imm)) 8
+          (swSplicedDword imm h.rs1_val h.rs2_val js.sail)
+          (Store Data) false false false js.sail =
+        .ok (Ok true)
+          (state_after_dword_store js.sail
+            (compute_aligned_dword_base_address h.rs1_val imm)
+            (swSplicedDword imm h.rs1_val h.rs2_val js.sail)) :=
+      StoreFamily.vmem_write_addr_store_dword_base_reduces
+        h.rs1_val imm (swSplicedDword imm h.rs1_val h.rs2_val js.sail)
+        js.sail hmem.cfg hmem
+    have hwrite_word :
+        vmem_write rs1 (sign_extend (m := 64) imm) 4
+          (Sail.BitVec.extractLsb h.rs2_val 31 0)
+          (Store Data) false false false js.sail =
+        .ok (Ok true)
+          (state_after_word_store js.sail
+            (load_effective_address h.rs1_val imm)
+            (Sail.BitVec.extractLsb h.rs2_val 31 0)) :=
+      StoreFamily.vmem_write_word_store_reduces imm rs1 js.sail hmem.cfg
+        h.rs1_val h.rs1_read (Sail.BitVec.extractLsb h.rs2_val 31 0)
+        (by simpa [ea] using halign) hmem.sail_store_mem
+    rcases swProgram_concrete_aligned imm rs2 rs1 js hmem.cfg h.rs1_val h.rs2_val
+        h.rs1_read h.rs2_read hsetup h_dword_phys hwrite_dword with
+      ⟨js', hjolt, hjolt_sail⟩
+    have hsail := execute_SW_reduces imm rs2 rs1 js hmem.cfg h.rs1_val h.rs2_val
+      h.rs1_read h.rs2_read hsetup hwrite_word
+    have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
+      swProgram_preserves_projected_vregs imm rs2 rs1 hjolt
+    have hregs : js'.sail.regs = js.sail.regs := by
+      rw [hjolt_sail]
+      rfl
+    have h_project_final : System.systemProject js' = js'.sail :=
+      Projection.systemProject_eq_sail_of_projected_vregs_preserved_of_sail_regs_eq
+        js js' hregs h_projected_vregs h.linkedCSRs
+    rw [hjolt, hsail]
+    simp only [System.systemProjectResult]
+    congr 1
+    rw [h_project_final, hjolt_sail]
+  · have hjolt := swProgram_concrete_misaligned imm rs2 rs1 js h.rs1_val
+      h.rs1_read (by simpa [ea] using halign)
+    have hsail := execute_SW_misaligned imm rs2 rs1 js h.rs1_val h.rs2_val
+      h.rs1_read h.rs2_read (by simpa [ea] using halign)
+    rw [hjolt, hsail]
+    simp only [System.systemProjectResult]
+    rw [h_project_initial]
 
 end SW_main
 

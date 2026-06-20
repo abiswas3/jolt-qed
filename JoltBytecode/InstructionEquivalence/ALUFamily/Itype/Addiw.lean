@@ -1,4 +1,5 @@
-import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
+import JoltBytecode.Bundles
+import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Semantics.Instructions.ADDI
@@ -98,50 +99,76 @@ theorem addiwProgram_concrete (imm : BitVec 12) (rs1 rd : regidx) (js : SailJolt
   rw [← h_addiw_value]
   exact h_final_jolt_value
 
+/-- `ADDIW` never writes the persistent CSR virtual registers materialized by
+`systemProject`. -/
+theorem addiwProgram_preserves_projected_vregs
+    (imm : BitVec 12) (rs1 rd : regidx)
+    {js js' : SailJoltState}
+    {result : ExecutionResult}
+    (hrun : (JoltISA.execProgram (JoltISA.addiwProgram imm rs1 rd)).run js =
+      .ok result js') :
+    Projection.ProjectedVRegsPreserved js js' := by
+  have hsafe :
+      JoltISA.ProgramWritesNoProtectedVReg
+        (JoltISA.addiwProgram imm rs1 rd) := by
+    unfold JoltISA.addiwProgram
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp only [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      true_and]
+  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+    (js := js) (js' := js') (result := result) hsafe hrun
+
 /-- Main program-level equivalence for `ADDIW`. -/
 def addiwProgramEqSailStatement (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
-    (_h : ALUFamily.UnarySourceReadAssumptions rs1 js) : Prop :=
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.addiwProgram imm rs1 rd)).run js)
-      ((execute_ADDIW imm rs1 rd).run js.sail)
+    (_h : UnarySourceReadWithLinkedCSRs rs1 js) : Prop :=
+  System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.addiwProgram imm rs1 rd)).run js) =
+    (execute_ADDIW imm rs1 rd).run js.sail
 
 /-- Main program-level equivalence for `ADDIW`. -/
 theorem addiwProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
-    (h : ALUFamily.UnarySourceReadAssumptions rs1 js) :
+    (h : UnarySourceReadWithLinkedCSRs rs1 js) :
     addiwProgramEqSailStatement imm rs1 rd js h := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · let v := h.rs1_val
-    have h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail := h.rs1_read
-    by_cases hrd : rd = regidx.Regidx 0
-    · subst rd
-      unfold JoltISA.addiwProgram
-      rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
-      rw [JoltISA.pureWritebackRdZeroProgram_run js]
-      simp only [projectResult, project]
-      rw [execute_ADDIW_factored imm rs1 (regidx.Regidx 0)]
-      simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-      simp only [h_read_rs1]
-      simp only [wX_bits_regidx_zero]
-
-    obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-      addiwProgram_concrete imm rs1 rd js v h_read_rs1 hrd
-
-    rw [h_program_succeeds]
-    simp only [projectResult, project]
-    rw [h_final_sail]
-
-    rw [execute_ADDIW_factored imm rs1 rd]
+  unfold addiwProgramEqSailStatement
+  obtain ⟨v, h_read_rs1⟩ := h.rs1_readable.exists_value
+  have h_project_initial : System.systemProject js = js.sail :=
+    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
+  by_cases hrd : rd = regidx.Regidx 0
+  · subst rd
+    unfold JoltISA.addiwProgram
+    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    simp only [System.systemProjectResult]
+    rw [h_project_initial]
+    rw [execute_ADDIW_factored imm rs1 (regidx.Regidx 0)]
     simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
     simp only [h_read_rs1]
+    simp only [wX_bits_regidx_zero]
 
-    obtain ⟨s', h_write⟩ := wX_shape rd (addiw_sail_operation imm v) js.sail
-    simp only [h_write]
-    congr 1
-    exact (wX_bits_eq_stateAfterWrite rd (addiw_sail_operation imm v) js.sail s' h_write).symm
-  · unfold JoltISA.addiwProgram
-    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg]
+  obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
+    addiwProgram_concrete imm rs1 rd js v h_read_rs1 hrd
+  have h_projected_vregs :
+      Projection.ProjectedVRegsPreserved js js_afterSignExtend :=
+    addiwProgram_preserves_projected_vregs imm rs1 rd h_program_succeeds
+
+  rw [h_program_succeeds]
+  simp only [System.systemProjectResult]
+
+  rw [execute_ADDIW_factored imm rs1 rd]
+  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+  simp only [h_read_rs1]
+
+  obtain ⟨s', h_write⟩ := wX_shape rd (addiw_sail_operation imm v) js.sail
+  simp only [h_write]
+  congr 1
+
+  rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
+    js js_afterSignExtend rd (addiw_sail_operation imm v)
+    h_final_sail h_projected_vregs]
+  rw [h_project_initial]
+  exact (wX_bits_eq_stateAfterWrite rd (addiw_sail_operation imm v)
+    js.sail s' h_write).symm
 
 end

@@ -29,6 +29,85 @@ structure JoltConfig (s : SailState) : Prop where
   mstatus_mprv : Assumptions.MstatusMprvZero s
 
 -- ============================================================================
+-- Register/CSR-link bundles
+-- ============================================================================
+
+/-- Public assumptions for two-source instructions proved under
+`System.systemProject`.
+
+Every field is a primitive `Assumptions.*` predicate. -/
+structure BinarySourceReadWithLinkedCSRs
+    (rs2 rs1 : regidx) (js : SailJoltState) : Type where
+  rs1_readable : Assumptions.XRegReadable rs1 js.sail
+  rs2_readable : Assumptions.XRegReadable rs2 js.sail
+  mstatus_matches : Assumptions.MstatusVRegMatchesSail js
+  mtvec_matches : Assumptions.MtvecVRegMatchesSail js
+  mscratch_matches : Assumptions.MscratchVRegMatchesSail js
+  mepc_matches : Assumptions.MepcVRegMatchesSail js
+  mcause_matches : Assumptions.McauseVRegMatchesSail js
+  mtval_matches : Assumptions.MtvalVRegMatchesSail js
+
+def BinarySourceReadWithLinkedCSRs.linkedCSRs
+    {rs2 rs1 : regidx} {js : SailJoltState}
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
+    Assumptions.MstatusVRegMatchesSail js ∧
+    Assumptions.MtvecVRegMatchesSail js ∧
+    Assumptions.MscratchVRegMatchesSail js ∧
+    Assumptions.MepcVRegMatchesSail js ∧
+    Assumptions.McauseVRegMatchesSail js ∧
+    Assumptions.MtvalVRegMatchesSail js :=
+  ⟨h.mstatus_matches, h.mtvec_matches, h.mscratch_matches, h.mepc_matches,
+    h.mcause_matches, h.mtval_matches⟩
+
+noncomputable def BinarySourceReadWithLinkedCSRs.rs1_val
+    {rs2 rs1 : regidx} {js : SailJoltState}
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : BitVec 64 :=
+  Classical.choose h.rs1_readable.exists_value
+
+theorem BinarySourceReadWithLinkedCSRs.rs1_read
+    {rs2 rs1 : regidx} {js : SailJoltState}
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
+    rX_bits rs1 js.sail = .ok h.rs1_val js.sail :=
+  Classical.choose_spec h.rs1_readable.exists_value
+
+noncomputable def BinarySourceReadWithLinkedCSRs.rs2_val
+    {rs2 rs1 : regidx} {js : SailJoltState}
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : BitVec 64 :=
+  Classical.choose h.rs2_readable.exists_value
+
+theorem BinarySourceReadWithLinkedCSRs.rs2_read
+    {rs2 rs1 : regidx} {js : SailJoltState}
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
+    rX_bits rs2 js.sail = .ok h.rs2_val js.sail :=
+  Classical.choose_spec h.rs2_readable.exists_value
+
+/-- Public assumptions for one-source instructions proved under
+`System.systemProject`.
+
+Every field is a primitive `Assumptions.*` predicate. -/
+structure UnarySourceReadWithLinkedCSRs
+    (rs1 : regidx) (js : SailJoltState) : Type where
+  rs1_readable : Assumptions.XRegReadable rs1 js.sail
+  mstatus_matches : Assumptions.MstatusVRegMatchesSail js
+  mtvec_matches : Assumptions.MtvecVRegMatchesSail js
+  mscratch_matches : Assumptions.MscratchVRegMatchesSail js
+  mepc_matches : Assumptions.MepcVRegMatchesSail js
+  mcause_matches : Assumptions.McauseVRegMatchesSail js
+  mtval_matches : Assumptions.MtvalVRegMatchesSail js
+
+def UnarySourceReadWithLinkedCSRs.linkedCSRs
+    {rs1 : regidx} {js : SailJoltState}
+    (h : UnarySourceReadWithLinkedCSRs rs1 js) :
+    Assumptions.MstatusVRegMatchesSail js ∧
+    Assumptions.MtvecVRegMatchesSail js ∧
+    Assumptions.MscratchVRegMatchesSail js ∧
+    Assumptions.MepcVRegMatchesSail js ∧
+    Assumptions.McauseVRegMatchesSail js ∧
+    Assumptions.MtvalVRegMatchesSail js :=
+  ⟨h.mstatus_matches, h.mtvec_matches, h.mscratch_matches, h.mepc_matches,
+    h.mcause_matches, h.mtval_matches⟩
+
+-- ============================================================================
 -- Memory-window bundles
 -- ============================================================================
 

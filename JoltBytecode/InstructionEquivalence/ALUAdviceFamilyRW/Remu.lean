@@ -1,6 +1,7 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Semantics.RegisterOps
-import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
+import JoltBytecode.Bundles
+import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divu_math
@@ -151,32 +152,6 @@ theorem execute_REMU_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
   congr 1
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
-/-- Core proof that honest quotient advice makes `remuProgram` match Sail REMU. -/
-theorem remuProgram_eq_sail_core (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (dividend divisor : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
-    projectResult ((JoltISA.execProgram (JoltISA.remuProgram rs2 rs1 rd
-                      (sail_div_value dividend divisor true))).run js) =
-    (execute_REM rs2 rs1 rd true).run js.sail := by
-  by_cases hrd : rd = regidx.Regidx 0
-  · subst rd
-    unfold remuProgram
-    rw [pureWritebackTraceProgram_regidx_zero]
-    rw [pureWritebackRdZeroProgram_run js]
-    simp only [projectResult, project]
-    rw [execute_REMU_factored rs2 rs1 (regidx.Regidx 0) true]
-    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-    simp only [hrs1, hrs2]
-    simp only [wX_bits_regidx_zero]
-
-  obtain ⟨js', hjolt, hjolt_sail⟩ :=
-   remuProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2 hrd
-  rw [hjolt]
-  simp only [projectResult, project]
-  rw [hjolt_sail]
-  rw [execute_REMU_reduces rs2 rs1 rd js dividend divisor hrs1 hrs2]
-
 /-- Any successful REMU run writes Sail's unsigned remainder. -/
 theorem remuProgram_sound (rs2 rs1 rd : regidx)
     (q : BitVec 64)
@@ -248,34 +223,45 @@ theorem remuProgram_sound (rs2 rs1 rd : regidx)
 
 end JoltISA
 
-/-- Main program-level equivalence for `REMU` with honest advice. -/
-private theorem remuProgram_project_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.remuProgram rs2 rs1 rd
-                      (sail_div_value h.rs1_val h.rs2_val true))).run js) =
-    (execute_REM rs2 rs1 rd true).run js.sail := by
-  let dividend := h.rs1_val
-  let divisor := h.rs2_val
-  have hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail := h.rs1_read
-  have hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail := h.rs2_read
-  exact JoltISA.remuProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
+/-- `REMU` never writes the persistent CSR virtual registers materialized by
+`systemProject`. -/
+theorem remuProgram_preserves_projected_vregs
+    (rs2 rs1 rd : regidx)
+    (quotient : BitVec 64)
+    {js js' : SailJoltState}
+    {result : ExecutionResult}
+    (hrun : (JoltISA.execProgram
+      (JoltISA.remuProgram rs2 rs1 rd quotient)).run js = .ok result js') :
+    Projection.ProjectedVRegsPreserved js js' := by
+  have hsafe :
+      JoltISA.ProgramWritesNoProtectedVReg
+        (JoltISA.remuProgram rs2 rs1 rd quotient) := by
+    unfold JoltISA.remuProgram
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.VRegWritesNoProtectedVReg,
+      Remu.v0VReg]
+  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+    (js := js) (js' := js') (result := result) hsafe hrun
 
 /-- Main program-level equivalence for `REMU` with honest advice. -/
 def remuProgramCompletenessStatement
     (rs2 rs1 rd : regidx)
     (quotient : BitVec 64)
     (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   quotient = sail_div_value h.rs1_val h.rs2_val true →
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.remuProgram rs2 rs1 rd quotient)).run js)
-      ((execute_REM rs2 rs1 rd true).run js.sail)
+    System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.remuProgram rs2 rs1 rd quotient)).run js) =
+    (execute_REM rs2 rs1 rd true).run js.sail
 
 def remuProgramSoundnessStatement
     (rs2 rs1 rd : regidx)
     (quotient : BitVec 64)
     (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   rd ≠ regidx.Regidx 0 →
     ∀ js',
       (JoltISA.execProgram (JoltISA.remuProgram rs2 rs1 rd quotient)).run js =
@@ -287,7 +273,7 @@ def remuProgramEqSailStatement
     (rs2 rs1 rd : regidx)
     (quotient : BitVec 64)
     (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   remuProgramCompletenessStatement rs2 rs1 rd quotient js h ∧
   remuProgramSoundnessStatement rs2 rs1 rd quotient js h
 
@@ -295,20 +281,43 @@ theorem remuProgram_eq_sail
     (rs2 rs1 rd : regidx)
     (quotient : BitVec 64)
     (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     remuProgramEqSailStatement rs2 rs1 rd quotient js h := by
   constructor
   · intro hquotient
     subst quotient
-    apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-    · exact remuProgram_project_eq_sail rs2 rs1 rd js h
-    · unfold JoltISA.remuProgram
-      apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-      simp [JoltISA.ProgramWritesNoProtectedVReg,
-        JoltISA.InstrWritesNoProtectedVReg,
-        JoltISA.DstWritesNoProtectedVReg,
-        JoltISA.VRegWritesNoProtectedVReg,
-        Remu.v0VReg]
+    let dividend := h.rs1_val
+    let divisor := h.rs2_val
+    have hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail := h.rs1_read
+    have hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail := h.rs2_read
+    have h_project_initial : System.systemProject js = js.sail := by
+      simpa [project] using
+        Projection.systemProject_eq_project_of_compatible js h.linkedCSRs
+    by_cases hrd : rd = regidx.Regidx 0
+    · subst rd
+      unfold JoltISA.remuProgram
+      rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+      rw [JoltISA.pureWritebackRdZeroProgram_run js]
+      simp only [System.systemProjectResult]
+      rw [h_project_initial]
+      rw [JoltISA.execute_REMU_factored rs2 rs1 (regidx.Regidx 0) true]
+      simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+      simp only [hrs1, hrs2]
+      simp only [wX_bits_regidx_zero]
+
+    obtain ⟨js', hjolt, hjolt_sail⟩ :=
+      JoltISA.remuProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2 hrd
+    have h_projected_vregs :
+        Projection.ProjectedVRegsPreserved js js' :=
+      remuProgram_preserves_projected_vregs rs2 rs1 rd
+        (sail_div_value dividend divisor true) hjolt
+    rw [hjolt]
+    simp only [System.systemProjectResult]
+    rw [JoltISA.execute_REMU_reduces rs2 rs1 rd js dividend divisor hrs1 hrs2]
+    congr 1
+    rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
+      js js' rd (sail_rem_value dividend divisor true) hjolt_sail h_projected_vregs]
+    rw [h_project_initial]
   · intro hrd js' hok
     exact JoltISA.remuProgram_sound rs2 rs1 rd quotient js
       h.rs1_val h.rs2_val h.rs1_read h.rs2_read hrd js' hok

@@ -5,6 +5,7 @@ import JoltBytecode.InstructionEquivalence.StoreDefUtils
 import JoltBytecode.InstructionEquivalence.StoreFamily.ProgramBlocks
 import JoltBytecode.InstructionEquivalence.StoreFamily.MemoryPipeline
 import JoltBytecode.InstructionEquivalence.StoreFamily.Derived
+import JoltBytecode.InstructionEquivalence.Projection
 
 /-!
 # SB: top-down store-byte equivalence
@@ -238,15 +239,41 @@ theorem execute_SB_reduces (imm : BitVec 12) (rs2 rs1 : regidx)
   exact execute_STORE_byte_eq_state_after_byte_store imm rs2 rs1 js
     rs2_val (load_effective_address rs1_val imm) hrs1_exists hrs2 hwrite_byte
 
-/-- **Public SB theorem.**
+/-- Successful `SB` expansions do not modify the persistent CSR virtual
+registers materialized by `systemProject`. -/
+theorem sbProgram_preserves_projected_vregs
+    (imm : BitVec 12) (rs2 rs1 : regidx)
+    {js js' : SailJoltState} {result : ExecutionResult}
+    (hrun : (JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js =
+      .ok result js') :
+    Projection.ProjectedVRegsPreserved js js' := by
+  have hsafe : JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.sbProgram imm rs2 rs1) := by
+    unfold JoltISA.sbProgram JoltISA.slliBlock JoltISA.sllBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3,
+      JoltISA.storeInlineTmp]
+  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+    hsafe hrun
 
-Both interpreters start from the same `SailJoltState`; after projection, the
-Jolt bytecode expansion and native Sail store step produce the same Sail state. -/
-private theorem sbProgram_project_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
+/-- **Public SB theorem.**  The Jolt bytecode expansion matches Sail after
+materializing Jolt's persistent CSR virtual registers. -/
+def sbProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
+    (js : SailJoltState)
+    (_h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
+    System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js) =
+    (execute_STORE imm rs2 rs1 1).run js.sail
+
+/-- **Public SB theorem.**  The Jolt bytecode expansion matches Sail after
+materializing Jolt's persistent CSR virtual registers. -/
+theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js) =
-      (execute_STORE imm rs2 rs1 1).run js.sail := by
+    sbProgramEqSailStatement imm rs2 rs1 js h := by
+  unfold sbProgramEqSailStatement
   have hmem : StoreFamily.StoreMemoryContext
       (load_effective_address h.rs1_val imm)
       (compute_aligned_dword_base_address h.rs1_val imm) 1 js.sail :=
@@ -286,33 +313,18 @@ private theorem sbProgram_project_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_SB_reduces imm rs2 rs1 js h.rs1_val h.rs2_val
     h.rs1_read h.rs2_read hwrite_byte
-  rw [hjolt]
-  simp only [projectResult, project]
-  rw [hjolt_sail, hsail]
-
-/-- **Public SB theorem.**  The Jolt bytecode expansion matches Sail and
-preserves every protected Jolt register on successful runs. -/
-def sbProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState)
-    (_h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js)
-      ((execute_STORE imm rs2 rs1 1).run js.sail)
-
-/-- **Public SB theorem.**  The Jolt bytecode expansion matches Sail and
-preserves every protected Jolt register on successful runs. -/
-theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState)
-    (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
-    sbProgramEqSailStatement imm rs2 rs1 js h := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact sbProgram_project_eq_sail imm rs2 rs1 js h
-  · unfold JoltISA.sbProgram JoltISA.slliBlock JoltISA.sllBlock
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3,
-      JoltISA.storeInlineTmp]
+  have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
+    sbProgram_preserves_projected_vregs imm rs2 rs1 hjolt
+  have hregs : js'.sail.regs = js.sail.regs := by
+    rw [hjolt_sail]
+    rfl
+  have h_project_final : System.systemProject js' = js'.sail :=
+      Projection.systemProject_eq_sail_of_projected_vregs_preserved_of_sail_regs_eq
+        js js' hregs h_projected_vregs h.linkedCSRs
+  rw [hjolt, hsail]
+  simp only [System.systemProjectResult]
+  congr 1
+  rw [h_project_final, hjolt_sail]
 
 end SB_main
 

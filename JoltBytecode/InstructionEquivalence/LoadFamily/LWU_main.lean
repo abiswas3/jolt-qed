@@ -6,6 +6,7 @@ import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
 import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
+import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib.Tactic.IntervalCases
 
@@ -265,49 +266,77 @@ theorem lwuProgram_eq_sail_misaligned (imm : BitVec 12)
   symm
   exact hsail
 
-/-- **Main program theorem for LWU.**  The structured Jolt-ISA expansion
-`lwuProgram`, interpreted by `execProgram`, agrees with Sail's unsigned
-word-load execution. -/
-private theorem lwuProgram_project_eq_sail (imm : BitVec 12)
-    (rs1 rd : regidx)
-    (js : SailJoltState)
-    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.lwuProgram imm rs1 rd)).run js) =
-    (execute_LOAD imm rs1 rd true 4).run js.sail := by
-  let ea := load_effective_address h.rs1_val imm
-  by_cases h_align : ea &&& 3 = 0
-  · exact lwuProgram_eq_sail_aligned imm rs1 rd js h.cfg h.rs1_val
-      h.rs1_read
-      h.dwordPhys
-      (h.wordPhys (by simpa [ea] using h_align))
-      (h.wordNoOvf (by simpa [ea] using h_align))
-      (by simpa [ea] using h_align)
-  · exact lwuProgram_eq_sail_misaligned imm rs1 rd js h.rs1_val
-      h.rs1_read (by simpa [ea] using h_align)
+/-- Successful `LWU` expansions do not modify the persistent CSR virtual
+registers materialized by `systemProject`. -/
+theorem lwuProgram_preserves_projected_vregs
+    (imm : BitVec 12) (rs1 rd : regidx)
+    {js js' : SailJoltState} {result : ExecutionResult}
+    (hrun : (JoltISA.execProgram (JoltISA.lwuProgram imm rs1 rd)).run js =
+      .ok result js') :
+    Projection.ProjectedVRegsPreserved js js' := by
+  have hsafe : JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.lwuProgram imm rs1 rd) := by
+    unfold JoltISA.lwuProgram JoltISA.slliBlock JoltISA.sllBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
+  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+    hsafe hrun
 
 /-- **Main program theorem for LWU.**  The structured Jolt-ISA expansion
-matches Sail and preserves every protected Jolt register on successful runs. -/
+matches Sail after materializing Jolt's persistent CSR virtual registers. -/
 def lwuProgramEqSailStatement (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (_h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.lwuProgram imm rs1 rd)).run js)
-      ((execute_LOAD imm rs1 rd true 4).run js.sail)
+    System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.lwuProgram imm rs1 rd)).run js) =
+    (execute_LOAD imm rs1 rd true 4).run js.sail
 
 /-- **Main program theorem for LWU.**  The structured Jolt-ISA expansion
-matches Sail and preserves every protected Jolt register on successful runs. -/
+matches Sail after materializing Jolt's persistent CSR virtual registers. -/
 theorem lwuProgram_eq_sail (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
     lwuProgramEqSailStatement imm rs1 rd js h := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact lwuProgram_project_eq_sail imm rs1 rd js h
-  · unfold JoltISA.lwuProgram JoltISA.slliBlock JoltISA.sllBlock
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
+  unfold lwuProgramEqSailStatement
+  let ea := load_effective_address h.rs1_val imm
+  have h_project_initial : System.systemProject js = js.sail :=
+    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
+  by_cases h_align : ea &&& (3 : BitVec 64) = 0
+  · have hload : LoadReadEvidence (load_effective_address h.rs1_val imm) 4 js.sail := by
+      refine
+        { aligned := ?_
+          phys := h.wordPhys (by simpa [ea] using h_align) }
+      refine
+        { misalign := ?_
+          split := ?_ }
+      · simpa [ea] using access_misaligned_4_aligned_false ea h_align
+      · simpa [ea] using split_misaligned_aligned_4 ea h_align
+    rcases lwuProgram_concrete_aligned imm rs1 rd js h.cfg h.rs1_val
+        h.rs1_read (by simpa [ea] using h_align) h.dwordPhys with
+      ⟨js', hjolt, hjolt_sail⟩
+    have hsail := execute_LWU_reduces imm rs1 rd js h.cfg h.rs1_val
+      h.rs1_read hload (h.wordNoOvf (by simpa [ea] using h_align))
+    have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
+      lwuProgram_preserves_projected_vregs imm rs1 rd hjolt
+    rw [hjolt, hsail]
+    simp only [System.systemProjectResult]
+    congr 1
+    rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
+      js js' rd
+      (zero_extend (m := 64)
+        (loaded_word_at js.sail (load_effective_address h.rs1_val imm)))
+      hjolt_sail h_projected_vregs]
+    rw [h_project_initial]
+  · have hjolt := lwuProgram_concrete_misaligned imm rs1 rd js h.rs1_val
+      h.rs1_read (by simpa [ea] using h_align)
+    have hsail := execute_LWU_misaligned imm rs1 rd js h.rs1_val
+      h.rs1_read (by simpa [ea] using h_align)
+    rw [hjolt, hsail]
+    simp only [System.systemProjectResult]
+    rw [h_project_initial]
 
 end LWU_main

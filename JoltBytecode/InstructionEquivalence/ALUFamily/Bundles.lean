@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Environment
+import JoltBytecode.Assumptions
 
 /-!
 # ALU-family public theorem bundles

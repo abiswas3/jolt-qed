@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
+import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Expansions.ALU
@@ -60,17 +60,6 @@ private theorem addw_value_eq_sail (v1 v2 : BitVec 64) :
     addw_jolt_val v1 v2 = addw_sail_operation v1 v2 := by
   simp only [addw_jolt_val, addw_sail_operation]
   rw [extractLsb_add]
-
-/-- Public assumptions for `ADDW` under the `systemProject` contract.
-
-The source-read fields drive the ADDW execution proof.  The linked-CSR fields
-state that the persistent CSR virtual registers already agree with the Sail CSR
-registers, so projecting Jolt state with `systemProject` starts from the same Sail
-state as the Sail instruction. -/
-structure AddwProgramEqSailAssumptions
-    (rs2 rs1 : regidx) (js : SailJoltState) : Type where
-  source_reads : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js
-  linked_csrs : Projection.LinkedCSRs js
 
 /-- Program-level concrete theorem for `ADDW`.
 
@@ -195,7 +184,7 @@ def addwProgramEqSailStatement
     (rs1 : regidx)
     (rd : regidx)
     (js : SailJoltState)
-    (_h : AddwProgramEqSailAssumptions rs2 rs1 js) : Prop :=
+    (_h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   System.systemProjectResult
       ((JoltISA.execProgram (JoltISA.addwProgram rs2 rs1 rd)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.ADDW).run js.sail
@@ -205,18 +194,13 @@ theorem addwProgram_eq_sail
     (rs1 : regidx)
     (rd : regidx)
     (js : SailJoltState)
-    (h : AddwProgramEqSailAssumptions rs2 rs1 js) :
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     addwProgramEqSailStatement rs2 rs1 rd js h := by
   unfold addwProgramEqSailStatement
-  let v1 := h.source_reads.rs1_val
-  let v2 := h.source_reads.rs2_val
-  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail :=
-    h.source_reads.rs1_read
-  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail :=
-    h.source_reads.rs2_read
-  have h_project_initial : System.systemProject js = js.sail := by
-    simpa [project] using
-      Projection.systemProject_eq_project_of_compatible js h.linked_csrs
+  obtain ⟨v1, h_read_rs1⟩ := h.rs1_readable.exists_value
+  obtain ⟨v2, h_read_rs2⟩ := h.rs2_readable.exists_value
+  have h_project_initial : System.systemProject js = js.sail :=
+    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   by_cases hrd : rd = regidx.Regidx 0
   · subst rd
     rw [addw_rd_zero_noop_concrete rs2 rs1 js]

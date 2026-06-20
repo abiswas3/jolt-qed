@@ -6,6 +6,7 @@ import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
 import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
+import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib.Tactic.IntervalCases
 
@@ -175,14 +176,40 @@ theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
       simpa [shiftedValue, compute_aligned_dword_base_address, h7] using
         (jolt_lbu_bridge js.sail (load_effective_address val imm)))
 
+/-- Successful `LBU` expansions do not modify the persistent CSR virtual
+registers materialized by `systemProject`. -/
+theorem lbuProgram_preserves_projected_vregs
+    (imm : BitVec 12) (rs1 rd : regidx)
+    {js js' : SailJoltState} {result : ExecutionResult}
+    (hrun : (JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js =
+      .ok result js') :
+    Projection.ProjectedVRegsPreserved js js' := by
+  have hsafe : JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.lbuProgram imm rs1 rd) := by
+    unfold JoltISA.lbuProgram JoltISA.slliBlock JoltISA.sllBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
+  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+    hsafe hrun
+
 /-- **Main program theorem for LBU.**  The structured Jolt-ISA expansion
-`lbuProgram`, interpreted by `execProgram`, agrees with Sail's unsigned
-byte-load execution. -/
-private theorem lbuProgram_project_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
+matches Sail after materializing Jolt's persistent CSR virtual registers. -/
+def lbuProgramEqSailStatement (imm : BitVec 12) (rs1 rd : regidx)
+    (js : SailJoltState)
+    (_h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
+    System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js) =
+    (execute_LOAD imm rs1 rd true 1).run js.sail
+
+/-- **Main program theorem for LBU.**  The structured Jolt-ISA expansion
+matches Sail after materializing Jolt's persistent CSR virtual registers. -/
+theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js) =
-    (execute_LOAD imm rs1 rd true 1).run js.sail := by
+    lbuProgramEqSailStatement imm rs1 rd js h := by
+  unfold lbuProgramEqSailStatement
   have hload : LoadReadEvidence (load_effective_address h.rs1_val imm) 1 js.sail :=
     loadReadEvidence_of_aligned_phys
       (load_effective_address h.rs1_val imm) 1 js.sail
@@ -192,31 +219,18 @@ private theorem lbuProgram_project_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_LBU_reduces imm rs1 rd js h.cfg h.rs1_val
     h.rs1_read hload
-  rw [hjolt]
-  simp only [projectResult, project]
-  rw [hjolt_sail, hsail]
-
-/-- **Main program theorem for LBU.**  The structured Jolt-ISA expansion
-matches Sail and preserves every protected Jolt register on successful runs. -/
-def lbuProgramEqSailStatement (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState)
-    (_h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js)
-      ((execute_LOAD imm rs1 rd true 1).run js.sail)
-
-/-- **Main program theorem for LBU.**  The structured Jolt-ISA expansion
-matches Sail and preserves every protected Jolt register on successful runs. -/
-theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState)
-    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
-    lbuProgramEqSailStatement imm rs1 rd js h := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact lbuProgram_project_eq_sail imm rs1 rd js h
-  · unfold JoltISA.lbuProgram JoltISA.slliBlock JoltISA.sllBlock
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
+  have h_project_initial : System.systemProject js = js.sail :=
+    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
+  have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
+    lbuProgram_preserves_projected_vregs imm rs1 rd hjolt
+  rw [hjolt, hsail]
+  simp only [System.systemProjectResult]
+  congr 1
+  rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
+    js js' rd
+    (zero_extend (m := 64)
+      (loaded_byte_at js.sail (load_effective_address h.rs1_val imm)))
+    hjolt_sail h_projected_vregs]
+  rw [h_project_initial]
 
 end LBU_main

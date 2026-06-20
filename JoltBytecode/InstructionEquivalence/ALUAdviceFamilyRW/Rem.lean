@@ -1,6 +1,7 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Semantics.RegisterOps
-import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
+import JoltBytecode.Bundles
+import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.MonadReduction
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
@@ -177,33 +178,6 @@ theorem execute_REM_reduces (rs2 rs1 rd : regidx) (js : SailJoltState)
   congr 1
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
 
-/-- Core proof that honest advice makes `remProgram` match Sail REM. -/
-theorem remProgram_eq_sail_core (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (dividend divisor : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail) :
-    projectResult ((JoltISA.execProgram (JoltISA.remProgram rs2 rs1 rd
-                      (sail_div_value dividend divisor false)
-                      (bv_abs (sail_rem_value dividend divisor false)))).run js) =
-    (execute_REM rs2 rs1 rd false).run js.sail := by
-  by_cases hrd : rd = regidx.Regidx 0
-  · subst rd
-    unfold remProgram
-    rw [pureWritebackTraceProgram_regidx_zero]
-    rw [pureWritebackRdZeroProgram_run js]
-    simp only [projectResult, project]
-    rw [execute_REM_factored rs2 rs1 (regidx.Regidx 0) false]
-    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-    simp only [hrs1, hrs2]
-    simp only [wX_bits_regidx_zero]
-
-  obtain ⟨js', hjolt, hjolt_sail⟩ :=
-   remProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2 hrd
-  rw [hjolt]
-  simp only [projectResult, project]
-  rw [hjolt_sail]
-  rw [execute_REM_reduces rs2 rs1 rd js dividend divisor hrs1 hrs2]
-
 -- ----------------------------------------------------------------------------
 -- Soundness
 -- ----------------------------------------------------------------------------
@@ -277,36 +251,48 @@ theorem remProgram_sound (rs2 rs1 rd : regidx)
 
 end JoltISA
 
-/-- Main program-level equivalence for `REM` with honest advice. -/
-private theorem remProgram_project_eq_sail (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.remProgram rs2 rs1 rd
-                      (sail_div_value h.rs1_val h.rs2_val false)
-                      (bv_abs (sail_rem_value h.rs1_val h.rs2_val false)))).run js) =
-    (execute_REM rs2 rs1 rd false).run js.sail := by
-  let dividend := h.rs1_val
-  let divisor := h.rs2_val
-  have hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail := h.rs1_read
-  have hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail := h.rs2_read
-  exact JoltISA.remProgram_eq_sail_core rs2 rs1 rd js dividend divisor hrs1 hrs2
+/-- `REM` never writes the persistent CSR virtual registers materialized by
+`systemProject`. -/
+theorem remProgram_preserves_projected_vregs
+    (rs2 rs1 rd : regidx)
+    (quotient remAbs : BitVec 64)
+    {js js' : SailJoltState}
+    {result : ExecutionResult}
+    (hrun : (JoltISA.execProgram
+      (JoltISA.remProgram rs2 rs1 rd quotient remAbs)).run js = .ok result js') :
+    Projection.ProjectedVRegsPreserved js js' := by
+  have hsafe :
+      JoltISA.ProgramWritesNoProtectedVReg
+        (JoltISA.remProgram rs2 rs1 rd quotient remAbs) := by
+    unfold JoltISA.remProgram JoltISA.mulhBlock JoltISA.sraiBlock
+    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.VRegWritesNoProtectedVReg,
+      Rem.a2VReg, Rem.a3VReg, Rem.t0VReg, Rem.t1VReg,
+      Rem.t2VReg, Rem.t3VReg,
+      Div.t2VReg, Div.t3VReg, Div.t4VReg]
+  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+    (js := js) (js' := js') (result := result) hsafe hrun
 
 /-- Main program-level equivalence for `REM` with honest advice. -/
 def remProgramCompletenessStatement
     (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64)
     (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   (quotient = sail_div_value h.rs1_val h.rs2_val false ∧
       remAbs = bv_abs (sail_rem_value h.rs1_val h.rs2_val false)) →
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.remProgram rs2 rs1 rd quotient remAbs)).run js)
-      ((execute_REM rs2 rs1 rd false).run js.sail)
+    System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.remProgram rs2 rs1 rd quotient remAbs)).run js) =
+    (execute_REM rs2 rs1 rd false).run js.sail
 
 def remProgramSoundnessStatement
     (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64)
     (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   rd ≠ regidx.Regidx 0 →
     ∀ js',
       (JoltISA.execProgram (JoltISA.remProgram rs2 rs1 rd quotient remAbs)).run js =
@@ -318,7 +304,7 @@ def remProgramEqSailStatement
     (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64)
     (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) : Prop :=
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   remProgramCompletenessStatement rs2 rs1 rd quotient remAbs js h ∧
   remProgramSoundnessStatement rs2 rs1 rd quotient remAbs js h
 
@@ -326,24 +312,46 @@ theorem remProgram_eq_sail
     (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64)
     (js : SailJoltState)
-    (h : ALUFamily.BinarySourceReadAssumptions rs2 rs1 js) :
+    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     remProgramEqSailStatement rs2 rs1 rd quotient remAbs js h := by
   constructor
   · intro hadvice
     rcases hadvice with ⟨hquotient, hremAbs⟩
     subst quotient
     subst remAbs
-    apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-    · exact remProgram_project_eq_sail rs2 rs1 rd js h
-    · unfold JoltISA.remProgram JoltISA.mulhBlock JoltISA.sraiBlock
-      apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-      simp [JoltISA.ProgramWritesNoProtectedVReg,
-        JoltISA.InstrWritesNoProtectedVReg,
-        JoltISA.DstWritesNoProtectedVReg,
-        JoltISA.VRegWritesNoProtectedVReg,
-        Rem.a2VReg, Rem.a3VReg, Rem.t0VReg, Rem.t1VReg,
-        Rem.t2VReg, Rem.t3VReg,
-        Div.t2VReg, Div.t3VReg, Div.t4VReg]
+    let dividend := h.rs1_val
+    let divisor := h.rs2_val
+    have hrs1 : rX_bits rs1 js.sail = .ok dividend js.sail := h.rs1_read
+    have hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail := h.rs2_read
+    have h_project_initial : System.systemProject js = js.sail := by
+      simpa [project] using
+        Projection.systemProject_eq_project_of_compatible js h.linkedCSRs
+    by_cases hrd : rd = regidx.Regidx 0
+    · subst rd
+      unfold JoltISA.remProgram
+      rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+      rw [JoltISA.pureWritebackRdZeroProgram_run js]
+      simp only [System.systemProjectResult]
+      rw [h_project_initial]
+      rw [JoltISA.execute_REM_factored rs2 rs1 (regidx.Regidx 0) false]
+      simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
+      simp only [hrs1, hrs2]
+      simp only [wX_bits_regidx_zero]
+
+    obtain ⟨js', hjolt, hjolt_sail⟩ :=
+      JoltISA.remProgram_concrete rs2 rs1 rd js dividend divisor hrs1 hrs2 hrd
+    have h_projected_vregs :
+        Projection.ProjectedVRegsPreserved js js' :=
+      remProgram_preserves_projected_vregs rs2 rs1 rd
+        (sail_div_value dividend divisor false)
+        (bv_abs (sail_rem_value dividend divisor false)) hjolt
+    rw [hjolt]
+    simp only [System.systemProjectResult]
+    rw [JoltISA.execute_REM_reduces rs2 rs1 rd js dividend divisor hrs1 hrs2]
+    congr 1
+    rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
+      js js' rd (sail_rem_value dividend divisor false) hjolt_sail h_projected_vregs]
+    rw [h_project_initial]
   · intro hrd js' hok
     exact JoltISA.remProgram_sound rs2 rs1 rd quotient remAbs js
       h.rs1_val h.rs2_val h.rs1_read h.rs2_read hrd js' hok

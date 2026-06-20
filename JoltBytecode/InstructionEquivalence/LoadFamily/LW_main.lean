@@ -6,6 +6,7 @@ import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
 import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
+import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import Mathlib.Tactic.IntervalCases
 
@@ -349,60 +350,81 @@ theorem lwProgram_eq_sail_of_setup (imm : BitVec 12)
   · exact lwProgram_eq_sail_misaligned imm rs1 rd js val hrx
       h_align
 
-/-- **Main program theorem for LW.**
-
-The public theorem takes one instruction-specific primitive assumption bundle. Internally
-the proof opens the bundle to recover the source-register value and the memory
-facts at the addresses computed from that value. -/
-private theorem lwProgram_project_eq_sail (imm : BitVec 12)
-    (rs1 rd : regidx)
-    (js : SailJoltState)
-    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
-    projectResult ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js) =
-    (execute_LOAD imm rs1 rd false 4).run js.sail := by
-  let ea := load_effective_address h.rs1_val imm
-  let base := compute_aligned_dword_base_address h.rs1_val imm
-  have hcfg : JoltConfig js.sail := h.cfg
-  have h_jolt_phys : FlatPhysMem base 8 js.sail := by
-    simpa [base] using h.dwordPhys
-  by_cases h_align : ea &&& 3 = 0
-  · have h_sail_phys : FlatPhysMem ea 4 js.sail := by
-      simpa [ea] using h.wordPhys (by simpa [ea] using h_align)
-    exact lwProgram_eq_sail_aligned imm rs1 rd js h.rs1_val
-      h.rs1_read hcfg
-      (by simpa [base] using h_jolt_phys)
-      (by simpa [ea] using h_sail_phys)
-      (by simpa [ea] using h_align)
-  · exact lwProgram_eq_sail_misaligned imm rs1 rd js h.rs1_val
-      h.rs1_read (by simpa [ea] using h_align)
+/-- Successful `LW` expansions do not modify the persistent CSR virtual
+registers materialized by `systemProject`. -/
+theorem lwProgram_preserves_projected_vregs
+    (imm : BitVec 12) (rs1 rd : regidx)
+    {js js' : SailJoltState} {result : ExecutionResult}
+    (hrun : (JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js =
+      .ok result js') :
+    Projection.ProjectedVRegsPreserved js js' := by
+  have hsafe : JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.lwProgram imm rs1 rd) := by
+    unfold JoltISA.lwProgram JoltISA.slliBlock JoltISA.srlBlock
+    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg,
+      JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
+  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+    hsafe hrun
 
 /-- **Main program theorem for LW.**
 
 The public theorem takes one instruction-specific primitive assumption bundle,
-matches Sail, and preserves every protected Jolt register on successful runs. -/
+and matches Sail after materializing Jolt's persistent CSR virtual registers. -/
 def lwProgramEqSailStatement (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (_h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js)
-      ((execute_LOAD imm rs1 rd false 4).run js.sail)
+    System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js) =
+    (execute_LOAD imm rs1 rd false 4).run js.sail
 
 /-- **Main program theorem for LW.**
 
 The public theorem takes one instruction-specific primitive assumption bundle,
-matches Sail, and preserves every protected Jolt register on successful runs. -/
+and matches Sail after materializing Jolt's persistent CSR virtual registers. -/
 theorem lwProgram_eq_sail (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
     lwProgramEqSailStatement imm rs1 rd js h := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact lwProgram_project_eq_sail imm rs1 rd js h
-  · unfold JoltISA.lwProgram JoltISA.slliBlock JoltISA.srlBlock
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
+  unfold lwProgramEqSailStatement
+  let ea := load_effective_address h.rs1_val imm
+  have h_project_initial : System.systemProject js = js.sail :=
+    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
+  by_cases h_align : ea &&& (3 : BitVec 64) = 0
+  · have hload : LoadReadEvidence (load_effective_address h.rs1_val imm) 4 js.sail := by
+      refine
+        { aligned := ?_
+          phys := h.wordPhys (by simpa [ea] using h_align) }
+      refine
+        { misalign := ?_
+          split := ?_ }
+      · simpa [ea] using access_misaligned_4_aligned_false ea h_align
+      · simpa [ea] using split_misaligned_aligned_4 ea h_align
+    rcases lwProgram_concrete_aligned imm rs1 rd js h.cfg h.rs1_val
+        h.rs1_read (by simpa [ea] using h_align) h.dwordPhys with
+      ⟨js', hjolt, hjolt_sail⟩
+    have hsail := execute_LW_reduces imm rs1 rd js h.cfg h.rs1_val
+      h.rs1_read hload (h.wordNoOvf (by simpa [ea] using h_align))
+    have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
+      lwProgram_preserves_projected_vregs imm rs1 rd hjolt
+    rw [hjolt, hsail]
+    simp only [System.systemProjectResult]
+    congr 1
+    rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
+      js js' rd
+      (sign_extend (m := 64)
+        (loaded_word_at js.sail (load_effective_address h.rs1_val imm)))
+      hjolt_sail h_projected_vregs]
+    rw [h_project_initial]
+  · have hjolt := lwProgram_concrete_misaligned imm rs1 rd js h.rs1_val
+      h.rs1_read (by simpa [ea] using h_align)
+    have hsail := execute_LW_misaligned imm rs1 rd js h.rs1_val
+      h.rs1_read (by simpa [ea] using h_align)
+    rw [hjolt, hsail]
+    simp only [System.systemProjectResult]
+    rw [h_project_initial]
 
 end LW_main

@@ -43,6 +43,15 @@ theorem systemProject_eq_project_of_compatible
     System.systemProject js = project js :=
   System.systemProject_eq_project_of_compatible js h
 
+/-- Under the linked-CSR invariant, `systemProject` agrees with the embedded
+generated Sail state. This is the instruction-facing form; callers should not
+need to mention the legacy plain projection. -/
+theorem systemProject_eq_sail_of_compatible
+    (js : SailJoltState)
+    (h : LinkedCSRs js) :
+    System.systemProject js = js.sail :=
+  System.systemProject_eq_project_of_compatible js h
+
 /-- Projecting after an architectural x-register write is the same as writing
 that x-register after projecting. -/
 theorem systemProject_stateAfterWrite
@@ -68,6 +77,43 @@ theorem systemProject_stateAfterWrite_of_projected_vregs_preserved
     simp only [hsail, hmtvec, hmscratch, hmepc, hmcause, hmtval, hmstatus]
   rw [hsame]
   exact systemProject_stateAfterWrite before rd value
+
+/-- If a transition preserves the projected CSR virtual registers and leaves
+the generated Sail register map unchanged, then linked CSRs remain linked after
+the transition. This is the store-family projection bridge: stores update
+memory, not registers. -/
+theorem systemProject_eq_project_of_projected_vregs_preserved_of_sail_regs_eq
+    (before after : SailJoltState)
+    (hregs : after.sail.regs = before.sail.regs)
+    (hprojected : ProjectedVRegsPreserved before after)
+    (hlinked : LinkedCSRs before) :
+    System.systemProject after = project after := by
+  rcases hprojected with
+    ⟨hmtvec, hmscratch, hmepc, hmcause, hmtval, hmstatus⟩
+  rcases hlinked with
+    ⟨hmstatusLinked, hmtvecLinked, hmscratchLinked, hmepcLinked,
+      hmcauseLinked, hmtvalLinked⟩
+  have hlinked_after : LinkedCSRs after := by
+    refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+    · exact ⟨by rw [hregs, hmstatus, hmstatusLinked.value_eq]⟩
+    · exact ⟨by rw [hregs, hmtvec, hmtvecLinked.value_eq]⟩
+    · exact ⟨by rw [hregs, hmscratch, hmscratchLinked.value_eq]⟩
+    · exact ⟨by rw [hregs, hmepc, hmepcLinked.value_eq]⟩
+    · exact ⟨by rw [hregs, hmcause, hmcauseLinked.value_eq]⟩
+    · exact ⟨by rw [hregs, hmtval, hmtvalLinked.value_eq]⟩
+  exact systemProject_eq_project_of_compatible after hlinked_after
+
+/-- Instruction-facing store-family projection bridge: if the transition
+preserves projected CSR virtual registers and leaves the Sail register map
+unchanged, `systemProject` agrees with the final embedded Sail state. -/
+theorem systemProject_eq_sail_of_projected_vregs_preserved_of_sail_regs_eq
+    (before after : SailJoltState)
+    (hregs : after.sail.regs = before.sail.regs)
+    (hprojected : ProjectedVRegsPreserved before after)
+    (hlinked : LinkedCSRs before) :
+    System.systemProject after = after.sail :=
+  systemProject_eq_project_of_projected_vregs_preserved_of_sail_regs_eq
+    before after hregs hprojected hlinked
 
 /-- Generic projected-vreg preservation theorem for any successful program run
 whose instructions avoid protected Jolt registers.  The old classifier is
