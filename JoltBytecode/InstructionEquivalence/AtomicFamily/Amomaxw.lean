@@ -3,23 +3,13 @@ import JoltBytecode.InstructionEquivalence.AtomicFamily.WordSelectRust
 set_option linter.unusedVariables false
 
 open Sail PreSail LeanRV64D.Functions
+open virtaddr
 
 set_option autoImplicit true
 
 noncomputable section
 
 namespace AtomicFamily
-
-/-- Canonical Sail state after aligned `AMOMAX.W`. -/
-abbrev amomaxwFinalSailState
-    (rd : regidx) (s : SailState) (addr rs2Val : BitVec 64) : SailState :=
-  amoWordFinalSailState rd s addr
-    (if (zopz0zK_s
-        (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-        (loaded_word_at s addr) : Bool) then
-      (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-    else
-      loaded_word_at s addr)
 
 /-- Sail's generated `AMOMAX.W` result expression reduces to signed word max. -/
 theorem amomaxw_sail_result (rs2Val : BitVec 64) (loaded : BitVec 32) :
@@ -36,180 +26,10 @@ theorem amomaxw_sail_result (rs2Val : BitVec 64) (loaded : BitVec 32) :
   rw [amo_word_trunc_4x8_eq_extract]
   rw [amo_word_setWidth_4x8_eq_self]
 
-/-- Jolt-side aligned concrete execution for `AMOMAX.W`. -/
-theorem amomaxwProgram_concrete_aligned
-    (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (addr rs2Val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (h_mem : AmoMemoryContext amoop.AMOMAX 4
-      (amoWordBase addr) addr js.sail)
-    (h_align : addr &&& (3 : BitVec 64) = 0) :
-    ∃ jsf : SailJoltState,
-      (JoltISA.execProgram (JoltISA.amomaxwProgram rs2 rs1 rd)).run js =
-        .ok RETIRE_SUCCESS jsf ∧
-      jsf.sail = amomaxwFinalSailState rd js.sail addr rs2Val := by
-  change
-    ∃ jsf : SailJoltState,
-      (JoltISA.execProgram
-        (JoltISA.amoWordSelectRustProgram
-          (fun dst src => .VirtualSignExtendWord dst src)
-          (fun dst lhs rhs => .SLT dst lhs rhs)
-          (.vreg JoltISA.amoWordSelectMaskVReg) (.vreg JoltISA.amoWordSelectNewVReg)
-          rs2 rs1 rd)).run js =
-        .ok RETIRE_SUCCESS jsf ∧
-      jsf.sail = amomaxwFinalSailState rd js.sail addr rs2Val
-  exact
-    amo_word_rust_select_program_concrete_aligned
-      amoop.AMOMAX
-      (fun dst src => .VirtualSignExtendWord dst src)
-      (fun dst lhs rhs => .SLT dst lhs rhs)
-      (.vreg JoltISA.amoWordSelectMaskVReg) (.vreg JoltISA.amoWordSelectNewVReg)
-      rs2 rs1 rd js hcfg addr
-      (if (zopz0zK_s
-          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-          (Sail.BitVec.extractLsb
-            (amoWordShiftedOld js.sail addr) 31 0 : BitVec 32) : Bool) then
-        rs2Val
-      else
-        amoWordShiftedOld js.sail addr)
-      (if (zopz0zK_s
-          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-          (loaded_word_at js.sail addr) : Bool) then
-        (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-      else
-        loaded_word_at js.sail addr)
-      hrs1 h_mem h_align
-      (amo_word_max_result_extract_eq js.sail addr rs2Val h_align)
-      (amo_word_rust_select_max_middle_after_pre rs2 js addr rs2Val hrs2)
-
-/-- Sail-side aligned concrete execution for native `AMOMAX.W`. -/
-theorem execute_AMOMAXW_reduces_aligned
-    (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (addr rs2Val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryContext amoop.AMOMAX 4
-      (amoWordBase addr) addr js.sail)
-    (h_align : addr &&& (3 : BitVec 64) = 0) :
-    (execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail =
-      .ok RETIRE_SUCCESS (amomaxwFinalSailState rd js.sail addr rs2Val) := by
-  exact
-    execute_AMO_word_non_cas_aligned
-      amoop.AMOMAX rs2 rs1 rd js hcfg addr rs2Val
-      (if (zopz0zK_s
-          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-          (loaded_word_at js.sail addr) : Bool) then
-        (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-      else
-        loaded_word_at js.sail addr)
-      hrs1 hrs2 hrd h_mem h_align
-      (by decide)
-      (amomaxw_sail_result rs2Val (loaded_word_at js.sail addr))
-
-/-- Aligned public branch for `AMOMAX.W`. -/
-theorem amomaxwProgram_eq_sail_aligned
-    (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (addr rs2Val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryContext amoop.AMOMAX 4
-      (amoWordBase addr) addr js.sail)
-    (h_align : addr &&& (3 : BitVec 64) = 0) :
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amomaxwProgram rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail := by
-  change
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amoWordSelectRustProgram
-        (fun dst src => .VirtualSignExtendWord dst src)
-        (fun dst lhs rhs => .SLT dst lhs rhs)
-        (.vreg JoltISA.amoWordSelectMaskVReg) (.vreg JoltISA.amoWordSelectNewVReg)
-        rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail
-  exact
-    amo_word_rust_select_program_eq_sail_aligned
-      amoop.AMOMAX
-      (fun dst src => .VirtualSignExtendWord dst src)
-      (fun dst lhs rhs => .SLT dst lhs rhs)
-      (.vreg JoltISA.amoWordSelectMaskVReg) (.vreg JoltISA.amoWordSelectNewVReg)
-      rs2 rs1 rd js hcfg addr rs2Val
-      (if (zopz0zK_s
-          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-          (Sail.BitVec.extractLsb
-            (amoWordShiftedOld js.sail addr) 31 0 : BitVec 32) : Bool) then
-        rs2Val
-      else
-        amoWordShiftedOld js.sail addr)
-      (if (zopz0zK_s
-          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-          (loaded_word_at js.sail addr) : Bool) then
-        (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-      else
-        loaded_word_at js.sail addr)
-      hrs1 hrs2 hrd h_mem h_align
-      (by decide)
-      (amo_word_max_result_extract_eq js.sail addr rs2Val h_align)
-      (amo_word_rust_select_max_middle_after_pre rs2 js addr rs2Val hrs2)
-      (amomaxw_sail_result rs2Val (loaded_word_at js.sail addr))
-
-/-- Internal memory-context theorem for `AMOMAX.W`. -/
-theorem amomaxwProgram_eq_sail_of_memory_context
-    (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (addr rs2Val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryContext amoop.AMOMAX 4
-      (amoWordBase addr) addr js.sail) :
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amomaxwProgram rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail := by
-  change
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amoWordSelectRustProgram
-        (fun dst src => .VirtualSignExtendWord dst src)
-        (fun dst lhs rhs => .SLT dst lhs rhs)
-        (.vreg JoltISA.amoWordSelectMaskVReg) (.vreg JoltISA.amoWordSelectNewVReg)
-        rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail
-  exact
-    amo_word_rust_select_program_project_eq_sail
-      amoop.AMOMAX
-      (fun dst src => .VirtualSignExtendWord dst src)
-      (fun dst lhs rhs => .SLT dst lhs rhs)
-      (.vreg JoltISA.amoWordSelectMaskVReg) (.vreg JoltISA.amoWordSelectNewVReg)
-      rs2 rs1 rd js hcfg addr rs2Val
-      (if (zopz0zK_s
-          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-          (Sail.BitVec.extractLsb
-            (amoWordShiftedOld js.sail addr) 31 0 : BitVec 32) : Bool) then
-        rs2Val
-      else
-        amoWordShiftedOld js.sail addr)
-      (if (zopz0zK_s
-          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-          (loaded_word_at js.sail addr) : Bool) then
-        (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
-      else
-        loaded_word_at js.sail addr)
-      hrs1 hrs2 hrd h_mem
-      (by decide)
-      (fun h_align => amo_word_max_result_extract_eq js.sail addr rs2Val h_align)
-      (amo_word_rust_select_max_middle_after_pre rs2 js addr rs2Val hrs2)
-      (amomaxw_sail_result rs2Val (loaded_word_at js.sail addr))
-
 /-- Main public theorem for `AMOMAX.W`.
 
-The theorem takes one primitive-only atomic bundle. The aligned branch derives
-exact memory context from the enclosing dword window; the misaligned branch
-stops before memory context is needed. -/
+The theorem takes one primitive-only atomic bundle. Exact memory facts are
+derived internally from that bundle. -/
 private theorem amomaxwProgram_project_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOMAX rs2 rs1 rd js) :
@@ -218,32 +38,158 @@ private theorem amomaxwProgram_project_eq_sail
       (execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail := by
   let addr := h.rs1_val
   let rs2Val := h.rs2_val
+  change
+    projectResult ((JoltISA.execProgram
+      (JoltISA.amoWordSelectRustProgram
+        (fun dst src => .VirtualSignExtendWord dst src)
+        (fun dst lhs rhs => .SLT dst lhs rhs)
+        (.vreg JoltISA.amoWordSelectMaskVReg)
+        (.vreg JoltISA.amoWordSelectNewVReg)
+        rs2 rs1 rd)).run js) =
+      (execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail
   by_cases h_align : addr &&& (3 : BitVec 64) = 0
-  · have h_mem_base :
-        AmoMemoryContext amoop.AMOMAX 4 (amoWordAssumptionBase addr) addr js.sail := by
-      simpa [addr] using h.memoryContext (by simpa [addr] using h_align)
-    have h_mem : AmoMemoryContext amoop.AMOMAX 4 (amoWordBase addr) addr js.sail := by
-      simpa [amoWordBase, amoWordAssumptionBase] using h_mem_base
-    exact amomaxwProgram_eq_sail_of_memory_context
-      rs2 rs1 rd js h.cfg addr rs2Val
-      h.rs1_read h.rs2_read h.rd_readable.exists_value h_mem
-  · change
-      projectResult ((JoltISA.execProgram
-        (JoltISA.amoWordSelectRustProgram
+  · let base := amoWordBase addr
+    let offset := (addr &&& (7 : BitVec 64)).toNat
+    have hbase_no_ovf := amo_word_base_no_ovf addr
+    have hbytes_base : MemBytesPresentAt js.sail (amoWordBase addr) 8 := by
+      simpa [addr] using Assumptions.DwordPresent.memBytesPresentAt h.dword_present
+    have hload_pmp_base : Assumptions.LoadPmpOk (amoWordBase addr) 8 js.sail := by
+      simpa [addr] using h.load_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
+    have hstore_pmp_base : Assumptions.StorePmpOk (amoWordBase addr) 8 js.sail := by
+      simpa [addr] using h.store_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
+    have hread_mmio_base :
+        Assumptions.NotReadableMmio (amoWordBase addr) 8 js.sail := by
+      simpa [addr] using
+        h.not_readable_mmio.subaccess (offset := 0) (accessWidth := 8) (by omega)
+    have hwrite_mmio_base :
+        Assumptions.NotWritableMmio (amoWordBase addr) 8 js.sail := by
+      simpa [addr] using
+        h.not_writable_mmio.subaccess (offset := 0) (accessWidth := 8) (by omega)
+    have hoff : offset + 4 ≤ 8 := by
+      have hcases := write_word_offset_cases addr h_align
+      rcases hcases with h0 | h4
+      · simp [offset, h0]
+      · simp [offset, h4]
+    have haddr : base + BitVec.ofNat 64 offset = addr := by
+      simpa [base, offset, amoWordBase] using addr_split_aligned_offset addr
+    have hbytes_word : MemBytesPresentAt js.sail addr 4 := by
+      have hsub : MemBytesPresentAt js.sail (base + BitVec.ofNat 64 offset) 4 :=
+        memBytesPresentAt_subaccess (s := js.sail) (base := base) (baseWidth := 8)
+          (offset := offset) (accessWidth := 4)
+          (by simpa [base] using hbytes_base) hoff (by
+            have hb : base.toNat + 7 < 2 ^ 64 := by
+              simpa [base] using hbase_no_ovf
+            omega)
+      simpa [haddr] using hsub
+    have hatomic_pmp_word : Assumptions.AtomicPmpOk amoop.AMOMAX addr 4 js.sail := by
+      have hsub :
+          Assumptions.AtomicPmpOk amoop.AMOMAX
+            (base + BitVec.ofNat 64 offset) 4 js.sail :=
+        h.atomic_pmp.subaccess (offset := offset) (accessWidth := 4) hoff
+      simpa [addr, base, haddr] using hsub
+    have hread_mmio_word : Assumptions.NotReadableMmio addr 4 js.sail := by
+      have hsub :
+          Assumptions.NotReadableMmio (base + BitVec.ofNat 64 offset) 4 js.sail :=
+        h.not_readable_mmio.subaccess (offset := offset) (accessWidth := 4) hoff
+      simpa [addr, base, haddr] using hsub
+    have hwrite_mmio_word : Assumptions.NotWritableMmio addr 4 js.sail := by
+      have hsub :
+          Assumptions.NotWritableMmio (base + BitVec.ofNat 64 offset) 4 js.sail :=
+        h.not_writable_mmio.subaccess (offset := offset) (accessWidth := 4) hoff
+      simpa [addr, base, haddr] using hsub
+    have h_word_no_ovf : addr.toNat + 3 < 2 ^ 64 :=
+      amo_word_aligned_no_ovf addr hbase_no_ovf h_align
+    let dword : BitVec 64 :=
+      loaded_dword_at js.sail (amoWordBase addr) hbytes_base hbase_no_ovf
+    let oldWord : BitVec 32 := loaded_word_at js.sail addr hbytes_word h_word_no_ovf
+    have hold :
+        (Sail.BitVec.extractLsb (amoWordShiftedOld addr dword) 31 0 :
+          BitVec 32) = oldWord := by
+      have hword_of_dword :
+          (Sail.BitVec.extractLsb (amoWordShiftedOld addr dword) 31 0 :
+            BitVec 32) =
+          word_of_dword dword (addr &&& (7 : BitVec 64)).toNat := by
+        apply amo_word_sign_extend_64_injective
+        simpa [amoWordShiftedOld] using
+          srl_sign_extend_word_extracts_word dword addr h_align
+      have hloaded :
+          oldWord = word_of_dword dword (addr &&& (7 : BitVec 64)).toNat := by
+        unfold oldWord dword
+        simpa [amoWordBase] using
+          loaded_word_in_dword js.sail addr h_align
+            hbytes_base hbase_no_ovf hbytes_word h_word_no_ovf
+      rw [hword_of_dword, ← hloaded]
+    rcases
+        amo_word_rust_select_program_concrete_aligned
+          amoop.AMOMAX
           (fun dst src => .VirtualSignExtendWord dst src)
           (fun dst lhs rhs => .SLT dst lhs rhs)
           (.vreg JoltISA.amoWordSelectMaskVReg)
           (.vreg JoltISA.amoWordSelectNewVReg)
-          rs2 rs1 rd)).run js) =
-        (execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail
-    exact amo_word_rust_select_program_eq_sail_misaligned
-      amoop.AMOMAX
-      (fun dst src => .VirtualSignExtendWord dst src)
-      (fun dst lhs rhs => .SLT dst lhs rhs)
-      (.vreg JoltISA.amoWordSelectMaskVReg)
-      (.vreg JoltISA.amoWordSelectNewVReg)
-      rs2 rs1 rd js h.cfg addr rs2Val
-      h.rs1_read h.rs2_read h_align
+          rs2 rs1 rd js h.cur_privilege h.mstatus_mprv addr
+          (if (zopz0zK_s
+              (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+              (Sail.BitVec.extractLsb (amoWordShiftedOld addr dword) 31 0 :
+                BitVec 32) : Bool) then
+            rs2Val
+          else
+            amoWordShiftedOld addr dword)
+          (if (zopz0zK_s
+              (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+              oldWord : Bool) then
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+          else
+            oldWord)
+          oldWord
+          h.rs1_read hbytes_base hload_pmp_base hread_mmio_base
+          hstore_pmp_base hwrite_mmio_base h_align
+          (amo_word_max_result_extract_eq rs2Val (amoWordShiftedOld addr dword)
+            oldWord hold)
+          (by simpa [dword] using hold)
+          (amo_word_rust_select_max_middle_after_pre rs2 js addr rs2Val dword
+            h.rs2_read) with
+      ⟨jsf, hjolt, hjolt_sail⟩
+    have hsail :=
+      execute_AMO_word_non_cas_aligned
+        amoop.AMOMAX rs2 rs1 rd js h.cur_privilege h.mstatus_mprv
+        addr rs2Val
+        (if (zopz0zK_s
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+            oldWord : Bool) then
+          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+        else
+          oldWord)
+        h.rs1_read h.rs2_read h.rdReadable.exists_value
+        hbytes_word hatomic_pmp_word hread_mmio_word hwrite_mmio_word
+        h_align (by decide) (amomaxw_sail_result rs2Val oldWord)
+    rw [hjolt]
+    simp only [projectResult, project]
+    rw [hjolt_sail, hsail]
+  · have hjolt :
+        (JoltISA.execProgram
+          (JoltISA.amoWordSelectRustProgram
+            (fun dst src => .VirtualSignExtendWord dst src)
+            (fun dst lhs rhs => .SLT dst lhs rhs)
+            (.vreg JoltISA.amoWordSelectMaskVReg)
+            (.vreg JoltISA.amoWordSelectNewVReg)
+            rs2 rs1 rd)).run js =
+          .ok (ExecutionResult.Memory_Exception
+            (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js := by
+      exact
+        amo_word_rust_select_program_concrete_misaligned
+          (fun dst src => .VirtualSignExtendWord dst src)
+          (fun dst lhs rhs => .SLT dst lhs rhs)
+          (.vreg JoltISA.amoWordSelectMaskVReg)
+          (.vreg JoltISA.amoWordSelectNewVReg)
+          rs2 rs1 rd js addr h.rs1_read h_align
+    have hsail :=
+      execute_AMO_word_misaligned
+        amoop.AMOMAX rs2 rs1 rd js addr rs2Val
+        h.rs1_read h.rs2_read h_align
+    rw [hjolt]
+    simp only [projectResult, project]
+    symm
+    exact hsail
 
 /-- Main public theorem for `AMOMAX.W`. -/
 def amomaxwProgramEqSailStatement
