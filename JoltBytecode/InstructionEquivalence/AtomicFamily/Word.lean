@@ -1,6 +1,6 @@
-import JoltBytecode.InstructionEquivalence.AtomicFamily.Common
-import JoltBytecode.InstructionEquivalence.AtomicFamily.Derived
-import JoltBytecode.InstructionEquivalence.LoadDefUtils
+import JoltBytecode.Bundles
+import JoltBytecode.InstructionEquivalence.Memory.Windows
+import JoltBytecode.InstructionEquivalence.Memory.Read
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.StoreFamily.Splice
@@ -1114,13 +1114,6 @@ theorem amo_word_pre64_aligned_run
   have hcfg_base : JoltConfig js_base.sail := by
     rw [hbase_sail]
     exact hcfg
-  have hload_evidence :
-      DwordLoadEvidence (amoWordBase addr) js_base.sail := by
-    rw [hbase_sail]
-    exact
-      dwordLoadEvidence_of_aligned_phys (amoWordBase addr) js.sail
-        (amo_word_base_aligned_access addr h_no_ovf)
-        (AmoMemoryContext.jolt_load_mem h_mem)
   have hld :
       (JoltISA.execInstr
         (.LD (.vreg JoltISA.amoDwordVReg)
@@ -1132,9 +1125,12 @@ theorem amo_word_pre64_aligned_run
                 loaded_dword_at js_base.sail (amoWordBase addr)
               else js_base.vregs r } := by
     exact
-      vreg_LD_run_of_dword_evidence
+      vreg_LD_run_of_aligned_dword_phys
         JoltISA.amoDwordVReg JoltISA.amoShiftVReg js_base
-        (amoWordBase addr) hbase_shift hcfg_base hload_evidence
+        (amoWordBase addr) hbase_shift
+        hcfg_base.cur_privilege hcfg_base.mstatus_mprv
+        (amo_word_base_aligned_access addr h_no_ovf)
+        (by rw [hbase_sail]; exact AmoMemoryContext.jolt_load_mem h_mem)
         (by unfold WritableVReg; decide)
   let js_load : SailJoltState :=
     { sail := js_base.sail

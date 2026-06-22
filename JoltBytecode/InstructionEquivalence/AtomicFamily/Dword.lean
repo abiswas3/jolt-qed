@@ -1,6 +1,6 @@
-import JoltBytecode.InstructionEquivalence.AtomicFamily.Common
-import JoltBytecode.InstructionEquivalence.AtomicFamily.Derived
-import JoltBytecode.InstructionEquivalence.LoadDefUtils
+import JoltBytecode.Bundles
+import JoltBytecode.InstructionEquivalence.Memory.Windows
+import JoltBytecode.InstructionEquivalence.Memory.Read
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Semantics.Lemmas
 import JoltBytecode.JoltISA.Semantics.Instructions.Add
@@ -12,7 +12,7 @@ import JoltBytecode.JoltISA.Semantics.Instructions.Sub
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualAssertAlignment
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 import JoltBytecode.JoltISA.Semantics.RegisterOps
-import JoltBytecode.InstructionEquivalence.Memory.WriteReasoning
+import JoltBytecode.InstructionEquivalence.Memory.Write
 
 set_option linter.unusedVariables false
 
@@ -405,13 +405,12 @@ theorem amo_dword_load_old_aligned_run_into
       js_afterLoad.vregs oldReg =
         loaded_dword_at js.sail addr := by
   have haligned := amo_dword_aligned_access addr h_align
-  have hload_evidence : DwordLoadEvidence addr js.sail :=
-    dwordLoadEvidence_of_aligned_phys addr js.sail haligned
-      (AmoMemoryContext.jolt_load_mem h_mem)
   have hload :
       vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false js.sail =
         .ok (Ok (loaded_dword_at js.sail addr)) js.sail :=
-    aligned_dword_vmem_read_reduces addr js.sail hcfg hload_evidence
+    aligned_dword_vmem_read_reduces addr js.sail
+      hcfg.cur_privilege hcfg.mstatus_mprv haligned
+      (AmoMemoryContext.jolt_load_mem h_mem)
   exact
     amo_dword_ld_old_run_into oldReg rs1 js addr
       (loaded_dword_at js.sail addr) hrs1 h_align hload holdReg

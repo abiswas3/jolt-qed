@@ -1,10 +1,9 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Expansions.Load
-import JoltBytecode.InstructionEquivalence.Memory.Utils
-import JoltBytecode.InstructionEquivalence.LoadDefUtils
+import JoltBytecode.InstructionEquivalence.Memory.Read
 import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
-import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
+import JoltBytecode.InstructionEquivalence.Memory.Windows
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
 import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
@@ -38,15 +37,12 @@ From `tracer/src/instruction/lw.rs::inline_sequence_64`:
 
 This file proves equivalence for the structured `JoltISA.lwProgram`, using
 the bridge lemma (a pure bit-vector identity specialised to LW), the Sail-side
-load-pipeline helpers (`LWDwordReadEvidence` and friends), and separate
-aligned/misaligned cases.
+load-pipeline helpers, and separate aligned/misaligned cases.
 
 ## What lives here (by role)
 
 * `jolt_lw_bridge` — specialisation of the DwordArithmetic identities to
   LW: Jolt's logic-phase expression equals `sign_extend (loaded_word_at …)`.
-* `LWDwordReadEvidence` + `lw_dword_*_of_*` — Sail-side structures
-  packaging exact dword physical-memory evidence.
 * `execute_LW_reduces`, `execute_LW_misaligned` — Sail-side `execute_LOAD`
   reductions for the two cases.
 * `lwProgram_concrete_aligned`, `lwProgram_concrete_misaligned` —
@@ -90,40 +86,6 @@ theorem jolt_lw_bridge (s : SailState) (addr : BitVec 64)
   simp only [srl_sign_extend_word_extracts_word _ _ halign, ← loaded_word_in_dword _ _ halign]
 
 -- ============================================================================
--- Sail-side dword-read evidence (LW-specific)
--- ============================================================================
-
-/-- LW-flavoured dword read evidence: the aligned dword base
-    `aligned_dword_addr val imm` lives in ordinary RAM (not MMIO).
-    Translation is derived from `JoltConfig`. Currently unused; kept for
-    callers that want a bundled evidence type. -/
-structure LWDwordReadEvidence (val : BitVec 64) (imm : BitVec 12) (s : SailState) : Prop where
-  phys : FlatPhysMem (aligned_dword_addr val imm) 8 s
-
-/-- Promote `LWDwordReadEvidence` to the generic
-    `DwordLoadEvidence`. -/
-theorem lw_dword_load_evidence_of_local
-    (val : BitVec 64) (imm : BitVec 12) (s : SailState)
-    (h : LWDwordReadEvidence val imm s) :
-    DwordLoadEvidence (aligned_dword_addr val imm) s := by
-  refine
-    { aligned := aligned_dword_addr_is_aligned_dword_access val imm
-      phys := h.phys }
-
-/-- Construct `LWDwordReadEvidence` from the `compute_aligned_dword_base_address`-phrased
-    phys hypothesis. (The two addresses are definitionally equal;
-    `aligned_dword_addr_eq` bridges the notation.) -/
-theorem lw_dword_read_evidence_of_addr
-    (val : BitVec 64)
-    (imm : BitVec 12)
-    (s : SailState)
-    (hphys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 s) :
-    LWDwordReadEvidence val imm s := by
-  have haddr : aligned_dword_addr val imm = compute_aligned_dword_base_address val imm := by
-    simp [compute_aligned_dword_base_address, load_effective_address, aligned_dword_addr_eq]
-  exact { phys := by simpa [haddr] using hphys }
-
--- ============================================================================
 -- Top-level LW ↔ Sail equivalence theorems
 -- ============================================================================
 
@@ -131,9 +93,12 @@ theorem lw_dword_read_evidence_of_addr
     `stateAfterWrite rd (sign_extend (loaded_word_at ea))` under aligned,
     translate, physical-memory, and no-overflow evidence. -/
 theorem execute_LW_reduces (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hload : LoadReadEvidence (load_effective_address val imm) 4 js.sail)
+    (haligned : AlignedAccess (load_effective_address val imm) 4)
+    (hphys : FlatPhysMem (load_effective_address val imm) 4 js.sail)
     (h_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64) :
     (execute_LOAD imm rs1 rd false 4).run js.sail =
     .ok RETIRE_SUCCESS
@@ -146,8 +111,8 @@ theorem execute_LW_reduces (imm : BitVec 12) (rs1 rd : regidx)
   simp (config := { decide := true }) only []
   simp (config := { decide := true }) only [PreSail.assert, EStateM.bind, pure, EStateM.pure,
        EStateM.run, if_true]
-  rw [vmem_read_word_reduces imm rs1 js.sail hcfg val hrx hload.aligned
-      (mem_read_4_eq_loaded_word _ js.sail hcfg h_no_ovf hload.phys)]
+  rw [vmem_read_word_reduces imm rs1 js.sail hpriv hmprv val hrx haligned
+      (mem_read_4_eq_loaded_word _ js.sail hpriv hmprv h_no_ovf hphys)]
   simp only [extend_value, Bool.false_eq_true, if_false, EStateM.bind, EStateM.pure]
   obtain ⟨s', hw⟩ := wX_shape rd
     (sign_extend (m := 64) (loaded_word_at js.sail (load_effective_address val imm)))
@@ -207,7 +172,9 @@ each local `have` names one bytecode instruction.  That is the pattern we want
 for paper-facing proofs, because it lets the reader line the Lean proof up
 against the Rust expansion and the Jolt-ISA interpreter. -/
 theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& 3 = 0)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
@@ -222,7 +189,7 @@ theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
     JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
     JoltISA.srlBlock (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp2 writeTail
   rcases LoadProgramBlocks.assertWordSetupBlockAligned logicTail
-      imm rs1 js hcfg val hrx halign h_dword_phys with
+      imm rs1 js hpriv hmprv val hrx halign h_dword_phys with
     ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
   rcases LoadProgramBlocks.lwSrlBlock writeTail imm js js_load val
       hload_sail hload_v0 hload_v1 with
@@ -275,7 +242,8 @@ theorem lwProgram_eq_sail_aligned (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hcfg : JoltConfig js.sail)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (hjolt_mem :
       FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
     (hsail_mem : FlatPhysMem (load_effective_address val imm) 4 js.sail)
@@ -283,21 +251,19 @@ theorem lwProgram_eq_sail_aligned (imm : BitVec 12)
     projectResult ((JoltISA.execProgram (JoltISA.lwProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd false 4).run js.sail := by
   let ea := load_effective_address val imm
-  have hload : LoadReadEvidence (load_effective_address val imm) 4 js.sail := by
-    refine
-      { aligned := ?_
-        phys := hsail_mem }
+  have haligned : AlignedAccess (load_effective_address val imm) 4 := by
     refine
       { misalign := ?_
         split := ?_ }
     · simpa [ea] using access_misaligned_4_aligned_false ea h_align
     · simpa [ea] using split_misaligned_aligned_4 ea h_align
-  rcases lwProgram_concrete_aligned imm rs1 rd js hcfg val hrx h_align
+  rcases lwProgram_concrete_aligned imm rs1 rd js hpriv hmprv val hrx h_align
       hjolt_mem with
     ⟨js', hjolt, hjolt_sail⟩
   have h_word_no_ovf : (load_effective_address val imm).toNat + 3 < 2 ^ 64 := by
     simpa [ea] using aligned_word_addr_no_ovf ea h_align
-  have hsail := execute_LW_reduces imm rs1 rd js hcfg val hrx hload h_word_no_ovf
+  have hsail := execute_LW_reduces imm rs1 rd js hpriv hmprv val hrx haligned hsail_mem
+    h_word_no_ovf
   rw [hjolt]
   simp only [projectResult, project]
   rw [hjolt_sail, hsail]
@@ -337,7 +303,8 @@ theorem lwProgram_eq_sail_of_setup (imm : BitVec 12)
     (rs1 rd : regidx)
     (js : SailJoltState)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hcfg : JoltConfig js.sail)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (hjolt_mem :
       FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail)
     (hsail_mem : FlatPhysMem (load_effective_address val imm) 4 js.sail) :
@@ -346,7 +313,7 @@ theorem lwProgram_eq_sail_of_setup (imm : BitVec 12)
   let ea := load_effective_address val imm
   by_cases h_align : ea &&& 3 = 0
   · exact lwProgram_eq_sail_aligned imm rs1 rd js val hrx
-      hcfg hjolt_mem hsail_mem h_align
+      hpriv hmprv hjolt_mem hsail_mem h_align
   · exact lwProgram_eq_sail_misaligned imm rs1 rd js val hrx
       h_align
 
@@ -394,20 +361,19 @@ theorem lwProgram_eq_sail (imm : BitVec 12)
   have h_project_initial : System.systemProject js = js.sail :=
     Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   by_cases h_align : ea &&& (3 : BitVec 64) = 0
-  · have hload : LoadReadEvidence (load_effective_address h.rs1_val imm) 4 js.sail := by
-      refine
-        { aligned := ?_
-          phys := h.wordPhys (by simpa [ea] using h_align) }
+  · have haligned : AlignedAccess (load_effective_address h.rs1_val imm) 4 := by
       refine
         { misalign := ?_
           split := ?_ }
       · simpa [ea] using access_misaligned_4_aligned_false ea h_align
       · simpa [ea] using split_misaligned_aligned_4 ea h_align
-    rcases lwProgram_concrete_aligned imm rs1 rd js h.cfg h.rs1_val
+    rcases lwProgram_concrete_aligned imm rs1 rd js h.cur_privilege h.mstatus_mprv
+        h.rs1_val
         h.rs1_read (by simpa [ea] using h_align) h.dwordPhys with
       ⟨js', hjolt, hjolt_sail⟩
-    have hsail := execute_LW_reduces imm rs1 rd js h.cfg h.rs1_val
-      h.rs1_read hload (h.wordNoOvf (by simpa [ea] using h_align))
+    have hsail := execute_LW_reduces imm rs1 rd js h.cur_privilege h.mstatus_mprv
+      h.rs1_val h.rs1_read haligned (h.wordPhys (by simpa [ea] using h_align))
+      (h.wordNoOvf (by simpa [ea] using h_align))
     have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
       lwProgram_preserves_projected_vregs imm rs1 rd hjolt
     rw [hjolt, hsail]

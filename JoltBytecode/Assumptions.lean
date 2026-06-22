@@ -11,7 +11,7 @@ instruction-equivalence proofs. It is intentionally assumption-only:
 * no dword/window/range helper aliases live here;
 * composed proof-facing bundles live in family `Bundles` modules;
 * exact low-level memory access facts live in
-  `InstructionEquivalence.Memory.Utils`;
+  `InstructionEquivalence.Memory.Basic`;
 * projections and derived consequences live in `Derived` or family utility
   files.
 -/
@@ -268,6 +268,13 @@ abbrev LoadPmpOk (addr : BitVec 64) (width : Nat) (s : SailState) : Prop :=
   phys_access_check (Load Data) Privilege.Machine
     (physaddr.Physaddr addr) width false s = .ok none s
 
+/-- Machine-mode PMP accepts every explicit sub-load inside a memory window. -/
+structure LoadPmpOkWindow
+    (base : BitVec 64) (width : Nat) (s : SailState) : Prop where
+  ok :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+      LoadPmpOk (base + BitVec.ofNat 64 offset) accessWidth s
+
 /-- Machine-mode PMP accepts a data store to `addr` for `width` bytes.
 
 Rust source: `tracer/src/emulator/mmu.rs:13-18`.
@@ -278,6 +285,13 @@ predicate constrains generated Sail to the corresponding no-PMP-fault path.
 abbrev StorePmpOk (addr : BitVec 64) (width : Nat) (s : SailState) : Prop :=
   phys_access_check (Store Data) Privilege.Machine
     (physaddr.Physaddr addr) width false s = .ok none s
+
+/-- Machine-mode PMP accepts every explicit sub-store inside a memory window. -/
+structure StorePmpOkWindow
+    (base : BitVec 64) (width : Nat) (s : SailState) : Prop where
+  ok :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+      StorePmpOk (base + BitVec.ofNat 64 offset) accessWidth s
 
 /-- Machine-mode PMP accepts an AMO at `addr` for `width` bytes.
 
@@ -291,6 +305,13 @@ abbrev AtomicPmpOk
   phys_access_check (Atomic (op, Data, Data)) Privilege.Machine
     (physaddr.Physaddr addr) width true s = .ok none s
 
+/-- Machine-mode PMP accepts every explicit sub-AMO inside a memory window. -/
+structure AtomicPmpOkWindow
+    (op : amoop) (base : BitVec 64) (width : Nat) (s : SailState) : Prop where
+  ok :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+      AtomicPmpOk op (base + BitVec.ofNat 64 offset) accessWidth s
+
 /-- The physical range is not readable MMIO.
 
 Rust source: `tracer/src/emulator/mmu.rs:139-213`.
@@ -302,6 +323,13 @@ device I/O.
 abbrev NotReadableMmio (addr : BitVec 64) (width : Nat) (s : SailState) : Prop :=
   within_mmio_readable (physaddr.Physaddr addr) width s = .ok false s
 
+/-- Every explicit sub-load inside a memory window avoids readable MMIO. -/
+structure NotReadableMmioWindow
+    (base : BitVec 64) (width : Nat) (s : SailState) : Prop where
+  ok :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+      NotReadableMmio (base + BitVec.ofNat 64 offset) accessWidth s
+
 /-- The physical range is not writable MMIO.
 
 Rust source: `tracer/src/emulator/mmu.rs:139-213`.
@@ -312,6 +340,13 @@ device I/O.
 -/
 abbrev NotWritableMmio (addr : BitVec 64) (width : Nat) (s : SailState) : Prop :=
   within_mmio_writable (physaddr.Physaddr addr) width s = .ok false s
+
+/-- Every explicit sub-store inside a memory window avoids writable MMIO. -/
+structure NotWritableMmioWindow
+    (base : BitVec 64) (width : Nat) (s : SailState) : Prop where
+  ok :
+    ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
+      NotWritableMmio (base + BitVec.ofNat 64 offset) accessWidth s
 
 end Assumptions
 
@@ -330,10 +365,15 @@ export Assumptions (
   MstatusMpelpZero
   DwordPresent
   LoadPmpOk
+  LoadPmpOkWindow
   StorePmpOk
+  StorePmpOkWindow
   AtomicPmpOk
+  AtomicPmpOkWindow
   NotReadableMmio
+  NotReadableMmioWindow
   NotWritableMmio
+  NotWritableMmioWindow
 )
 
 end

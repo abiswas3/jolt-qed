@@ -1,6 +1,6 @@
 import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.JoltISA.Semantics.ExpansionBlocks.ALU
-import JoltBytecode.InstructionEquivalence.LoadDefUtils
+import JoltBytecode.InstructionEquivalence.Memory.Read
 import JoltBytecode.InstructionEquivalence.ProofSupport
 
 /-!
@@ -53,7 +53,9 @@ blocks should need: `v0 = ea`, `v1 = loaded_dword_at daddr`, and the Sail state
 has not changed. -/
 theorem setupBlock (rest : JoltISA.Program)
     (imm : BitVec 12) (rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
@@ -96,9 +98,6 @@ theorem setupBlock (rest : JoltISA.Program)
     simpa [daddr, compute_aligned_dword_base_address, load_effective_address,
       aligned_dword_addr_eq] using
       (aligned_dword_addr_is_aligned_dword_access val imm)
-  have hd : DwordLoadEvidence daddr js.sail :=
-    dwordLoadEvidence_of_aligned_phys daddr js.sail h_daddr_aligned
-      (by simpa [daddr] using h_dword_phys)
   have hld_read :
       vmem_read_addr (Virtaddr (js1.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12))) 0 8
         (Load Data) false false false js1.sail =
@@ -107,7 +106,8 @@ theorem setupBlock (rest : JoltISA.Program)
     have haddr0 : daddr + sign_extend (m := 64) (0 : BitVec 12) = daddr := by
       rw [h0]
       norm_num
-    have hread := aligned_dword_vmem_read_reduces daddr js.sail hcfg hd
+    have hread := aligned_dword_vmem_read_reduces daddr js.sail hpriv hmprv
+      h_daddr_aligned (by simpa [daddr] using h_dword_phys)
     rw [show js1.sail = js.sail by rfl]
     have hv1 : js1.vregs JoltISA.inlineTmp1 = daddr := by
       simp only [js1]
@@ -152,7 +152,9 @@ block.  On the aligned path the assertion retires without changing state, so the
 proof immediately reuses `setupBlock`. -/
 theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
     (imm : BitVec 12) (rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& (1 : BitVec 64) = 0)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
@@ -174,7 +176,7 @@ theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
     exact JoltISA.virtual_assert_halfword_alignment_run_aligned rs1 imm
       (ExceptionType.E_Load_Addr_Align ()) js val hrx
       (by simpa [load_effective_address] using halign)
-  rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_phys with
+  rcases setupBlock rest imm rs1 js hpriv hmprv val hrx h_dword_phys with
     ⟨js_load, hrun, hsail, hv0, hv1⟩
   refine ⟨js_load, ?_, hsail, hv0, hv1⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
@@ -187,7 +189,9 @@ aligned path it also retires without changing state, then control passes to the
 common dword setup block. -/
 theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
     (imm : BitVec 12) (rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& (3 : BitVec 64) = 0)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
@@ -209,7 +213,7 @@ theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
     exact JoltISA.virtual_assert_word_alignment_run_aligned rs1 imm
       (ExceptionType.E_Load_Addr_Align ()) js val hrx
       (by simpa [load_effective_address] using halign)
-  rcases setupBlock rest imm rs1 js hcfg val hrx h_dword_phys with
+  rcases setupBlock rest imm rs1 js hpriv hmprv val hrx h_dword_phys with
     ⟨js_load, hrun, hsail, hv0, hv1⟩
   refine ⟨js_load, ?_, hsail, hv0, hv1⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]

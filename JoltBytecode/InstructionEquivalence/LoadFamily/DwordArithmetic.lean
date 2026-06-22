@@ -1,5 +1,5 @@
-import JoltBytecode.InstructionEquivalence.Memory.Utils
-import JoltBytecode.InstructionEquivalence.LoadDefUtils
+import JoltBytecode.InstructionEquivalence.Memory.Read
+import JoltBytecode.InstructionEquivalence.Memory.Windows
 import Mathlib.Tactic.IntervalCases
 
 set_option linter.unusedVariables false
@@ -66,9 +66,12 @@ def word_of_dword (d : BitVec 64) (k : Nat) : BitVec 32 :=
 /-- The `k`-th byte of the loaded dword at `V` is the same as the direct byte
     load at `V + k`. Case-bashes on `k ∈ 0..7`. -/
 theorem loaded_dword_byte_k (s : SailState) (V : BitVec 64) (k : Nat)
+    (hbytes : MemBytesPresentAt s V 8)
+    (h_no_ovf : V.toNat + 7 < 2 ^ 64)
     (hk : k < 8) :
-  byte_of_dword (loaded_dword_at s V) k =
-    loaded_byte_at s (V + BitVec.ofNat 64 k) := by
+  byte_of_dword (loaded_dword_at s V hbytes h_no_ovf) k =
+    loaded_byte_at s (V + BitVec.ofNat 64 k)
+      (hbytes.byte_addr (k := k) hk (by omega)) := by
   unfold byte_of_dword loaded_dword_at
   interval_cases k
   all_goals
@@ -104,20 +107,32 @@ theorem halfword_of_dword_eq_bytes (d : BitVec 64) (k : Nat)
     *unfolded* shift-and-setWidth form (matching the convention of
     `loaded_dword_word_k`). -/
 theorem loaded_dword_halfword_k (s : SailState) (V : BitVec 64) (k : Nat)
+    (hbytes : MemBytesPresentAt s V 8)
+    (h_no_ovf : V.toNat + 7 < 2 ^ 64)
     (hk : k < 7) :
-    ((loaded_dword_at s V) >>> (8 * k)).setWidth 16 =
-    loaded_halfword_at s (V + BitVec.ofNat 64 k) := by
-  change halfword_of_dword (loaded_dword_at s V) k =
+    ((loaded_dword_at s V hbytes h_no_ovf) >>> (8 * k)).setWidth 16 =
     loaded_halfword_at s (V + BitVec.ofNat 64 k)
-  rw [halfword_of_dword_eq_bytes (loaded_dword_at s V) k hk]
+      (memBytesPresentAt_subaccess hbytes (by omega) (by omega))
+      (by
+        rw [toNat_add_small_of_no_ovf V k (by omega)]
+        omega) := by
+  change halfword_of_dword (loaded_dword_at s V hbytes h_no_ovf) k =
+    loaded_halfword_at s (V + BitVec.ofNat 64 k)
+      (memBytesPresentAt_subaccess hbytes (by omega) (by omega))
+      (by
+        rw [toNat_add_small_of_no_ovf V k (by omega)]
+        omega)
+  rw [halfword_of_dword_eq_bytes (loaded_dword_at s V hbytes h_no_ovf) k hk]
   unfold loaded_halfword_at
-  rw [loaded_dword_byte_k s V (k + 1) (by omega), loaded_dword_byte_k s V k (by omega)]
+  rw [loaded_dword_byte_k s V (k + 1) hbytes h_no_ovf (by omega),
+    loaded_dword_byte_k s V k hbytes h_no_ovf (by omega)]
   have haddr : V + BitVec.ofNat 64 (k + 1) = (1 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
     interval_cases k <;> norm_num <;> ac_rfl
-  rw [haddr]
   have haddr' : (1 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 1 := by
     interval_cases k <;> norm_num <;> ac_rfl
-  rw [haddr']
+  have haddr_final : V + BitVec.ofNat 64 (k + 1) = V + BitVec.ofNat 64 k + 1 := by
+    rw [haddr, haddr']
+  rw [loaded_byte_at_eq_of_addr_eq (s := s) haddr_final]
 
 /-- A 32-bit word of a dword is the concatenation of its four bytes (little-
     endian). Side condition `k < 5` because the word must fit within the
@@ -142,31 +157,48 @@ theorem word_of_dword_eq_bytes (d : BitVec 64) (k : Nat)
     `loaded_dword_byte_k`. Stated in the *unfolded* shift-and-setWidth form
     to match LW's `word_of_dword` unfolding style. -/
 theorem loaded_dword_word_k (s : SailState) (V : BitVec 64) (k : Nat)
+    (hbytes : MemBytesPresentAt s V 8)
+    (h_no_ovf : V.toNat + 7 < 2 ^ 64)
     (hk : k < 5) :
-    ((loaded_dword_at s V) >>> (8 * k)).setWidth 32 =
-    loaded_word_at s (V + BitVec.ofNat 64 k) := by
-  change word_of_dword (loaded_dword_at s V) k =
+    ((loaded_dword_at s V hbytes h_no_ovf) >>> (8 * k)).setWidth 32 =
     loaded_word_at s (V + BitVec.ofNat 64 k)
-  rw [word_of_dword_eq_bytes (loaded_dword_at s V) k hk]
+      (memBytesPresentAt_subaccess hbytes (by omega) (by omega))
+      (by
+        rw [toNat_add_small_of_no_ovf V k (by omega)]
+        omega) := by
+  change word_of_dword (loaded_dword_at s V hbytes h_no_ovf) k =
+    loaded_word_at s (V + BitVec.ofNat 64 k)
+      (memBytesPresentAt_subaccess hbytes (by omega) (by omega))
+      (by
+        rw [toNat_add_small_of_no_ovf V k (by omega)]
+        omega)
+  rw [word_of_dword_eq_bytes (loaded_dword_at s V hbytes h_no_ovf) k hk]
   unfold loaded_word_at
-  rw [loaded_dword_byte_k s V (k + 3) (by omega)]
-  rw [loaded_dword_byte_k s V (k + 2) (by omega)]
-  rw [loaded_dword_byte_k s V (k + 1) (by omega)]
-  rw [loaded_dword_byte_k s V k (by omega)]
+  rw [loaded_dword_byte_k s V (k + 3) hbytes h_no_ovf (by omega)]
+  rw [loaded_dword_byte_k s V (k + 2) hbytes h_no_ovf (by omega)]
+  rw [loaded_dword_byte_k s V (k + 1) hbytes h_no_ovf (by omega)]
+  rw [loaded_dword_byte_k s V k hbytes h_no_ovf (by omega)]
   have h3 : V + BitVec.ofNat 64 (k + 3) = (3 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
     interval_cases k <;> norm_num <;> ac_rfl
   have h2 : V + BitVec.ofNat 64 (k + 2) = (2 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
     interval_cases k <;> norm_num <;> ac_rfl
   have h1 : V + BitVec.ofNat 64 (k + 1) = (1 : BitVec 64) + (V + BitVec.ofNat 64 k) := by
     interval_cases k <;> norm_num <;> ac_rfl
-  rw [h3, h2, h1]
   have h3' : (3 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 3 := by
     interval_cases k <;> norm_num <;> ac_rfl
   have h2' : (2 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 2 := by
     interval_cases k <;> norm_num <;> ac_rfl
   have h1' : (1 : BitVec 64) + (V + BitVec.ofNat 64 k) = V + BitVec.ofNat 64 k + 1 := by
     interval_cases k <;> norm_num <;> ac_rfl
-  rw [h3', h2', h1']
+  have h3_final : V + BitVec.ofNat 64 (k + 3) = V + BitVec.ofNat 64 k + 3 := by
+    rw [h3, h3']
+  have h2_final : V + BitVec.ofNat 64 (k + 2) = V + BitVec.ofNat 64 k + 2 := by
+    rw [h2, h2']
+  have h1_final : V + BitVec.ofNat 64 (k + 1) = V + BitVec.ofNat 64 k + 1 := by
+    rw [h1, h1']
+  rw [loaded_byte_at_eq_of_addr_eq (s := s) h3_final]
+  rw [loaded_byte_at_eq_of_addr_eq (s := s) h2_final]
+  rw [loaded_byte_at_eq_of_addr_eq (s := s) h1_final]
 
 -- ============================================================================
 -- Address decomposition facts
@@ -319,40 +351,54 @@ theorem word_offset_cases (addr : BitVec 64) (halign : addr &&& 3 = 0) :
 /-- The byte at an arbitrary address equals the appropriate byte-slice of the
     enclosing aligned dword. Composes `loaded_dword_byte_k` with
     `addr_split_aligned_offset`. -/
-theorem loaded_byte_in_dword (s : SailState) (addr : BitVec 64) :
-    loaded_byte_at s addr =
+theorem loaded_byte_in_dword (s : SailState) (addr : BitVec 64)
+    (hbytes : MemBytesPresentAt s (addr &&& (-8 : BitVec 64)) 8)
+    (h_no_ovf : (addr &&& (-8 : BitVec 64)).toNat + 7 < 2 ^ 64)
+    (hpresent : MemBytePresentAt s addr.toNat) :
+    loaded_byte_at s addr hpresent =
     byte_of_dword
-      (loaded_dword_at s (addr &&& (-8 : BitVec 64)))
+      (loaded_dword_at s (addr &&& (-8 : BitVec 64)) hbytes h_no_ovf)
       (addr &&& 7).toNat := by
-  rw [loaded_dword_byte_k s (addr &&& -8) (addr &&& 7).toNat
+  rw [loaded_dword_byte_k s (addr &&& -8) (addr &&& 7).toNat hbytes h_no_ovf
         (addr_and_seven_lt_eight addr)]
-  rw [addr_split_aligned_offset]
+  exact (loaded_byte_at_eq_of_addr_eq (s := s)
+    (addr_split_aligned_offset addr) _ _).symm
 
 /-- The halfword at a 2-aligned address equals the appropriate halfword-
     slice of the enclosing aligned dword. Requires `halign : addr & 1 = 0`. -/
 theorem loaded_halfword_in_dword (s : SailState) (addr : BitVec 64)
-    (halign : addr &&& 1 = 0) :
-    loaded_halfword_at s addr =
+    (halign : addr &&& 1 = 0)
+    (hbytes_base : MemBytesPresentAt s (addr &&& (-8 : BitVec 64)) 8)
+    (h_no_ovf_base : (addr &&& (-8 : BitVec 64)).toNat + 7 < 2 ^ 64)
+    (hbytes_addr : MemBytesPresentAt s addr 2)
+    (h_no_ovf_addr : addr.toNat + 1 < 2 ^ 64) :
+    loaded_halfword_at s addr hbytes_addr h_no_ovf_addr =
     halfword_of_dword
-      (loaded_dword_at s (addr &&& (-8 : BitVec 64)))
+      (loaded_dword_at s (addr &&& (-8 : BitVec 64)) hbytes_base h_no_ovf_base)
       (addr &&& 7).toNat := by
   unfold halfword_of_dword
-  rw [loaded_dword_halfword_k s (addr &&& -8) (addr &&& 7).toNat
+  rw [loaded_dword_halfword_k s (addr &&& -8) (addr &&& 7).toNat hbytes_base h_no_ovf_base
         (addr_and_seven_halfword_lt_seven addr halign)]
-  rw [addr_split_aligned_offset]
+  exact (loaded_halfword_at_eq_of_addr_eq (s := s)
+    (addr_split_aligned_offset addr) _ _ _ _).symm
 
 /-- The word at a 4-aligned address equals the appropriate word-slice of the
     enclosing aligned dword. Requires `halign : addr & 3 = 0`. -/
 theorem loaded_word_in_dword (s : SailState) (addr : BitVec 64)
-    (halign : addr &&& 3 = 0) :
-    loaded_word_at s addr =
+    (halign : addr &&& 3 = 0)
+    (hbytes_base : MemBytesPresentAt s (addr &&& (-8 : BitVec 64)) 8)
+    (h_no_ovf_base : (addr &&& (-8 : BitVec 64)).toNat + 7 < 2 ^ 64)
+    (hbytes_addr : MemBytesPresentAt s addr 4)
+    (h_no_ovf_addr : addr.toNat + 3 < 2 ^ 64) :
+    loaded_word_at s addr hbytes_addr h_no_ovf_addr =
     word_of_dword
-      (loaded_dword_at s (addr &&& (-8 : BitVec 64)))
+      (loaded_dword_at s (addr &&& (-8 : BitVec 64)) hbytes_base h_no_ovf_base)
       (addr &&& 7).toNat := by
   unfold word_of_dword
-  rw [loaded_dword_word_k s (addr &&& -8) (addr &&& 7).toNat
+  rw [loaded_dword_word_k s (addr &&& -8) (addr &&& 7).toNat hbytes_base h_no_ovf_base
         (addr_and_seven_word_lt_five addr halign)]
-  rw [addr_split_aligned_offset]
+  exact (loaded_word_at_eq_of_addr_eq (s := s)
+    (addr_split_aligned_offset addr) _ _ _ _).symm
 
 -- ============================================================================
 -- Jolt logic-phase bit-vector identities

@@ -1,10 +1,10 @@
+import JoltBytecode.Derived
+import JoltBytecode.InstructionEquivalence.Memory.Alignment
 import JoltBytecode.JoltISA.Environment
-import JoltBytecode.InstructionEquivalence.Memory.Utils
 import Mathlib.Tactic.IntervalCases
 
 set_option linter.unusedVariables false
 set_option linter.unusedSimpArgs false
-set_option linter.unusedTactic false
 set_option mvcgen.warning false
 
 open Sail PreSail LeanRV64D.Functions
@@ -14,15 +14,6 @@ open virtaddr MemoryAccessType mem_payload
 set_option autoImplicit true
 
 noncomputable section
-
--- Inputs: ea (effective address), base (dword-aligned base address)
--- Assumptions: none (this is a definition, not a theorem)
--- Bundles the alignment and address relationship for a word store.
--- ea is the effective address (word-aligned), base is ea rounded down to 8.
-structure DwordStoreSetup (ea base : BitVec 64) : Prop where
-  word_aligned : ea &&& 3 = 0
-  base_is_aligned : base = ea &&& (-8 : BitVec 64)
-  no_ovf : base.toNat + 7 < 2 ^ 64
 
 -- Inputs: dw (64-bit dword), k (byte index)
 -- Assumptions: none
@@ -51,9 +42,12 @@ def state_after_dword_store (s : SailState) (base : BitVec 64) (dword_new : BitV
 /-- Selecting byte `k` from a directly loaded dword recovers the corresponding
 direct byte load. -/
 theorem dword_byte_loaded_dword_at (s : SailState) (base : BitVec 64)
+    (hbytes : MemBytesPresentAt s base 8)
+    (h_no_ovf : base.toNat + 7 < 2 ^ 64)
     (k : Nat) (hk : k < 8) :
-    dword_byte (loaded_dword_at s base) k =
-      loaded_byte_at s (base + BitVec.ofNat 64 k) := by
+    dword_byte (loaded_dword_at s base hbytes h_no_ovf) k =
+      loaded_byte_at s (base + BitVec.ofNat 64 k)
+        (hbytes.byte_addr (k := k) hk (by omega)) := by
   unfold dword_byte loaded_dword_at
   interval_cases k
   all_goals
@@ -199,10 +193,8 @@ theorem vmem_write_addr_dword_store_bridge
               ((1 : Int), (8 : Int)).2 - 1).toNat
           (8 * (↑((false, (0 : Nat), true).2.1 : Nat) : Int) *
               ((1 : Int), (8 : Int)).2).toNat) = data := by
-    norm_num
     exact hdata_full
   rw [hdata_loop]
-  norm_num
   have hea_int :
       mem_write_ea (physaddr.Physaddr addr) (Int.toNat 8)
         false false false s =
@@ -271,30 +263,6 @@ theorem toNat_base_add_small (base : BitVec 64) (k : Nat)
   rw [hk_toNat] at hadd
   exact hadd
 
--- Inputs: s (Sail state), ea, base (addresses), dword_new (dword written), k (byte index)
--- Assumptions: DwordStoreSetup ea base, k < 8
--- Binder-style alternative:
---   ∀ k : Nat, ∀ hk : k < 8,
---     let s' := state_after_dword_store s base dword_new
---     let addr := base + BitVec.ofNat 64 k
---     loaded_byte_at s' addr = dword_byte dword_new k
--- After writing dword_new at base, reading back the byte stored at address
--- base + k gives the k-th little-endian byte of dword_new.
--- That is, the 8 bytes at base..base+7 hold the little-endian bytes of dword_new.
-theorem stored_dword_bytes (s : SailState) (ea base : BitVec 64) (dword_new : BitVec 64)
-    (hsetup : DwordStoreSetup ea base) :
-    ∀ k : Nat, k < 8 →
-      let s' := state_after_dword_store s base dword_new
-      let addr := base + BitVec.ofNat 64 k
-      loaded_byte_at s' addr = dword_byte dword_new k := by
-  intro k hk
-  dsimp
-  have haddr := toNat_base_add_small base k hk hsetup.no_ovf
-  unfold loaded_byte_at state_after_dword_store dword_byte
-  rw [haddr, Std.ExtHashMap.get?_eq_getElem?, ← Std.ExtHashMap.getD_eq_getD_getElem?]
-  simp
-  interval_cases k <;> simp [Std.ExtHashMap.getD_insert]
-
 -- Inputs: m (hash map), k (inserted key), a (lookup key), v (inserted value)
 -- Assumptions: a ≠ k
 -- Looking up a different key after an insert gives the same result as before.
@@ -320,11 +288,11 @@ theorem outside_dword_window_ne (base a i : Nat) (hi : i < 8)
   · omega
 
 -- Inputs: s (Sail state), ea, base (addresses), dword_new (dword written), a (any address)
--- Assumptions: DwordStoreSetup ea base, a is outside base..base+7
+-- Assumptions: a is outside base..base+7
 -- After writing dword_new at base, all addresses outside the 8-byte range
 -- are unchanged in the memory hashmap.
 theorem stored_dword_untouched (s : SailState) (ea base : BitVec 64) (dword_new : BitVec 64)
-    (hsetup : DwordStoreSetup ea base) :
+    :
     ∀ a : Nat, (a < base.toNat ∨ a ≥ base.toNat + 8) →
       (state_after_dword_store s base dword_new).mem.get? a = s.mem.get? a := by
   intro a hout
@@ -421,6 +389,520 @@ def state_after_word_store (s : SailState) (ea : BitVec 64) (word_val : BitVec 3
     |>.insert (ea.toNat + 1) (word_byte word_val 1)
     |>.insert (ea.toNat + 2) (word_byte word_val 2)
     |>.insert (ea.toNat + 3) (word_byte word_val 3) }
+
+/-- Plain RAM byte writes are the canonical one-byte hashmap update. -/
+theorem write_ram_byte_eq_state_after_byte_store
+    (addr : BitVec 64) (data : BitVec 8) (s : SailState) :
+    LeanRV64D.Functions.write_ram write_kind.Write_plain
+      (physaddr.Physaddr addr) 1 data default_meta s =
+    .ok true (state_after_byte_store s addr data) := by
+  dsimp [LeanRV64D.Functions.write_ram,
+    Sail.ConcurrencyInterfaceV1.sail_mem_write,
+    PreSail.ConcurrencyInterfaceV1.sail_mem_write,
+    PreSail.writeBytes,
+    PreSail.writeByte,
+    state_after_byte_store,
+    byte_byte,
+    default_meta,
+    __WriteRAM_Meta]
+  norm_num
+  rfl
+
+/-- Plain RAM halfword writes are the canonical two-byte hashmap update. -/
+theorem write_ram_halfword_eq_state_after_halfword_store
+    (addr : BitVec 64) (data : BitVec 16) (s : SailState) :
+    LeanRV64D.Functions.write_ram write_kind.Write_plain
+      (physaddr.Physaddr addr) 2 data default_meta s =
+    .ok true (state_after_halfword_store s addr data) := by
+  dsimp [LeanRV64D.Functions.write_ram,
+    Sail.ConcurrencyInterfaceV1.sail_mem_write,
+    PreSail.ConcurrencyInterfaceV1.sail_mem_write,
+    PreSail.writeBytes,
+    PreSail.writeByte,
+    state_after_halfword_store,
+    halfword_byte,
+    default_meta,
+    __WriteRAM_Meta]
+  norm_num
+  rfl
+
+/-- Plain RAM word writes are the canonical four-byte hashmap update. -/
+theorem write_ram_word_eq_state_after_word_store
+    (addr : BitVec 64) (data : BitVec 32) (s : SailState) :
+    LeanRV64D.Functions.write_ram write_kind.Write_plain
+      (physaddr.Physaddr addr) 4 data default_meta s =
+    .ok true (state_after_word_store s addr data) := by
+  dsimp [LeanRV64D.Functions.write_ram,
+    Sail.ConcurrencyInterfaceV1.sail_mem_write,
+    PreSail.ConcurrencyInterfaceV1.sail_mem_write,
+    PreSail.writeBytes,
+    PreSail.writeByte,
+    state_after_word_store,
+    word_byte,
+    default_meta,
+    __WriteRAM_Meta]
+  norm_num
+  rfl
+
+/-- The effective-address write phase for plain stores is a pure success. -/
+theorem mem_write_ea_plain_store_ok
+    (addr : BitVec 64) (width : Nat) (s : SailState) :
+    mem_write_ea (physaddr.Physaddr addr) width false false false s =
+      .ok (Ok ()) s := by
+  unfold mem_write_ea
+  simp only [Bool.false_or, Bool.false_and]
+  simp only [Bool.false_eq_true, if_false]
+  unfold write_kind_of_flags
+  unfold write_ram_ea
+  change
+    (EStateM.bind (EStateM.pure write_kind.Write_plain)
+      (fun _ => EStateM.pure (Ok ()))) s =
+      .ok (Ok ()) s
+  rfl
+
+/-- Non-MMIO machine-mode byte writes reduce to the canonical byte-store
+state. -/
+theorem mem_write_value_byte_eq_state_after_byte_store
+    (addr : BitVec 64) (data : BitVec 8) (s : SailState)
+    (hcfg : JoltConfig s)
+    (hpmp : Assumptions.StorePmpOk addr 1 s)
+    (hmmio : Assumptions.NotWritableMmio addr 1 s) :
+    mem_write_value (physaddr.Physaddr addr) 1 data
+      (Store Data) false false false s =
+    .ok (Ok true) (state_after_byte_store s addr data) := by
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
+  have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine
+    hcfg.cur_privilege.value
+  unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
+    checked_mem_write
+  simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
+  unfold effectivePrivilege
+  simp (config := { decide := true }) only [h_mprv, bne, BEq.beq, pure]
+  change
+    (EStateM.bind
+      (EStateM.bind
+        (phys_access_check (Store Data) Privilege.Machine
+          (physaddr.Physaddr addr) 1 false)
+        (fun result =>
+          match result with
+          | some e => EStateM.pure (Err e)
+          | none =>
+              EStateM.bind (within_mmio_writable (physaddr.Physaddr addr) 1)
+                (fun isMmio =>
+                  if isMmio = true then
+                    mmio_write (physaddr.Physaddr addr) 1 data
+                  else
+                    EStateM.bind (write_kind_of_flags false false false)
+                      (fun wk =>
+                        EStateM.bind
+                          (LeanRV64D.Functions.write_ram wk
+                            (physaddr.Physaddr addr) 1 data default_meta)
+                          (fun ok => EStateM.pure (Ok ok))))))
+      (fun result => EStateM.pure result)) s =
+    .ok (Ok true) (state_after_byte_store s addr data)
+  simp only [EStateM.bind, hpmp]
+  simp only [hmmio]
+  simp only [Bool.false_eq_true, if_false]
+  unfold write_kind_of_flags
+  simp only [EStateM.bind, pure, EStateM.pure]
+  rw [write_ram_byte_eq_state_after_byte_store addr data s]
+
+/-- Non-MMIO machine-mode halfword writes reduce to the canonical halfword-store
+state. -/
+theorem mem_write_value_halfword_eq_state_after_halfword_store
+    (addr : BitVec 64) (data : BitVec 16) (s : SailState)
+    (hcfg : JoltConfig s)
+    (hpmp : Assumptions.StorePmpOk addr 2 s)
+    (hmmio : Assumptions.NotWritableMmio addr 2 s) :
+    mem_write_value (physaddr.Physaddr addr) 2 data
+      (Store Data) false false false s =
+    .ok (Ok true) (state_after_halfword_store s addr data) := by
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
+  have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine
+    hcfg.cur_privilege.value
+  unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
+    checked_mem_write
+  simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
+  unfold effectivePrivilege
+  simp (config := { decide := true }) only [h_mprv, bne, BEq.beq, pure]
+  change
+    (EStateM.bind
+      (EStateM.bind
+        (phys_access_check (Store Data) Privilege.Machine
+          (physaddr.Physaddr addr) 2 false)
+        (fun result =>
+          match result with
+          | some e => EStateM.pure (Err e)
+          | none =>
+              EStateM.bind (within_mmio_writable (physaddr.Physaddr addr) 2)
+                (fun isMmio =>
+                  if isMmio = true then
+                    mmio_write (physaddr.Physaddr addr) 2 data
+                  else
+                    EStateM.bind (write_kind_of_flags false false false)
+                      (fun wk =>
+                        EStateM.bind
+                          (LeanRV64D.Functions.write_ram wk
+                            (physaddr.Physaddr addr) 2 data default_meta)
+                          (fun ok => EStateM.pure (Ok ok))))))
+      (fun result => EStateM.pure result)) s =
+    .ok (Ok true) (state_after_halfword_store s addr data)
+  simp only [EStateM.bind, hpmp]
+  simp only [hmmio]
+  simp only [Bool.false_eq_true, if_false]
+  unfold write_kind_of_flags
+  simp only [EStateM.bind, pure, EStateM.pure]
+  rw [write_ram_halfword_eq_state_after_halfword_store addr data s]
+
+/-- Non-MMIO machine-mode word writes reduce to the canonical word-store
+state. -/
+theorem mem_write_value_word_eq_state_after_word_store
+    (addr : BitVec 64) (data : BitVec 32) (s : SailState)
+    (hcfg : JoltConfig s)
+    (hpmp : Assumptions.StorePmpOk addr 4 s)
+    (hmmio : Assumptions.NotWritableMmio addr 4 s) :
+    mem_write_value (physaddr.Physaddr addr) 4 data
+      (Store Data) false false false s =
+    .ok (Ok true) (state_after_word_store s addr data) := by
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
+  have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine
+    hcfg.cur_privilege.value
+  unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
+    checked_mem_write
+  simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
+  unfold effectivePrivilege
+  simp (config := { decide := true }) only [h_mprv, bne, BEq.beq, pure]
+  change
+    (EStateM.bind
+      (EStateM.bind
+        (phys_access_check (Store Data) Privilege.Machine
+          (physaddr.Physaddr addr) 4 false)
+        (fun result =>
+          match result with
+          | some e => EStateM.pure (Err e)
+          | none =>
+              EStateM.bind (within_mmio_writable (physaddr.Physaddr addr) 4)
+                (fun isMmio =>
+                  if isMmio = true then
+                    mmio_write (physaddr.Physaddr addr) 4 data
+                  else
+                    EStateM.bind (write_kind_of_flags false false false)
+                      (fun wk =>
+                        EStateM.bind
+                          (LeanRV64D.Functions.write_ram wk
+                            (physaddr.Physaddr addr) 4 data default_meta)
+                          (fun ok => EStateM.pure (Ok ok))))))
+      (fun result => EStateM.pure result)) s =
+    .ok (Ok true) (state_after_word_store s addr data)
+  simp only [EStateM.bind, hpmp]
+  simp only [hmmio]
+  simp only [Bool.false_eq_true, if_false]
+  unfold write_kind_of_flags
+  simp only [EStateM.bind, pure, EStateM.pure]
+  rw [write_ram_word_eq_state_after_word_store addr data s]
+
+private theorem bitvec_addInt_zero (addr : BitVec 64) :
+    Sail.BitVec.addInt addr 0 = addr := by
+  unfold Sail.BitVec.addInt
+  rw [show BitVec.ofInt 64 0 = (0 : BitVec 64) by decide]
+  exact BitVec.add_zero addr
+
+private theorem extractLsb_full_width {w : Nat} (hpos : 0 < w)
+    (data : BitVec w) :
+    BitVec.extractLsb (w - 1) 0 data = data := by
+  ext i
+  simp
+
+/-- A halfword-aligned store address is an aligned Sail access address. -/
+theorem halfword_store_aligned_access (addr : BitVec 64)
+    (halign : addr &&& (1 : BitVec 64) = 0) :
+    AlignedAccess addr 2 :=
+  { misalign := access_misaligned_2_aligned_false addr halign
+    split := split_misaligned_aligned_2 addr halign }
+
+/-- A word-aligned store address is an aligned Sail access address. -/
+theorem word_store_aligned_access (addr : BitVec 64)
+    (halign : addr &&& (3 : BitVec 64) = 0) :
+    AlignedAccess addr 4 :=
+  { misalign := access_misaligned_4_aligned_false addr halign
+    split := split_misaligned_aligned_4 addr halign }
+
+private theorem byte_store_loop_data_eq (data : BitVec 8) :
+    BitVec.setWidth (8 * (((1 : Int), (1 : Int)).2.toNat))
+      (Sail.BitVec.extractLsb data
+        (8 * ((↑(((false, (0 : Nat), true).2.1) : Nat) : Int) + 1) *
+          ((1 : Int), (1 : Int)).2 - 1).toNat
+        (8 * (↑(((false, (0 : Nat), true).2.1) : Nat) : Int) *
+          ((1 : Int), (1 : Int)).2).toNat) = data := by
+  simp [Sail.BitVec.extractLsb]
+  exact extractLsb_full_width (by omega) data
+
+private theorem halfword_store_loop_data_eq (data : BitVec 16) :
+    BitVec.setWidth (8 * (((1 : Int), (2 : Int)).2.toNat))
+      (Sail.BitVec.extractLsb data
+        (8 * ((↑(((false, (0 : Nat), true).2.1) : Nat) : Int) + 1) *
+          ((1 : Int), (2 : Int)).2 - 1).toNat
+        (8 * (↑(((false, (0 : Nat), true).2.1) : Nat) : Int) *
+          ((1 : Int), (2 : Int)).2).toNat) = data := by
+  simp [Sail.BitVec.extractLsb]
+  exact extractLsb_full_width (by omega) data
+
+private theorem word_store_loop_data_eq (data : BitVec 32) :
+    BitVec.setWidth (8 * (((1 : Int), (4 : Int)).2.toNat))
+      (Sail.BitVec.extractLsb data
+        (8 * ((↑(((false, (0 : Nat), true).2.1) : Nat) : Int) + 1) *
+          ((1 : Int), (4 : Int)).2 - 1).toNat
+        (8 * (↑(((false, (0 : Nat), true).2.1) : Nat) : Int) *
+          ((1 : Int), (4 : Int)).2).toNat) = data := by
+  simp [Sail.BitVec.extractLsb]
+  exact extractLsb_full_width (by omega) data
+
+theorem vmem_write_addr_byte_store_bridge
+    (addr : BitVec 64) (data : BitVec 8) (s : SailState)
+    (hcfg : JoltConfig s) (ha : AlignedAccess addr 1)
+    (hea :
+      mem_write_ea (physaddr.Physaddr addr) 1 false false false s =
+        .ok (Ok ()) s)
+    (hwrite :
+      mem_write_value (physaddr.Physaddr addr) 1 data
+        (Store Data) false false false s =
+        .ok (Ok true) (state_after_byte_store s addr data)) :
+    vmem_write_addr (Virtaddr addr) 1 data
+      (Store Data) false false false s =
+      .ok (Ok true) (state_after_byte_store s addr data) := by
+  unfold vmem_write_addr
+  simp only [ha.misalign, Bool.false_eq_true, if_false]
+  unfold SailME.run PreSail.PreSailME.run
+  have htranslate := translateAddr_store_data_of_joltConfig addr s hcfg
+  simp only [ExceptT.mk, ExceptT.run,
+    SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
+    misaligned_order, sys_misaligned_order_decreasing,
+    bits_of_virtaddr, Sail.assert, PreSail.assert,
+    untilFuelM, ha.split]
+  norm_num
+  unfold untilFuelM.go
+  norm_num
+  rw [byte_store_loop_data_eq data]
+  rw [bitvec_addInt_zero addr]
+  simp only [liftM, monadLift, MonadLift.monadLift,
+    ExceptT.lift, ExceptT.mk, bind, EStateM.bind, EStateM.map,
+    Functor.map, htranslate, ExceptT.bind, ExceptT.bindCont, ExceptT.map,
+    is_store_conditional, if_true, pure, EStateM.pure, ExceptT.pure]
+  have hwrite_int :
+      mem_write_value (physaddr.Physaddr addr) (Int.toNat 1) data
+        (Store Data) false false false s =
+        .ok (Ok true) (state_after_byte_store s addr data) := by
+    change mem_write_value (physaddr.Physaddr addr) 1 data
+      (Store Data) false false false s =
+      .ok (Ok true) (state_after_byte_store s addr data)
+    exact hwrite
+  simp only [EStateM.bind, EStateM.map, hea, hwrite_int]
+  rfl
+
+theorem vmem_write_addr_halfword_store_bridge
+    (addr : BitVec 64) (data : BitVec 16) (s : SailState)
+    (hcfg : JoltConfig s) (ha : AlignedAccess addr 2)
+    (hea :
+      mem_write_ea (physaddr.Physaddr addr) 2 false false false s =
+        .ok (Ok ()) s)
+    (hwrite :
+      mem_write_value (physaddr.Physaddr addr) 2 data
+        (Store Data) false false false s =
+        .ok (Ok true) (state_after_halfword_store s addr data)) :
+    vmem_write_addr (Virtaddr addr) 2 data
+      (Store Data) false false false s =
+      .ok (Ok true) (state_after_halfword_store s addr data) := by
+  unfold vmem_write_addr
+  simp only [ha.misalign, Bool.false_eq_true, if_false]
+  unfold SailME.run PreSail.PreSailME.run
+  have htranslate := translateAddr_store_data_of_joltConfig addr s hcfg
+  simp only [ExceptT.mk, ExceptT.run,
+    SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
+    misaligned_order, sys_misaligned_order_decreasing,
+    bits_of_virtaddr, Sail.assert, PreSail.assert,
+    untilFuelM, ha.split]
+  norm_num
+  unfold untilFuelM.go
+  norm_num
+  rw [halfword_store_loop_data_eq data]
+  rw [bitvec_addInt_zero addr]
+  simp only [liftM, monadLift, MonadLift.monadLift,
+    ExceptT.lift, ExceptT.mk, bind, EStateM.bind, EStateM.map,
+    Functor.map, htranslate, ExceptT.bind, ExceptT.bindCont, ExceptT.map,
+    is_store_conditional, if_true, pure, EStateM.pure, ExceptT.pure]
+  have hea_int :
+      mem_write_ea (physaddr.Physaddr addr) (Int.toNat 2)
+        false false false s =
+        .ok (Ok ()) s := by
+    change mem_write_ea (physaddr.Physaddr addr) 2 false false false s =
+      .ok (Ok ()) s
+    exact hea
+  have hwrite_int :
+      mem_write_value (physaddr.Physaddr addr) (Int.toNat 2) data
+        (Store Data) false false false s =
+        .ok (Ok true) (state_after_halfword_store s addr data) := by
+    change mem_write_value (physaddr.Physaddr addr) 2 data
+      (Store Data) false false false s =
+      .ok (Ok true) (state_after_halfword_store s addr data)
+    exact hwrite
+  simp only [EStateM.bind, EStateM.map, hea_int, hwrite_int]
+  rfl
+
+theorem vmem_write_addr_word_store_bridge
+    (addr : BitVec 64) (data : BitVec 32) (s : SailState)
+    (hcfg : JoltConfig s) (ha : AlignedAccess addr 4)
+    (hea :
+      mem_write_ea (physaddr.Physaddr addr) 4 false false false s =
+        .ok (Ok ()) s)
+    (hwrite :
+      mem_write_value (physaddr.Physaddr addr) 4 data
+        (Store Data) false false false s =
+        .ok (Ok true) (state_after_word_store s addr data)) :
+    vmem_write_addr (Virtaddr addr) 4 data
+      (Store Data) false false false s =
+      .ok (Ok true) (state_after_word_store s addr data) := by
+  unfold vmem_write_addr
+  simp only [ha.misalign, Bool.false_eq_true, if_false]
+  unfold SailME.run PreSail.PreSailME.run
+  have htranslate := translateAddr_store_data_of_joltConfig addr s hcfg
+  simp only [ExceptT.mk, ExceptT.run,
+    SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
+    misaligned_order, sys_misaligned_order_decreasing,
+    bits_of_virtaddr, Sail.assert, PreSail.assert,
+    untilFuelM, ha.split]
+  norm_num
+  unfold untilFuelM.go
+  norm_num
+  rw [word_store_loop_data_eq data]
+  rw [bitvec_addInt_zero addr]
+  simp only [liftM, monadLift, MonadLift.monadLift,
+    ExceptT.lift, ExceptT.mk, bind, EStateM.bind, EStateM.map,
+    Functor.map, htranslate, ExceptT.bind, ExceptT.bindCont, ExceptT.map,
+    is_store_conditional, if_true, pure, EStateM.pure, ExceptT.pure]
+  have hea_int :
+      mem_write_ea (physaddr.Physaddr addr) (Int.toNat 4)
+        false false false s =
+        .ok (Ok ()) s := by
+    change mem_write_ea (physaddr.Physaddr addr) 4 false false false s =
+      .ok (Ok ()) s
+    exact hea
+  have hwrite_int :
+      mem_write_value (physaddr.Physaddr addr) (Int.toNat 4) data
+        (Store Data) false false false s =
+        .ok (Ok true) (state_after_word_store s addr data) := by
+    change mem_write_value (physaddr.Physaddr addr) 4 data
+      (Store Data) false false false s =
+      .ok (Ok true) (state_after_word_store s addr data)
+    exact hwrite
+  simp only [EStateM.bind, EStateM.map, hea_int, hwrite_int]
+  rfl
+
+theorem vmem_write_addr_byte_store_reduces
+    (addr : BitVec 64) (data : BitVec 8) (s : SailState)
+    (hcfg : JoltConfig s)
+    (hpmp : Assumptions.StorePmpOk addr 1 s)
+    (hmmio : Assumptions.NotWritableMmio addr 1 s) :
+    vmem_write_addr (Virtaddr addr) 1 data
+      (Store Data) false false false s =
+      .ok (Ok true) (state_after_byte_store s addr data) :=
+  vmem_write_addr_byte_store_bridge addr data s hcfg
+    (aligned_access_1 addr)
+    (mem_write_ea_plain_store_ok addr 1 s)
+    (mem_write_value_byte_eq_state_after_byte_store addr data s hcfg hpmp hmmio)
+
+theorem vmem_write_addr_halfword_store_reduces
+    (addr : BitVec 64) (data : BitVec 16) (s : SailState)
+    (hcfg : JoltConfig s)
+    (halign : addr &&& (1 : BitVec 64) = 0)
+    (hpmp : Assumptions.StorePmpOk addr 2 s)
+    (hmmio : Assumptions.NotWritableMmio addr 2 s) :
+    vmem_write_addr (Virtaddr addr) 2 data
+      (Store Data) false false false s =
+      .ok (Ok true) (state_after_halfword_store s addr data) :=
+  vmem_write_addr_halfword_store_bridge addr data s hcfg
+    (halfword_store_aligned_access addr halign)
+    (mem_write_ea_plain_store_ok addr 2 s)
+    (mem_write_value_halfword_eq_state_after_halfword_store
+      addr data s hcfg hpmp hmmio)
+
+theorem vmem_write_addr_word_store_reduces
+    (addr : BitVec 64) (data : BitVec 32) (s : SailState)
+    (hcfg : JoltConfig s)
+    (halign : addr &&& (3 : BitVec 64) = 0)
+    (hpmp : Assumptions.StorePmpOk addr 4 s)
+    (hmmio : Assumptions.NotWritableMmio addr 4 s) :
+    vmem_write_addr (Virtaddr addr) 4 data
+      (Store Data) false false false s =
+      .ok (Ok true) (state_after_word_store s addr data) :=
+  vmem_write_addr_word_store_bridge addr data s hcfg
+    (word_store_aligned_access addr halign)
+    (mem_write_ea_plain_store_ok addr 4 s)
+    (mem_write_value_word_eq_state_after_word_store addr data s hcfg hpmp hmmio)
+
+theorem vmem_write_byte_store_reduces (imm : BitVec 12) (rs1 : regidx)
+    (s : SailState) (hcfg : JoltConfig s)
+    (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
+    (data : BitVec 8)
+    (hpmp : Assumptions.StorePmpOk (load_effective_address v imm) 1 s)
+    (hmmio : Assumptions.NotWritableMmio (load_effective_address v imm) 1 s) :
+    vmem_write rs1 (sign_extend (m := 64) imm) 1 data
+      (Store Data) false false false s =
+    .ok (Ok true)
+      (state_after_byte_store s (load_effective_address v imm) data) := by
+  unfold load_effective_address
+  unfold vmem_write
+  unfold SailME.run PreSail.PreSailME.run
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
+    ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
+    ExceptT.pure, ExceptT.lift,
+    MonadLift.monadLift, liftM, monadLift, Functor.map,
+    ext_data_get_addr, hrx,
+    vmem_write_addr_byte_store_reduces _ data s hcfg hpmp hmmio]
+
+theorem vmem_write_halfword_store_reduces (imm : BitVec 12) (rs1 : regidx)
+    (s : SailState) (hcfg : JoltConfig s)
+    (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
+    (data : BitVec 16)
+    (halign : load_effective_address v imm &&& (1 : BitVec 64) = 0)
+    (hpmp : Assumptions.StorePmpOk (load_effective_address v imm) 2 s)
+    (hmmio : Assumptions.NotWritableMmio (load_effective_address v imm) 2 s) :
+    vmem_write rs1 (sign_extend (m := 64) imm) 2 data
+      (Store Data) false false false s =
+    .ok (Ok true)
+      (state_after_halfword_store s (load_effective_address v imm) data) := by
+  unfold load_effective_address at halign hpmp hmmio ⊢
+  unfold vmem_write
+  unfold SailME.run PreSail.PreSailME.run
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
+    ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
+    ExceptT.pure, ExceptT.lift,
+    MonadLift.monadLift, liftM, monadLift, Functor.map,
+    ext_data_get_addr, hrx,
+    vmem_write_addr_halfword_store_reduces _ data s hcfg halign hpmp hmmio]
+
+theorem vmem_write_word_store_reduces (imm : BitVec 12) (rs1 : regidx)
+    (s : SailState) (hcfg : JoltConfig s)
+    (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
+    (data : BitVec 32)
+    (halign : load_effective_address v imm &&& (3 : BitVec 64) = 0)
+    (hpmp : Assumptions.StorePmpOk (load_effective_address v imm) 4 s)
+    (hmmio : Assumptions.NotWritableMmio (load_effective_address v imm) 4 s) :
+    vmem_write rs1 (sign_extend (m := 64) imm) 4 data
+      (Store Data) false false false s =
+    .ok (Ok true)
+      (state_after_word_store s (load_effective_address v imm) data) := by
+  unfold load_effective_address at halign hpmp hmmio ⊢
+  unfold vmem_write
+  unfold SailME.run PreSail.PreSailME.run
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
+    ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
+    ExceptT.pure, ExceptT.lift,
+    MonadLift.monadLift, liftM, monadLift, Functor.map,
+    ext_data_get_addr, hrx,
+    vmem_write_addr_word_store_reduces _ data s hcfg halign hpmp hmmio]
 
 -- Inputs: base (start of word window), a (lookup address), i (byte offset)
 -- Assumptions: i < 4, a lies outside the byte window [base, base+3]
@@ -646,14 +1128,38 @@ theorem write_addr_split_aligned_offset (addr : BitVec 64) :
   have h := Nat.div_add_mod addr.toNat 8
   omega
 
+theorem write_addr_and_seven_lt_eight (addr : BitVec 64) : (addr &&& 7).toNat < 8 := by
+  rw [BitVec.toNat_and]
+  exact Nat.and_lt_two_pow addr.toNat (by decide : (7 : BitVec 64).toNat < 2^3)
+
+theorem write_halfword_offset_cases (addr : BitVec 64) (halign : addr &&& 1 = 0) :
+    (addr &&& 7).toNat = 0 ∨ (addr &&& 7).toNat = 2 ∨
+    (addr &&& 7).toNat = 4 ∨ (addr &&& 7).toNat = 6 := by
+  have hk_lt : (addr &&& 7).toNat < 8 := write_addr_and_seven_lt_eight addr
+  have hk_mod8 : (addr &&& 7).toNat = addr.toNat % 8 := by
+    rw [BitVec.toNat_and]
+    have h7 : BitVec.toNat (7 : BitVec 64) = 7 := by decide
+    rw [h7]
+    rw [show (7 : Nat) = 2^3 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod]
+  have h_even_addr : addr.toNat % 2 = 0 := by
+    have h := congrArg BitVec.toNat halign
+    rw [BitVec.toNat_and] at h
+    have h1 : BitVec.toNat (1 : BitVec 64) = 1 := by decide
+    have h0 : BitVec.toNat (0 : BitVec 64) = 0 := by decide
+    rw [h1, h0] at h
+    rw [show (1 : Nat) = 2^1 - 1 by norm_num, Nat.and_two_pow_sub_one_eq_mod] at h
+    exact h
+  have hk_even : (addr &&& 7).toNat % 2 = 0 := by
+    rw [hk_mod8]
+    omega
+  omega
+
 -- Inputs: addr (effective address)
 -- Assumptions: addr is word aligned
 -- The offset of a word-aligned address within its surrounding dword is either 0 or 4.
 theorem write_word_offset_cases (addr : BitVec 64) (halign : addr &&& 3 = 0) :
     (addr &&& 7).toNat = 0 ∨ (addr &&& 7).toNat = 4 := by
-  have hk_lt : (addr &&& 7).toNat < 8 := by
-    rw [BitVec.toNat_and]
-    exact Nat.and_lt_two_pow addr.toNat (by decide : (7 : BitVec 64).toNat < 2^3)
+  have hk_lt : (addr &&& 7).toNat < 8 := write_addr_and_seven_lt_eight addr
   have hk_mod8 : (addr &&& 7).toNat = addr.toNat % 8 := by
     rw [BitVec.toNat_and]
     have h7 : BitVec.toNat (7 : BitVec 64) = 7 := by decide
@@ -673,12 +1179,13 @@ theorem write_word_offset_cases (addr : BitVec 64) (halign : addr &&& 3 = 0) :
   omega
 
 -- Inputs: ea, base (addresses)
--- Assumptions: DwordStoreSetup ea base
 -- The word offset within the dword is either 0 or 4.
-theorem store_offset_cases (ea base : BitVec 64) (hsetup : DwordStoreSetup ea base) :
+theorem store_offset_cases (ea base : BitVec 64)
+    (hword_aligned : ea &&& 3 = 0)
+    (hbase : base = ea &&& (-8 : BitVec 64)) :
     (ea - base).toNat = 0 ∨ (ea - base).toNat = 4 := by
-  rw [hsetup.base_is_aligned]
-  rcases write_word_offset_cases ea hsetup.word_aligned with hk | hk
+  rw [hbase]
+  rcases write_word_offset_cases ea hword_aligned with hk | hk
   · left
     have hsplit := write_addr_split_aligned_offset ea
     rw [hk] at hsplit
@@ -697,12 +1204,13 @@ theorem store_offset_cases (ea base : BitVec 64) (hsetup : DwordStoreSetup ea ba
     simpa using congrArg BitVec.toNat hsub
 
 -- Inputs: ea, base (addresses)
--- Assumptions: DwordStoreSetup ea base
 -- The effective address is the dword base plus the 0-or-4 word offset, at the Nat level.
 theorem ea_toNat_eq_base_plus_offset (ea base : BitVec 64)
-    (hsetup : DwordStoreSetup ea base) :
+    (hword_aligned : ea &&& 3 = 0)
+    (hbase : base = ea &&& (-8 : BitVec 64))
+    (h_no_ovf : base.toNat + 7 < 2 ^ 64) :
     ea.toNat = base.toNat + (ea - base).toNat := by
-  rcases store_offset_cases ea base hsetup with hoff | hoff
+  rcases store_offset_cases ea base hword_aligned hbase with hoff | hoff
   · have hsub0 : ea - base = (0 : BitVec 64) := by
       apply BitVec.eq_of_toNat_eq
       simpa using hoff
@@ -725,23 +1233,26 @@ theorem ea_toNat_eq_base_plus_offset (ea base : BitVec 64)
     have hsum : base.toNat + 4 < 2 ^ 64 := by
       calc
         base.toNat + 4 ≤ base.toNat + 7 := by omega
-        _ < 2 ^ 64 := hsetup.no_ovf
+        _ < 2 ^ 64 := h_no_ovf
     simpa using (BitVec.toNat_add_of_lt (x := base) (y := (4 : BitVec 64)) (by simpa using hsum))
 
 -- Inputs: ea, base (addresses), j (word-byte offset)
--- Assumptions: DwordStoreSetup ea base, j < 4
+-- Assumptions: j < 4
 -- The target dword index base + ((ea-base)+j) is the same address as ea + j.
 theorem target_addr_eq (ea base : BitVec 64) (j : Nat)
-    (hsetup : DwordStoreSetup ea base) (hj : j < 4) :
+    (hword_aligned : ea &&& 3 = 0)
+    (hbase : base = ea &&& (-8 : BitVec 64))
+    (h_no_ovf : base.toNat + 7 < 2 ^ 64)
+    (hj : j < 4) :
     base.toNat + ((ea - base).toNat + j) = ea.toNat + j := by
-  rw [ea_toNat_eq_base_plus_offset ea base hsetup]
+  rw [ea_toNat_eq_base_plus_offset ea base hword_aligned hbase h_no_ovf]
   omega
 
 -- Inputs: ea, base (addresses), k (dword-byte offset)
--- Assumptions: DwordStoreSetup ea base, k < 8
+-- Assumptions: k < 8
 -- Every dword byte index is either in the target 4-byte subwindow or outside it.
 theorem k_in_target_or_outside (ea base : BitVec 64) (k : Nat)
-    (hsetup : DwordStoreSetup ea base) (hk : k < 8) :
+    (hk : k < 8) :
     (k < (ea - base).toNat ∨ k ≥ (ea - base).toNat + 4) ∨
     ∃ j : Nat, j < 4 ∧ k = (ea - base).toNat + j := by
   by_cases hlt : k < (ea - base).toNat
@@ -761,49 +1272,53 @@ theorem k_in_target_or_outside (ea base : BitVec 64) (k : Nat)
 -- lookup must be exactly some b.
 theorem get?_of_loaded_byte_at_eq
     (s : SailState) (addr : BitVec 64) (b : BitVec 8)
-    (hpop : s.mem.get? addr.toNat ≠ none)
-    (hload : loaded_byte_at s addr = b) :
+    (hpresent : MemBytePresentAt s addr.toNat)
+    (hload : loaded_byte_at s addr hpresent = b) :
     s.mem.get? addr.toNat = some b := by
-  unfold loaded_byte_at at hload
-  cases hget : s.mem.get? addr.toNat with
-  | none =>
-      exfalso
-      exact hpop hget
-  | some v =>
-      have hv : v = b := by
-        rw [hget] at hload
-        simpa using hload
-      simp [hv]
+  rcases hpresent with ⟨v, hv⟩
+  have hv? : s.mem[addr.toNat]? = some v := by
+    simpa [Std.ExtHashMap.get?_eq_getElem?] using hv
+  rcases getElem_of_getElem? hv? with ⟨hmem, hvget⟩
+  have hloaded_v : loaded_byte_at s addr ⟨v, hv⟩ = v := by
+    unfold loaded_byte_at loaded_byte_at_nat
+    simpa [hv] using hvget
+  have hvb : v = b := by
+    rw [← hloaded_v]
+    exact hload
+  simpa [hvb] using hv
 
 -- Inputs: ea, base (addresses), k (dword-window offset)
 -- Assumptions:
---   - DwordStoreSetup ea base
 --   - k lies outside the 4-byte target subwindow inside the dword
 -- The corresponding absolute address base+k lies outside the word-write window ea..ea+3.
 theorem outside_target_addr_outside_word_window
     (ea base : BitVec 64) (k : Nat)
-    (hsetup : DwordStoreSetup ea base)
+    (hword_aligned : ea &&& 3 = 0)
+    (hbase : base = ea &&& (-8 : BitVec 64))
+    (h_no_ovf : base.toNat + 7 < 2 ^ 64)
     (hout : k < (ea - base).toNat ∨ k ≥ (ea - base).toNat + 4) :
     base.toNat + k < ea.toNat ∨ base.toNat + k ≥ ea.toNat + 4 := by
-  rw [ea_toNat_eq_base_plus_offset ea base hsetup]
+  rw [ea_toNat_eq_base_plus_offset ea base hword_aligned hbase h_no_ovf]
   omega
 
 -- Inputs: ea, base (addresses), a (lookup address)
--- Assumptions: DwordStoreSetup ea base, a is outside base..base+7
+-- Assumptions: a is outside base..base+7
 -- If an address lies outside the whole dword window, it also lies outside
 -- the 4-byte word window ea..ea+3 inside that dword.
 theorem outside_dword_window_implies_outside_word_window
     (ea base : BitVec 64) (a : Nat)
-    (hsetup : DwordStoreSetup ea base)
+    (hword_aligned : ea &&& 3 = 0)
+    (hbase : base = ea &&& (-8 : BitVec 64))
+    (h_no_ovf : base.toNat + 7 < 2 ^ 64)
     (hout : a < base.toNat ∨ a ≥ base.toNat + 8) :
     a < ea.toNat ∨ a ≥ ea.toNat + 4 := by
-  rcases write_word_offset_cases ea hsetup.word_aligned with hk | hk
+  rcases write_word_offset_cases ea hword_aligned with hk | hk
   · have hea : ea.toNat = base.toNat := by
       have hsplit := write_addr_split_aligned_offset ea
       rw [hk] at hsplit
       simp at hsplit
       have hEq : base = ea := by
-        rw [hsetup.base_is_aligned]
+        rw [hbase]
         exact hsplit
       exact (congrArg BitVec.toNat hEq).symm
     rw [hea]
@@ -815,14 +1330,14 @@ theorem outside_dword_window_implies_outside_word_window
       rw [hk] at hsplit
       simp at hsplit
       have hEq : base + (4 : BitVec 64) = ea := by
-        rw [hsetup.base_is_aligned]
+        rw [hbase]
         exact hsplit
       have h4 : (4 : BitVec 64).toNat = 4 := by decide
       have hsum : base.toNat + (4 : BitVec 64).toNat < 2 ^ 64 := by
         rw [h4]
         calc
           base.toNat + 4 ≤ base.toNat + 7 := by omega
-          _ < 2 ^ 64 := hsetup.no_ovf
+          _ < 2 ^ 64 := h_no_ovf
       have hnat : (base + (4 : BitVec 64)).toNat = base.toNat + 4 := by
         simpa [h4] using (BitVec.toNat_add_of_lt (x := base) (y := (4 : BitVec 64)) hsum)
       rw [hEq] at hnat
@@ -888,7 +1403,9 @@ theorem mem_eq_of_eq_on_dword_window
 --   dword_new  : the spliced 64-bit dword (dword_orig with word_val inserted)
 --
 -- Assumptions:
---   hsetup     : DwordStoreSetup ea base (alignment, base = ea &&& -8, no overflow)
+--   hword_aligned : ea is word-aligned
+--   hbase      : base is `ea &&& -8`
+--   h_no_ovf   : base + 7 does not overflow
 --   hpop       : the 8 dword bytes at base..base+7 are populated in s.mem
 --   hload      : dword_orig was loaded from memory at base
 --   hsplice    : dword_new has word_val at the ea offset and dword_orig elsewhere
@@ -899,10 +1416,16 @@ theorem mem_eq_of_eq_on_dword_window
 theorem dword_store_splice_eq_word_store_populated
     (s : SailState) (ea base : BitVec 64)
     (word_val : BitVec 32) (dword_orig dword_new : BitVec 64)
-    (hsetup : DwordStoreSetup ea base)
+    (hword_aligned : ea &&& 3 = 0)
+    (hbase : base = ea &&& (-8 : BitVec 64))
+    (h_no_ovf : base.toNat + 7 < 2 ^ 64)
     (hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none)
-    (hload : ∀ k : Nat, k < 8 →
-      dword_byte dword_orig k = loaded_byte_at s (base + BitVec.ofNat 64 k))
+    (hload : ∀ k : Nat, (hk : k < 8) →
+      dword_byte dword_orig k =
+        loaded_byte_at s (base + BitVec.ofNat 64 k)
+          (by
+            rw [toNat_base_add_small base k hk h_no_ovf]
+            exact Option.ne_none_iff_exists'.mp (hpop k hk)))
     (hsplice_target : ∀ j : Nat, j < 4 →
       dword_byte dword_new ((ea - base).toNat + j) = word_byte word_val j)
     (hsplice_other : ∀ k : Nat, k < 8 →
@@ -915,32 +1438,37 @@ theorem dword_store_splice_eq_word_store_populated
       (state_after_word_store s ea word_val).mem
       s.mem
   · intro a ha
-    simpa using stored_dword_untouched s ea base dword_new hsetup a ha
+    simpa using stored_dword_untouched s ea base dword_new a ha
   · intro a ha
     have ha_word : a < ea.toNat ∨ a ≥ ea.toNat + 4 :=
-      outside_dword_window_implies_outside_word_window ea base a hsetup ha
+      outside_dword_window_implies_outside_word_window
+        ea base a hword_aligned hbase h_no_ovf ha
     simpa using stored_word_untouched s ea word_val a ha_word
   · intro k hk
-    rcases k_in_target_or_outside ea base k hsetup hk with hout | ⟨j, hj, hk_eq⟩
+    rcases k_in_target_or_outside ea base k hk with hout | ⟨j, hj, hk_eq⟩
     · rw [stored_dword_get?_hit s base dword_new k hk]
       rw [hsplice_other k hk hout]
       have haddr : (base + BitVec.ofNat 64 k).toNat = base.toNat + k :=
-        toNat_base_add_small base k hk hsetup.no_ovf
-      have hpop' : s.mem.get? (base + BitVec.ofNat 64 k).toNat ≠ none := by
-        simpa [haddr] using hpop k hk
-      have hload' : loaded_byte_at s (base + BitVec.ofNat 64 k) = dword_byte dword_orig k := by
+        toNat_base_add_small base k hk h_no_ovf
+      have hpresent :
+          MemBytePresentAt s (base + BitVec.ofNat 64 k).toNat := by
+        simpa [haddr] using Option.ne_none_iff_exists'.mp (hpop k hk)
+      have hload' :
+          loaded_byte_at s (base + BitVec.ofNat 64 k) hpresent =
+            dword_byte dword_orig k := by
         simpa using (hload k hk).symm
       have hsome : s.mem.get? (base.toNat + k) = some (dword_byte dword_orig k) := by
         simpa [haddr] using get?_of_loaded_byte_at_eq s (base + BitVec.ofNat 64 k)
-          (dword_byte dword_orig k) hpop' hload'
+          (dword_byte dword_orig k) hpresent hload'
       rw [← hsome]
       have haddr_out : base.toNat + k < ea.toNat ∨ base.toNat + k ≥ ea.toNat + 4 :=
-        outside_target_addr_outside_word_window ea base k hsetup hout
+        outside_target_addr_outside_word_window
+          ea base k hword_aligned hbase h_no_ovf hout
       symm
       simpa using stored_word_untouched s ea word_val (base.toNat + k) haddr_out
     · rw [hk_eq]
       rw [stored_dword_get?_hit s base dword_new ((ea - base).toNat + j) (by omega)]
       rw [hsplice_target j hj]
-      rw [target_addr_eq ea base j hsetup hj]
+      rw [target_addr_eq ea base j hword_aligned hbase h_no_ovf hj]
       symm
       simpa using stored_word_get?_hit s ea word_val j hj

@@ -210,8 +210,10 @@ theorem sllwProgram_eq_sail
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     sllwProgramEqSailStatement rs2 rs1 rd js h := by
   unfold sllwProgramEqSailStatement
-  obtain ⟨v1, h_read_rs1⟩ := h.rs1_readable.exists_value
-  obtain ⟨v2, h_read_rs2⟩ := h.rs2_readable.exists_value
+  let v1 := h.rs1_val
+  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
+  let v2 := h.rs2_val
+  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read
   have h_project_initial : System.systemProject js = js.sail :=
     Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   by_cases hrd : rd = regidx.Regidx 0

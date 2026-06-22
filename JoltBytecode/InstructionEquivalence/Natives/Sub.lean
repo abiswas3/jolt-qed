@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles
+import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.JoltISA.Semantics.Instructions.Sub
 

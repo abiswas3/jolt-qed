@@ -26,23 +26,34 @@ theorem readReg_eq_of_get? (r : Register) (s : SailState) (v : RegisterType r)
 
 /-- Under Jolt's M-mode/MPRV=0 execution assumptions, a normal data-load
     address translation is the bare identity translation. -/
-theorem translateAddr_load_data_of_joltConfig
-    (addr : BitVec 64) (s : SailState) (hcfg : JoltConfig s) :
+theorem translateAddr_load_data_of_machine_mprv_zero
+    (addr : BitVec 64) (s : SailState)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s) :
     translateAddr (Virtaddr addr) (Load Data) s =
       .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s := by
-  obtain ⟨mval, hmstatus, hmprv⟩ := hcfg.mstatus_mprv.value
+  obtain ⟨mval, hmstatus, hmprv_zero⟩ := hmprv.value
   have h_ms_read := readReg_eq_of_get? Register.mstatus s mval hmstatus
   have h_priv := readReg_eq_of_get? Register.cur_privilege s Privilege.Machine
-    hcfg.cur_privilege.value
+    hpriv.value
   unfold translateAddr SailME.run PreSail.PreSailME.run
   simp (config := { decide := true }) [bind, EStateM.bind, pure, EStateM.pure, EStateM.map,
         ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
         ExceptT.pure, ExceptT.lift,
         MonadLift.monadLift, liftM, monadLift, Functor.map,
         effectivePrivilege, translationMode, is_shadow_stack_access,
-        h_ms_read, h_priv, hmprv,
+        h_ms_read, h_priv, hmprv_zero,
         bits_of_virtaddr, BEq.beq]
   rfl
+
+/-- Compatibility wrapper for code that still carries the old `JoltConfig`
+bundle. New code should pass the primitive assumptions directly. -/
+theorem translateAddr_load_data_of_joltConfig
+    (addr : BitVec 64) (s : SailState) (hcfg : JoltConfig s) :
+    translateAddr (Virtaddr addr) (Load Data) s =
+      .ok (Ok (physaddr.Physaddr addr, init_ext_ptw)) s :=
+  translateAddr_load_data_of_machine_mprv_zero
+    addr s hcfg.cur_privilege hcfg.mstatus_mprv
 
 /-- Under Jolt's M-mode/MPRV=0 execution assumptions, a normal data-store
     address translation is the bare identity translation. -/

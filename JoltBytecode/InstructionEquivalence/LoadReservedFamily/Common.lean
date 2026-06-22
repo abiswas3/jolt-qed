@@ -1,5 +1,5 @@
 import JoltBytecode.JoltISA.Expansions.LoadReserved
-import JoltBytecode.InstructionEquivalence.LoadDefUtils
+import JoltBytecode.InstructionEquivalence.Memory.Read
 
 /-!
 # Load-reserved shared helpers

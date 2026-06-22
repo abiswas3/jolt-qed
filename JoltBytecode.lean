@@ -4,10 +4,10 @@
 
 -- Infrastructure
 import JoltBytecode.Assumptions                                           -- primitive proof assumptions
+import JoltBytecode.Memory                                         -- pure memory address expressions
 import JoltBytecode.Bundles                                               -- proof-facing assumption bundles
 import JoltBytecode.Derived                                               -- facts proved from primitive assumptions
-import JoltBytecode.InstructionEquivalence.Memory.Derived                 -- generic memory fact derivations
-import JoltBytecode.InstructionEquivalence.ALUFamily.Bundles              -- ALU source-read bundles
+import JoltBytecode.InstructionEquivalence.Memory.Windows                 -- generic memory fact derivations
 import JoltBytecode.JoltISA.Environment                                  -- Sail helpers
 import JoltBytecode.JoltISA.Semantics.RegisterOps                                  -- register lemmas, stateAfterWrite
 import JoltBytecode.InstructionEquivalence.ProofSupport                                       -- @[spec], generic W-type framework
@@ -56,8 +56,6 @@ import JoltBytecode.InstructionEquivalence.ALUFamily.Itype.Srliw                
 -- ============================================================================
 -- Instruction proofs — Memory (load)
 -- ============================================================================
-import JoltBytecode.InstructionEquivalence.LoadFamily.Bundles
-import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
 import JoltBytecode.InstructionEquivalence.LoadFamily.LW_main     -- DONE: LW   (width=4, signed)
 import JoltBytecode.InstructionEquivalence.LoadFamily.LB_main     -- DONE: LB   (width=1, signed)
 import JoltBytecode.InstructionEquivalence.LoadFamily.LBU_main    -- DONE: LBU  (width=1, unsigned)
@@ -68,9 +66,6 @@ import JoltBytecode.InstructionEquivalence.LoadFamily.LWU_main    -- DONE: LWU  
 -- ============================================================================
 -- Instruction proofs — Memory (store)
 -- ============================================================================
-import JoltBytecode.InstructionEquivalence.StoreFamily.Bundles
-import JoltBytecode.InstructionEquivalence.StoreFamily.Derived
-import JoltBytecode.InstructionEquivalence.StoreFamily.MemoryPipeline
 import JoltBytecode.InstructionEquivalence.StoreFamily.Sb_main     -- DONE: SB   (width=1)
 import JoltBytecode.InstructionEquivalence.StoreFamily.Sh_main     -- DONE: SH   (width=2)
 import JoltBytecode.InstructionEquivalence.StoreFamily.Sw_main     -- DONE: SW   (width=4)
@@ -78,8 +73,6 @@ import JoltBytecode.InstructionEquivalence.StoreFamily.Sw_main     -- DONE: SW  
 -- ============================================================================
 -- Instruction proofs — Atomic (AMO)
 -- ============================================================================
-import JoltBytecode.InstructionEquivalence.AtomicFamily.Bundles
-import JoltBytecode.InstructionEquivalence.AtomicFamily.Derived
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoaddd
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoandd
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Amoord

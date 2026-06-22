@@ -1,7 +1,7 @@
 import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 import JoltBytecode.JoltISA.VirtualRegisters
-import JoltBytecode.InstructionEquivalence.Common_Memory_helpers
+import JoltBytecode.InstructionEquivalence.Memory.Read
 
 open Sail PreSail LeanRV64D.Functions
 open virtaddr MemoryAccessType mem_payload
@@ -97,7 +97,8 @@ theorem loadSetupPhase_run (imm : BitVec 12) (rs1 : regidx)
 `v1`, without changing Sail state or `v0`. -/
 theorem loadDwordPhase_run (js : SailJoltState) (js_setup : SailJoltState)
     (addr : BitVec 64)
-    (hcfg : JoltConfig js.sail)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (hsetup_sail : js_setup.sail = js.sail)
     (hsetup_v1 : js_setup.vregs JoltISA.inlineTmp1 = addr)
     (haligned : AlignedDwordAccess addr)
@@ -111,19 +112,19 @@ theorem loadDwordPhase_run (js : SailJoltState) (js_setup : SailJoltState)
   let js_load : SailJoltState :=
     { sail := js.sail
       vregs := fun r => if r = JoltISA.inlineTmp1 then dword else js_setup.vregs r }
-  have hcfg_setup : JoltConfig js_setup.sail := by
-    simpa only [hsetup_sail] using hcfg
+  have hpriv_setup : Assumptions.CurPrivilegeMachine js_setup.sail := by
+    simpa only [hsetup_sail] using hpriv
+  have hmprv_setup : Assumptions.MstatusMprvZero js_setup.sail := by
+    simpa only [hsetup_sail] using hmprv
   have hphys_setup : FlatPhysMem addr 8 js_setup.sail := by
     simpa only [hsetup_sail] using hphys
-  have hdword : DwordLoadEvidence addr js_setup.sail :=
-    dword_load_evidence_of_aligned_phys
-      addr js_setup.sail haligned hphys_setup
   have h_ld_succeeds :
       (JoltISA.execInstr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0)).run js_setup =
         .ok RETIRE_SUCCESS js_load := by
     have hld :=
-      vreg_LD_run_of_dword_evidence JoltISA.inlineTmp1 JoltISA.inlineTmp1
-        js_setup addr hsetup_v1 hcfg_setup hdword (by unfold WritableVReg; decide)
+      vreg_LD_run_of_aligned_dword_phys JoltISA.inlineTmp1 JoltISA.inlineTmp1
+        js_setup addr hsetup_v1 hpriv_setup hmprv_setup haligned hphys_setup
+        (by unfold WritableVReg; decide)
     simpa only [js_load, dword, hsetup_sail] using hld
   have h_phase_succeeds :
       JoltISA.Program.Run loadDwordPhase js_setup js_load := by
@@ -142,7 +143,8 @@ theorem loadDwordPhase_run (js : SailJoltState) (js_setup : SailJoltState)
 loads the enclosing dword into `v1`. -/
 theorem loadPhase_run (imm : BitVec 12) (rs1 : regidx)
     (js : SailJoltState) (val : BitVec 64)
-    (hcfg : JoltConfig js.sail)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (h_dword_phys :
       FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
@@ -161,7 +163,7 @@ theorem loadPhase_run (imm : BitVec 12) (rs1 : regidx)
       (aligned_dword_addr_is_aligned_dword_access val imm)
   obtain ⟨js_load, h_load_succeeds, h_load_sail, h_load_v0_raw, h_load_v1⟩ :=
     loadDwordPhase_run js js_setup (compute_aligned_dword_base_address val imm)
-      hcfg h_setup_sail h_setup_v1 h_daddr_aligned h_dword_phys
+      hpriv hmprv h_setup_sail h_setup_v1 h_daddr_aligned h_dword_phys
   have h_phase_succeeds :
       JoltISA.Program.Run (loadPhase imm rs1) js js_load := by
     unfold loadPhase

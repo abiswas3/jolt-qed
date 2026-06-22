@@ -1,4 +1,5 @@
 import JoltBytecode.Assumptions
+import JoltBytecode.Memory
 
 /-!
 # Jolt proof bundles
@@ -29,17 +30,47 @@ structure JoltConfig (s : SailState) : Prop where
   mstatus_mprv : Assumptions.MstatusMprvZero s
 
 -- ============================================================================
+-- ALU-family bundles
+-- ============================================================================
+
+namespace ALUFamily
+
+/-- Public assumptions for one-source ALU instructions.
+
+This bundles exactly one source-register read: `rs1` has value `rs1_val` in the
+initial Sail state. -/
+structure UnarySourceReadAssumptions (rs1 : regidx) (js : SailJoltState) where
+  rs1_val : BitVec 64
+  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+
+/-- Public assumptions for two-source ALU instructions.
+
+This bundles exactly the two source-register reads: `rs1` and `rs2` have the
+recorded values in the initial Sail state. -/
+structure BinarySourceReadAssumptions
+    (rs2 rs1 : regidx) (js : SailJoltState) where
+  rs1_val : BitVec 64
+  rs2_val : BitVec 64
+  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+  rs2_read : rX_bits rs2 js.sail = .ok rs2_val js.sail
+
+end ALUFamily
+
+-- ============================================================================
 -- Register/CSR-link bundles
 -- ============================================================================
 
 /-- Public assumptions for two-source instructions proved under
 `System.systemProject`.
 
-Every field is a primitive `Assumptions.*` predicate. -/
+Source-register reads carry named values and concrete read facts. The remaining
+fields are primitive CSR-link assumptions. -/
 structure BinarySourceReadWithLinkedCSRs
     (rs2 rs1 : regidx) (js : SailJoltState) : Type where
-  rs1_readable : Assumptions.XRegReadable rs1 js.sail
-  rs2_readable : Assumptions.XRegReadable rs2 js.sail
+  rs1_val : BitVec 64
+  rs2_val : BitVec 64
+  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+  rs2_read : rX_bits rs2 js.sail = .ok rs2_val js.sail
   mstatus_matches : Assumptions.MstatusVRegMatchesSail js
   mtvec_matches : Assumptions.MtvecVRegMatchesSail js
   mscratch_matches : Assumptions.MscratchVRegMatchesSail js
@@ -47,6 +78,7 @@ structure BinarySourceReadWithLinkedCSRs
   mcause_matches : Assumptions.McauseVRegMatchesSail js
   mtval_matches : Assumptions.MtvalVRegMatchesSail js
 
+-- Just filter down the above structure for the linked CSR's
 def BinarySourceReadWithLinkedCSRs.linkedCSRs
     {rs2 rs1 : regidx} {js : SailJoltState}
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
@@ -59,35 +91,15 @@ def BinarySourceReadWithLinkedCSRs.linkedCSRs
   ⟨h.mstatus_matches, h.mtvec_matches, h.mscratch_matches, h.mepc_matches,
     h.mcause_matches, h.mtval_matches⟩
 
-noncomputable def BinarySourceReadWithLinkedCSRs.rs1_val
-    {rs2 rs1 : regidx} {js : SailJoltState}
-    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : BitVec 64 :=
-  Classical.choose h.rs1_readable.exists_value
-
-theorem BinarySourceReadWithLinkedCSRs.rs1_read
-    {rs2 rs1 : regidx} {js : SailJoltState}
-    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
-    rX_bits rs1 js.sail = .ok h.rs1_val js.sail :=
-  Classical.choose_spec h.rs1_readable.exists_value
-
-noncomputable def BinarySourceReadWithLinkedCSRs.rs2_val
-    {rs2 rs1 : regidx} {js : SailJoltState}
-    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : BitVec 64 :=
-  Classical.choose h.rs2_readable.exists_value
-
-theorem BinarySourceReadWithLinkedCSRs.rs2_read
-    {rs2 rs1 : regidx} {js : SailJoltState}
-    (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
-    rX_bits rs2 js.sail = .ok h.rs2_val js.sail :=
-  Classical.choose_spec h.rs2_readable.exists_value
-
 /-- Public assumptions for one-source instructions proved under
 `System.systemProject`.
 
-Every field is a primitive `Assumptions.*` predicate. -/
+Source-register reads carry named values and concrete read facts. The remaining
+fields are primitive CSR-link assumptions. -/
 structure UnarySourceReadWithLinkedCSRs
     (rs1 : regidx) (js : SailJoltState) : Type where
-  rs1_readable : Assumptions.XRegReadable rs1 js.sail
+  rs1_val : BitVec 64
+  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
   mstatus_matches : Assumptions.MstatusVRegMatchesSail js
   mtvec_matches : Assumptions.MtvecVRegMatchesSail js
   mscratch_matches : Assumptions.MscratchVRegMatchesSail js
@@ -108,49 +120,136 @@ def UnarySourceReadWithLinkedCSRs.linkedCSRs
     h.mcause_matches, h.mtval_matches⟩
 
 -- ============================================================================
--- Memory-window bundles
+-- Load-family bundles
 -- ============================================================================
 
-/-- Primitive assumptions for one 8-byte readable dword window.
+namespace LoadFamily
 
-This is used by Jolt expansions that read an enclosing dword and then derive
-smaller Sail reads from that window. -/
-structure DwordReadWindowAssumptions (base : BitVec 64) (s : SailState) :
-    Prop where
-  bytes : Assumptions.DwordPresent base s
+/-- Shared public assumptions for Jolt load-family equivalence theorems.
+
+All current load expansions (`LB/LBU/LH/LHU/LW/LWU`) read the enclosing
+8-byte dword on the Jolt side. The exact Sail byte/halfword/word access is
+derived directly from this window in the instruction proofs; it is not repeated
+here. -/
+structure LoadProgramEqSailAssumptions (imm : BitVec 12) (rs1 : regidx)
+    (js : SailJoltState)
+    extends UnarySourceReadWithLinkedCSRs rs1 js where
+  cur_privilege : Assumptions.CurPrivilegeMachine js.sail
+  mstatus_mprv : Assumptions.MstatusMprvZero js.sail
+  dword_present :
+    Assumptions.DwordPresent
+      (compute_aligned_dword_base_address rs1_val imm) js.sail
   load_pmp :
-    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
-      Assumptions.LoadPmpOk (base + BitVec.ofNat 64 offset) accessWidth s
+    Assumptions.LoadPmpOkWindow
+      (compute_aligned_dword_base_address rs1_val imm) 8 js.sail
   not_readable_mmio :
-    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
-      Assumptions.NotReadableMmio
-        (base + BitVec.ofNat 64 offset) accessWidth s
+    Assumptions.NotReadableMmioWindow
+      (compute_aligned_dword_base_address rs1_val imm) 8 js.sail
 
-/-- Primitive assumptions for one 8-byte dword window that Jolt both reads and
-writes.
+def LoadProgramEqSailAssumptions.linkedCSRs
+    {imm : BitVec 12} {rs1 : regidx} {js : SailJoltState}
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
+    Assumptions.MstatusVRegMatchesSail js ∧
+    Assumptions.MtvecVRegMatchesSail js ∧
+    Assumptions.MscratchVRegMatchesSail js ∧
+    Assumptions.MepcVRegMatchesSail js ∧
+    Assumptions.McauseVRegMatchesSail js ∧
+    Assumptions.MtvalVRegMatchesSail js :=
+  ⟨h.mstatus_matches, h.mtvec_matches, h.mscratch_matches, h.mepc_matches,
+    h.mcause_matches, h.mtval_matches⟩
 
-This is used by Jolt store-style expansions that load the enclosing dword,
-splice a narrower value, and store the enclosing dword back. -/
-structure DwordReadWriteWindowAssumptions (base : BitVec 64) (s : SailState) :
-    Prop extends DwordReadWindowAssumptions base s where
+end LoadFamily
+
+-- ============================================================================
+-- Store-family bundles
+-- ============================================================================
+
+namespace StoreFamily
+
+/-- Shared public assumptions for Jolt store-family equivalence theorems.
+
+Store expansions read the enclosing dword, splice in the source register's
+low bytes, and write the enclosing dword back. Native Sail writes only the
+instruction width; that exact write fact is derived from this 8-byte window. -/
+structure StoreProgramEqSailAssumptions
+    (imm : BitVec 12) (rs2 rs1 : regidx) (js : SailJoltState)
+    extends BinarySourceReadWithLinkedCSRs rs2 rs1 js where
+  cur_privilege : Assumptions.CurPrivilegeMachine js.sail
+  mstatus_mprv : Assumptions.MstatusMprvZero js.sail
+  dword_present :
+    Assumptions.DwordPresent
+      (compute_aligned_dword_base_address rs1_val imm) js.sail
+  load_pmp :
+    Assumptions.LoadPmpOkWindow
+      (compute_aligned_dword_base_address rs1_val imm) 8 js.sail
+  not_readable_mmio :
+    Assumptions.NotReadableMmioWindow
+      (compute_aligned_dword_base_address rs1_val imm) 8 js.sail
   store_pmp :
-    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
-      Assumptions.StorePmpOk (base + BitVec.ofNat 64 offset) accessWidth s
+    Assumptions.StorePmpOkWindow
+      (compute_aligned_dword_base_address rs1_val imm) 8 js.sail
   not_writable_mmio :
-    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
-      Assumptions.NotWritableMmio
-        (base + BitVec.ofNat 64 offset) accessWidth s
+    Assumptions.NotWritableMmioWindow
+      (compute_aligned_dword_base_address rs1_val imm) 8 js.sail
 
-/-- Primitive assumptions for one 8-byte AMO/Jolt memory window.
+def StoreProgramEqSailAssumptions.linkedCSRs
+    {imm : BitVec 12} {rs2 rs1 : regidx} {js : SailJoltState}
+    (h : StoreProgramEqSailAssumptions imm rs2 rs1 js) :
+    Assumptions.MstatusVRegMatchesSail js ∧
+    Assumptions.MtvecVRegMatchesSail js ∧
+    Assumptions.MscratchVRegMatchesSail js ∧
+    Assumptions.MepcVRegMatchesSail js ∧
+    Assumptions.McauseVRegMatchesSail js ∧
+    Assumptions.MtvalVRegMatchesSail js :=
+  ⟨h.mstatus_matches, h.mtvec_matches, h.mscratch_matches, h.mepc_matches,
+    h.mcause_matches, h.mtval_matches⟩
 
-The `base` parameter is the important address: `.D` AMOs use the architectural
-address, while `.W` AMOs use the enclosing aligned dword base. -/
-structure AmoDwordWindowAssumptions
-    (op : amoop) (base : BitVec 64) (s : SailState) :
-    Prop extends DwordReadWriteWindowAssumptions base s where
+end StoreFamily
+
+-- ============================================================================
+-- Atomic-family bundles
+-- ============================================================================
+
+namespace AtomicFamily
+
+/-- The enclosing dword used by `.W` AMO expansions. -/
+abbrev amoWordAssumptionBase (addr : BitVec 64) : BitVec 64 :=
+  addr &&& (-8 : BitVec 64)
+
+/-- Public assumptions for a dword AMO equivalence theorem. -/
+structure AmoDwordProgramEqSailAssumptions
+    (op : amoop) (rs2 rs1 rd : regidx) (js : SailJoltState)
+    extends ALUFamily.BinarySourceReadAssumptions rs2 rs1 js where
+  rd_readable : Assumptions.XRegReadable rd js.sail
+  cur_privilege : Assumptions.CurPrivilegeMachine js.sail
+  mstatus_mprv : Assumptions.MstatusMprvZero js.sail
+  dword_present : Assumptions.DwordPresent rs1_val js.sail
+  load_pmp : Assumptions.LoadPmpOkWindow rs1_val 8 js.sail
+  not_readable_mmio : Assumptions.NotReadableMmioWindow rs1_val 8 js.sail
+  store_pmp : Assumptions.StorePmpOkWindow rs1_val 8 js.sail
+  not_writable_mmio : Assumptions.NotWritableMmioWindow rs1_val 8 js.sail
+  atomic_pmp : Assumptions.AtomicPmpOkWindow op rs1_val 8 js.sail
+
+/-- Public assumptions for a word AMO equivalence theorem. -/
+structure AmoWordProgramEqSailAssumptions
+    (op : amoop) (rs2 rs1 rd : regidx) (js : SailJoltState)
+    extends ALUFamily.BinarySourceReadAssumptions rs2 rs1 js where
+  rd_readable : Assumptions.XRegReadable rd js.sail
+  cur_privilege : Assumptions.CurPrivilegeMachine js.sail
+  mstatus_mprv : Assumptions.MstatusMprvZero js.sail
+  dword_present :
+    Assumptions.DwordPresent (amoWordAssumptionBase rs1_val) js.sail
+  load_pmp :
+    Assumptions.LoadPmpOkWindow (amoWordAssumptionBase rs1_val) 8 js.sail
+  not_readable_mmio :
+    Assumptions.NotReadableMmioWindow (amoWordAssumptionBase rs1_val) 8 js.sail
+  store_pmp :
+    Assumptions.StorePmpOkWindow (amoWordAssumptionBase rs1_val) 8 js.sail
+  not_writable_mmio :
+    Assumptions.NotWritableMmioWindow (amoWordAssumptionBase rs1_val) 8 js.sail
   atomic_pmp :
-    ∀ offset accessWidth : Nat, offset + accessWidth ≤ 8 →
-      Assumptions.AtomicPmpOk op
-        (base + BitVec.ofNat 64 offset) accessWidth s
+    Assumptions.AtomicPmpOkWindow op (amoWordAssumptionBase rs1_val) 8 js.sail
+
+end AtomicFamily
 
 end

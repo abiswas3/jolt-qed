@@ -1,10 +1,9 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Expansions.Load
-import JoltBytecode.InstructionEquivalence.Memory.Utils
-import JoltBytecode.InstructionEquivalence.LoadDefUtils
+import JoltBytecode.InstructionEquivalence.Memory.Read
 import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
-import JoltBytecode.InstructionEquivalence.LoadFamily.Derived
+import JoltBytecode.InstructionEquivalence.Memory.Windows
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
 import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
@@ -73,10 +72,12 @@ theorem jolt_lb_bridge (s : SailState) (addr : BitVec 64) :
 
 /-- Sail-side `execute_LOAD imm rs1 rd false 1` reduces to
     `stateAfterWrite rd (sign_extend (loaded_byte_at ea))` under the
-    `LoadReadEvidence` bundle for size 1. No `h_no_ovf` needed —
+    flat memory facts for size 1. No `h_no_ovf` needed —
     single-byte reads cannot overflow the 64-bit address space. -/
 theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (hphys : FlatPhysMem (load_effective_address val imm) 1 js.sail) :
     (execute_LOAD imm rs1 rd false 1).run js.sail =
@@ -84,18 +85,15 @@ theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
       (stateAfterWrite js.sail rd
         (sign_extend (m := 64)
           (loaded_byte_at js.sail (load_effective_address val imm)))) := by
-  have hload : LoadReadEvidence (load_effective_address val imm) 1 js.sail :=
-    loadReadEvidence_of_aligned_phys
-      (load_effective_address val imm) 1 js.sail
-      (aligned_access_1 (load_effective_address val imm)) hphys
   unfold execute_LOAD
   simp only [bind, pure]
   unfold Sail.assert LeanRV64D.Functions.xlen_bytes
   simp (config := { decide := true }) only []
   simp (config := { decide := true }) only [PreSail.assert, EStateM.bind, pure, EStateM.pure,
        EStateM.run, if_true]
-  rw [vmem_read_byte_reduces imm rs1 js.sail hcfg val hrx hload.aligned
-      (mem_read_1_eq_loaded_byte _ js.sail hcfg hload.phys)]
+  rw [vmem_read_byte_reduces imm rs1 js.sail hpriv hmprv val hrx
+      (aligned_access_1 (load_effective_address val imm))
+      (mem_read_1_eq_loaded_byte _ js.sail hpriv hmprv hphys)]
   simp only [extend_value, Bool.false_eq_true, if_false, EStateM.bind, EStateM.pure]
   obtain ⟨s', hw⟩ := wX_shape rd
     (sign_extend (m := 64) (loaded_byte_at js.sail (load_effective_address val imm)))
@@ -120,7 +118,9 @@ positioning, and signed `SRAI` writeback.  The only LB-specific ingredient is
 `jolt_lb_bridge`, the pure bit-vector fact connecting that shifted dword to
 Sail's direct byte load. -/
 theorem lbProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js' : SailJoltState,
@@ -135,7 +135,7 @@ theorem lbProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
     .instr (.XORI (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (7 : BitVec 12)) <|
     JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
     JoltISA.sllBlock (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp2 writeTail
-  rcases LoadProgramBlocks.setupBlock logicTail imm rs1 js hcfg val hrx
+  rcases LoadProgramBlocks.setupBlock logicTail imm rs1 js hpriv hmprv val hrx
       h_dword_phys with
     ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
   rcases LoadProgramBlocks.xoriSlliSllBlock writeTail imm (7 : BitVec 12)
@@ -201,11 +201,12 @@ theorem lbProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
     lbProgramEqSailStatement imm rs1 rd js h := by
   unfold lbProgramEqSailStatement
-  rcases lbProgram_concrete imm rs1 rd js h.cfg h.rs1_val h.rs1_read
+  rcases lbProgram_concrete imm rs1 rd js h.cur_privilege h.mstatus_mprv
+      h.rs1_val h.rs1_read
       h.dwordPhys with
     ⟨js', hjolt, hjolt_sail⟩
-  have hsail := execute_LB_reduces imm rs1 rd js h.cfg h.rs1_val
-    h.rs1_read h.bytePhys
+  have hsail := execute_LB_reduces imm rs1 rd js h.cur_privilege
+    h.mstatus_mprv h.rs1_val h.rs1_read h.bytePhys
   have h_project_initial : System.systemProject js = js.sail :=
     Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=

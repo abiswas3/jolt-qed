@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.Memory.WriteReasoning
+import JoltBytecode.InstructionEquivalence.Memory.Write
 
 /-!
 # Pure splice facts for store-family expansions
@@ -55,6 +55,149 @@ structure HalfwordStoreSetup (ea base : BitVec 64) : Prop extends DwordWindowSet
 structure WordStoreSetup (ea base : BitVec 64) : Prop extends DwordWindowSetup ea base where
   word_aligned : ea &&& 3 = 0
   offset_cases : (ea - base).toNat = 0 ∨ (ea - base).toNat = 4
+
+/-- The enclosing dword base used by store expansions is eight-byte aligned. -/
+theorem dword_base_aligns (val : BitVec 64) (imm : BitVec 12) :
+    compute_aligned_dword_base_address val imm &&& (7 : BitVec 64) = 0 := by
+  unfold compute_aligned_dword_base_address load_effective_address
+  exact align_down_8_and_7_eq_zero _
+
+/-- The enclosing dword base has room for all eight bytes in the 64-bit address
+space. -/
+theorem dword_base_no_ovf (val : BitVec 64) (imm : BitVec 12) :
+    (compute_aligned_dword_base_address val imm).toNat + 7 < 2 ^ 64 := by
+  exact aligned_addr_no_ovf_of_align _ (dword_base_aligns val imm)
+
+private theorem offset_bv_eq_low_three (ea : BitVec 64) :
+    BitVec.ofNat 64 (ea &&& (7 : BitVec 64)).toNat =
+      ea &&& (7 : BitVec 64) := by
+  simp only [BitVec.ofNat_toNat, BitVec.setWidth_eq]
+
+private theorem offset_sub_eq_low_three (ea : BitVec 64) :
+    ea - (ea &&& (-8 : BitVec 64)) = ea &&& (7 : BitVec 64) := by
+  have hsplit := write_addr_split_aligned_offset ea
+  rw [offset_bv_eq_low_three ea] at hsplit
+  nth_rewrite 1 [← hsplit]
+  simpa [BitVec.add_comm] using
+    (BitVec.add_sub_cancel (ea &&& (7 : BitVec 64)) (ea &&& (-8 : BitVec 64)))
+
+theorem ea_toNat_eq_base_plus_offset (ea : BitVec 64) :
+    ea.toNat =
+      (ea &&& (-8 : BitVec 64)).toNat +
+        (ea - (ea &&& (-8 : BitVec 64))).toNat := by
+  let base := ea &&& (-8 : BitVec 64)
+  let off := (ea &&& (7 : BitVec 64)).toNat
+  have hoff_lt : off < 8 := by
+    exact write_addr_and_seven_lt_eight ea
+  have hbase_no_ovf : base.toNat + 7 < 2 ^ 64 := by
+    have hbase_align : base &&& (7 : BitVec 64) = 0 := by
+      unfold base
+      exact align_down_8_and_7_eq_zero _
+    exact aligned_addr_no_ovf_of_align base hbase_align
+  have hsub_toNat : (ea - base).toNat = off := by
+    unfold base off
+    rw [offset_sub_eq_low_three ea]
+  have hoff_toNat : (BitVec.ofNat 64 off).toNat = off := by
+    rw [BitVec.toNat_ofNat]
+    have hoff64 : off < 2 ^ 64 := by omega
+    exact Nat.mod_eq_of_lt hoff64
+  have hsum_lt : base.toNat + (BitVec.ofNat 64 off).toNat < 2 ^ 64 := by
+    rw [hoff_toNat]
+    omega
+  have hnat := BitVec.toNat_add_of_lt
+    (x := base) (y := BitVec.ofNat 64 off) hsum_lt
+  have hsplit := write_addr_split_aligned_offset ea
+  unfold base off at hnat
+  rw [hsplit] at hnat
+  rw [hoff_toNat] at hnat
+  rw [hsub_toNat]
+  exact hnat
+
+theorem byte_offset_cases (ea : BitVec 64) :
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 0 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 1 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 2 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 3 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 4 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 5 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 6 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 7 := by
+  have hsub_toNat :
+      (ea - (ea &&& (-8 : BitVec 64))).toNat =
+        (ea &&& (7 : BitVec 64)).toNat := by
+    rw [offset_sub_eq_low_three ea]
+  have hoff_lt : (ea &&& (7 : BitVec 64)).toNat < 8 := by
+    exact write_addr_and_seven_lt_eight ea
+  rw [hsub_toNat]
+  omega
+
+theorem halfword_offset_cases (ea : BitVec 64)
+    (halign : ea &&& (1 : BitVec 64) = 0) :
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 0 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 2 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 4 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 6 := by
+  have hsub_toNat :
+      (ea - (ea &&& (-8 : BitVec 64))).toNat =
+        (ea &&& (7 : BitVec 64)).toNat := by
+    rw [offset_sub_eq_low_three ea]
+  have hoff_cases := write_halfword_offset_cases ea halign
+  rw [hsub_toNat]
+  exact hoff_cases
+
+theorem word_offset_cases (ea : BitVec 64)
+    (halign : ea &&& (3 : BitVec 64) = 0) :
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 0 ∨
+    (ea - (ea &&& (-8 : BitVec 64))).toNat = 4 := by
+  have hsub_toNat :
+      (ea - (ea &&& (-8 : BitVec 64))).toNat =
+        (ea &&& (7 : BitVec 64)).toNat := by
+    rw [offset_sub_eq_low_three ea]
+  have hoff_cases := write_word_offset_cases ea halign
+  rw [hsub_toNat]
+  exact hoff_cases
+
+theorem byteStoreSetup_of_effective_address
+    (val : BitVec 64) (imm : BitVec 12) :
+    ByteStoreSetup
+      (load_effective_address val imm)
+      (compute_aligned_dword_base_address val imm) := by
+  exact
+    { base_is_aligned := rfl
+      no_ovf := dword_base_no_ovf val imm
+      ea_toNat := ea_toNat_eq_base_plus_offset
+        (load_effective_address val imm)
+      offset_cases := byte_offset_cases (load_effective_address val imm) }
+
+theorem halfwordStoreSetup_of_effective_address
+    (val : BitVec 64) (imm : BitVec 12)
+    (halign : load_effective_address val imm &&& (1 : BitVec 64) = 0) :
+    HalfwordStoreSetup
+      (load_effective_address val imm)
+      (compute_aligned_dword_base_address val imm) := by
+  exact
+    { base_is_aligned := rfl
+      no_ovf := dword_base_no_ovf val imm
+      ea_toNat := ea_toNat_eq_base_plus_offset
+        (load_effective_address val imm)
+      halfword_aligned := halign
+      offset_cases := halfword_offset_cases
+        (load_effective_address val imm) halign }
+
+theorem wordStoreSetup_of_effective_address
+    (val : BitVec 64) (imm : BitVec 12)
+    (halign : load_effective_address val imm &&& (3 : BitVec 64) = 0) :
+    WordStoreSetup
+      (load_effective_address val imm)
+      (compute_aligned_dword_base_address val imm) := by
+  exact
+    { base_is_aligned := rfl
+      no_ovf := dword_base_no_ovf val imm
+      ea_toNat := ea_toNat_eq_base_plus_offset
+        (load_effective_address val imm)
+      word_aligned := halign
+      offset_cases := word_offset_cases
+        (load_effective_address val imm) halign }
 
 /-- The byte-store XOR-mask-XOR expression.  `shift` is measured in bits. -/
 def byteSplice (dword_orig : BitVec 64) (byte_val : BitVec 8) (shift : Nat) : BitVec 64 :=
@@ -446,32 +589,6 @@ private theorem dword_align_down_8_and_7_eq_zero (x : BitVec 64) :
         (Nat.pow_le_pow_right (by norm_num : 0 < 2) this)
     simp [h7bit]
 
-/-- A dword-window setup is enough to reuse the existing dword-store hashmap
-facts, whose older statement packages a word-alignment field that is irrelevant
-for an 8-byte write. -/
-private theorem dwordStoreSetup_self_of_window {ea base : BitVec 64}
-    (h : DwordWindowSetup ea base) :
-    DwordStoreSetup base base := by
-  have hbase8 : base &&& (7 : BitVec 64) = 0 := by
-    rw [h.base_is_aligned]
-    exact dword_align_down_8_and_7_eq_zero ea
-  have hbase4 : base &&& (3 : BitVec 64) = 0 := by
-    have h73 : (7 : BitVec 64) &&& (3 : BitVec 64) = 3 := by decide
-    calc
-      base &&& (3 : BitVec 64) =
-          base &&& ((7 : BitVec 64) &&& (3 : BitVec 64)) := by rw [h73]
-      _ = (base &&& (7 : BitVec 64)) &&& (3 : BitVec 64) := by
-        rw [BitVec.and_assoc]
-      _ = 0 := by rw [hbase8]; rfl
-  have hbase_self : base = base &&& (-8 : BitVec 64) := by
-    rw [h.base_is_aligned]
-    rw [BitVec.and_assoc]
-    rw [BitVec.and_self]
-  exact
-    { word_aligned := hbase4
-      base_is_aligned := hbase_self
-      no_ovf := h.no_ovf }
-
 /-- The absolute address for the `j`-th target byte can be written either from
 the dword base plus the lane offset or from the native effective address. -/
 private theorem target_addr_eq_of_window {ea base : BitVec 64}
@@ -564,8 +681,12 @@ theorem dword_store_splice_eq_byte_store_populated
     (byte_val : BitVec 8) (dword_orig dword_new : BitVec 64)
     (hsetup : ByteStoreSetup ea base)
     (hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none)
-    (hload : ∀ k : Nat, k < 8 →
-      dword_byte dword_orig k = loaded_byte_at s (base + BitVec.ofNat 64 k))
+    (hload : ∀ k : Nat, (hk : k < 8) →
+      dword_byte dword_orig k =
+        loaded_byte_at s (base + BitVec.ofNat 64 k)
+          (by
+            rw [toNat_base_add_small base k hk hsetup.no_ovf]
+            exact Option.ne_none_iff_exists'.mp (hpop k hk)))
     (hsplice_target : ∀ j : Nat, j < 1 →
       dword_byte dword_new ((ea - base).toNat + j) = byte_byte byte_val j)
     (hsplice_other : ∀ k : Nat, k < 8 →
@@ -578,8 +699,7 @@ theorem dword_store_splice_eq_byte_store_populated
       (state_after_byte_store s ea byte_val).mem
       s.mem
   · intro a ha
-    simpa using stored_dword_untouched s base base dword_new
-      (dwordStoreSetup_self_of_window hsetup.toDwordWindowSetup) a ha
+    simpa using stored_dword_untouched s base base dword_new a ha
   · intro a ha
     have ha_byte : a < ea.toNat ∨ a ≥ ea.toNat + 1 :=
       outside_dword_window_implies_outside_byte_window a hsetup ha
@@ -591,14 +711,15 @@ theorem dword_store_splice_eq_byte_store_populated
         rw [hsplice_other k hk hout]
         have haddr : (base + BitVec.ofNat 64 k).toNat = base.toNat + k :=
           toNat_base_add_small base k hk hsetup.no_ovf
-        have hpop' : s.mem.get? (base + BitVec.ofNat 64 k).toNat ≠ none := by
-          simpa [haddr] using hpop k hk
-        have hload' : loaded_byte_at s (base + BitVec.ofNat 64 k) =
+        have hpresent :
+            MemBytePresentAt s (base + BitVec.ofNat 64 k).toNat := by
+          simpa [haddr] using Option.ne_none_iff_exists'.mp (hpop k hk)
+        have hload' : loaded_byte_at s (base + BitVec.ofNat 64 k) hpresent =
             dword_byte dword_orig k := by
           simpa using (hload k hk).symm
         have hsome : s.mem.get? (base.toNat + k) = some (dword_byte dword_orig k) := by
           simpa [haddr] using get?_of_loaded_byte_at_eq s (base + BitVec.ofNat 64 k)
-            (dword_byte dword_orig k) hpop' hload'
+            (dword_byte dword_orig k) hpresent hload'
         rw [← hsome]
         have haddr_out : base.toNat + k < ea.toNat ∨ base.toNat + k ≥ ea.toNat + 1 :=
           outside_target_addr_outside_byte_window k hsetup hout
@@ -620,8 +741,12 @@ theorem dword_store_splice_eq_halfword_store_populated
     (halfword_val : BitVec 16) (dword_orig dword_new : BitVec 64)
     (hsetup : HalfwordStoreSetup ea base)
     (hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none)
-    (hload : ∀ k : Nat, k < 8 →
-      dword_byte dword_orig k = loaded_byte_at s (base + BitVec.ofNat 64 k))
+    (hload : ∀ k : Nat, (hk : k < 8) →
+      dword_byte dword_orig k =
+        loaded_byte_at s (base + BitVec.ofNat 64 k)
+          (by
+            rw [toNat_base_add_small base k hk hsetup.no_ovf]
+            exact Option.ne_none_iff_exists'.mp (hpop k hk)))
     (hsplice_target : ∀ j : Nat, j < 2 →
       dword_byte dword_new ((ea - base).toNat + j) = halfword_byte halfword_val j)
     (hsplice_other : ∀ k : Nat, k < 8 →
@@ -634,8 +759,7 @@ theorem dword_store_splice_eq_halfword_store_populated
       (state_after_halfword_store s ea halfword_val).mem
       s.mem
   · intro a ha
-    simpa using stored_dword_untouched s base base dword_new
-      (dwordStoreSetup_self_of_window hsetup.toDwordWindowSetup) a ha
+    simpa using stored_dword_untouched s base base dword_new a ha
   · intro a ha
     have ha_half : a < ea.toNat ∨ a ≥ ea.toNat + 2 :=
       outside_dword_window_implies_outside_halfword_window a hsetup ha
@@ -647,14 +771,15 @@ theorem dword_store_splice_eq_halfword_store_populated
         rw [hsplice_other k hk hout]
         have haddr : (base + BitVec.ofNat 64 k).toNat = base.toNat + k :=
           toNat_base_add_small base k hk hsetup.no_ovf
-        have hpop' : s.mem.get? (base + BitVec.ofNat 64 k).toNat ≠ none := by
-          simpa [haddr] using hpop k hk
-        have hload' : loaded_byte_at s (base + BitVec.ofNat 64 k) =
+        have hpresent :
+            MemBytePresentAt s (base + BitVec.ofNat 64 k).toNat := by
+          simpa [haddr] using Option.ne_none_iff_exists'.mp (hpop k hk)
+        have hload' : loaded_byte_at s (base + BitVec.ofNat 64 k) hpresent =
             dword_byte dword_orig k := by
           simpa using (hload k hk).symm
         have hsome : s.mem.get? (base.toNat + k) = some (dword_byte dword_orig k) := by
           simpa [haddr] using get?_of_loaded_byte_at_eq s (base + BitVec.ofNat 64 k)
-            (dword_byte dword_orig k) hpop' hload'
+            (dword_byte dword_orig k) hpresent hload'
         rw [← hsome]
         have haddr_out : base.toNat + k < ea.toNat ∨ base.toNat + k ≥ ea.toNat + 2 :=
           outside_target_addr_outside_halfword_window k hsetup hout
@@ -675,8 +800,12 @@ theorem dword_store_splice_eq_word_store_populated'
     (word_val : BitVec 32) (dword_orig dword_new : BitVec 64)
     (hsetup : WordStoreSetup ea base)
     (hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none)
-    (hload : ∀ k : Nat, k < 8 →
-      dword_byte dword_orig k = loaded_byte_at s (base + BitVec.ofNat 64 k))
+    (hload : ∀ k : Nat, (hk : k < 8) →
+      dword_byte dword_orig k =
+        loaded_byte_at s (base + BitVec.ofNat 64 k)
+          (by
+            rw [toNat_base_add_small base k hk hsetup.no_ovf]
+            exact Option.ne_none_iff_exists'.mp (hpop k hk)))
     (hsplice_target : ∀ j : Nat, j < 4 →
       dword_byte dword_new ((ea - base).toNat + j) = word_byte word_val j)
     (hsplice_other : ∀ k : Nat, k < 8 →
@@ -689,8 +818,7 @@ theorem dword_store_splice_eq_word_store_populated'
       (state_after_word_store s ea word_val).mem
       s.mem
   · intro a ha
-    simpa using stored_dword_untouched s base base dword_new
-      (dwordStoreSetup_self_of_window hsetup.toDwordWindowSetup) a ha
+    simpa using stored_dword_untouched s base base dword_new a ha
   · intro a ha
     have ha_word : a < ea.toNat ∨ a ≥ ea.toNat + 4 :=
       outside_dword_window_implies_outside_word_window a hsetup ha
@@ -702,14 +830,15 @@ theorem dword_store_splice_eq_word_store_populated'
         rw [hsplice_other k hk hout]
         have haddr : (base + BitVec.ofNat 64 k).toNat = base.toNat + k :=
           toNat_base_add_small base k hk hsetup.no_ovf
-        have hpop' : s.mem.get? (base + BitVec.ofNat 64 k).toNat ≠ none := by
-          simpa [haddr] using hpop k hk
-        have hload' : loaded_byte_at s (base + BitVec.ofNat 64 k) =
+        have hpresent :
+            MemBytePresentAt s (base + BitVec.ofNat 64 k).toNat := by
+          simpa [haddr] using Option.ne_none_iff_exists'.mp (hpop k hk)
+        have hload' : loaded_byte_at s (base + BitVec.ofNat 64 k) hpresent =
             dword_byte dword_orig k := by
           simpa using (hload k hk).symm
         have hsome : s.mem.get? (base.toNat + k) = some (dword_byte dword_orig k) := by
           simpa [haddr] using get?_of_loaded_byte_at_eq s (base + BitVec.ofNat 64 k)
-            (dword_byte dword_orig k) hpop' hload'
+            (dword_byte dword_orig k) hpresent hload'
         rw [← hsome]
         have haddr_out : base.toNat + k < ea.toNat ∨ base.toNat + k ≥ ea.toNat + 4 :=
           outside_target_addr_outside_word_window k hsetup hout

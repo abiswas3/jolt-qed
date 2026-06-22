@@ -1,10 +1,10 @@
 import JoltBytecode.JoltISA.Expansions.Store
 import JoltBytecode.JoltISA.Semantics.Instructions
-import JoltBytecode.InstructionEquivalence.LoadDefUtils
-import JoltBytecode.InstructionEquivalence.StoreDefUtils
+import JoltBytecode.InstructionEquivalence.Memory.Read
+import JoltBytecode.InstructionEquivalence.Memory.Windows
+import JoltBytecode.InstructionEquivalence.Memory.Write
+import JoltBytecode.InstructionEquivalence.Memory.StoreExec
 import JoltBytecode.InstructionEquivalence.StoreFamily.ProgramBlocks
-import JoltBytecode.InstructionEquivalence.StoreFamily.MemoryPipeline
-import JoltBytecode.InstructionEquivalence.StoreFamily.Derived
 import JoltBytecode.InstructionEquivalence.Projection
 
 /-!
@@ -38,12 +38,12 @@ namespace SB_main
 
 The bytecode loads the enclosing dword and replaces exactly one byte: the byte
 selected by the effective address receives the low eight bits of `rs2`. -/
-def sbSplicedDword (imm : BitVec 12) (rs1_val rs2_val : BitVec 64)
-    (s : SailState) : BitVec 64 :=
+def sbSplicedDword (imm : BitVec 12) (rs1_val rs2_val dword_orig : BitVec 64) :
+    BitVec 64 :=
   let ea := load_effective_address rs1_val imm
   let base := compute_aligned_dword_base_address rs1_val imm
   StoreSplice.byteSplice
-    (loaded_dword_at s base)
+    dword_orig
     (Sail.BitVec.extractLsb rs2_val 7 0)
     (((ea - base).toNat) * 8)
 
@@ -61,24 +61,36 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     (hsetup : StoreSplice.ByteStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (h_dword_phys :
-      FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
+    (h_base_aligned :
+      AlignedDwordAccess (compute_aligned_dword_base_address rs1_val imm))
+    (hbytes :
+      MemBytesPresentAt js.sail (compute_aligned_dword_base_address rs1_val imm) 8)
+    (hload_pmp :
+      Assumptions.LoadPmpOk (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
+    (hread_mmio :
+      Assumptions.NotReadableMmio (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
     (hwrite_dword :
       vmem_write_addr
         (Virtaddr (compute_aligned_dword_base_address rs1_val imm)) 8
-        (sbSplicedDword imm rs1_val rs2_val js.sail)
+        (sbSplicedDword imm rs1_val rs2_val
+          (loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
+            hbytes h_base_aligned.no_ovf))
         (Store Data) false false false js.sail =
       .ok (Ok true)
         (state_after_dword_store js.sail
           (compute_aligned_dword_base_address rs1_val imm)
-          (sbSplicedDword imm rs1_val rs2_val js.sail))) :
+          (sbSplicedDword imm rs1_val rs2_val
+            (loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
+              hbytes h_base_aligned.no_ovf)))) :
     ∃ js' : SailJoltState,
       (JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail =
         state_after_dword_store js.sail
           (compute_aligned_dword_base_address rs1_val imm)
-          (sbSplicedDword imm rs1_val rs2_val js.sail) := by
+          (sbSplicedDword imm rs1_val rs2_val
+            (loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
+              hbytes h_base_aligned.no_ovf)) := by
   let writeTail : JoltISA.Program :=
     .instr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0) <| .done RETIRE_SUCCESS
   let spliceTail : JoltISA.Program :=
@@ -91,13 +103,17 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     .instr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
     writeTail
   let base := compute_aligned_dword_base_address rs1_val imm
-  let dword_new := sbSplicedDword imm rs1_val rs2_val js.sail
+  let dword_orig :=
+    loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
+      hbytes h_base_aligned.no_ovf
+  let dword_new := sbSplicedDword imm rs1_val rs2_val dword_orig
   let finalSail := state_after_dword_store js.sail base dword_new
   rcases StoreProgramBlocks.setupBlock spliceTail imm rs1 js hcfg rs1_val hrs1
-      h_dword_phys with
+      h_base_aligned hbytes hload_pmp hread_mmio with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
   rcases StoreProgramBlocks.byteSpliceBlock writeTail imm rs2 js js_load
-      rs1_val rs2_val hsetup hload_sail hload_v0 hload_v1 hload_v2 hrs2 with
+      rs1_val rs2_val dword_orig hsetup hload_sail hload_v0 hload_v1
+      (by simpa [dword_orig] using hload_v2) hrs2 with
     ⟨js_splice, hsplice_run, hsplice_sail, hsplice_v1, hsplice_v2⟩
   have hdword_new : js_splice.vregs JoltISA.inlineTmp2 = dword_new := by
     simpa [dword_new, sbSplicedDword] using hsplice_v2
@@ -109,7 +125,7 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     simpa [base, dword_new, finalSail] using hwrite_dword
   rcases StoreProgramBlocks.sdWriteBlock (.done RETIRE_SUCCESS)
       js_splice base dword_new finalSail hsplice_v1 hdword_new
-      (by simpa [base] using StoreFamily.store_dword_base_aligns rs1_val imm)
+      (by simpa [base] using StoreSplice.dword_base_aligns rs1_val imm)
       hwrite_for_sd with
     ⟨js_write, hsd_run, hsail_write, _hvregs_write⟩
   refine ⟨js_write, ?_, ?_⟩
@@ -135,30 +151,41 @@ theorem sb_spliced_dword_store_eq_byte_store (imm : BitVec 12)
     (hsetup : StoreSplice.ByteStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (hbytes : DwordBytesPresent
-      (compute_aligned_dword_base_address rs1_val imm) s) :
+    (hbytes :
+      MemBytesPresentAt s (compute_aligned_dword_base_address rs1_val imm) 8) :
     state_after_dword_store s
         (compute_aligned_dword_base_address rs1_val imm)
-        (sbSplicedDword imm rs1_val rs2_val s) =
+        (sbSplicedDword imm rs1_val rs2_val
+          (loaded_dword_at s (compute_aligned_dword_base_address rs1_val imm)
+            hbytes hsetup.no_ovf)) =
       state_after_byte_store s
         (load_effective_address rs1_val imm)
         (Sail.BitVec.extractLsb rs2_val 7 0) := by
   let ea := load_effective_address rs1_val imm
   let base := compute_aligned_dword_base_address rs1_val imm
-  let dword_orig := loaded_dword_at s base
+  let dword_orig := loaded_dword_at s base (by simpa [base] using hbytes)
+    (by simpa [base] using hsetup.no_ovf)
   let byte_val := Sail.BitVec.extractLsb rs2_val 7 0
-  let dword_new := sbSplicedDword imm rs1_val rs2_val s
+  let dword_new := sbSplicedDword imm rs1_val rs2_val dword_orig
   let off := (ea - base).toNat
   have hspec : StoreSplice.IsByteSplice dword_orig dword_new byte_val off := by
     simpa [dword_new, sbSplicedDword, dword_orig, byte_val, off, ea, base, Nat.mul_comm]
       using StoreSplice.byteSplice_spec dword_orig byte_val off hsetup.offset_cases
   have hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none := by
     intro k hk
-    exact hbytes.present k hk
-  have hload : ∀ k : Nat, k < 8 →
-      dword_byte dword_orig k = loaded_byte_at s (base + BitVec.ofNat 64 k) := by
+    rcases hbytes k (by simpa [base] using hk) with ⟨b, hb⟩
+    rw [hb]
+    simp
+  have hload : ∀ k : Nat, (hk : k < 8) →
+      dword_byte dword_orig k =
+        loaded_byte_at s (base + BitVec.ofNat 64 k)
+          (by
+            rw [toNat_base_add_small base k hk hsetup.no_ovf]
+            exact Option.ne_none_iff_exists'.mp (hpop k hk)) := by
     intro k hk
-    simpa only [dword_orig] using dword_byte_loaded_dword_at s base k hk
+    simpa [dword_orig] using
+      dword_byte_loaded_dword_at s base (by simpa [base] using hbytes)
+        (by simpa [base] using hsetup.no_ovf) k hk
   have hmem_eq :
       (state_after_dword_store s base dword_new).mem =
       (state_after_byte_store s ea byte_val).mem := by
@@ -183,17 +210,27 @@ theorem sbProgram_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
     (hsetup : StoreSplice.ByteStoreSetup
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
-    (h_dword_phys :
-      FlatPhysMem (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
+    (h_base_aligned :
+      AlignedDwordAccess (compute_aligned_dword_base_address rs1_val imm))
+    (hbytes :
+      MemBytesPresentAt js.sail (compute_aligned_dword_base_address rs1_val imm) 8)
+    (hload_pmp :
+      Assumptions.LoadPmpOk (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
+    (hread_mmio :
+      Assumptions.NotReadableMmio (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
     (hwrite_dword :
       vmem_write_addr
         (Virtaddr (compute_aligned_dword_base_address rs1_val imm)) 8
-        (sbSplicedDword imm rs1_val rs2_val js.sail)
+        (sbSplicedDword imm rs1_val rs2_val
+          (loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
+            hbytes h_base_aligned.no_ovf))
         (Store Data) false false false js.sail =
       .ok (Ok true)
         (state_after_dword_store js.sail
           (compute_aligned_dword_base_address rs1_val imm)
-          (sbSplicedDword imm rs1_val rs2_val js.sail))) :
+          (sbSplicedDword imm rs1_val rs2_val
+            (loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
+              hbytes h_base_aligned.no_ovf)))) :
     ∃ js' : SailJoltState,
       (JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js =
         .ok RETIRE_SUCCESS js' ∧
@@ -202,12 +239,12 @@ theorem sbProgram_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
           (load_effective_address rs1_val imm)
           (Sail.BitVec.extractLsb rs2_val 7 0) := by
   rcases sbProgram_reduces_to_dword_store imm rs2 rs1 js hcfg rs1_val rs2_val
-      hrs1 hrs2 hsetup h_dword_phys hwrite_dword with
+      hrs1 hrs2 hsetup h_base_aligned hbytes hload_pmp hread_mmio hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   refine ⟨js', hjolt, ?_⟩
   rw [hjolt_sail]
   exact sb_spliced_dword_store_eq_byte_store imm js.sail rs1_val rs2_val
-    hsetup h_dword_phys.bytes
+    hsetup hbytes
 
 /-- **Sail-side SB reduction.**
 
@@ -274,29 +311,69 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
     sbProgramEqSailStatement imm rs2 rs1 js h := by
   unfold sbProgramEqSailStatement
-  have hmem : StoreFamily.StoreMemoryContext
-      (load_effective_address h.rs1_val imm)
-      (compute_aligned_dword_base_address h.rs1_val imm) 1 js.sail :=
-    h.accessContext 1 h.byteStore
+  let ea := load_effective_address h.rs1_val imm
+  let base := compute_aligned_dword_base_address h.rs1_val imm
+  let offset := (ea &&& (7 : BitVec 64)).toNat
+  have hcfg : JoltConfig js.sail :=
+    { cur_privilege := h.cur_privilege
+      mstatus_mprv := h.mstatus_mprv }
   have hsetup : StoreSplice.ByteStoreSetup
       (load_effective_address h.rs1_val imm)
       (compute_aligned_dword_base_address h.rs1_val imm) :=
-    StoreFamily.byteStoreSetup_of_effective_address h.rs1_val imm
-  have h_dword_phys :
-      FlatPhysMem (compute_aligned_dword_base_address h.rs1_val imm) 8 js.sail :=
-    hmem.jolt_load_mem
+    StoreSplice.byteStoreSetup_of_effective_address h.rs1_val imm
+  have h_base_aligned : AlignedDwordAccess base := by
+    simpa [base, compute_aligned_dword_base_address, aligned_dword_addr_eq,
+      load_effective_address] using
+      aligned_dword_addr_is_aligned_dword_access h.rs1_val imm
+  have hbytes : MemBytesPresentAt js.sail base 8 := by
+    simpa [base] using h.dword_present.memBytesPresentAt
+  have hload_pmp :
+      Assumptions.LoadPmpOk base 8 js.sail := by
+    simpa [base] using h.load_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
+  have hread_mmio :
+      Assumptions.NotReadableMmio base 8 js.sail := by
+    simpa [base] using h.not_readable_mmio.subaccess
+      (offset := 0) (accessWidth := 8) (by omega)
+  have hstore_pmp_base :
+      Assumptions.StorePmpOk base 8 js.sail := by
+    simpa [base] using h.store_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
+  have hwrite_mmio_base :
+      Assumptions.NotWritableMmio base 8 js.sail := by
+    simpa [base] using h.not_writable_mmio.subaccess
+      (offset := 0) (accessWidth := 8) (by omega)
+  let dword_orig := loaded_dword_at js.sail base hbytes h_base_aligned.no_ovf
+  let dword_new := sbSplicedDword imm h.rs1_val h.rs2_val dword_orig
   have hwrite_dword :
       vmem_write_addr
-        (Virtaddr (compute_aligned_dword_base_address h.rs1_val imm)) 8
-        (sbSplicedDword imm h.rs1_val h.rs2_val js.sail)
+        (Virtaddr base) 8 dword_new
         (Store Data) false false false js.sail =
       .ok (Ok true)
-        (state_after_dword_store js.sail
-          (compute_aligned_dword_base_address h.rs1_val imm)
-          (sbSplicedDword imm h.rs1_val h.rs2_val js.sail)) :=
-    StoreFamily.vmem_write_addr_store_dword_base_reduces
-      h.rs1_val imm (sbSplicedDword imm h.rs1_val h.rs2_val js.sail)
-      js.sail h.cfg hmem
+        (state_after_dword_store js.sail base dword_new) :=
+    vmem_write_addr_dword_store_reduces base dword_new js.sail hcfg
+      h_base_aligned.toAlignedAccess hstore_pmp_base hwrite_mmio_base
+  have haddr : base + BitVec.ofNat 64 offset = ea := by
+    simpa [base, ea, offset, compute_aligned_dword_base_address] using
+      write_addr_split_aligned_offset ea
+  have hstore_pmp_byte :
+      Assumptions.StorePmpOk ea 1 js.sail := by
+    have hsub : Assumptions.StorePmpOk
+        (base + BitVec.ofNat 64 offset) 1 js.sail := by
+      have hoff : offset + 1 ≤ 8 := by
+        have hlt := write_addr_and_seven_lt_eight ea
+        omega
+      simpa [base, offset] using h.store_pmp.subaccess
+        (offset := offset) (accessWidth := 1) hoff
+    simpa [haddr] using hsub
+  have hwrite_mmio_byte :
+      Assumptions.NotWritableMmio ea 1 js.sail := by
+    have hsub : Assumptions.NotWritableMmio
+        (base + BitVec.ofNat 64 offset) 1 js.sail := by
+      have hoff : offset + 1 ≤ 8 := by
+        have hlt := write_addr_and_seven_lt_eight ea
+        omega
+      simpa [base, offset] using h.not_writable_mmio.subaccess
+        (offset := offset) (accessWidth := 1) hoff
+    simpa [haddr] using hsub
   have hwrite_byte :
       vmem_write rs1 (sign_extend (m := 64) imm) 1
         (Sail.BitVec.extractLsb h.rs2_val 7 0)
@@ -305,11 +382,17 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
         (state_after_byte_store js.sail
           (load_effective_address h.rs1_val imm)
           (Sail.BitVec.extractLsb h.rs2_val 7 0)) :=
-    StoreFamily.vmem_write_byte_store_reduces imm rs1 js.sail h.cfg
+    vmem_write_byte_store_reduces imm rs1 js.sail hcfg
       h.rs1_val h.rs1_read (Sail.BitVec.extractLsb h.rs2_val 7 0)
-      hmem.sail_store_mem
-  rcases sbProgram_concrete imm rs2 rs1 js h.cfg h.rs1_val h.rs2_val
-      h.rs1_read h.rs2_read hsetup h_dword_phys hwrite_dword with
+      (by simpa [ea] using hstore_pmp_byte)
+      (by simpa [ea] using hwrite_mmio_byte)
+  rcases sbProgram_concrete imm rs2 rs1 js hcfg h.rs1_val h.rs2_val
+      h.rs1_read h.rs2_read hsetup
+      (by simpa [base] using h_base_aligned)
+      (by simpa [base] using hbytes)
+      (by simpa [base] using hload_pmp)
+      (by simpa [base] using hread_mmio)
+      (by simpa [base, dword_orig, dword_new] using hwrite_dword) with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_SB_reduces imm rs2 rs1 js h.rs1_val h.rs2_val
     h.rs1_read h.rs2_read hwrite_byte

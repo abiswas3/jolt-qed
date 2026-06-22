@@ -146,7 +146,8 @@ theorem slliwProgram_eq_sail (shamt : BitVec 5) (rs1 rd : regidx) (js : SailJolt
     (h : UnarySourceReadWithLinkedCSRs rs1 js) :
     slliwProgramEqSailStatement shamt rs1 rd js h := by
   unfold slliwProgramEqSailStatement
-  obtain ⟨v, h_read_rs1⟩ := h.rs1_readable.exists_value
+  let v := h.rs1_val
+  have h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail := h.rs1_read
   have h_project_initial : System.systemProject js = js.sail :=
     Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   by_cases hrd : rd = regidx.Regidx 0
