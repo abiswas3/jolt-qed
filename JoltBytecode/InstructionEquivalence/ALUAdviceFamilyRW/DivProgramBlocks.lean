@@ -13,7 +13,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Phase decomposition and run helpers for `divProgram`
+# Program blocks for `divProgram`
 
 The 18 instructions of the `DIV` bytecode expansion split into five phases,
 each one ending at (or dominated by) an assertion. This file holds:

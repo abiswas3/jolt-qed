@@ -6,7 +6,7 @@ import JoltBytecode.InstructionEquivalence.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div_math
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divw_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivwProgramBlocks
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divw_math
 
 set_option linter.unusedVariables false

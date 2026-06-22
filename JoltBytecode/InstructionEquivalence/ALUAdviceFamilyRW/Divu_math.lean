@@ -3,7 +3,7 @@ import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div_math
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divu_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivuProgramBlocks
 
 set_option linter.unusedVariables false
 set_option linter.unusedSimpArgs false

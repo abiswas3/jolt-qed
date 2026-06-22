@@ -1,6 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divw_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivwProgramBlocks
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 
 set_option linter.unusedVariables false
@@ -11,7 +11,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Phase decomposition and run helpers for `remwProgram`
+# Program blocks for `remwProgram`
 
 REMW shares DIVW's signed 32-bit advice checks. The difference is the final
 writeback: after the quotient-product phase reconstructs the signed remainder

@@ -1,7 +1,7 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div_phase_helpers
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divw_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivProgramBlocks
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivwProgramBlocks
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 
 set_option linter.unusedVariables false
@@ -12,7 +12,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Phase decomposition and run helpers for `divuwProgram`
+# Program blocks for `divuwProgram`
 
 The 11 steps of `divuwProgram` split into **five** phases, ordered
 slightly differently from DIVU/DIV: the div-by-zero check is at the
@@ -21,9 +21,9 @@ DIVUW spec's div-by-zero rule is "if `divisor = 0` then `quotient =
 u32::MAX`", and the assertion checks `sext(q) = -1` (i.e. `q =
 u32::MAX` after sign-extension).
 
-This file mirrors `Divu_phase_helpers.lean` and `Divw_phase_helpers.lean`
-in structure. Reuses generic helpers from `Div_phase_helpers` and
-DIVW-specific helpers from `Divw_phase_helpers` (which already contains
+This file mirrors `DivuProgramBlocks.lean` and `DivwProgramBlocks.lean`
+in structure. Reuses generic helpers from `DivProgramBlocks` and
+DIVW-specific helpers from `DivwProgramBlocks` (which already contains
 `vreg_sign_extend_word_run`, `vreg_assert_valid_div0_v_run_*`).
 
 Phase definitions live in the `Divuw` namespace.

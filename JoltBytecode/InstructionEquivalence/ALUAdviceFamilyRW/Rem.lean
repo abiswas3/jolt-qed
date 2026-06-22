@@ -6,7 +6,7 @@ import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.MonadReduction
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Rem_math
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Rem_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.RemProgramBlocks
 
 
 set_option linter.unusedVariables false

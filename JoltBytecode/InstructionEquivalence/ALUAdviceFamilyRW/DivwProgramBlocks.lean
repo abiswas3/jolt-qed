@@ -11,7 +11,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Phase decomposition and run helpers for `divwProgram`
+# Program blocks for `divwProgram`
 
 The 21 steps of `divwProgram` split into **six** phases (one more than
 DIV's five). The extra phase is `phase_rem_nonneg` — DIVW supplies a
@@ -19,7 +19,7 @@ DIV's five). The extra phase is `phase_rem_nonneg` — DIVW supplies a
 the upper 33 bits are zero (`SRAI v1 31 = 0`). DIV doesn't need this
 because its `|rem|` is naturally 64-bit unsigned.
 
-This file mirrors `Div_phase_helpers.lean` in structure and reuses the
+This file mirrors `DivProgramBlocks.lean` in structure and reuses the
 generic `_run`/`_run_ex` helpers from there (`vreg_advice_run_ex`,
 `vreg_MUL_run_ex`, `vreg_SRAI_run_ex`, etc.). New helpers are added for
 the DIVW-specific primitives (`vreg_sign_extend_word*`,
@@ -29,7 +29,7 @@ Phase definitions and phase-run lemmas live in the `Divw` namespace
 to avoid clashing with DIV's flat-namespaced `phase_*` and
 `phase_*_run`. Per-instruction `_run`/`_run_ex` helpers are not
 namespaced — they're additive to the existing pool from
-`Div_phase_helpers`.
+`DivProgramBlocks`.
 
 The phase-run lemmas prove each fragment by reducing the local
 `JoltISA.Program` to its instruction runs.
@@ -41,7 +41,7 @@ The phase-run lemmas prove each fragment by reducing the local
 -- The generic ones (`vreg_advice_run`, `vreg_MUL_run`, `vreg_SRAI_run`,
 -- `vreg_assert_eq_run_*`, `vreg_assert_valid_unsigned_remainder_run_*`,
 -- and their `_ex` variants) come for free via the import of
--- `Div_phase_helpers`. The lemmas below characterise the new
+-- `DivProgramBlocks`. The lemmas below characterise the new
 -- DIVW-specific primitives introduced in `Primitives.lean`.
 
 /-- `vreg_sign_extend_word vd vs1`: writes
@@ -199,7 +199,7 @@ theorem vreg_assert_valid_div0_v_run_err
 -- Phase definitions and phase-run lemmas
 -- ============================================================================
 -- Wrapped in `namespace Divw` to avoid clashing with the flat-namespaced
--- DIV phase definitions imported via `Div_phase_helpers`.
+-- DIV phase definitions imported via `DivProgramBlocks`.
 
 namespace Divw
 

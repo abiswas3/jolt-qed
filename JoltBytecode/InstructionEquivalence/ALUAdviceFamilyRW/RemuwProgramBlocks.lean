@@ -1,6 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divuw_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivuwProgramBlocks
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 
 set_option linter.unusedVariables false
@@ -11,7 +11,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Phase decomposition and run helpers for `remuwProgram`
+# Program blocks for `remuwProgram`
 
 REMUW follows Rust's `remuw.rs` allocation exactly: `rs1`, `rs2`, and one
 `v_tmp`.  The same `v_tmp` register holds quotient advice, then

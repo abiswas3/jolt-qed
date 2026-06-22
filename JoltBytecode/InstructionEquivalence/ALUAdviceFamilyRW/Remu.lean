@@ -6,7 +6,7 @@ import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divu_math
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remu_math
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Remu_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.RemuProgramBlocks
 
 set_option linter.unusedVariables false
 set_option linter.unusedSimpArgs false

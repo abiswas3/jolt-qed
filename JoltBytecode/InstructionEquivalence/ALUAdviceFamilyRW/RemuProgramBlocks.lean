@@ -1,6 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Divu_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivuProgramBlocks
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 
 set_option linter.unusedVariables false
@@ -11,7 +11,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Phase decomposition and run helpers for `remuProgram`
+# Program blocks for `remuProgram`
 
 REMU uses one virtual register.  `v0` starts as quotient advice, then is
 overwritten by `q * divisor`, then by the computed remainder.

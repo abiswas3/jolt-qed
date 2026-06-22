@@ -1,6 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivProgramBlocks
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 
 set_option linter.unusedVariables false
@@ -11,7 +11,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Phase decomposition and run helpers for `divuProgram`
+# Program blocks for `divuProgram`
 
 The 8 steps of `divuProgram` split into **five** phases (same count as
 DIV, one fewer than DIVW). DIVU is structurally simpler than DIV
@@ -19,7 +19,7 @@ because its `|rem|` is computed *inline* (via `SUB`, in phase 4) rather
 than supplied as oracle advice — so there's no `rem_abs` parameter and
 no sign-fixup machinery.
 
-This file mirrors `Div_phase_helpers.lean` and `Divw_phase_helpers.lean`
+This file mirrors `DivProgramBlocks.lean` and `DivwProgramBlocks.lean`
 in structure and reuses the generic `_run`/`_run_ex` helpers from the
 former (`vreg_advice_run_ex`, `vreg_assert_eq_run_*`, etc.). New helpers
 are added for the DIVU-specific primitives

@@ -1,6 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
 import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Primitives
-import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.Div_phase_helpers
+import JoltBytecode.InstructionEquivalence.ALUAdviceFamilyRW.DivProgramBlocks
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 
 set_option linter.unusedVariables false
@@ -11,7 +11,7 @@ open Sail PreSail LeanRV64D.Functions
 noncomputable section
 
 /-!
-# Phase decomposition and run helpers for `remProgram`
+# Program blocks for `remProgram`
 
 REM shares DIV's advice, div0, overflow, and quotient-product checks.
 The key difference is writeback: after the nested `MULH` block consumes
