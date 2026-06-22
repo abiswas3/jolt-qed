@@ -1,5 +1,6 @@
 import JoltBytecode.Assumptions
 import JoltBytecode.Memory
+import JoltBytecode.JoltISA.SystemCSR
 
 /-!
 # Jolt proof bundles
@@ -51,6 +52,11 @@ private structure LinkedCSRRegisterAssumptions (js : SailJoltState) where
   mcause_matches : Assumptions.McauseVRegMatchesSail js
   mtval_matches : Assumptions.MtvalVRegMatchesSail js
 
+/-- No source-register reads, plus persistent CSR virtual-register agreement. -/
+structure NoSourceReadWithLinkedCSRs
+    (js : SailJoltState) : Type
+    extends LinkedCSRRegisterAssumptions js
+
 /-- One source-register read plus persistent CSR virtual-register agreement. -/
 structure UnarySourceReadWithLinkedCSRs
     (rs1 : regidx) (js : SailJoltState)
@@ -74,6 +80,17 @@ def LinkedCSRRegisterAssumptions.linkedCSRs
     Assumptions.MtvalVRegMatchesSail js :=
   ⟨h.mstatus_matches, h.mtvec_matches, h.mscratch_matches, h.mepc_matches,
     h.mcause_matches, h.mtval_matches⟩
+
+def NoSourceReadWithLinkedCSRs.linkedCSRs
+    {js : SailJoltState}
+    (h : NoSourceReadWithLinkedCSRs js) :
+    Assumptions.MstatusVRegMatchesSail js ∧
+    Assumptions.MtvecVRegMatchesSail js ∧
+    Assumptions.MscratchVRegMatchesSail js ∧
+    Assumptions.MepcVRegMatchesSail js ∧
+    Assumptions.McauseVRegMatchesSail js ∧
+    Assumptions.MtvalVRegMatchesSail js :=
+  h.toLinkedCSRRegisterAssumptions.linkedCSRs
 
 def UnarySourceReadWithLinkedCSRs.linkedCSRs
     {rs1 : regidx} {js : SailJoltState}
@@ -174,6 +191,18 @@ def StoreProgramEqSailAssumptions.linkedCSRs
   h.toLoadProgramEqSailAssumptions.linkedCSRs
 
 -- ============================================================================
+-- Fence theorem bundles
+-- ============================================================================
+
+/-- Public assumptions for native FENCE equivalence.
+
+Machine mode makes Sail's FIOM check reduce without reading environment CSRs;
+the remaining Sail barrier is pure in the generated Lean backend. -/
+structure FenceProgramEqSailAssumptions (js : SailJoltState)
+    extends NoSourceReadWithLinkedCSRs js where
+  cur_privilege : Assumptions.CurPrivilegeMachine js.sail
+
+-- ============================================================================
 -- Atomic theorem bundles
 -- ============================================================================
 
@@ -214,5 +243,35 @@ def AmoWordProgramEqSailAssumptions.rdReadable
     (h : AmoWordProgramEqSailAssumptions op rs2 rs1 rd js) :
     Assumptions.XRegReadable rd js.sail :=
   h.toAmoRegisterAssumptions.rd_readable
+
+-- ============================================================================
+-- System theorem bundles
+-- ============================================================================
+
+namespace System
+
+/-- Public assumptions for CSRRW equivalence over the supported System CSR
+whitelist.
+
+This bundle keeps only the real public inputs: the source register value, the
+machine-mode execution envelope, and the decoded six-CSR whitelist carried by
+`csr : JoltISA.SystemCSR`. Register non-aliasing, CSR permission checks,
+callback neutrality, and projected `rd` writeback are derived in the CSRRW proof
+file. -/
+structure CsrrwSystemAssumptions
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx) :
+    Type where
+  rs1_val : BitVec 64
+  source_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+  cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
+  linked_csrs :
+    Assumptions.MstatusVRegMatchesSail js ∧
+    Assumptions.MtvecVRegMatchesSail js ∧
+    Assumptions.MscratchVRegMatchesSail js ∧
+    Assumptions.MepcVRegMatchesSail js ∧
+    Assumptions.McauseVRegMatchesSail js ∧
+    Assumptions.MtvalVRegMatchesSail js
+
+end System
 
 end

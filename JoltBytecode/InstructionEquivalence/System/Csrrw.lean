@@ -1,4 +1,5 @@
-import JoltBytecode.InstructionEquivalence.System.Bundles
+import JoltBytecode.Bundles
+import JoltBytecode.InstructionEquivalence.System.Common
 
 set_option linter.unusedSimpArgs false
 

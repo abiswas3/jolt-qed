@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.System.Bundles
+import JoltBytecode.InstructionEquivalence.System.Common
 import Mathlib.Tactic.IntervalCases
 
 open Sail PreSail LeanRV64D.Functions
@@ -553,40 +553,6 @@ theorem execute_MRET_machine_run
   simp only [hCurPriv, hPc, hBneMachine, hXretPriv, if_false, hException,
     hSetNext, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     Bool.false_eq_true, get, getThe, MonadStateOf.get, EStateM.get]
-
-/-- MRET equivalence under the system CSR projection.
-
-The theorem follows ECALL's final-`JALR` shape for the Jolt side, then unfolds
-Sail's xret postlude under the concrete facts recorded in
-`MretSystemAssumptions`. -/
-theorem mretProgram_eq_sail
-    (js : SailJoltState)
-    (h_sys : MretSystemAssumptions js) :
-    systemProjectResult ((JoltISA.execProgram JoltISA.mretProgram).run js) =
-      (execute_MRET ()).run (systemProject js) := by
-  rcases h_sys.pc_readable.exists_value with ⟨pc, hpc⟩
-  rcases h_sys.nextPC_readable.exists_value with ⟨nextPC, hnextPC⟩
-  rcases h_sys.misa_user_disabled.exists_value with ⟨misa, hmisa, hmisa_u⟩
-  rcases h_sys.mseccfg_readable.exists_value with ⟨mseccfg, hmseccfg⟩
-  have hJolt :
-      (JoltISA.execProgram JoltISA.mretProgram).run js =
-        .ok RETIRE_SUCCESS (mretAfterJalr js nextPC) := by
-    exact mretProgram_run js nextPC misa hnextPC hmisa
-      h_sys.return_target_fetch_aligned.bit1_zero
-  have hSail :
-      (execute_MRET ()).run (systemProject js) =
-        .ok RETIRE_SUCCESS (systemProject (mretAfterJalr js nextPC)) := by
-    rw [execute_MRET_machine_run js pc misa mseccfg hpc hmisa hmisa_u
-      hmseccfg h_sys.elp_zero h_sys.cur_privilege_machine.value
-      h_sys.mstatus_mie_matches_mpie.value_eq
-      h_sys.mstatus_mpie_one.value_eq
-      h_sys.mstatus_mpp_machine.value_eq
-      h_sys.mstatus_mpelp_zero.value_eq
-      h_sys.return_target_fetch_aligned.bit1_zero]
-    rw [← systemProject_mretAfterJalr js nextPC]
-  unfold systemProjectResult
-  rw [hJolt]
-  exact hSail.symm
 
 end System
 

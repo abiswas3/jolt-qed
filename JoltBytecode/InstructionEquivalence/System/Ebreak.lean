@@ -151,60 +151,6 @@ theorem sail_ebreak_run
   simp only [hpriv, hpc, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
 
-/-- EBREAK correctness relation.
-
-The first component is the Rust/Jolt termination marker: after projection,
-`JAL scratch, 0` retires successfully with Sail `nextPC` set back to the
-current `PC`. The second component is the architectural Sail behavior:
-`execute_EBREAK` returns a software-breakpoint trap at that same `PC`.
-
-This relation deliberately does not require equal `ExecutionResult`
-constructors, because `Retire_Success` and `Trap` are the intended observable
-difference between Jolt's termination convention and Sail's architectural
-instruction semantics. -/
-def EbreakResultRelation
-    (s : SailState) (pc : BitVec 64)
-    (joltResult sailResult :
-      EStateM.Result (Error exception) SailState ExecutionResult) : Prop :=
-  joltResult = .ok RETIRE_SUCCESS (setNextPCState s pc) ∧
-    ∃ priv : Privilege,
-      sailResult =
-        .ok
-          (ExecutionResult.Trap
-            (priv,
-              ctl_result.CTL_TRAP
-                (make_sync_exception
-                  (ExceptionType.E_Breakpoint breakpoint_cause.Brk_Software)
-                  pc),
-              pc))
-          s
-
-/-- Rust-faithful EBREAK expansion matches Sail EBREAK through the explicit
-self-loop/breakpoint relation, not through raw result equality. -/
-theorem ebreakProgram_rel_sail
-    (js : SailJoltState) (pc nextPC misa : BitVec 64) (priv : Privilege)
-    (hpc : js.sail.regs.get? Register.PC =
-      some (pc : RegisterType Register.PC))
-    (hnextPC : js.sail.regs.get? Register.nextPC =
-      some (nextPC : RegisterType Register.nextPC))
-    (hmisa : js.sail.regs.get? Register.misa =
-      some (misa : RegisterType Register.misa))
-    (hpriv : js.sail.regs.get? Register.cur_privilege =
-      some (priv : RegisterType Register.cur_privilege))
-    (hpc0 : BitVec.access pc 0 = 0#1)
-    (hpc1 : BitVec.access pc 1 = 0#1) :
-    EbreakResultRelation js.sail pc
-      (projectResult ((JoltISA.execProgram JoltISA.ebreakProgram).run js))
-      ((execute_EBREAK ()).run js.sail) := by
-  have hJolt := ebreakProgram_run js pc nextPC misa hpc hnextPC hmisa hpc0 hpc1
-  have hSail := sail_ebreak_run js pc priv hpc hpriv
-  unfold EbreakResultRelation
-  constructor
-  · rw [hJolt]
-    unfold projectResult project ebreakAfterJal joltSetVReg
-    rfl
-  · exact ⟨priv, hSail⟩
-
 end System
 
 end

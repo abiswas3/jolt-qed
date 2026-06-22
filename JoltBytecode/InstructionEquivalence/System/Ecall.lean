@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.System.Bundles
+import JoltBytecode.InstructionEquivalence.System.Common
 
 open Sail PreSail LeanRV64D.Functions
 
@@ -198,34 +198,6 @@ theorem ecallProgram_run
     (ecallAfterJalr js pc nextPC)
     (ecall_jalr_run js pc nextPC misa hnextPC hmisa hfetch)]
   simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure]
-
-/-- ECALL trap-entry equivalence under the system CSR projection.
-
-The assumptions expose exactly the current ZeroOS/M-mode envelope: ordinary
-architectural reads needed by the two control-flow rows are present; the current
-privilege is Machine; Sail's generated mstatus trap update agrees with Rust's
-constant `0x1800`; and Sail's `tvec_addr` helper selects the same target as
-Jolt's final `JALR`. -/
-theorem ecallProgram_eq_sail_trap_entry
-    (js : SailJoltState)
-    (h_sys : EcallSystemAssumptions js) :
-    systemProjectResult ((JoltISA.execProgram JoltISA.ecallProgram).run js) =
-      sailEcallTrapEntry.run (systemProject js) := by
-  rcases h_sys.pc_readable.exists_value with ⟨pc, hpc⟩
-  rcases h_sys.nextPC_readable.exists_value with ⟨nextPC, hnextPC⟩
-  rcases h_sys.medeleg_readable.exists_value with ⟨medeleg, hmedeleg⟩
-  rcases h_sys.misa_readable.exists_value with ⟨misa, hmisa⟩
-  have hJolt :=
-    ecallProgram_run js pc nextPC misa hpc hnextPC hmisa
-      h_sys.trap_target_fetch_aligned.bit1_zero
-  have hSail :=
-    sailEcallTrapEntry_machine_run js pc nextPC medeleg misa hpc hmedeleg hmisa
-      h_sys.elp_zero h_sys.cur_privilege_machine.value
-      h_sys.mstatus_matches_zeroOS_trap.value_eq
-      h_sys.trap_vector_matches_jalr.value_eq
-  unfold systemProjectResult
-  rw [hJolt]
-  exact hSail.symm
 
 end System
 

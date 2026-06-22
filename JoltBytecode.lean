@@ -106,9 +106,28 @@ import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelh  -- advice load
 import JoltBytecode.InstructionEquivalence.AdviceFamily.Advicelw  -- advice load word   DONE:
 
 -- System : Shuld be easy, I'll close when we get to it.
-import JoltBytecode.InstructionEquivalence.System.Bundles
 import JoltBytecode.InstructionEquivalence.System.Ecall
 import JoltBytecode.InstructionEquivalence.System.Ebreak
 import JoltBytecode.InstructionEquivalence.System.Mret
 import JoltBytecode.InstructionEquivalence.System.Csrrw
+import JoltBytecode.InstructionEquivalence.Natives.Add
+import JoltBytecode.InstructionEquivalence.Natives.Addi
+import JoltBytecode.InstructionEquivalence.Natives.And
+import JoltBytecode.InstructionEquivalence.Natives.Andi
+import JoltBytecode.InstructionEquivalence.Natives.Auipc
+import JoltBytecode.InstructionEquivalence.Natives.Fence
+import JoltBytecode.InstructionEquivalence.Natives.Ld
+import JoltBytecode.InstructionEquivalence.Natives.Lui
+import JoltBytecode.InstructionEquivalence.Natives.Mul
+import JoltBytecode.InstructionEquivalence.Natives.Mulhu
+import JoltBytecode.InstructionEquivalence.Natives.Or
+import JoltBytecode.InstructionEquivalence.Natives.Ori
+import JoltBytecode.InstructionEquivalence.Natives.Sd
+import JoltBytecode.InstructionEquivalence.Natives.Slt
+import JoltBytecode.InstructionEquivalence.Natives.Slti
+import JoltBytecode.InstructionEquivalence.Natives.Sltiu
+import JoltBytecode.InstructionEquivalence.Natives.Sltu
+import JoltBytecode.InstructionEquivalence.Natives.Sub
+import JoltBytecode.InstructionEquivalence.Natives.Xor
+import JoltBytecode.InstructionEquivalence.Natives.Xori
 -- import JoltBytecode.InstructionEquivalence.System.Csrrs     -- TODO: CSR read-set

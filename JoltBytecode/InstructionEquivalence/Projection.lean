@@ -1,5 +1,5 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport
-import JoltBytecode.InstructionEquivalence.System.Bundles
+import JoltBytecode.InstructionEquivalence.System.Common
 
 /-!
 # Projection proof facts
