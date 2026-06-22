@@ -1,5 +1,3 @@
-import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Common
-
 /-!
 # LR.W proof boundary
 
@@ -32,35 +30,10 @@ Assuming `load_reservation p 4 s = .ok () s` would collapse Sail `LR.W` to an
 ordinary `LW`, but that would be an external trust assumption and would not prove
 the reservation behavior that Jolt models with virtual registers.
 
-The intended theorem shape is left here, commented out, so the API target is
-visible without introducing a `sorry` warning in `lake build`.
-
-```
-theorem lrwProgram_eq_sail
-    (rs1 rd : regidx) (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (addr : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (h_mem : LoadReservedMemoryContext 4
-      (addr &&& (-8 : BitVec 64)) addr js.sail) :
-    projectResult ((JoltISA.execProgram
-      (JoltISA.lrwProgram rs1 rd)).run js) =
-      (execute_LOADRES false false rs1 4 rd).run js.sail := by
-  -- Not provable without a trusted reservation-state contract for Sail.
-```
+There is no theorem target in this file until Sail exposes a trustworthy
+reservation-state contract.
 -/
-
-set_option linter.unusedVariables false
-
-open Sail PreSail LeanRV64D.Functions
-open virtaddr
-
-set_option autoImplicit true
-
-noncomputable section
 
 namespace LoadReservedFamily
 
 end LoadReservedFamily
-
-end

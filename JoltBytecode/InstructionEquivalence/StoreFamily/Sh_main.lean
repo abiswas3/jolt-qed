@@ -50,11 +50,13 @@ def shSplicedDword (imm : BitVec 12) (rs1_val rs2_val dword_orig : BitVec 64) :
 The leading assertion succeeds, so the rest of the program is the common setup
 block followed by the halfword splice block and final `SD`. -/
 theorem shProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (rs1_val rs2_val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (hsetup : StoreSplice.HalfwordStoreSetup
+    (hsetup : StoreSplice.HalfwordStoreFacts
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
     (h_base_aligned :
@@ -105,7 +107,7 @@ theorem shProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   let dword_new := shSplicedDword imm rs1_val rs2_val dword_orig
   let finalSail := state_after_dword_store js.sail base dword_new
   rcases StoreProgramBlocks.assertHalfwordSetupBlockAligned spliceTail
-      imm rs1 js hcfg rs1_val hrs1 hsetup.halfword_aligned
+      imm rs1 js hpriv hmprv rs1_val hrs1 hsetup.halfword_aligned
       h_base_aligned hbytes hload_pmp hread_mmio with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
   rcases StoreProgramBlocks.halfwordSpliceBlock writeTail imm rs2 js js_load
@@ -145,7 +147,7 @@ spliced dword changes exactly the two target bytes and preserves all other
 bytes in the enclosing dword. -/
 theorem sh_spliced_dword_store_eq_halfword_store (imm : BitVec 12)
     (s : SailState) (rs1_val rs2_val : BitVec 64)
-    (hsetup : StoreSplice.HalfwordStoreSetup
+    (hsetup : StoreSplice.HalfwordStoreFacts
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
     (hbytes :
@@ -167,7 +169,8 @@ theorem sh_spliced_dword_store_eq_halfword_store (imm : BitVec 12)
   let off := (ea - base).toNat
   have hspec : StoreSplice.IsHalfwordSplice dword_orig dword_new halfword_val off := by
     simpa [dword_new, shSplicedDword, dword_orig, halfword_val, off, ea, base, Nat.mul_comm]
-      using StoreSplice.halfwordSplice_spec dword_orig halfword_val off hsetup.offset_cases
+      using StoreSplice.halfwordSplice_spec dword_orig halfword_val off
+        hsetup.halfword_offset_cases
   have hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none := by
     intro k hk
     rcases hbytes k (by simpa [base] using hk) with ⟨b, hb⟩
@@ -197,11 +200,13 @@ theorem sh_spliced_dword_store_eq_halfword_store (imm : BitVec 12)
 
 /-- **Concrete aligned SH execution on the Jolt side.** -/
 theorem shProgram_concrete_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (rs1_val rs2_val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (hsetup : StoreSplice.HalfwordStoreSetup
+    (hsetup : StoreSplice.HalfwordStoreFacts
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
     (h_base_aligned :
@@ -232,7 +237,7 @@ theorem shProgram_concrete_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
         state_after_halfword_store js.sail
           (load_effective_address rs1_val imm)
           (Sail.BitVec.extractLsb rs2_val 15 0) := by
-  rcases shProgram_reduces_to_dword_store imm rs2 rs1 js hcfg rs1_val rs2_val
+  rcases shProgram_reduces_to_dword_store imm rs2 rs1 js hpriv hmprv rs1_val rs2_val
       hrs1 hrs2 hsetup h_base_aligned hbytes hload_pmp hread_mmio hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   refine ⟨js', hjolt, ?_⟩
@@ -266,73 +271,6 @@ theorem execute_SH_reduces (imm : BitVec 12) (rs2 rs1 : regidx)
     exact ⟨rs1_val, hrs1, rfl⟩
   exact execute_STORE_halfword_eq_state_after_halfword_store imm rs2 rs1 js
     rs2_val (load_effective_address rs1_val imm) hrs1_exists hrs2 hwrite_halfword
-
-/-- **Aligned public SH theorem.** -/
-theorem shProgram_eq_sail_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
-    (rs1_val rs2_val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (h_base_aligned :
-      AlignedDwordAccess (compute_aligned_dword_base_address rs1_val imm))
-    (hbytes :
-      MemBytesPresentAt js.sail (compute_aligned_dword_base_address rs1_val imm) 8)
-    (hload_pmp :
-      Assumptions.LoadPmpOk (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
-    (hread_mmio :
-      Assumptions.NotReadableMmio (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
-    (hstore_pmp_base :
-      Assumptions.StorePmpOk (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
-    (hwrite_mmio_base :
-      Assumptions.NotWritableMmio (compute_aligned_dword_base_address rs1_val imm) 8 js.sail)
-    (hstore_pmp_halfword :
-      Assumptions.StorePmpOk (load_effective_address rs1_val imm) 2 js.sail)
-    (hwrite_mmio_halfword :
-      Assumptions.NotWritableMmio (load_effective_address rs1_val imm) 2 js.sail)
-    (halign : load_effective_address rs1_val imm &&& (1 : BitVec 64) = 0) :
-    projectResult ((JoltISA.execProgram (JoltISA.shProgram imm rs2 rs1)).run js) =
-      (execute_STORE imm rs2 rs1 2).run js.sail := by
-  let dword_orig :=
-    loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
-      hbytes h_base_aligned.no_ovf
-  let dword_new := shSplicedDword imm rs1_val rs2_val dword_orig
-  have hsetup : StoreSplice.HalfwordStoreSetup
-      (load_effective_address rs1_val imm)
-      (compute_aligned_dword_base_address rs1_val imm) :=
-    StoreSplice.halfwordStoreSetup_of_effective_address
-      rs1_val imm halign
-  have hwrite_dword :
-      vmem_write_addr
-        (Virtaddr (compute_aligned_dword_base_address rs1_val imm)) 8
-        dword_new
-        (Store Data) false false false js.sail =
-      .ok (Ok true)
-        (state_after_dword_store js.sail
-          (compute_aligned_dword_base_address rs1_val imm)
-          dword_new) := by
-    exact vmem_write_addr_dword_store_reduces
-      (compute_aligned_dword_base_address rs1_val imm) dword_new js.sail hcfg
-      h_base_aligned.toAlignedAccess hstore_pmp_base hwrite_mmio_base
-  have hwrite_halfword :
-      vmem_write rs1 (sign_extend (m := 64) imm) 2
-        (Sail.BitVec.extractLsb rs2_val 15 0)
-        (Store Data) false false false js.sail =
-      .ok (Ok true)
-        (state_after_halfword_store js.sail
-          (load_effective_address rs1_val imm)
-          (Sail.BitVec.extractLsb rs2_val 15 0)) :=
-    vmem_write_halfword_store_reduces imm rs1 js.sail hcfg
-      rs1_val hrs1 (Sail.BitVec.extractLsb rs2_val 15 0)
-      halign hstore_pmp_halfword hwrite_mmio_halfword
-  rcases shProgram_concrete_aligned imm rs2 rs1 js hcfg rs1_val rs2_val
-      hrs1 hrs2 hsetup h_base_aligned hbytes hload_pmp hread_mmio
-      (by simpa [dword_orig, dword_new] using hwrite_dword) with
-    ⟨js', hjolt, hjolt_sail⟩
-  have hsail := execute_SH_reduces imm rs2 rs1 js rs1_val rs2_val
-    hrs1 hrs2 hwrite_halfword
-  rw [hjolt]
-  simp only [projectResult, project]
-  rw [hjolt_sail, hsail]
 
 /-- **Jolt-side misaligned SH reduction.**
 
@@ -397,22 +335,6 @@ theorem execute_SH_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
         vmem_write_addr, hmis', ea]
   rfl
 
-/-- **Misaligned public SH theorem.** -/
-theorem shProgram_eq_sail_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState)
-    (rs1_val rs2_val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (hmis : load_effective_address rs1_val imm &&& 1 ≠ 0) :
-    projectResult ((JoltISA.execProgram (JoltISA.shProgram imm rs2 rs1)).run js) =
-      (execute_STORE imm rs2 rs1 2).run js.sail := by
-  have hjolt := shProgram_concrete_misaligned imm rs2 rs1 js rs1_val hrs1 hmis
-  have hsail := execute_SH_misaligned imm rs2 rs1 js rs1_val rs2_val hrs1 hrs2 hmis
-  rw [hjolt]
-  simp only [projectResult, project]
-  symm
-  exact hsail
-
 /-- Successful `SH` expansions do not modify the persistent CSR virtual
 registers materialized by `systemProject`. -/
 theorem shProgram_preserves_projected_vregs
@@ -436,7 +358,7 @@ theorem shProgram_preserves_projected_vregs
 materializing Jolt's persistent CSR virtual registers. -/
 def shProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
-    (_h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
+    (_h : StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
     System.systemProjectResult
       ((JoltISA.execProgram (JoltISA.shProgram imm rs2 rs1)).run js) =
     (execute_STORE imm rs2 rs1 2).run js.sail
@@ -445,44 +367,24 @@ def shProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
 materializing Jolt's persistent CSR virtual registers. -/
 theorem shProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
-    (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
+    (h : StoreProgramEqSailAssumptions imm rs2 rs1 js) :
     shProgramEqSailStatement imm rs2 rs1 js h := by
   unfold shProgramEqSailStatement
   let ea := load_effective_address h.rs1_val imm
   let base := compute_aligned_dword_base_address h.rs1_val imm
   let offset := (ea &&& (7 : BitVec 64)).toNat
-  have hcfg : JoltConfig js.sail :=
-    { cur_privilege := h.cur_privilege
-      mstatus_mprv := h.mstatus_mprv }
-  have h_base_aligned : AlignedDwordAccess base := by
-    simpa [base, compute_aligned_dword_base_address, aligned_dword_addr_eq,
-      load_effective_address] using
-      aligned_dword_addr_is_aligned_dword_access h.rs1_val imm
-  have hbytes : MemBytesPresentAt js.sail base 8 := by
-    simpa [base] using h.dword_present.memBytesPresentAt
-  have hload_pmp :
-      Assumptions.LoadPmpOk base 8 js.sail := by
-    simpa [base] using h.load_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
-  have hread_mmio :
-      Assumptions.NotReadableMmio base 8 js.sail := by
-    simpa [base] using h.not_readable_mmio.subaccess
-      (offset := 0) (accessWidth := 8) (by omega)
-  have hstore_pmp_base :
-      Assumptions.StorePmpOk base 8 js.sail := by
-    simpa [base] using h.store_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
-  have hwrite_mmio_base :
-      Assumptions.NotWritableMmio base 8 js.sail := by
-    simpa [base] using h.not_writable_mmio.subaccess
-      (offset := 0) (accessWidth := 8) (by omega)
-  let dword_orig := loaded_dword_at js.sail base hbytes h_base_aligned.no_ovf
+  have hwin := h.dwordWindowFacts
+  let dword_orig := loaded_dword_at js.sail base
+    (by simpa [base] using hwin.bytes)
+    (by simpa [base] using hwin.aligned.no_ovf)
   let dword_new := shSplicedDword imm h.rs1_val h.rs2_val dword_orig
   have h_project_initial : System.systemProject js = js.sail :=
     Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   by_cases halign : ea &&& (1 : BitVec 64) = 0
-  · have hsetup : StoreSplice.HalfwordStoreSetup
+  · have hsetup : StoreSplice.HalfwordStoreFacts
         (load_effective_address h.rs1_val imm)
         (compute_aligned_dword_base_address h.rs1_val imm) :=
-      StoreSplice.halfwordStoreSetup_of_effective_address
+      StoreSplice.halfwordStoreFacts_of_effective_address
         h.rs1_val imm (by simpa [ea] using halign)
     have hwrite_dword :
         vmem_write_addr
@@ -490,31 +392,17 @@ theorem shProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
           (Store Data) false false false js.sail =
         .ok (Ok true)
           (state_after_dword_store js.sail base dword_new) :=
-      vmem_write_addr_dword_store_reduces base dword_new js.sail hcfg
-        h_base_aligned.toAlignedAccess hstore_pmp_base hwrite_mmio_base
-    have haddr : base + BitVec.ofNat 64 offset = ea := by
-      simpa [base, ea, offset, compute_aligned_dword_base_address] using
-        write_addr_split_aligned_offset ea
-    have hstore_pmp_halfword :
-        Assumptions.StorePmpOk ea 2 js.sail := by
-      have hsub : Assumptions.StorePmpOk
-          (base + BitVec.ofNat 64 offset) 2 js.sail := by
-        have hoff : offset + 2 ≤ 8 := by
-          have hcases := write_halfword_offset_cases ea (by simpa [ea] using halign)
-          rcases hcases with h0 | h2 | h4 | h6 <;> omega
-        simpa [base, offset] using h.store_pmp.subaccess
-          (offset := offset) (accessWidth := 2) hoff
-      simpa [haddr] using hsub
-    have hwrite_mmio_halfword :
-        Assumptions.NotWritableMmio ea 2 js.sail := by
-      have hsub : Assumptions.NotWritableMmio
-          (base + BitVec.ofNat 64 offset) 2 js.sail := by
-        have hoff : offset + 2 ≤ 8 := by
-          have hcases := write_halfword_offset_cases ea (by simpa [ea] using halign)
-          rcases hcases with h0 | h2 | h4 | h6 <;> omega
-        simpa [base, offset] using h.not_writable_mmio.subaccess
-          (offset := offset) (accessWidth := 2) hoff
-      simpa [haddr] using hsub
+      vmem_write_addr_dword_store_reduces base dword_new js.sail
+        h.cur_privilege h.mstatus_mprv
+        (by simpa [base] using hwin.aligned.toAlignedAccess)
+        (by simpa [base] using hwin.store_pmp)
+        (by simpa [base] using hwin.write_mmio)
+    have hstore_fits : offset + 2 ≤ 8 := by
+      have hcases := write_halfword_offset_cases ea (by simpa [ea] using halign)
+      rcases hcases with h0 | h2 | h4 | h6 <;> omega
+    have hstore_access :=
+      StoreProgramEqSailAssumptions.storeAccessFacts h 2
+        (by simpa [ea, offset] using hstore_fits)
     have hwrite_halfword :
         vmem_write rs1 (sign_extend (m := 64) imm) 2
           (Sail.BitVec.extractLsb h.rs2_val 15 0)
@@ -523,17 +411,18 @@ theorem shProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
           (state_after_halfword_store js.sail
             (load_effective_address h.rs1_val imm)
             (Sail.BitVec.extractLsb h.rs2_val 15 0)) :=
-      vmem_write_halfword_store_reduces imm rs1 js.sail hcfg
+      vmem_write_halfword_store_reduces imm rs1 js.sail h.cur_privilege h.mstatus_mprv
         h.rs1_val h.rs1_read (Sail.BitVec.extractLsb h.rs2_val 15 0)
         (by simpa [ea] using halign)
-        (by simpa [ea] using hstore_pmp_halfword)
-        (by simpa [ea] using hwrite_mmio_halfword)
-    rcases shProgram_concrete_aligned imm rs2 rs1 js hcfg h.rs1_val h.rs2_val
+        (by simpa [ea] using hstore_access.store_pmp)
+        (by simpa [ea] using hstore_access.write_mmio)
+    rcases shProgram_concrete_aligned imm rs2 rs1 js h.cur_privilege h.mstatus_mprv
+        h.rs1_val h.rs2_val
         h.rs1_read h.rs2_read hsetup
-        (by simpa [base] using h_base_aligned)
-        (by simpa [base] using hbytes)
-        (by simpa [base] using hload_pmp)
-        (by simpa [base] using hread_mmio)
+        (by simpa [base] using hwin.aligned)
+        (by simpa [base] using hwin.bytes)
+        (by simpa [base] using hwin.load_pmp)
+        (by simpa [base] using hwin.read_mmio)
         (by simpa [base, dword_orig, dword_new] using hwrite_dword) with
       ⟨js', hjolt, hjolt_sail⟩
     have hsail := execute_SH_reduces imm rs2 rs1 js h.rs1_val h.rs2_val

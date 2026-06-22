@@ -227,17 +227,17 @@ The advice-backed ALU instructions all need source-register read facts; their
 advice operands live in the `RiscvInstruction` constructor itself. -/
 def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
   | .LB _rd rs1 imm, js =>
-      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+      LoadProgramEqSailAssumptions imm rs1 js
   | .LH _rd rs1 imm, js =>
-      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+      LoadProgramEqSailAssumptions imm rs1 js
   | .LW _rd rs1 imm, js =>
-      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+      LoadProgramEqSailAssumptions imm rs1 js
   | .LBU _rd rs1 imm, js =>
-      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+      LoadProgramEqSailAssumptions imm rs1 js
   | .LHU _rd rs1 imm, js =>
-      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+      LoadProgramEqSailAssumptions imm rs1 js
   | .LWU _rd rs1 imm, js =>
-      LoadFamily.LoadProgramEqSailAssumptions imm rs1 js
+      LoadProgramEqSailAssumptions imm rs1 js
   | .SLLI _rd rs1 _shamt, js =>
       UnarySourceReadWithLinkedCSRs rs1 js
   | .SRLI _rd rs1 _shamt, js =>

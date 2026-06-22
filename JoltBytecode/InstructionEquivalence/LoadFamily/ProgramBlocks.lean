@@ -57,7 +57,12 @@ theorem setupBlock (rest : JoltISA.Program)
     (hpriv : Assumptions.CurPrivilegeMachine js.sail)
     (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
+    (hbytes :
+      MemBytesPresentAt js.sail (compute_aligned_dword_base_address val imm) 8)
+    (hload_pmp :
+      Assumptions.LoadPmpOk (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hread_mmio :
+      Assumptions.NotReadableMmio (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
         (.instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
@@ -67,10 +72,17 @@ theorem setupBlock (rest : JoltISA.Program)
       js_load.sail = js.sail ∧
       js_load.vregs JoltISA.inlineTmp0 = load_effective_address val imm ∧
       js_load.vregs JoltISA.inlineTmp1 =
-        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
+        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
+          hbytes
+          (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf := by
   let ea := load_effective_address val imm
   let daddr := compute_aligned_dword_base_address val imm
-  let dword := loaded_dword_at js.sail daddr
+  have h_daddr_aligned : AlignedDwordAccess daddr := by
+    simpa [daddr, compute_aligned_dword_base_address, load_effective_address,
+      aligned_dword_addr_eq] using
+      (aligned_dword_addr_is_aligned_dword_access val imm)
+  let dword := loaded_dword_at js.sail daddr (by simpa [daddr] using hbytes)
+    h_daddr_aligned.no_ovf
   let js0 : SailJoltState :=
     { sail := js.sail
       vregs := fun r => if r = JoltISA.inlineTmp0 then ea else js.vregs r }
@@ -94,10 +106,6 @@ theorem setupBlock (rest : JoltISA.Program)
       load_effective_address, h8] using
       (JoltISA.andi_run_vreg_vreg JoltISA.inlineTmp1 JoltISA.inlineTmp0
         (-8 : BitVec 12) js0 (by unfold WritableVReg; decide))
-  have h_daddr_aligned : AlignedDwordAccess daddr := by
-    simpa [daddr, compute_aligned_dword_base_address, load_effective_address,
-      aligned_dword_addr_eq] using
-      (aligned_dword_addr_is_aligned_dword_access val imm)
   have hld_read :
       vmem_read_addr (Virtaddr (js1.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12))) 0 8
         (Load Data) false false false js1.sail =
@@ -107,7 +115,9 @@ theorem setupBlock (rest : JoltISA.Program)
       rw [h0]
       norm_num
     have hread := aligned_dword_vmem_read_reduces daddr js.sail hpriv hmprv
-      h_daddr_aligned (by simpa [daddr] using h_dword_phys)
+      h_daddr_aligned (by simpa [daddr] using hbytes)
+      (by simpa [daddr] using hload_pmp)
+      (by simpa [daddr] using hread_mmio)
     rw [show js1.sail = js.sail by rfl]
     have hv1 : js1.vregs JoltISA.inlineTmp1 = daddr := by
       simp only [js1]
@@ -157,7 +167,12 @@ theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
     (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& (1 : BitVec 64) = 0)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
+    (hbytes :
+      MemBytesPresentAt js.sail (compute_aligned_dword_base_address val imm) 8)
+    (hload_pmp :
+      Assumptions.LoadPmpOk (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hread_mmio :
+      Assumptions.NotReadableMmio (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
         (.instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
@@ -168,7 +183,9 @@ theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
       js_load.sail = js.sail ∧
       js_load.vregs JoltISA.inlineTmp0 = load_effective_address val imm ∧
       js_load.vregs JoltISA.inlineTmp1 =
-        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
+        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
+          hbytes
+          (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf := by
   have hassert :
       (JoltISA.execInstr
         (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))).run js =
@@ -176,7 +193,8 @@ theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
     exact JoltISA.virtual_assert_halfword_alignment_run_aligned rs1 imm
       (ExceptionType.E_Load_Addr_Align ()) js val hrx
       (by simpa [load_effective_address] using halign)
-  rcases setupBlock rest imm rs1 js hpriv hmprv val hrx h_dword_phys with
+  rcases setupBlock rest imm rs1 js hpriv hmprv val hrx
+      hbytes hload_pmp hread_mmio with
     ⟨js_load, hrun, hsail, hv0, hv1⟩
   refine ⟨js_load, ?_, hsail, hv0, hv1⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
@@ -194,7 +212,12 @@ theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
     (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& (3 : BitVec 64) = 0)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
+    (hbytes :
+      MemBytesPresentAt js.sail (compute_aligned_dword_base_address val imm) 8)
+    (hload_pmp :
+      Assumptions.LoadPmpOk (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hread_mmio :
+      Assumptions.NotReadableMmio (compute_aligned_dword_base_address val imm) 8 js.sail) :
     ∃ js_load : SailJoltState,
       (JoltISA.execProgram
         (.instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
@@ -205,7 +228,9 @@ theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
       js_load.sail = js.sail ∧
       js_load.vregs JoltISA.inlineTmp0 = load_effective_address val imm ∧
       js_load.vregs JoltISA.inlineTmp1 =
-        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
+        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
+          hbytes
+          (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf := by
   have hassert :
       (JoltISA.execInstr
         (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ()))).run js =
@@ -213,7 +238,8 @@ theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
     exact JoltISA.virtual_assert_word_alignment_run_aligned rs1 imm
       (ExceptionType.E_Load_Addr_Align ()) js val hrx
       (by simpa [load_effective_address] using halign)
-  rcases setupBlock rest imm rs1 js hpriv hmprv val hrx h_dword_phys with
+  rcases setupBlock rest imm rs1 js hpriv hmprv val hrx
+      hbytes hload_pmp hread_mmio with
     ⟨js_load, hrun, hsail, hv0, hv1⟩
   refine ⟨js_load, ?_, hsail, hv0, hv1⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
@@ -288,11 +314,10 @@ whether the top lane is sign-extended or zero-extended into the real
 destination. -/
 theorem xoriSlliSllBlock (rest : JoltISA.Program)
     (imm xorImm : BitVec 12)
-    (js js_load : SailJoltState) (val : BitVec 64)
+    (js js_load : SailJoltState) (val dword : BitVec 64)
     (hload_sail : js_load.sail = js.sail)
     (hload_v0 : js_load.vregs JoltISA.inlineTmp0 = load_effective_address val imm)
-    (hload_v1 : js_load.vregs JoltISA.inlineTmp1 =
-      loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)) :
+    (hload_v1 : js_load.vregs JoltISA.inlineTmp1 = dword) :
     ∃ js_shift : SailJoltState,
       (JoltISA.execProgram
         (.instr (.XORI (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) xorImm) <|
@@ -306,7 +331,7 @@ theorem xoriSlliSllBlock (rest : JoltISA.Program)
           (3 : BitVec 6) ∧
       js_shift.vregs JoltISA.inlineTmp1 =
         shift_bits_left
-          (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
+          dword
           (Sail.BitVec.extractLsb
             (shift_bits_left
               (load_effective_address val imm ^^^ sign_extend (m := 64) xorImm)
@@ -315,7 +340,7 @@ theorem xoriSlliSllBlock (rest : JoltISA.Program)
   let shiftValue := shift_bits_left xorValue (3 : BitVec 6)
   let shiftedDword :=
     shift_bits_left
-      (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
+      dword
       (Sail.BitVec.extractLsb shiftValue 5 0)
   let js_xor : SailJoltState :=
     { sail := js_load.sail
@@ -337,11 +362,8 @@ theorem xoriSlliSllBlock (rest : JoltISA.Program)
   have hslli_v0_is_shiftValue : js_slli.vregs JoltISA.inlineTmp0 = shiftValue := by
     rw [hslli_writes_v0, hxv0]
   have hslli_v1 :
-      js_slli.vregs JoltISA.inlineTmp1 =
-        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
+      js_slli.vregs JoltISA.inlineTmp1 = dword := by
     rw [hslli_preserves JoltISA.inlineTmp1 (by decide)]
-    change js_load.vregs JoltISA.inlineTmp1 =
-      loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
     exact hload_v1
   obtain ⟨js_shift, hsll_sail, hsll_v1, hsll_preserves, hsll_run⟩ :=
     JoltISA.exists_state_after_sll_block_run_vreg_vreg_vreg
@@ -445,11 +467,10 @@ the loaded dword right by `(ea * 8) & 63`, leaves that intermediate value in
 destination. -/
 theorem lwSrlBlock (rest : JoltISA.Program)
     (imm : BitVec 12)
-    (js js_load : SailJoltState) (val : BitVec 64)
+    (js js_load : SailJoltState) (val dword : BitVec 64)
     (hload_sail : js_load.sail = js.sail)
     (hload_v0 : js_load.vregs JoltISA.inlineTmp0 = load_effective_address val imm)
-    (hload_v1 : js_load.vregs JoltISA.inlineTmp1 =
-      loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)) :
+    (hload_v1 : js_load.vregs JoltISA.inlineTmp1 = dword) :
     ∃ (js_logic : SailJoltState) (logic_val : BitVec 64),
       (JoltISA.execProgram
         (JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
@@ -457,14 +478,14 @@ theorem lwSrlBlock (rest : JoltISA.Program)
         (JoltISA.execProgram rest).run js_logic ∧
       logic_val =
         shift_bits_right
-          (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
+          dword
           (Sail.BitVec.extractLsb
             (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0) ∧
       js_logic.sail = js.sail ∧
       js_logic.vregs JoltISA.inlineTmp1 = logic_val := by
   let logic_val :=
     shift_bits_right
-      (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
+      dword
       (Sail.BitVec.extractLsb
         (shift_bits_left (load_effective_address val imm) (3 : BitVec 6)) 5 0)
   obtain ⟨js_slli, hslli_sail, hslli_writes_v0, hslli_preserves, hslli_run⟩ :=
@@ -475,9 +496,7 @@ theorem lwSrlBlock (rest : JoltISA.Program)
       js_slli.vregs JoltISA.inlineTmp0 =
         shift_bits_left (load_effective_address val imm) (3 : BitVec 6) := by
     rw [hslli_writes_v0, hload_v0]
-  have hslli_v1 :
-      js_slli.vregs JoltISA.inlineTmp1 =
-        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm) := by
+  have hslli_v1 : js_slli.vregs JoltISA.inlineTmp1 = dword := by
     rw [hslli_preserves JoltISA.inlineTmp1 (by decide)]
     exact hload_v1
   obtain ⟨js_logic, hsrl_sail, hsrl_v1, _hsrl_preserves, hsrl_run⟩ :=

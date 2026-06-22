@@ -129,7 +129,6 @@ theorem execute_STORE_word_eq_state_after_word_store
       rX_bits rs1 js.sail = .ok rs1_val js.sail ∧
       ea = rs1_val + sign_extend (m := 64) imm)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (hcfg : JoltConfig js.sail)
     (hwrite :
       vmem_write rs1 (sign_extend (m := 64) imm) 4 (Sail.BitVec.extractLsb rs2_val 31 0)
         (Store Data) false false false js.sail =

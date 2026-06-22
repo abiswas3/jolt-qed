@@ -92,10 +92,6 @@ import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxw
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Amominuw
 import JoltBytecode.InstructionEquivalence.AtomicFamily.Amomaxuw
 
--- Load Reserved
-import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Lrw
-import JoltBytecode.InstructionEquivalence.LoadReservedFamily.Lrd
-
 -- Store Conditional
 import JoltBytecode.InstructionEquivalence.StoreConditionalFamily.Scw
 import JoltBytecode.InstructionEquivalence.StoreConditionalFamily.Scd

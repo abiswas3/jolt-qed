@@ -1,7 +1,6 @@
 import JoltBytecode.JoltISA.Environment
 import JoltBytecode.JoltISA.Expansions.Load
 import JoltBytecode.InstructionEquivalence.Memory.Read
-import JoltBytecode.InstructionEquivalence.LoadFamily.PhaseHelpers
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic
 import JoltBytecode.InstructionEquivalence.Memory.Windows
 import JoltBytecode.InstructionEquivalence.LoadFamily.ProgramBlocks
@@ -62,15 +61,20 @@ sign bit. Accordingly:
     algebra — combines `sll_srli_extracts_byte` with
     `loaded_byte_in_dword`, mirroring `jolt_lb_bridge` modulo
     sign→zero-extend. -/
-theorem jolt_lbu_bridge (s : SailState) (addr : BitVec 64) :
+theorem jolt_lbu_bridge (s : SailState) (addr : BitVec 64)
+    (hbytes_base : MemBytesPresentAt s (addr &&& (-8 : BitVec 64)) 8)
+    (h_no_ovf_base : (addr &&& (-8 : BitVec 64)).toNat + 7 < 2 ^ 64)
+    (hpresent : MemBytePresentAt s addr.toNat) :
     (let dword     := loaded_dword_at s (addr &&& (-8 : BitVec 64))
+        hbytes_base h_no_ovf_base
      let xor_addr  := addr ^^^ (7 : BitVec 64)
      let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
      let shift_6   := Sail.BitVec.extractLsb shift_amt 5 0
      let shifted   := shift_bits_left dword shift_6
      shift_bits_right shifted (56 : BitVec 6))
-    = zero_extend (m := 64) (loaded_byte_at s addr) := by
-  simp only [sll_srli_extracts_byte, ← loaded_byte_in_dword]
+    = zero_extend (m := 64) (loaded_byte_at s addr hpresent) := by
+  simp only [sll_srli_extracts_byte,
+    ← loaded_byte_in_dword s addr hbytes_base h_no_ovf_base hpresent]
 
 -- ============================================================================
 -- Top-level LBU ↔ Sail equivalence theorems
@@ -87,14 +91,17 @@ theorem execute_LBU_reduces (imm : BitVec 12) (rs1 rd : regidx)
     (hpriv : Assumptions.CurPrivilegeMachine js.sail)
     (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hphys : FlatPhysMem (load_effective_address val imm) 1 js.sail) :
+    (hbytes : MemBytesPresentAt js.sail (load_effective_address val imm) 1)
+    (hload_pmp : Assumptions.LoadPmpOk (load_effective_address val imm) 1 js.sail)
+    (hread_mmio : Assumptions.NotReadableMmio (load_effective_address val imm) 1 js.sail) :
     -- DIFF: `execute_LOAD` is called with `true` (unsigned) not `false`.
     (execute_LOAD imm rs1 rd true 1).run js.sail =
     .ok RETIRE_SUCCESS
       (stateAfterWrite js.sail rd
         -- DIFF: `zero_extend` not `sign_extend`.
         (zero_extend (m := 64)
-          (loaded_byte_at js.sail (load_effective_address val imm)))) := by
+          (loaded_byte_at js.sail (load_effective_address val imm)
+            (by simpa using hbytes 0 (by omega))))) := by
   unfold execute_LOAD
   simp only [bind, pure]
   unfold Sail.assert LeanRV64D.Functions.xlen_bytes
@@ -103,14 +110,19 @@ theorem execute_LBU_reduces (imm : BitVec 12) (rs1 rd : regidx)
        EStateM.run, if_true]
   rw [vmem_read_byte_reduces imm rs1 js.sail hpriv hmprv val hrx
       (aligned_access_1 (load_effective_address val imm))
-      (mem_read_1_eq_loaded_byte _ js.sail hpriv hmprv hphys)]
+      (loaded_byte_at js.sail (load_effective_address val imm)
+        (by simpa using hbytes 0 (by omega)))
+      (mem_read_1_eq_loaded_byte _ js.sail hpriv hmprv hbytes hload_pmp
+        hread_mmio)]
   -- DIFF: `if_true` instead of `Bool.false_eq_true, if_false` — the unsigned
   --       branch in `extend_value` is gated on the `true` signed flag, so the
   --       opposite branch fires compared to LB.
   simp only [extend_value, if_true, EStateM.bind, EStateM.pure]
   obtain ⟨s', hw⟩ := wX_shape rd
     -- DIFF: `zero_extend` not `sign_extend`, as in the goal.
-    (zero_extend (m := 64) (loaded_byte_at js.sail (load_effective_address val imm)))
+    (zero_extend (m := 64)
+      (loaded_byte_at js.sail (load_effective_address val imm)
+        (by simpa using hbytes 0 (by omega))))
     js.sail
   rw [hw]
   simp only [RETIRE_SUCCESS]
@@ -135,12 +147,19 @@ theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
     (hpriv : Assumptions.CurPrivilegeMachine js.sail)
     (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (h_dword_phys : FlatPhysMem (compute_aligned_dword_base_address val imm) 8 js.sail) :
+    (hbytes_base :
+      MemBytesPresentAt js.sail (compute_aligned_dword_base_address val imm) 8)
+    (hload_pmp_base :
+      Assumptions.LoadPmpOk (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hread_mmio_base :
+      Assumptions.NotReadableMmio (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hbytes_byte : MemBytesPresentAt js.sail (load_effective_address val imm) 1) :
     ∃ js' : SailJoltState,
       (JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js = .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
         (zero_extend (m := 64)
-          (loaded_byte_at js.sail (load_effective_address val imm))) := by
+          (loaded_byte_at js.sail (load_effective_address val imm)
+            (by simpa using hbytes_byte 0 (by omega)))) := by
   let writeTail : JoltISA.Program :=
     .instr (.VirtualSRLI (.xreg rd) (.vreg JoltISA.inlineTmp1) (JoltISA.srliBitmask (56 : BitVec 6)))
       (.done RETIRE_SUCCESS)
@@ -149,14 +168,16 @@ theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
     JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
     JoltISA.sllBlock (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp2 writeTail
   rcases LoadProgramBlocks.setupBlock logicTail imm rs1 js hpriv hmprv val hrx
-      h_dword_phys with
+      hbytes_base hload_pmp_base hread_mmio_base with
     ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
+  let dword := loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
+    hbytes_base (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf
   rcases LoadProgramBlocks.xoriSlliSllBlock writeTail imm (7 : BitVec 12)
-      js js_load val hload_sail hload_v0 hload_v1 with
+      js js_load val dword hload_sail hload_v0 hload_v1 with
     ⟨js_shift, hlogic_run, hshift_sail, _hshift_v0, hshift_v1⟩
   let shiftedValue :=
     shift_bits_left
-      (loaded_dword_at js.sail (compute_aligned_dword_base_address val imm))
+      dword
       (Sail.BitVec.extractLsb
         (shift_bits_left
           (load_effective_address val imm ^^^ sign_extend (m := 64) (7 : BitVec 12))
@@ -178,7 +199,12 @@ theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
     exact congrArg (stateAfterWrite js.sail rd) (by
       have h7 : sign_extend (m := 64) (7 : BitVec 12) = (7 : BitVec 64) := by decide
       simpa [shiftedValue, compute_aligned_dword_base_address, h7] using
-        (jolt_lbu_bridge js.sail (load_effective_address val imm)))
+        (jolt_lbu_bridge js.sail (load_effective_address val imm)
+          (by simpa [compute_aligned_dword_base_address] using hbytes_base)
+          (by
+            simpa [compute_aligned_dword_base_address] using
+              (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf)
+          (by simpa using hbytes_byte 0 (by omega))))
 
 /-- Successful `LBU` expansions do not modify the persistent CSR virtual
 registers materialized by `systemProject`. -/
@@ -202,7 +228,7 @@ theorem lbuProgram_preserves_projected_vregs
 matches Sail after materializing Jolt's persistent CSR virtual registers. -/
 def lbuProgramEqSailStatement (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
-    (_h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
+    (_h : LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
     System.systemProjectResult
       ((JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js) =
     (execute_LOAD imm rs1 rd true 1).run js.sail
@@ -211,14 +237,57 @@ def lbuProgramEqSailStatement (imm : BitVec 12) (rs1 rd : regidx)
 matches Sail after materializing Jolt's persistent CSR virtual registers. -/
 theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
-    (h : LoadFamily.LoadProgramEqSailAssumptions imm rs1 js) :
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
     lbuProgramEqSailStatement imm rs1 rd js h := by
   unfold lbuProgramEqSailStatement
+  let ea := load_effective_address h.rs1_val imm
+  let base := compute_aligned_dword_base_address h.rs1_val imm
+  let offset := (ea &&& (7 : BitVec 64)).toNat
+  have h_base_aligned : AlignedDwordAccess base := by
+    simpa [base, compute_aligned_dword_base_address, aligned_dword_addr_eq,
+      load_effective_address] using
+      aligned_dword_addr_is_aligned_dword_access h.rs1_val imm
+  have hbytes_base : MemBytesPresentAt js.sail base 8 := by
+    simpa [base] using h.dword_present.memBytesPresentAt
+  have hload_pmp_base : Assumptions.LoadPmpOk base 8 js.sail := by
+    simpa [base] using h.load_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
+  have hread_mmio_base : Assumptions.NotReadableMmio base 8 js.sail := by
+    simpa [base] using h.not_readable_mmio.subaccess
+      (offset := 0) (accessWidth := 8) (by omega)
+  have hoff : offset + 1 ≤ 8 := by
+    have hlt : offset < 8 := by
+      simpa only [offset] using addr_and_seven_lt_eight ea
+    omega
+  have haddr : base + BitVec.ofNat 64 offset = ea := by
+    simpa [base, ea, offset, compute_aligned_dword_base_address] using
+      addr_split_aligned_offset ea
+  have hbytes_byte : MemBytesPresentAt js.sail ea 1 := by
+    have hsub : MemBytesPresentAt js.sail (base + BitVec.ofNat 64 offset) 1 :=
+      memBytesPresentAt_subaccess (s := js.sail) (base := base) (baseWidth := 8)
+        (offset := offset) (accessWidth := 1) hbytes_base hoff (by
+          have hbase_no_ovf := h_base_aligned.no_ovf
+          omega)
+    simpa [haddr] using hsub
+  have hload_pmp_byte : Assumptions.LoadPmpOk ea 1 js.sail := by
+    have hsub : Assumptions.LoadPmpOk (base + BitVec.ofNat 64 offset) 1 js.sail :=
+      h.load_pmp.subaccess (offset := offset) (accessWidth := 1) hoff
+    simpa [base, haddr] using hsub
+  have hread_mmio_byte : Assumptions.NotReadableMmio ea 1 js.sail := by
+    have hsub : Assumptions.NotReadableMmio (base + BitVec.ofNat 64 offset) 1 js.sail :=
+      h.not_readable_mmio.subaccess (offset := offset) (accessWidth := 1) hoff
+    simpa [base, haddr] using hsub
   rcases lbuProgram_concrete imm rs1 rd js h.cur_privilege h.mstatus_mprv h.rs1_val
-      h.rs1_read h.dwordPhys with
+      h.rs1_read
+      (by simpa [base] using hbytes_base)
+      (by simpa [base] using hload_pmp_base)
+      (by simpa [base] using hread_mmio_base)
+      (by simpa [ea] using hbytes_byte) with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_LBU_reduces imm rs1 rd js h.cur_privilege
-    h.mstatus_mprv h.rs1_val h.rs1_read h.bytePhys
+    h.mstatus_mprv h.rs1_val h.rs1_read
+    (by simpa [ea] using hbytes_byte)
+    (by simpa [ea] using hload_pmp_byte)
+    (by simpa [ea] using hread_mmio_byte)
   have h_project_initial : System.systemProject js = js.sail :=
     Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
@@ -229,7 +298,8 @@ theorem lbuProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
   rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
     js js' rd
     (zero_extend (m := 64)
-      (loaded_byte_at js.sail (load_effective_address h.rs1_val imm)))
+      (loaded_byte_at js.sail (load_effective_address h.rs1_val imm)
+        (by simpa [ea] using hbytes_byte 0 (by omega))))
     hjolt_sail h_projected_vregs]
   rw [h_project_initial]
 

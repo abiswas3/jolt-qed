@@ -31,30 +31,30 @@ namespace StoreSplice
 /-- Facts about an effective address and its enclosing dword address that are
 common to all byte/halfword/word store splice proofs.  `ea_toNat` is the Nat
 level bridge used when comparing hashmap keys. -/
-structure DwordWindowSetup (ea base : BitVec 64) : Prop where
+structure DwordWindowFacts (ea base : BitVec 64) : Prop where
   base_is_aligned : base = ea &&& (-8 : BitVec 64)
   no_ovf : base.toNat + 7 < 2 ^ 64
   ea_toNat : ea.toNat = base.toNat + (ea - base).toNat
 
-/-- Byte-store setup: the target offset may be any byte lane in the dword. -/
-structure ByteStoreSetup (ea base : BitVec 64) : Prop extends DwordWindowSetup ea base where
-  offset_cases :
+/-- Byte-store facts: the target offset may be any byte lane in the dword. -/
+structure ByteStoreFacts (ea base : BitVec 64) : Prop extends DwordWindowFacts ea base where
+  byte_offset_cases :
     (ea - base).toNat = 0 ∨ (ea - base).toNat = 1 ∨
     (ea - base).toNat = 2 ∨ (ea - base).toNat = 3 ∨
     (ea - base).toNat = 4 ∨ (ea - base).toNat = 5 ∨
     (ea - base).toNat = 6 ∨ (ea - base).toNat = 7
 
-/-- Halfword-store setup: the target offset is one of the four halfword lanes. -/
-structure HalfwordStoreSetup (ea base : BitVec 64) : Prop extends DwordWindowSetup ea base where
+/-- Halfword-store facts: the target offset is one of the four halfword lanes. -/
+structure HalfwordStoreFacts (ea base : BitVec 64) : Prop extends DwordWindowFacts ea base where
   halfword_aligned : ea &&& 1 = 0
-  offset_cases :
+  halfword_offset_cases :
     (ea - base).toNat = 0 ∨ (ea - base).toNat = 2 ∨
     (ea - base).toNat = 4 ∨ (ea - base).toNat = 6
 
-/-- Word-store setup expressed in the same vocabulary as byte/halfword stores. -/
-structure WordStoreSetup (ea base : BitVec 64) : Prop extends DwordWindowSetup ea base where
+/-- Word-store facts expressed in the same vocabulary as byte/halfword stores. -/
+structure WordStoreFacts (ea base : BitVec 64) : Prop extends DwordWindowFacts ea base where
   word_aligned : ea &&& 3 = 0
-  offset_cases : (ea - base).toNat = 0 ∨ (ea - base).toNat = 4
+  word_offset_cases : (ea - base).toNat = 0 ∨ (ea - base).toNat = 4
 
 /-- The enclosing dword base used by store expansions is eight-byte aligned. -/
 theorem dword_base_aligns (val : BitVec 64) (imm : BitVec 12) :
@@ -157,9 +157,9 @@ theorem word_offset_cases (ea : BitVec 64)
   rw [hsub_toNat]
   exact hoff_cases
 
-theorem byteStoreSetup_of_effective_address
+theorem byteStoreFacts_of_effective_address
     (val : BitVec 64) (imm : BitVec 12) :
-    ByteStoreSetup
+    ByteStoreFacts
       (load_effective_address val imm)
       (compute_aligned_dword_base_address val imm) := by
   exact
@@ -167,12 +167,12 @@ theorem byteStoreSetup_of_effective_address
       no_ovf := dword_base_no_ovf val imm
       ea_toNat := ea_toNat_eq_base_plus_offset
         (load_effective_address val imm)
-      offset_cases := byte_offset_cases (load_effective_address val imm) }
+      byte_offset_cases := byte_offset_cases (load_effective_address val imm) }
 
-theorem halfwordStoreSetup_of_effective_address
+theorem halfwordStoreFacts_of_effective_address
     (val : BitVec 64) (imm : BitVec 12)
     (halign : load_effective_address val imm &&& (1 : BitVec 64) = 0) :
-    HalfwordStoreSetup
+    HalfwordStoreFacts
       (load_effective_address val imm)
       (compute_aligned_dword_base_address val imm) := by
   exact
@@ -181,13 +181,13 @@ theorem halfwordStoreSetup_of_effective_address
       ea_toNat := ea_toNat_eq_base_plus_offset
         (load_effective_address val imm)
       halfword_aligned := halign
-      offset_cases := halfword_offset_cases
+      halfword_offset_cases := halfword_offset_cases
         (load_effective_address val imm) halign }
 
-theorem wordStoreSetup_of_effective_address
+theorem wordStoreFacts_of_effective_address
     (val : BitVec 64) (imm : BitVec 12)
     (halign : load_effective_address val imm &&& (3 : BitVec 64) = 0) :
-    WordStoreSetup
+    WordStoreFacts
       (load_effective_address val imm)
       (compute_aligned_dword_base_address val imm) := by
   exact
@@ -196,7 +196,7 @@ theorem wordStoreSetup_of_effective_address
       ea_toNat := ea_toNat_eq_base_plus_offset
         (load_effective_address val imm)
       word_aligned := halign
-      offset_cases := word_offset_cases
+      word_offset_cases := word_offset_cases
         (load_effective_address val imm) halign }
 
 /-- The byte-store XOR-mask-XOR expression.  `shift` is measured in bits. -/
@@ -592,7 +592,7 @@ private theorem dword_align_down_8_and_7_eq_zero (x : BitVec 64) :
 /-- The absolute address for the `j`-th target byte can be written either from
 the dword base plus the lane offset or from the native effective address. -/
 private theorem target_addr_eq_of_window {ea base : BitVec 64}
-    (h : DwordWindowSetup ea base) (j : Nat) :
+    (h : DwordWindowFacts ea base) (j : Nat) :
     base.toNat + ((ea - base).toNat + j) = ea.toNat + j := by
   rw [h.ea_toNat]
   omega
@@ -612,12 +612,12 @@ private theorem k_in_target_or_outside_width (off width k : Nat) :
 /-- If an address is outside the enclosing dword window, it is outside the
 native byte-store window as well. -/
 private theorem outside_dword_window_implies_outside_byte_window
-    {ea base : BitVec 64} (a : Nat) (h : ByteStoreSetup ea base)
+    {ea base : BitVec 64} (a : Nat) (h : ByteStoreFacts ea base)
     (hout : a < base.toNat ∨ a ≥ base.toNat + 8) :
     a < ea.toNat ∨ a ≥ ea.toNat + 1 := by
   rw [h.ea_toNat]
   have hoff_le : (ea - base).toNat + 1 ≤ 8 := by
-    rcases h.offset_cases with h0 | h1 | h2 | h3 | h4 | h5 | h6 | h7 <;> omega
+    rcases h.byte_offset_cases with h0 | h1 | h2 | h3 | h4 | h5 | h6 | h7 <;> omega
   rcases hout with hlt | hge
   · exact Or.inl (by omega)
   · exact Or.inr (by omega)
@@ -625,12 +625,12 @@ private theorem outside_dword_window_implies_outside_byte_window
 /-- If an address is outside the enclosing dword window, it is outside the
 native halfword-store window as well. -/
 private theorem outside_dword_window_implies_outside_halfword_window
-    {ea base : BitVec 64} (a : Nat) (h : HalfwordStoreSetup ea base)
+    {ea base : BitVec 64} (a : Nat) (h : HalfwordStoreFacts ea base)
     (hout : a < base.toNat ∨ a ≥ base.toNat + 8) :
     a < ea.toNat ∨ a ≥ ea.toNat + 2 := by
   rw [h.ea_toNat]
   have hoff_le : (ea - base).toNat + 2 ≤ 8 := by
-    rcases h.offset_cases with h0 | h2 | h4 | h6 <;> omega
+    rcases h.halfword_offset_cases with h0 | h2 | h4 | h6 <;> omega
   rcases hout with hlt | hge
   · exact Or.inl (by omega)
   · exact Or.inr (by omega)
@@ -638,12 +638,12 @@ private theorem outside_dword_window_implies_outside_halfword_window
 /-- If an address is outside the enclosing dword window, it is outside the
 native word-store window as well. -/
 private theorem outside_dword_window_implies_outside_word_window
-    {ea base : BitVec 64} (a : Nat) (h : WordStoreSetup ea base)
+    {ea base : BitVec 64} (a : Nat) (h : WordStoreFacts ea base)
     (hout : a < base.toNat ∨ a ≥ base.toNat + 8) :
     a < ea.toNat ∨ a ≥ ea.toNat + 4 := by
   rw [h.ea_toNat]
   have hoff_le : (ea - base).toNat + 4 ≤ 8 := by
-    rcases h.offset_cases with h0 | h4 <;> omega
+    rcases h.word_offset_cases with h0 | h4 <;> omega
   rcases hout with hlt | hge
   · exact Or.inl (by omega)
   · exact Or.inr (by omega)
@@ -651,7 +651,7 @@ private theorem outside_dword_window_implies_outside_word_window
 /-- If a dword byte index lies outside the byte target lane, then the absolute
 address lies outside the native byte-store window. -/
 private theorem outside_target_addr_outside_byte_window
-    {ea base : BitVec 64} (k : Nat) (h : ByteStoreSetup ea base)
+    {ea base : BitVec 64} (k : Nat) (h : ByteStoreFacts ea base)
     (hout : k < (ea - base).toNat ∨ k ≥ (ea - base).toNat + 1) :
     base.toNat + k < ea.toNat ∨ base.toNat + k ≥ ea.toNat + 1 := by
   rw [h.ea_toNat]
@@ -659,7 +659,7 @@ private theorem outside_target_addr_outside_byte_window
 
 /-- Halfword analogue of `outside_target_addr_outside_byte_window`. -/
 private theorem outside_target_addr_outside_halfword_window
-    {ea base : BitVec 64} (k : Nat) (h : HalfwordStoreSetup ea base)
+    {ea base : BitVec 64} (k : Nat) (h : HalfwordStoreFacts ea base)
     (hout : k < (ea - base).toNat ∨ k ≥ (ea - base).toNat + 2) :
     base.toNat + k < ea.toNat ∨ base.toNat + k ≥ ea.toNat + 2 := by
   rw [h.ea_toNat]
@@ -667,7 +667,7 @@ private theorem outside_target_addr_outside_halfword_window
 
 /-- Word analogue of `outside_target_addr_outside_byte_window`. -/
 private theorem outside_target_addr_outside_word_window
-    {ea base : BitVec 64} (k : Nat) (h : WordStoreSetup ea base)
+    {ea base : BitVec 64} (k : Nat) (h : WordStoreFacts ea base)
     (hout : k < (ea - base).toNat ∨ k ≥ (ea - base).toNat + 4) :
     base.toNat + k < ea.toNat ∨ base.toNat + k ≥ ea.toNat + 4 := by
   rw [h.ea_toNat]
@@ -679,7 +679,7 @@ loaded from the enclosing dword window. -/
 theorem dword_store_splice_eq_byte_store_populated
     (s : SailState) (ea base : BitVec 64)
     (byte_val : BitVec 8) (dword_orig dword_new : BitVec 64)
-    (hsetup : ByteStoreSetup ea base)
+    (hsetup : ByteStoreFacts ea base)
     (hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none)
     (hload : ∀ k : Nat, (hk : k < 8) →
       dword_byte dword_orig k =
@@ -730,7 +730,7 @@ theorem dword_store_splice_eq_byte_store_populated
         rw [hk_eq]
         rw [stored_dword_get?_hit s base dword_new ((ea - base).toNat + j) (by omega)]
         rw [hsplice_target j hj]
-        rw [target_addr_eq_of_window hsetup.toDwordWindowSetup j]
+        rw [target_addr_eq_of_window hsetup.toDwordWindowFacts j]
         symm
         simpa using stored_byte_get?_hit s ea byte_val j hj
 
@@ -739,7 +739,7 @@ store. -/
 theorem dword_store_splice_eq_halfword_store_populated
     (s : SailState) (ea base : BitVec 64)
     (halfword_val : BitVec 16) (dword_orig dword_new : BitVec 64)
-    (hsetup : HalfwordStoreSetup ea base)
+    (hsetup : HalfwordStoreFacts ea base)
     (hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none)
     (hload : ∀ k : Nat, (hk : k < 8) →
       dword_byte dword_orig k =
@@ -790,15 +790,15 @@ theorem dword_store_splice_eq_halfword_store_populated
         rw [hk_eq]
         rw [stored_dword_get?_hit s base dword_new ((ea - base).toNat + j) (by omega)]
         rw [hsplice_target j hj]
-        rw [target_addr_eq_of_window hsetup.toDwordWindowSetup j]
+        rw [target_addr_eq_of_window hsetup.toDwordWindowFacts j]
         symm
         simpa using stored_halfword_get?_hit s ea halfword_val j hj
 
 /-- Writing a spliced dword is the same hashmap update as a native word store. -/
-theorem dword_store_splice_eq_word_store_populated'
+theorem dword_store_splice_eq_word_store_populated
     (s : SailState) (ea base : BitVec 64)
     (word_val : BitVec 32) (dword_orig dword_new : BitVec 64)
-    (hsetup : WordStoreSetup ea base)
+    (hsetup : WordStoreFacts ea base)
     (hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none)
     (hload : ∀ k : Nat, (hk : k < 8) →
       dword_byte dword_orig k =
@@ -849,7 +849,7 @@ theorem dword_store_splice_eq_word_store_populated'
         rw [hk_eq]
         rw [stored_dword_get?_hit s base dword_new ((ea - base).toNat + j) (by omega)]
         rw [hsplice_target j hj]
-        rw [target_addr_eq_of_window hsetup.toDwordWindowSetup j]
+        rw [target_addr_eq_of_window hsetup.toDwordWindowFacts j]
         symm
         simpa using stored_word_get?_hit s ea word_val j hj
 

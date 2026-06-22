@@ -45,7 +45,7 @@ private theorem setWidth6_eq_extractLsb_5_0 (v : BitVec 64) :
   simp
 
 private theorem shift6_eq_of_offset_byte (ea base : BitVec 64)
-    (hsetup : StoreSplice.ByteStoreSetup ea base) :
+    (hsetup : StoreSplice.ByteStoreFacts ea base) :
     Sail.BitVec.extractLsb (shift_bits_left ea (3 : BitVec 6)) 5 0 =
       BitVec.ofNat 6 (((ea - base).toNat) * 8) := by
   rw [← setWidth6_eq_extractLsb_5_0 (shift_bits_left ea (3 : BitVec 6))]
@@ -89,15 +89,15 @@ private theorem shift6_eq_of_offset_byte (ea base : BitVec 64)
   conv_rhs => rw [hsub_toNat]
 
 private theorem shift6_eq_of_offset_halfword (ea base : BitVec 64)
-    (hsetup : StoreSplice.HalfwordStoreSetup ea base) :
+    (hsetup : StoreSplice.HalfwordStoreFacts ea base) :
     Sail.BitVec.extractLsb (shift_bits_left ea (3 : BitVec 6)) 5 0 =
       BitVec.ofNat 6 (((ea - base).toNat) * 8) := by
-  have hbyte : StoreSplice.ByteStoreSetup ea base :=
+  have hbyte : StoreSplice.ByteStoreFacts ea base :=
     { base_is_aligned := hsetup.base_is_aligned
       no_ovf := hsetup.no_ovf
       ea_toNat := hsetup.ea_toNat
-      offset_cases := by
-        rcases hsetup.offset_cases with h0 | h2 | h4 | h6
+      byte_offset_cases := by
+        rcases hsetup.halfword_offset_cases with h0 | h2 | h4 | h6
         · exact Or.inl h0
         · exact Or.inr (Or.inr (Or.inl h2))
         · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h4))))
@@ -106,15 +106,15 @@ private theorem shift6_eq_of_offset_halfword (ea base : BitVec 64)
   exact shift6_eq_of_offset_byte ea base hbyte
 
 private theorem shift6_eq_of_offset_word (ea base : BitVec 64)
-    (hsetup : StoreSplice.WordStoreSetup ea base) :
+    (hsetup : StoreSplice.WordStoreFacts ea base) :
     Sail.BitVec.extractLsb (shift_bits_left ea (3 : BitVec 6)) 5 0 =
       BitVec.ofNat 6 (((ea - base).toNat) * 8) := by
-  have hbyte : StoreSplice.ByteStoreSetup ea base :=
+  have hbyte : StoreSplice.ByteStoreFacts ea base :=
     { base_is_aligned := hsetup.base_is_aligned
       no_ovf := hsetup.no_ovf
       ea_toNat := hsetup.ea_toNat
-      offset_cases := by
-        rcases hsetup.offset_cases with h0 | h4
+      byte_offset_cases := by
+        rcases hsetup.word_offset_cases with h0 | h4
         · exact Or.inl h0
         · exact Or.inr (Or.inr (Or.inr (Or.inr (Or.inl h4))))
     }
@@ -501,7 +501,9 @@ The boundary facts are exactly the store-side inputs needed by later splice
 blocks. -/
 theorem setupBlock (rest : JoltISA.Program)
     (imm : BitVec 12) (rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (h_base_aligned :
       AlignedDwordAccess (compute_aligned_dword_base_address val imm))
@@ -561,7 +563,7 @@ theorem setupBlock (rest : JoltISA.Program)
       rw [h0]
       norm_num
     have hread := aligned_dword_vmem_read_reduces base js.sail
-      hcfg.cur_privilege hcfg.mstatus_mprv h_base_aligned
+      hpriv hmprv h_base_aligned
       (by simpa [base] using hbytes)
       (by simpa [base] using hpmp)
       (by simpa [base] using hmmio)
@@ -601,7 +603,9 @@ theorem setupBlock (rest : JoltISA.Program)
 common setup block.  The assertion does not change state on the aligned path. -/
 theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
     (imm : BitVec 12) (rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& (1 : BitVec 64) = 0)
     (h_base_aligned :
@@ -632,7 +636,7 @@ theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
     exact JoltISA.virtual_assert_halfword_alignment_run_aligned rs1 imm
       (ExceptionType.E_SAMO_Addr_Align ())
       js val hrx (by simpa [load_effective_address] using halign)
-  rcases setupBlock rest imm rs1 js hcfg val hrx h_base_aligned hbytes hpmp hmmio with
+  rcases setupBlock rest imm rs1 js hpriv hmprv val hrx h_base_aligned hbytes hpmp hmmio with
     ⟨js_load, hrun, hsail, hv0, hv1, hv2⟩
   refine ⟨js_load, ?_, hsail, hv0, hv1, hv2⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
@@ -642,7 +646,9 @@ theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
 setup block.  The assertion does not change state on the aligned path. -/
 theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
     (imm : BitVec 12) (rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
     (halign : load_effective_address val imm &&& (3 : BitVec 64) = 0)
     (h_base_aligned :
@@ -673,7 +679,7 @@ theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
     exact JoltISA.virtual_assert_word_alignment_run_aligned rs1 imm
       (ExceptionType.E_SAMO_Addr_Align ())
       js val hrx (by simpa [load_effective_address] using halign)
-  rcases setupBlock rest imm rs1 js hcfg val hrx h_base_aligned hbytes hpmp hmmio with
+  rcases setupBlock rest imm rs1 js hpriv hmprv val hrx h_base_aligned hbytes hpmp hmmio with
     ⟨js_load, hrun, hsail, hv0, hv1, hv2⟩
   refine ⟨js_load, ?_, hsail, hv0, hv1, hv2⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
@@ -741,7 +747,7 @@ byte of `rs2` into the target lane, and leaves the spliced dword in `v2`. -/
 theorem byteSpliceBlock (rest : JoltISA.Program)
     (imm : BitVec 12) (rs2 : regidx)
     (js js_load : SailJoltState) (val rs2_val dword : BitVec 64)
-    (hsetup : StoreSplice.ByteStoreSetup
+    (hsetup : StoreSplice.ByteStoreFacts
       (load_effective_address val imm)
       (compute_aligned_dword_base_address val imm))
     (hload_sail : js_load.sail = js.sail)
@@ -972,7 +978,8 @@ theorem byteSpliceBlock (rest : JoltISA.Program)
     dsimp [masked, xored, shifted, mask, spliced]
     rw [hshift6]
     simpa using
-      byteSplice_eq_sequence dword rs2_val ((ea - base).toNat) hsetup.offset_cases
+      byteSplice_eq_sequence dword rs2_val ((ea - base).toNat)
+        hsetup.byte_offset_cases
   have hxor2 :
       (JoltISA.execInstr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3))).run js_and =
         .ok RETIRE_SUCCESS js_splice := by
@@ -1003,7 +1010,7 @@ pure halfword splice. -/
 theorem halfwordSpliceBlock (rest : JoltISA.Program)
     (imm : BitVec 12) (rs2 : regidx)
     (js js_load : SailJoltState) (val rs2_val dword : BitVec 64)
-    (hsetup : StoreSplice.HalfwordStoreSetup
+    (hsetup : StoreSplice.HalfwordStoreFacts
       (load_effective_address val imm)
       (compute_aligned_dword_base_address val imm))
     (hload_sail : js_load.sail = js.sail)
@@ -1235,7 +1242,8 @@ theorem halfwordSpliceBlock (rest : JoltISA.Program)
     dsimp [masked, xored, shifted, mask, spliced]
     rw [hshift6]
     simpa using
-      halfwordSplice_eq_sequence dword rs2_val ((ea - base).toNat) hsetup.offset_cases
+      halfwordSplice_eq_sequence dword rs2_val ((ea - base).toNat)
+        hsetup.halfword_offset_cases
   have hxor2 :
       (JoltISA.execInstr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3))).run js_and =
         .ok RETIRE_SUCCESS js_splice := by
@@ -1357,7 +1365,7 @@ shifts the low word of `rs2` into place and performs the standard
 theorem wordSpliceBlock (rest : JoltISA.Program)
     (imm : BitVec 12) (rs2 : regidx)
     (js js_mask : SailJoltState) (val rs2_val dword : BitVec 64)
-    (hsetup : StoreSplice.WordStoreSetup
+    (hsetup : StoreSplice.WordStoreFacts
       (load_effective_address val imm)
       (compute_aligned_dword_base_address val imm))
     (hmask_sail : js_mask.sail = js.sail)
@@ -1499,7 +1507,8 @@ theorem wordSpliceBlock (rest : JoltISA.Program)
     dsimp [masked, xored, shifted, mask, spliced]
     rw [hshift6]
     simpa using
-      wordSplice_eq_sequence dword rs2_val ((ea - base).toNat) hsetup.offset_cases
+      wordSplice_eq_sequence dword rs2_val ((ea - base).toNat)
+        hsetup.word_offset_cases
   have hxor2 :
       (JoltISA.execInstr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp0))).run js_and =
         .ok RETIRE_SUCCESS js_splice := by

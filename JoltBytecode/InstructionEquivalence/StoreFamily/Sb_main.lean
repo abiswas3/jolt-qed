@@ -54,11 +54,13 @@ The statement hides all scratch-register churn and exposes only the semantic
 boundary: after the program retires, Sail has performed an `SD` of the spliced
 enclosing dword. -/
 theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (rs1_val rs2_val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (hsetup : StoreSplice.ByteStoreSetup
+    (hsetup : StoreSplice.ByteStoreFacts
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
     (h_base_aligned :
@@ -108,7 +110,7 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
       hbytes h_base_aligned.no_ovf
   let dword_new := sbSplicedDword imm rs1_val rs2_val dword_orig
   let finalSail := state_after_dword_store js.sail base dword_new
-  rcases StoreProgramBlocks.setupBlock spliceTail imm rs1 js hcfg rs1_val hrs1
+  rcases StoreProgramBlocks.setupBlock spliceTail imm rs1 js hpriv hmprv rs1_val hrs1
       h_base_aligned hbytes hload_pmp hread_mmio with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
   rcases StoreProgramBlocks.byteSpliceBlock writeTail imm rs2 js js_load
@@ -148,7 +150,7 @@ constructed to differ from the original only at the target byte.  This lemma
 turns that dword write into the canonical native byte-store state. -/
 theorem sb_spliced_dword_store_eq_byte_store (imm : BitVec 12)
     (s : SailState) (rs1_val rs2_val : BitVec 64)
-    (hsetup : StoreSplice.ByteStoreSetup
+    (hsetup : StoreSplice.ByteStoreFacts
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
     (hbytes :
@@ -170,7 +172,8 @@ theorem sb_spliced_dword_store_eq_byte_store (imm : BitVec 12)
   let off := (ea - base).toNat
   have hspec : StoreSplice.IsByteSplice dword_orig dword_new byte_val off := by
     simpa [dword_new, sbSplicedDword, dword_orig, byte_val, off, ea, base, Nat.mul_comm]
-      using StoreSplice.byteSplice_spec dword_orig byte_val off hsetup.offset_cases
+      using StoreSplice.byteSplice_spec dword_orig byte_val off
+        hsetup.byte_offset_cases
   have hpop : ∀ k : Nat, k < 8 -> s.mem.get? (base.toNat + k) ≠ none := by
     intro k hk
     rcases hbytes k (by simpa [base] using hk) with ⟨b, hb⟩
@@ -203,11 +206,13 @@ theorem sb_spliced_dword_store_eq_byte_store (imm : BitVec 12)
 After the pure bridge, the Jolt result is phrased in the same state expression
 as the native Sail byte-store theorem. -/
 theorem sbProgram_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
-    (js : SailJoltState) (hcfg : JoltConfig js.sail)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
     (rs1_val rs2_val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2_val js.sail)
-    (hsetup : StoreSplice.ByteStoreSetup
+    (hsetup : StoreSplice.ByteStoreFacts
       (load_effective_address rs1_val imm)
       (compute_aligned_dword_base_address rs1_val imm))
     (h_base_aligned :
@@ -238,7 +243,7 @@ theorem sbProgram_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
         state_after_byte_store js.sail
           (load_effective_address rs1_val imm)
           (Sail.BitVec.extractLsb rs2_val 7 0) := by
-  rcases sbProgram_reduces_to_dword_store imm rs2 rs1 js hcfg rs1_val rs2_val
+  rcases sbProgram_reduces_to_dword_store imm rs2 rs1 js hpriv hmprv rs1_val rs2_val
       hrs1 hrs2 hsetup h_base_aligned hbytes hload_pmp hread_mmio hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   refine ⟨js', hjolt, ?_⟩
@@ -299,7 +304,7 @@ theorem sbProgram_preserves_projected_vregs
 materializing Jolt's persistent CSR virtual registers. -/
 def sbProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
-    (_h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
+    (_h : StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
     System.systemProjectResult
       ((JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js) =
     (execute_STORE imm rs2 rs1 1).run js.sail
@@ -308,40 +313,20 @@ def sbProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
 materializing Jolt's persistent CSR virtual registers. -/
 theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
-    (h : StoreFamily.StoreProgramEqSailAssumptions imm rs2 rs1 js) :
+    (h : StoreProgramEqSailAssumptions imm rs2 rs1 js) :
     sbProgramEqSailStatement imm rs2 rs1 js h := by
   unfold sbProgramEqSailStatement
   let ea := load_effective_address h.rs1_val imm
   let base := compute_aligned_dword_base_address h.rs1_val imm
   let offset := (ea &&& (7 : BitVec 64)).toNat
-  have hcfg : JoltConfig js.sail :=
-    { cur_privilege := h.cur_privilege
-      mstatus_mprv := h.mstatus_mprv }
-  have hsetup : StoreSplice.ByteStoreSetup
+  have hwin := h.dwordWindowFacts
+  have hsetup : StoreSplice.ByteStoreFacts
       (load_effective_address h.rs1_val imm)
       (compute_aligned_dword_base_address h.rs1_val imm) :=
-    StoreSplice.byteStoreSetup_of_effective_address h.rs1_val imm
-  have h_base_aligned : AlignedDwordAccess base := by
-    simpa [base, compute_aligned_dword_base_address, aligned_dword_addr_eq,
-      load_effective_address] using
-      aligned_dword_addr_is_aligned_dword_access h.rs1_val imm
-  have hbytes : MemBytesPresentAt js.sail base 8 := by
-    simpa [base] using h.dword_present.memBytesPresentAt
-  have hload_pmp :
-      Assumptions.LoadPmpOk base 8 js.sail := by
-    simpa [base] using h.load_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
-  have hread_mmio :
-      Assumptions.NotReadableMmio base 8 js.sail := by
-    simpa [base] using h.not_readable_mmio.subaccess
-      (offset := 0) (accessWidth := 8) (by omega)
-  have hstore_pmp_base :
-      Assumptions.StorePmpOk base 8 js.sail := by
-    simpa [base] using h.store_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
-  have hwrite_mmio_base :
-      Assumptions.NotWritableMmio base 8 js.sail := by
-    simpa [base] using h.not_writable_mmio.subaccess
-      (offset := 0) (accessWidth := 8) (by omega)
-  let dword_orig := loaded_dword_at js.sail base hbytes h_base_aligned.no_ovf
+    StoreSplice.byteStoreFacts_of_effective_address h.rs1_val imm
+  let dword_orig := loaded_dword_at js.sail base
+    (by simpa [base] using hwin.bytes)
+    (by simpa [base] using hwin.aligned.no_ovf)
   let dword_new := sbSplicedDword imm h.rs1_val h.rs2_val dword_orig
   have hwrite_dword :
       vmem_write_addr
@@ -349,31 +334,17 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
         (Store Data) false false false js.sail =
       .ok (Ok true)
         (state_after_dword_store js.sail base dword_new) :=
-    vmem_write_addr_dword_store_reduces base dword_new js.sail hcfg
-      h_base_aligned.toAlignedAccess hstore_pmp_base hwrite_mmio_base
-  have haddr : base + BitVec.ofNat 64 offset = ea := by
-    simpa [base, ea, offset, compute_aligned_dword_base_address] using
-      write_addr_split_aligned_offset ea
-  have hstore_pmp_byte :
-      Assumptions.StorePmpOk ea 1 js.sail := by
-    have hsub : Assumptions.StorePmpOk
-        (base + BitVec.ofNat 64 offset) 1 js.sail := by
-      have hoff : offset + 1 ≤ 8 := by
-        have hlt := write_addr_and_seven_lt_eight ea
-        omega
-      simpa [base, offset] using h.store_pmp.subaccess
-        (offset := offset) (accessWidth := 1) hoff
-    simpa [haddr] using hsub
-  have hwrite_mmio_byte :
-      Assumptions.NotWritableMmio ea 1 js.sail := by
-    have hsub : Assumptions.NotWritableMmio
-        (base + BitVec.ofNat 64 offset) 1 js.sail := by
-      have hoff : offset + 1 ≤ 8 := by
-        have hlt := write_addr_and_seven_lt_eight ea
-        omega
-      simpa [base, offset] using h.not_writable_mmio.subaccess
-        (offset := offset) (accessWidth := 1) hoff
-    simpa [haddr] using hsub
+    vmem_write_addr_dword_store_reduces base dword_new js.sail
+      h.cur_privilege h.mstatus_mprv
+      (by simpa [base] using hwin.aligned.toAlignedAccess)
+      (by simpa [base] using hwin.store_pmp)
+      (by simpa [base] using hwin.write_mmio)
+  have hstore_fits : offset + 1 ≤ 8 := by
+    have hlt := write_addr_and_seven_lt_eight ea
+    omega
+  have hstore_access :=
+    StoreProgramEqSailAssumptions.storeAccessFacts h 1
+      (by simpa [ea, offset] using hstore_fits)
   have hwrite_byte :
       vmem_write rs1 (sign_extend (m := 64) imm) 1
         (Sail.BitVec.extractLsb h.rs2_val 7 0)
@@ -382,16 +353,17 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
         (state_after_byte_store js.sail
           (load_effective_address h.rs1_val imm)
           (Sail.BitVec.extractLsb h.rs2_val 7 0)) :=
-    vmem_write_byte_store_reduces imm rs1 js.sail hcfg
+    vmem_write_byte_store_reduces imm rs1 js.sail h.cur_privilege h.mstatus_mprv
       h.rs1_val h.rs1_read (Sail.BitVec.extractLsb h.rs2_val 7 0)
-      (by simpa [ea] using hstore_pmp_byte)
-      (by simpa [ea] using hwrite_mmio_byte)
-  rcases sbProgram_concrete imm rs2 rs1 js hcfg h.rs1_val h.rs2_val
+      (by simpa [ea] using hstore_access.store_pmp)
+      (by simpa [ea] using hstore_access.write_mmio)
+  rcases sbProgram_concrete imm rs2 rs1 js h.cur_privilege h.mstatus_mprv
+      h.rs1_val h.rs2_val
       h.rs1_read h.rs2_read hsetup
-      (by simpa [base] using h_base_aligned)
-      (by simpa [base] using hbytes)
-      (by simpa [base] using hload_pmp)
-      (by simpa [base] using hread_mmio)
+      (by simpa [base] using hwin.aligned)
+      (by simpa [base] using hwin.bytes)
+      (by simpa [base] using hwin.load_pmp)
+      (by simpa [base] using hwin.read_mmio)
       (by simpa [base, dword_orig, dword_new] using hwrite_dword) with
     ⟨js', hjolt, hjolt_sail⟩
   have hsail := execute_SB_reduces imm rs2 rs1 js h.rs1_val h.rs2_val

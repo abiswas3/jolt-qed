@@ -84,7 +84,8 @@ theorem write_ram_dword_eq_state_after_dword_store
 the canonical direct hashmap dword update. -/
 theorem mem_write_value_dword_eq_state_after_dword_store
     (addr data : BitVec 64) (s : SailState)
-    (hcfg : JoltConfig s)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (hpmp :
       phys_access_check (Store Data) Privilege.Machine
         (physaddr.Physaddr addr) 8 false s = .ok none s)
@@ -93,9 +94,9 @@ theorem mem_write_value_dword_eq_state_after_dword_store
     mem_write_value (physaddr.Physaddr addr) 8 data
       (Store Data) false false false s =
     .ok (Ok true) (state_after_dword_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hmprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
-  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hcfg.cur_privilege.value
+  have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine hpriv.value
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
     checked_mem_write
   simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
@@ -153,7 +154,8 @@ theorem mem_write_ea_plain_dword_ok
 address write, and physical value write have been reduced. -/
 theorem vmem_write_addr_dword_store_bridge
     (addr data : BitVec 64) (s : SailState)
-    (hcfg : JoltConfig s) (ha : AlignedAccess addr 8)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s) (ha : AlignedAccess addr 8)
     (hea :
       mem_write_ea (physaddr.Physaddr addr) 8 false false false s =
         .ok (Ok ()) s)
@@ -167,7 +169,7 @@ theorem vmem_write_addr_dword_store_bridge
   unfold vmem_write_addr
   simp only [ha.misalign, Bool.false_eq_true, if_false]
   unfold SailME.run PreSail.PreSailME.run
-  have htranslate := translateAddr_store_data_of_joltConfig addr s hcfg
+  have htranslate := translateAddr_store_data_of_machine_mprv_zero addr s hpriv hmprv
   simp only [ExceptT.mk, ExceptT.run,
     SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
     misaligned_order, sys_misaligned_order_decreasing,
@@ -223,7 +225,8 @@ theorem vmem_write_addr_dword_store_bridge
 store pipeline is exactly the canonical hashmap dword update. -/
 theorem vmem_write_addr_dword_store_reduces
     (addr data : BitVec 64) (s : SailState)
-    (hcfg : JoltConfig s) (ha : AlignedAccess addr 8)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s) (ha : AlignedAccess addr 8)
     (hpmp :
       phys_access_check (Store Data) Privilege.Machine
         (physaddr.Physaddr addr) 8 false s = .ok none s)
@@ -233,10 +236,10 @@ theorem vmem_write_addr_dword_store_reduces
       (Store Data) false false false s =
       .ok (Ok true) (state_after_dword_store s addr data) := by
   exact
-    vmem_write_addr_dword_store_bridge addr data s hcfg ha
+    vmem_write_addr_dword_store_bridge addr data s hpriv hmprv ha
       (mem_write_ea_plain_dword_ok addr s)
       (mem_write_value_dword_eq_state_after_dword_store
-        addr data s hcfg hpmp hmmio)
+        addr data s hpriv hmprv hpmp hmmio)
 
 -- Inputs: k (a natural number)
 -- Assumptions: k < 8
@@ -464,16 +467,17 @@ theorem mem_write_ea_plain_store_ok
 state. -/
 theorem mem_write_value_byte_eq_state_after_byte_store
     (addr : BitVec 64) (data : BitVec 8) (s : SailState)
-    (hcfg : JoltConfig s)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (hpmp : Assumptions.StorePmpOk addr 1 s)
     (hmmio : Assumptions.NotWritableMmio addr 1 s) :
     mem_write_value (physaddr.Physaddr addr) 1 data
       (Store Data) false false false s =
     .ok (Ok true) (state_after_byte_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hmprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
   have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine
-    hcfg.cur_privilege.value
+    hpriv.value
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
     checked_mem_write
   simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
@@ -512,16 +516,17 @@ theorem mem_write_value_byte_eq_state_after_byte_store
 state. -/
 theorem mem_write_value_halfword_eq_state_after_halfword_store
     (addr : BitVec 64) (data : BitVec 16) (s : SailState)
-    (hcfg : JoltConfig s)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (hpmp : Assumptions.StorePmpOk addr 2 s)
     (hmmio : Assumptions.NotWritableMmio addr 2 s) :
     mem_write_value (physaddr.Physaddr addr) 2 data
       (Store Data) false false false s =
     .ok (Ok true) (state_after_halfword_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hmprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
   have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine
-    hcfg.cur_privilege.value
+    hpriv.value
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
     checked_mem_write
   simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
@@ -560,16 +565,17 @@ theorem mem_write_value_halfword_eq_state_after_halfword_store
 state. -/
 theorem mem_write_value_word_eq_state_after_word_store
     (addr : BitVec 64) (data : BitVec 32) (s : SailState)
-    (hcfg : JoltConfig s)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (hpmp : Assumptions.StorePmpOk addr 4 s)
     (hmmio : Assumptions.NotWritableMmio addr 4 s) :
     mem_write_value (physaddr.Physaddr addr) 4 data
       (Store Data) false false false s =
     .ok (Ok true) (state_after_word_store s addr data) := by
-  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hcfg.mstatus_mprv.value
+  obtain ⟨mval, h_ms_regs, h_mprv⟩ := hmprv.value
   have h_ms_read := readReg_eq Register.mstatus s mval h_ms_regs
   have h_priv := readReg_eq Register.cur_privilege s Privilege.Machine
-    hcfg.cur_privilege.value
+    hpriv.value
   unfold mem_write_value mem_write_value_meta mem_write_value_priv_meta
     checked_mem_write
   simp only [bind, EStateM.bind, pure, h_ms_read, h_priv]
@@ -662,7 +668,8 @@ private theorem word_store_loop_data_eq (data : BitVec 32) :
 
 theorem vmem_write_addr_byte_store_bridge
     (addr : BitVec 64) (data : BitVec 8) (s : SailState)
-    (hcfg : JoltConfig s) (ha : AlignedAccess addr 1)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s) (ha : AlignedAccess addr 1)
     (hea :
       mem_write_ea (physaddr.Physaddr addr) 1 false false false s =
         .ok (Ok ()) s)
@@ -676,7 +683,7 @@ theorem vmem_write_addr_byte_store_bridge
   unfold vmem_write_addr
   simp only [ha.misalign, Bool.false_eq_true, if_false]
   unfold SailME.run PreSail.PreSailME.run
-  have htranslate := translateAddr_store_data_of_joltConfig addr s hcfg
+  have htranslate := translateAddr_store_data_of_machine_mprv_zero addr s hpriv hmprv
   simp only [ExceptT.mk, ExceptT.run,
     SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
     misaligned_order, sys_misaligned_order_decreasing,
@@ -704,7 +711,8 @@ theorem vmem_write_addr_byte_store_bridge
 
 theorem vmem_write_addr_halfword_store_bridge
     (addr : BitVec 64) (data : BitVec 16) (s : SailState)
-    (hcfg : JoltConfig s) (ha : AlignedAccess addr 2)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s) (ha : AlignedAccess addr 2)
     (hea :
       mem_write_ea (physaddr.Physaddr addr) 2 false false false s =
         .ok (Ok ()) s)
@@ -718,7 +726,7 @@ theorem vmem_write_addr_halfword_store_bridge
   unfold vmem_write_addr
   simp only [ha.misalign, Bool.false_eq_true, if_false]
   unfold SailME.run PreSail.PreSailME.run
-  have htranslate := translateAddr_store_data_of_joltConfig addr s hcfg
+  have htranslate := translateAddr_store_data_of_machine_mprv_zero addr s hpriv hmprv
   simp only [ExceptT.mk, ExceptT.run,
     SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
     misaligned_order, sys_misaligned_order_decreasing,
@@ -753,7 +761,8 @@ theorem vmem_write_addr_halfword_store_bridge
 
 theorem vmem_write_addr_word_store_bridge
     (addr : BitVec 64) (data : BitVec 32) (s : SailState)
-    (hcfg : JoltConfig s) (ha : AlignedAccess addr 4)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s) (ha : AlignedAccess addr 4)
     (hea :
       mem_write_ea (physaddr.Physaddr addr) 4 false false false s =
         .ok (Ok ()) s)
@@ -767,7 +776,7 @@ theorem vmem_write_addr_word_store_bridge
   unfold vmem_write_addr
   simp only [ha.misalign, Bool.false_eq_true, if_false]
   unfold SailME.run PreSail.PreSailME.run
-  have htranslate := translateAddr_store_data_of_joltConfig addr s hcfg
+  have htranslate := translateAddr_store_data_of_machine_mprv_zero addr s hpriv hmprv
   simp only [ExceptT.mk, ExceptT.run,
     SailME.throw, PreSail.PreSailME.throw, MonadExceptOf.throw,
     misaligned_order, sys_misaligned_order_decreasing,
@@ -802,48 +811,53 @@ theorem vmem_write_addr_word_store_bridge
 
 theorem vmem_write_addr_byte_store_reduces
     (addr : BitVec 64) (data : BitVec 8) (s : SailState)
-    (hcfg : JoltConfig s)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (hpmp : Assumptions.StorePmpOk addr 1 s)
     (hmmio : Assumptions.NotWritableMmio addr 1 s) :
     vmem_write_addr (Virtaddr addr) 1 data
       (Store Data) false false false s =
       .ok (Ok true) (state_after_byte_store s addr data) :=
-  vmem_write_addr_byte_store_bridge addr data s hcfg
+  vmem_write_addr_byte_store_bridge addr data s hpriv hmprv
     (aligned_access_1 addr)
     (mem_write_ea_plain_store_ok addr 1 s)
-    (mem_write_value_byte_eq_state_after_byte_store addr data s hcfg hpmp hmmio)
+    (mem_write_value_byte_eq_state_after_byte_store addr data s hpriv hmprv hpmp hmmio)
 
 theorem vmem_write_addr_halfword_store_reduces
     (addr : BitVec 64) (data : BitVec 16) (s : SailState)
-    (hcfg : JoltConfig s)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (halign : addr &&& (1 : BitVec 64) = 0)
     (hpmp : Assumptions.StorePmpOk addr 2 s)
     (hmmio : Assumptions.NotWritableMmio addr 2 s) :
     vmem_write_addr (Virtaddr addr) 2 data
       (Store Data) false false false s =
       .ok (Ok true) (state_after_halfword_store s addr data) :=
-  vmem_write_addr_halfword_store_bridge addr data s hcfg
+  vmem_write_addr_halfword_store_bridge addr data s hpriv hmprv
     (halfword_store_aligned_access addr halign)
     (mem_write_ea_plain_store_ok addr 2 s)
     (mem_write_value_halfword_eq_state_after_halfword_store
-      addr data s hcfg hpmp hmmio)
+      addr data s hpriv hmprv hpmp hmmio)
 
 theorem vmem_write_addr_word_store_reduces
     (addr : BitVec 64) (data : BitVec 32) (s : SailState)
-    (hcfg : JoltConfig s)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (halign : addr &&& (3 : BitVec 64) = 0)
     (hpmp : Assumptions.StorePmpOk addr 4 s)
     (hmmio : Assumptions.NotWritableMmio addr 4 s) :
     vmem_write_addr (Virtaddr addr) 4 data
       (Store Data) false false false s =
       .ok (Ok true) (state_after_word_store s addr data) :=
-  vmem_write_addr_word_store_bridge addr data s hcfg
+  vmem_write_addr_word_store_bridge addr data s hpriv hmprv
     (word_store_aligned_access addr halign)
     (mem_write_ea_plain_store_ok addr 4 s)
-    (mem_write_value_word_eq_state_after_word_store addr data s hcfg hpmp hmmio)
+    (mem_write_value_word_eq_state_after_word_store addr data s hpriv hmprv hpmp hmmio)
 
 theorem vmem_write_byte_store_reduces (imm : BitVec 12) (rs1 : regidx)
-    (s : SailState) (hcfg : JoltConfig s)
+    (s : SailState)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
     (data : BitVec 8)
     (hpmp : Assumptions.StorePmpOk (load_effective_address v imm) 1 s)
@@ -860,10 +874,12 @@ theorem vmem_write_byte_store_reduces (imm : BitVec 12) (rs1 : regidx)
     ExceptT.pure, ExceptT.lift,
     MonadLift.monadLift, liftM, monadLift, Functor.map,
     ext_data_get_addr, hrx,
-    vmem_write_addr_byte_store_reduces _ data s hcfg hpmp hmmio]
+    vmem_write_addr_byte_store_reduces _ data s hpriv hmprv hpmp hmmio]
 
 theorem vmem_write_halfword_store_reduces (imm : BitVec 12) (rs1 : regidx)
-    (s : SailState) (hcfg : JoltConfig s)
+    (s : SailState)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
     (data : BitVec 16)
     (halign : load_effective_address v imm &&& (1 : BitVec 64) = 0)
@@ -881,10 +897,12 @@ theorem vmem_write_halfword_store_reduces (imm : BitVec 12) (rs1 : regidx)
     ExceptT.pure, ExceptT.lift,
     MonadLift.monadLift, liftM, monadLift, Functor.map,
     ext_data_get_addr, hrx,
-    vmem_write_addr_halfword_store_reduces _ data s hcfg halign hpmp hmmio]
+    vmem_write_addr_halfword_store_reduces _ data s hpriv hmprv halign hpmp hmmio]
 
 theorem vmem_write_word_store_reduces (imm : BitVec 12) (rs1 : regidx)
-    (s : SailState) (hcfg : JoltConfig s)
+    (s : SailState)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
     (v : BitVec 64) (hrx : rX_bits rs1 s = .ok v s)
     (data : BitVec 32)
     (halign : load_effective_address v imm &&& (3 : BitVec 64) = 0)
@@ -902,7 +920,7 @@ theorem vmem_write_word_store_reduces (imm : BitVec 12) (rs1 : regidx)
     ExceptT.pure, ExceptT.lift,
     MonadLift.monadLift, liftM, monadLift, Functor.map,
     ext_data_get_addr, hrx,
-    vmem_write_addr_word_store_reduces _ data s hcfg halign hpmp hmmio]
+    vmem_write_addr_word_store_reduces _ data s hpriv hmprv halign hpmp hmmio]
 
 -- Inputs: base (start of word window), a (lookup address), i (byte offset)
 -- Assumptions: i < 4, a lies outside the byte window [base, base+3]

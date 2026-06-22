@@ -10,14 +10,6 @@ noncomputable section
 
 namespace AtomicFamily
 
-/-- Canonical Sail state after aligned `AMOAND.D`.
-
-The native AMO and reads the old dword at `addr`, writes `rs2Val & old`, then
-writes the old dword value into `rd`. -/
-abbrev amoanddFinalSailState
-    (rd : regidx) (s : SailState) (addr rs2Val : BitVec 64) : SailState :=
-  amoDwordFinalSailState rd s addr (rs2Val &&& loaded_dword_at s addr)
-
 /-- Sail's generated `AMOAND.D` result expression reduces to dword and. -/
 theorem amoandd_sail_result (rs2Val loaded : BitVec 64) :
     amoDwordSailResult amoop.AMOAND
@@ -29,126 +21,9 @@ theorem amoandd_sail_result (rs2Val loaded : BitVec 64) :
   unfold trunc Sail.BitVec.truncate
   rfl
 
-/-- Sail-side aligned concrete execution for native `AMOAND.D`. -/
-theorem execute_AMOANDD_reduces_aligned
-    (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (addr rs2Val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryContext amoop.AMOAND 8 addr addr js.sail)
-    (h_align : addr &&& (7 : BitVec 64) = 0) :
-    (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail =
-      .ok RETIRE_SUCCESS (amoanddFinalSailState rd js.sail addr rs2Val) := by
-  change
-    (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail =
-      .ok RETIRE_SUCCESS
-        (amoDwordFinalSailState rd js.sail addr
-          (rs2Val &&& loaded_dword_at js.sail addr))
-  exact
-    execute_AMO_dword_non_cas_aligned
-      amoop.AMOAND rs2 rs1 rd js hcfg addr rs2Val
-      (rs2Val &&& loaded_dword_at js.sail addr)
-      hrs1 hrs2 hrd h_mem h_align
-      (by decide)
-      (amoandd_sail_result rs2Val (loaded_dword_at js.sail addr))
-
-/-- Jolt-side aligned concrete execution for `AMOAND.D`.
-
-The shared dword binop helper handles the common assert/load/store/writeback
-shape; the only operation-specific step is the middle `AND`. -/
-theorem amoanddProgram_concrete_aligned
-    (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (addr rs2Val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (h_mem : AmoMemoryContext amoop.AMOAND 8 addr addr js.sail)
-    (h_align : addr &&& (7 : BitVec 64) = 0) :
-    ∃ jsf : SailJoltState,
-      (JoltISA.execProgram (JoltISA.amoanddProgram rs2 rs1 rd)).run js =
-        .ok RETIRE_SUCCESS jsf ∧
-      jsf.sail = amoanddFinalSailState rd js.sail addr rs2Val := by
-  change
-    ∃ jsf : SailJoltState,
-      (JoltISA.execProgram
-        (JoltISA.amoDoubleBinopProgram
-          (fun dst lhs rhs => .AND dst lhs rhs) rs2 rs1 rd)).run js =
-        .ok RETIRE_SUCCESS jsf ∧
-      jsf.sail =
-        amoDwordFinalSailState rd js.sail addr
-          (rs2Val &&& loaded_dword_at js.sail addr)
-  exact
-    amo_dword_double_binop_program_concrete_aligned
-      amoop.AMOAND (fun dst lhs rhs => .AND dst lhs rhs)
-      rs2 rs1 rd js hcfg addr
-      (rs2Val &&& loaded_dword_at js.sail addr)
-      hrs1 h_mem h_align
-      (amo_dword_and_middle_after_load rs2 js addr rs2Val hrs2)
-
-/-- Aligned public branch for `AMOAND.D`, composed through the shared dword
-double-binop theorem. -/
-theorem amoanddProgram_eq_sail_aligned
-    (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (addr rs2Val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryContext amoop.AMOAND 8 addr addr js.sail)
-    (h_align : addr &&& (7 : BitVec 64) = 0) :
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amoanddProgram rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail := by
-  change
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amoDoubleBinopProgram
-        (fun dst lhs rhs => .AND dst lhs rhs) rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail
-  exact
-    amo_dword_double_binop_program_eq_sail_aligned
-      amoop.AMOAND (fun dst lhs rhs => .AND dst lhs rhs)
-      rs2 rs1 rd js hcfg addr rs2Val
-      (rs2Val &&& loaded_dword_at js.sail addr)
-      hrs1 hrs2 hrd h_mem h_align
-      (by decide)
-      (amo_dword_and_middle_after_load rs2 js addr rs2Val hrs2)
-      (amoandd_sail_result rs2Val (loaded_dword_at js.sail addr))
-
-/-- Internal memory-context theorem for `AMOAND.D`.
-
-The theorem exposes no alignment hypothesis; it delegates the aligned and
-misaligned cases to the shared dword double-binop theorem. -/
-theorem amoanddProgram_eq_sail_of_memory_context
-    (rs2 rs1 rd : regidx) (js : SailJoltState)
-    (hcfg : JoltConfig js.sail)
-    (addr rs2Val : BitVec 64)
-    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
-    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
-    (hrd : ∃ rdVal, rX_bits rd js.sail = .ok rdVal js.sail)
-    (h_mem : AmoMemoryContext amoop.AMOAND 8 addr addr js.sail) :
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amoanddProgram rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail := by
-  change
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amoDoubleBinopProgram
-        (fun dst lhs rhs => .AND dst lhs rhs) rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail
-  exact
-    amo_dword_double_binop_program_project_eq_sail
-      amoop.AMOAND (fun dst lhs rhs => .AND dst lhs rhs)
-      rs2 rs1 rd js hcfg addr rs2Val
-      (rs2Val &&& loaded_dword_at js.sail addr)
-      hrs1 hrs2 hrd h_mem
-      (by decide)
-      (amo_dword_and_middle_after_load rs2 js addr rs2Val hrs2)
-      (amoandd_sail_result rs2Val (loaded_dword_at js.sail addr))
-
 /-- Main public theorem for `AMOAND.D`.
 
-The theorem takes one primitive-only atomic bundle. Exact memory context is
+The theorem takes one primitive-only atomic bundle. Exact memory facts are
 derived internally from that bundle. -/
 private theorem amoanddProgram_project_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
@@ -158,11 +33,44 @@ private theorem amoanddProgram_project_eq_sail
       (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail := by
   let addr := h.rs1_val
   let rs2Val := h.rs2_val
-  have h_mem : AmoMemoryContext amoop.AMOAND 8 addr addr js.sail := by
-    simpa [addr] using h.memoryContext
-  exact amoanddProgram_eq_sail_of_memory_context
-    rs2 rs1 rd js h.cfg addr rs2Val
-    h.rs1_read h.rs2_read h.rd_readable.exists_value h_mem
+  have hbytes : MemBytesPresentAt js.sail addr 8 := by
+    simpa [addr] using Assumptions.DwordPresent.memBytesPresentAt h.dword_present
+  have hload_pmp : Assumptions.LoadPmpOk addr 8 js.sail := by
+    simpa [addr] using h.load_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
+  have hstore_pmp : Assumptions.StorePmpOk addr 8 js.sail := by
+    simpa [addr] using h.store_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
+  have hatomic_pmp : Assumptions.AtomicPmpOk amoop.AMOAND addr 8 js.sail := by
+    simpa [addr] using h.atomic_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
+  have hread_mmio : Assumptions.NotReadableMmio addr 8 js.sail := by
+    simpa [addr] using h.not_readable_mmio.subaccess (offset := 0) (accessWidth := 8) (by omega)
+  have hwrite_mmio : Assumptions.NotWritableMmio addr 8 js.sail := by
+    simpa [addr] using h.not_writable_mmio.subaccess (offset := 0) (accessWidth := 8) (by omega)
+  change
+    projectResult ((JoltISA.execProgram
+      (JoltISA.amoDoubleBinopProgram
+        (fun dst lhs rhs => .AND dst lhs rhs) rs2 rs1 rd)).run js) =
+      (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail
+  by_cases h_align : addr &&& (7 : BitVec 64) = 0
+  · exact
+      amo_dword_double_binop_program_eq_sail_aligned
+        amoop.AMOAND (fun dst lhs rhs => .AND dst lhs rhs)
+        rs2 rs1 rd js h.cur_privilege h.mstatus_mprv addr rs2Val
+        (rs2Val &&& loaded_dword_at js.sail addr hbytes
+          (amo_dword_aligned_no_ovf addr h_align))
+        h.rs1_read h.rs2_read h.rdReadable.exists_value
+        hbytes hload_pmp hstore_pmp hatomic_pmp hread_mmio hwrite_mmio
+        h_align (by decide)
+        (amo_dword_and_middle_after_load rs2 js addr rs2Val
+          (loaded_dword_at js.sail addr hbytes
+            (amo_dword_aligned_no_ovf addr h_align))
+          h.rs2_read)
+        (amoandd_sail_result rs2Val
+          (loaded_dword_at js.sail addr hbytes
+            (amo_dword_aligned_no_ovf addr h_align)))
+  · exact
+      amo_dword_double_binop_program_eq_sail_misaligned
+        amoop.AMOAND (fun dst lhs rhs => .AND dst lhs rhs)
+        rs2 rs1 rd js addr rs2Val h.rs1_read h.rs2_read h_align
 
 /-- Main public theorem for `AMOAND.D`. -/
 def amoanddProgramEqSailStatement

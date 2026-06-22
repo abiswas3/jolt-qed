@@ -20,9 +20,6 @@ theorem sshiftRight_slli_signExtend_8 (x : BitVec 8) :
   by_cases hlt : i < 8
   · have hsi : 56 + i < 64 := by omega
     simp [hi, hlt, hsi, BitVec.getElem_setWidth]
-    have hnot_hi : ¬ 64 ≤ i := by omega
-    have hnot_underflow : ¬ 56 + i < 56 := by omega
-    simp [hnot_hi, hnot_underflow]
   · have hnlt : ¬ 56 + i < 64 := by omega
     simp [hi, hlt, hnlt, BitVec.msb_eq_getLsbD_last,
       BitVec.getElem_setWidth]
@@ -35,9 +32,6 @@ theorem sshiftRight_slli_signExtend_16 (x : BitVec 16) :
   by_cases hlt : i < 16
   · have hsi : 48 + i < 64 := by omega
     simp [hi, hlt, hsi, BitVec.getElem_setWidth]
-    have hnot_hi : ¬ 64 ≤ i := by omega
-    have hnot_underflow : ¬ 48 + i < 48 := by omega
-    simp [hnot_hi, hnot_underflow]
   · have hnlt : ¬ 48 + i < 64 := by omega
     simp [hi, hlt, hnlt, BitVec.msb_eq_getLsbD_last,
       BitVec.getElem_setWidth]
@@ -50,9 +44,6 @@ theorem sshiftRight_slli_signExtend_32 (x : BitVec 32) :
   by_cases hlt : i < 32
   · have hsi : 32 + i < 64 := by omega
     simp [hi, hlt, hsi, BitVec.getElem_setWidth]
-    have hnot_hi : ¬ 64 ≤ i := by omega
-    have hnot_underflow : ¬ 32 + i < 32 := by omega
-    simp [hnot_hi, hnot_underflow]
   · have hnlt : ¬ 32 + i < 64 := by omega
     simp [hi, hlt, hnlt, BitVec.msb_eq_getLsbD_last,
       BitVec.getElem_setWidth]

@@ -539,7 +539,7 @@ dword and preserves the shifted old word. -/
 theorem amo_word_rust_select_splice_block_run
     (js : SailJoltState) (s : SailState)
     (addr newValue dword old : BitVec 64)
-    (hsetup : StoreSplice.WordStoreSetup addr (amoWordBase addr))
+    (hsetup : StoreSplice.WordStoreFacts addr (amoWordBase addr))
     (h_sail : js.sail = s)
     (h_dword : js.vregs JoltISA.amoWordSelectDwordVReg = dword)
     (h_shift :
@@ -809,7 +809,7 @@ theorem amo_word_rust_select_post64_vreg_aligned_run
   let shiftedMask := shift_bits_left mask32 shift6
   let dwordNew := amoWordSplicedDword addr newValue dword
   let wordResult : BitVec 32 := Sail.BitVec.extractLsb newValue 31 0
-  have hsetup := amo_word_store_setup addr h_no_ovf h_align
+  have hsetup := amo_word_store_facts addr h_no_ovf h_align
   obtain ⟨js_mask32, hmask_sail, hmask_mask, hmask_shift, hmask_dword,
       hmask_old, hmask_new_preserve, hmask_tail⟩ :=
     amo_word_rust_select_mask32_prefix_run js_pre js.sail shift64 dword old
