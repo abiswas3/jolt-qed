@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.BundleLemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
 
 
 open Sail PreSail LeanRV64D.Functions

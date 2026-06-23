@@ -1,11 +1,11 @@
 import JoltBytecode.JoltISA.Values
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 
 /-!
 # ALU advice-family shared imports
 
 The instruction behavior for the advice-verified DIV/REM family now lives in
-`JoltBytecode.InstructionEquivalence.Semantics.Instructions`.  The pure adjusted-divisor
+`JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas`.  The pure adjusted-divisor
 values live in `JoltBytecode.JoltISA.Values`.
 
 This file remains as a narrow compatibility import for the `ALUAdviceFamilyRW`

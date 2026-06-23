@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.Memory.Write
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Write
 
 /-!
 # Pure splice facts for store-family expansions

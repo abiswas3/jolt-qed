@@ -1,12 +1,12 @@
 import JoltBytecode.Bundles
-import JoltBytecode.InstructionEquivalence.Projection
-import JoltBytecode.InstructionEquivalence.ProofSupport
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.JoltISA.Expansions.ALU
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.ANDI
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.VirtualSRA
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.VirtualShiftRightBitmask
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.VirtualSignExtendWord
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.ANDI
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualSRA
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualShiftRightBitmask
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualSignExtendWord
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.JoltISA.Values
 import Mathlib.Data.Nat.Bitwise
 

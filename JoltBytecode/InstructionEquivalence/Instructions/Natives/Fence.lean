@@ -1,7 +1,7 @@
 import Mathlib.Tactic.FinCases
 import LeanRV64D.InstsEnd
 import JoltBytecode.Bundles
-import JoltBytecode.InstructionEquivalence.Projection
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.JoltISA.Semantics
 
 open Sail PreSail LeanRV64D.Functions

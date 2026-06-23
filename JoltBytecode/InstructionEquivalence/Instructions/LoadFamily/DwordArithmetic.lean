@@ -1,5 +1,5 @@
-import JoltBytecode.InstructionEquivalence.Memory.Read
-import JoltBytecode.InstructionEquivalence.Memory.Windows
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows
 import Mathlib.Tactic.IntervalCases
 
 set_option linter.unusedVariables false

@@ -1,19 +1,19 @@
 import JoltBytecode.Bundles
 import JoltBytecode.JoltISA.Expansions.Atomics
-import JoltBytecode.InstructionEquivalence.Memory.Windows
-import JoltBytecode.InstructionEquivalence.Memory.Read
-import JoltBytecode.InstructionEquivalence.ProofSupport
-import JoltBytecode.InstructionEquivalence.Semantics.Lemmas
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.Add
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.ADDI
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.Mul
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.SD
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.SLTU
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.Sub
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.VirtualAssertAlignment
-import JoltBytecode.InstructionEquivalence.Semantics.ProgramComposition
-import JoltBytecode.InstructionEquivalence.Semantics.RegisterOps
-import JoltBytecode.InstructionEquivalence.Memory.Write
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
+import JoltBytecode.InstructionEquivalence.ProofSupport.Lemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.Add
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.ADDI
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.Mul
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.SD
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.SLTU
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.Sub
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualAssertAlignment
+import JoltBytecode.InstructionEquivalence.ProofSupport.ProgramComposition
+import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Write
 
 set_option linter.unusedVariables false
 

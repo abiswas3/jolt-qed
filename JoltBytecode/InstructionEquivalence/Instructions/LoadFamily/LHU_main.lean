@@ -1,11 +1,11 @@
-import JoltBytecode.InstructionEquivalence.BundleLemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
 import JoltBytecode.JoltISA.Expansions.Load
-import JoltBytecode.InstructionEquivalence.Memory.Read
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
 import JoltBytecode.InstructionEquivalence.Instructions.LoadFamily.DwordArithmetic
-import JoltBytecode.InstructionEquivalence.Memory.Windows
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows
 import JoltBytecode.InstructionEquivalence.Instructions.LoadFamily.ProgramBlocks
-import JoltBytecode.InstructionEquivalence.Projection
-import JoltBytecode.InstructionEquivalence.ProofSupport
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import Mathlib.Tactic.IntervalCases
 
 set_option linter.unusedVariables false

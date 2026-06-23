@@ -1,7 +1,7 @@
 import JoltBytecode.Bundles
-import JoltBytecode.InstructionEquivalence.Projection
-import JoltBytecode.InstructionEquivalence.ProofSupport
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.Add
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.Add
 
 open Sail PreSail LeanRV64D.Functions
 

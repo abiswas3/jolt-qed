@@ -1,8 +1,8 @@
 import JoltBytecode.Assumptions
 import JoltBytecode.JoltISA.Expansions.System
-import JoltBytecode.InstructionEquivalence.BundleLemmas
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.ADDI
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.VirtualMULI
+import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.ADDI
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualMULI
 
 set_option linter.unusedSimpArgs false
 set_option linter.unusedTactic false

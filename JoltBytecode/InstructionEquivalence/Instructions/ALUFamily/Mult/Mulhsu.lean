@@ -1,8 +1,8 @@
 import JoltBytecode.JoltISA.Expansions.Mul
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.Bundles
-import JoltBytecode.InstructionEquivalence.Projection
-import JoltBytecode.InstructionEquivalence.ProofSupport
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import Mathlib
 
 set_option linter.unusedVariables false

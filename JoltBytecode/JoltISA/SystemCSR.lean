@@ -5,6 +5,9 @@ import JoltBytecode.JoltISA.VirtualRegisters
 
 This file contains the lightweight CSR whitelist/type shared by decoded
 RISC-V instructions, proof bundles, and the System expansion programs.
+
+Proof-side `@[simp]` rfl-projection laws against the underlying virtual-register
+projectors live in `InstructionEquivalence/ProofSupport/SystemCSR.lean`.
 -/
 
 namespace JoltISA
@@ -61,14 +64,6 @@ def sailRegister : SystemCSR → Register
   | .mepc => Register.mepc
   | .mcause => Register.mcause
   | .mtval => Register.mtval
-
-@[simp] theorem vreg_sailTarget? (csr : SystemCSR) :
-    joltRegisterSailTarget? (vreg csr) = some (sailRegister csr) := by
-  cases csr <;> rfl
-
-@[simp] theorem vreg_csrAddress? (csr : SystemCSR) :
-    joltRegisterCsrAddress? (vreg csr) = some (address csr) := by
-  cases csr <;> rfl
 
 end SystemCSR
 

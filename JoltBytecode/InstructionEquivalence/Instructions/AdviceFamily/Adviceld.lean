@@ -1,7 +1,7 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AdviceFamily.Advice
-import JoltBytecode.InstructionEquivalence.ProofSupport
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.JoltISA.Expansions.Advice
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 
 set_option linter.unusedVariables false
 set_option mvcgen.warning false

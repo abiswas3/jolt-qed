@@ -1,11 +1,11 @@
 import JoltBytecode.Bundles
-import JoltBytecode.InstructionEquivalence.Projection
-import JoltBytecode.InstructionEquivalence.ProofSupport
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.JoltISA.Expansions.ALU
-import JoltBytecode.InstructionEquivalence.Semantics.ExpansionBlocks.ALU
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.VirtualSRLI
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions.VirtualSignExtendWord
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions
+import JoltBytecode.InstructionEquivalence.ProofSupport.ExpansionBlocks.ALU
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualSRLI
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualSignExtendWord
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.JoltISA.Values
 
 set_option linter.unusedVariables false

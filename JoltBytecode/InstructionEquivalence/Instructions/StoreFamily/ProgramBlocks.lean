@@ -1,9 +1,9 @@
 import JoltBytecode.JoltISA.Expansions.Store
-import JoltBytecode.InstructionEquivalence.Semantics.ExpansionBlocks.ALU
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions
-import JoltBytecode.InstructionEquivalence.Memory.Read
+import JoltBytecode.InstructionEquivalence.ProofSupport.ExpansionBlocks.ALU
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Splice
-import JoltBytecode.InstructionEquivalence.ProofSupport
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 
 /-!
 # Program blocks for store-family Jolt-ISA proofs

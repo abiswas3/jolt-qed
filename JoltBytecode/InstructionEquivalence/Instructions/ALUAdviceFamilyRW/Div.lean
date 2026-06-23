@@ -1,9 +1,9 @@
-import JoltBytecode.InstructionEquivalence.BundleLemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
 import JoltBytecode.JoltISA.Expansions.DivRem
-import JoltBytecode.InstructionEquivalence.Semantics.RegisterOps
+import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 import JoltBytecode.Bundles
-import JoltBytecode.InstructionEquivalence.Projection
-import JoltBytecode.InstructionEquivalence.ProofSupport
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Primitives
 import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Div_math
 import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.DivProgramBlocks

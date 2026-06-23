@@ -1,11 +1,11 @@
 import JoltBytecode.JoltISA.Expansions.Store
-import JoltBytecode.InstructionEquivalence.Semantics.Instructions
-import JoltBytecode.InstructionEquivalence.Memory.Read
-import JoltBytecode.InstructionEquivalence.Memory.Windows
-import JoltBytecode.InstructionEquivalence.Memory.Write
-import JoltBytecode.InstructionEquivalence.Memory.StoreExec
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Write
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.StoreExec
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.ProgramBlocks
-import JoltBytecode.InstructionEquivalence.Projection
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 
 /-!
 # SW: top-down store-word equivalence
