@@ -45,13 +45,4 @@ def sailReadDword (addr : BitVec 64) : SailM (BitVec 64) := do
   let hi ← sailReadWord (addr + 4)
   pure ((hi ++ lo : BitVec 64))
 
--- ============================================================================
--- sail_cases tactic
--- ============================================================================
-
-syntax "sail_cases" term : tactic
-macro_rules
-  | `(tactic| sail_cases $t:term) => `(tactic|
-      (generalize $t = _sc; cases _sc <;> simp))
-
 end
