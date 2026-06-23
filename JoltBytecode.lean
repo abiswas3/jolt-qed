@@ -8,7 +8,7 @@ import JoltBytecode.Memory                                         -- pure memor
 import JoltBytecode.Bundles                                               -- proof-facing assumption bundles
 import JoltBytecode.Derived                                               -- facts proved from primitive assumptions
 import JoltBytecode.InstructionEquivalence.Memory.Windows                 -- generic memory fact derivations
-import JoltBytecode.JoltISA.Environment                                  -- Sail helpers
+import JoltBytecode.Derived
 import JoltBytecode.JoltISA.Semantics.RegisterOps                                  -- register lemmas, stateAfterWrite
 import JoltBytecode.InstructionEquivalence.ProofSupport                                       -- @[spec], generic W-type framework
 import JoltBytecode.JoltISA.Values.Shift                                    -- ctz, Riscv.*, Jolt.*, shared lemmas
