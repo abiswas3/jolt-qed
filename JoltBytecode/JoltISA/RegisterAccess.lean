@@ -1,12 +1,13 @@
 import JoltBytecode.JoltISA.Core
 import JoltBytecode.JoltISA.Instruction
 /-
-# Jolt ISA operand access
+# Accessing Data In Registers
 
-The operand *types* `Src`/`Dst`/`VReg` are pure syntax and live with the
-instruction data layer in `Instruction.lean`.  This file is the *access*
-machinery: reading/writing the virtual- and architectural-register files,
-and `readSrc`/`writeDst` which dispatch a typed operand to the right one.
+Definitions and theorems about accessing data in registers.
+
+when the def/theorem names have the suffix _run this implies we feed it an 
+initial state. 
+Otherwise, we are defining terms of arrow types.
 -/
 
 set_option linter.unusedVariables true
@@ -22,6 +23,7 @@ def readVReg (vr : BitVec 7) : JoltMonad (BitVec 64) := do
   pure (js.vregs vr)
 
 -- The general purpose registers are in the Sail hashmap already
+-- so we should never write to vr 0-31
 def WritableVReg (vr : BitVec 7) : Prop :=
   ¬ vr.toNat < 32
 
@@ -52,6 +54,7 @@ theorem writeVReg_run
     simp only [modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
 -- Writing to vr when vr is wriable leaves final state as 
+-- (this just kills the if statement above)
 theorem writeVReg_run_of_writable
     (vr : BitVec 7) (val : BitVec 64) (js : SailJoltState)
     (h : WritableVReg vr) :

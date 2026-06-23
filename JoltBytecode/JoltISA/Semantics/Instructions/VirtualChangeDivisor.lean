@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Semantics.Lemmas
+import JoltBytecode.JoltISA.Semantics.StateLemmas
 
 /-!
 # VirtualChangeDivisor instruction semantics
@@ -43,6 +44,20 @@ theorem virtual_change_divisor_w_run (vd dividend divisor : VReg)
     get, getThe, MonadStateOf.get, EStateM.get]
   exact writeVReg_retire_run_of_writable vd
     (change_divisor_w_value (js.vregs dividend) (js.vregs divisor)) js hvd
+
+/-- Existential single-write post-state for `VirtualChangeDivisor`. -/
+theorem virtual_change_divisor_run_ex (vd : VReg) (dividend divisor : regidx)
+    (js : SailJoltState) (x y : BitVec 64)
+    (hdividend : rX_bits dividend js.sail = .ok x js.sail)
+    (hdivisor : rX_bits divisor js.sail = .ok y js.sail)
+    (hvd : WritableVReg vd) :
+    ∃ js',
+      (execInstr (.VirtualChangeDivisor (.vreg vd) (.xreg dividend) (.xreg divisor))).run js =
+        .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = change_divisor_value x y ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail :=
+  writeSingleVReg_ex (virtual_change_divisor_run vd dividend divisor js x y hdividend hdivisor hvd)
 
 end JoltISA
 

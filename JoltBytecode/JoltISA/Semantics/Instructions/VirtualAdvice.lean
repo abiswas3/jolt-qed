@@ -1,5 +1,6 @@
 import JoltBytecode.JoltISA.Semantics.Lemmas
 import JoltBytecode.JoltISA.Semantics.RegisterOps
+import JoltBytecode.JoltISA.Semantics.StateLemmas
 
 /-!
 # VirtualAdvice instruction semantics
@@ -52,6 +53,16 @@ theorem exists_state_after_virtual_advice_load_run_xreg
     h_sail_after,
     rfl,
     virtual_advice_load_run_xreg rd advice js s' hw⟩
+
+/-- Existential single-write post-state for `VirtualAdvice`. -/
+theorem virtual_advice_run_ex (vd : VReg) (advice : BitVec 64) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
+    ∃ js',
+      (execInstr (.VirtualAdvice vd advice)).run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = advice ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail :=
+  writeSingleVReg_ex (virtual_advice_run vd advice js hvd)
 
 end JoltISA
 

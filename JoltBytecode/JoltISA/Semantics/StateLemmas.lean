@@ -31,6 +31,25 @@ theorem vregs_write_pres (js : SailJoltState) (vd : BitVec 7) (v : BitVec 64)
   show (if k = vd then v else js.vregs k) = js.vregs k
   rw [if_neg h]
 
+/-- Package a single-virtual-register write into the standard existential
+post-state used by straight-line expansion proofs.  From a run that writes
+`value` to `vd` (leaving Sail and every other vreg untouched), produce the
+post-state together with the `vd`-lookup, preservation, and Sail-unchanged
+facts.  Instruction-agnostic: it abstracts over the computation `comp`. -/
+theorem writeSingleVReg_ex
+    {comp : JoltMonad ExecutionResult} {js : SailJoltState}
+    {vd : BitVec 7} {value : BitVec 64}
+    (hrun : comp.run js = .ok RETIRE_SUCCESS
+      { sail := js.sail
+        vregs := fun r => if r = vd then value else js.vregs r }) :
+    ∃ js',
+      comp.run js = .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = value ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail :=
+  ⟨_, hrun, vregs_write_self js vd value,
+    fun k h => vregs_write_pres js vd value k h, rfl⟩
+
 /-- Chain four virtual-register preservation hypotheses. -/
 theorem chain_pres_4 {s_a s_b s_c s_d s_e : SailJoltState}
     {vd_a vd_b vd_c vd_d : BitVec 7}

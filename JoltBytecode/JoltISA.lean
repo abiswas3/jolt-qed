@@ -8,7 +8,6 @@ import JoltBytecode.JoltISA.Execution
 import JoltBytecode.JoltISA.Semantics.Lemmas
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 import JoltBytecode.JoltISA.Semantics.StateLemmas
-import JoltBytecode.JoltISA.Semantics.InstructionRunHelpers
 import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Expansions.Mul

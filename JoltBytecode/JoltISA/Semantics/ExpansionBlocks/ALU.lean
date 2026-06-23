@@ -539,6 +539,38 @@ theorem exists_state_after_srai_block_run_vreg_xreg
     rw [execProgram_instr_run_retire _ _ js js'
       (by simpa only [js'] using srai_block_run_vreg_xreg vd rs shamt js x h hvd)]
 
+/-- Existential single-write post-state for the lowered `SRAI` block (virtual
+source). The first conjunct rewrites the whole block against any continuation. -/
+theorem srai_block_run_vreg_vreg_ex (vd vs : VReg) (shamt : BitVec 6)
+    (js : SailJoltState) (hvd : WritableVReg vd) :
+    ∃ js',
+      (∀ tail,
+        (execProgram (sraiBlock (.vreg vd) (.vreg vs) shamt tail)).run js =
+          (execProgram tail).run js') ∧
+      js'.vregs vd = shift_bits_right_arith (js.vregs vs) shamt ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  obtain ⟨js', h_sail, h_vd, h_pres, h_run⟩ :=
+    exists_state_after_srai_block_run_vreg_vreg vd vs shamt js hvd
+  exact ⟨js', h_run, h_vd, h_pres, h_sail⟩
+
+/-- Existential single-write post-state for the lowered `SRAI` block (real
+source). -/
+theorem srai_block_run_vreg_xreg_ex (vd : VReg) (rs : regidx)
+    (shamt : BitVec 6) (js : SailJoltState) (x : BitVec 64)
+    (hread : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
+    ∃ js',
+      (∀ tail,
+        (execProgram (sraiBlock (.vreg vd) (.xreg rs) shamt tail)).run js =
+          (execProgram tail).run js') ∧
+      js'.vregs vd = shift_bits_right_arith x shamt ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail := by
+  obtain ⟨js', _hread, h_sail, h_vd, h_pres, h_run⟩ :=
+    exists_state_after_srai_block_run_vreg_xreg vd rs shamt js x hread hvd
+  exact ⟨js', h_run, h_vd, h_pres, h_sail⟩
+
 end JoltISA
 
 end

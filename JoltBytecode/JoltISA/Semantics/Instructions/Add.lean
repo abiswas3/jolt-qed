@@ -1,5 +1,6 @@
 import JoltBytecode.JoltISA.Semantics.Lemmas
 import JoltBytecode.JoltISA.Semantics.RegisterOps
+import JoltBytecode.JoltISA.Semantics.StateLemmas
 
 /-!
 # ADD instruction semantics
@@ -119,6 +120,17 @@ theorem exists_state_after_add_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
     h₂,
     h_sail_after_add,
     add_run_xreg_xreg_xreg rd rs1 rs2 js x y s' h₁ h₂ hw⟩
+
+/-- Existential single-write post-state for `ADD` on virtual registers. -/
+theorem add_run_vreg_vreg_vreg_ex (vd vs1 vs2 : VReg) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
+    ∃ js',
+      (execInstr (.ADD (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
+        .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = js.vregs vs1 + js.vregs vs2 ∧
+      (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
+      js'.sail = js.sail :=
+  writeSingleVReg_ex (add_run_vreg_vreg_vreg vd vs1 vs2 js hvd)
 
 end JoltISA
 
