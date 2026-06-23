@@ -6,11 +6,11 @@
 import JoltBytecode.Assumptions                                           -- primitive proof assumptions
 import JoltBytecode.JoltISA.MemoryAccess                                  -- pure memory address expressions
 import JoltBytecode.Bundles                                               -- proof-facing assumption bundles
-import JoltBytecode.InstructionEquivalence.BundleLemmas                                               -- facts proved from primitive assumptions
-import JoltBytecode.InstructionEquivalence.Memory.Windows                 -- generic memory fact derivations
-import JoltBytecode.InstructionEquivalence.BundleLemmas
-import JoltBytecode.InstructionEquivalence.Semantics.RegisterOps                                  -- register lemmas, stateAfterWrite
-import JoltBytecode.InstructionEquivalence.ProofSupport                                       -- @[spec], generic W-type framework
+import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas                                               -- facts proved from primitive assumptions
+import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows                 -- generic memory fact derivations
+import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess                                  -- register lemmas, stateAfterWrite
+import JoltBytecode.InstructionEquivalence.ProofSupport.Basic                                       -- @[spec], generic W-type framework
 import JoltBytecode.JoltISA.Values                                    -- ctz, Riscv.*, jolt_*_value helpers
 
 -- ============================================================================
