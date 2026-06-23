@@ -4,10 +4,10 @@ import JoltBytecode.JoltISA.Values
 import JoltBytecode.JoltISA.VirtualRegisters
 import JoltBytecode.JoltISA.Instruction
 import JoltBytecode.JoltISA.Semantics
-import JoltBytecode.JoltISA.Semantics.Lemmas
-import JoltBytecode.JoltISA.Semantics.ProgramComposition
-import JoltBytecode.JoltISA.Semantics.StateLemmas
-import JoltBytecode.JoltISA.Semantics.Instructions
+import JoltBytecode.InstructionEquivalence.Semantics.Lemmas
+import JoltBytecode.InstructionEquivalence.Semantics.ProgramComposition
+import JoltBytecode.InstructionEquivalence.Semantics.StateLemmas
+import JoltBytecode.InstructionEquivalence.Semantics.Instructions
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Expansions.Mul
 import JoltBytecode.JoltISA.Expansions.DivRem

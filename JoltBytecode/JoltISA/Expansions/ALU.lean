@@ -39,28 +39,6 @@ abbrev srawBitmaskVReg : VReg := inlineTmp1
 /-- Rust `v_rs1` for `SRLIW` and `SRAIW`. -/
 abbrev shiftImmediateWordRs1VReg : VReg := inlineTmp0
 
-/-- One top-level Rust `allocate()` call from an empty instruction-local live
-set produces the single-scratch ALU shift guard. -/
-theorem aluSingleScratch_allocate_layout :
-    allocateInstructionRegister [] = some (aluPow2VReg, [0]) ∧
-    allocateInstructionRegister [] = some (aluBitmaskVReg, [0]) ∧
-    allocateInstructionRegister [] = some (shiftImmediateWordRs1VReg, [0]) := by
-  decide
-
-/-- Two top-level Rust `allocate()` calls from an empty instruction-local live
-set produce `SRLW`'s `v_bitmask`, `v_rs1` guards. -/
-theorem srlw_allocate_layout :
-    allocateInstructionRegister [] = some (srlwBitmaskVReg, [0]) ∧
-    allocateInstructionRegister [0] = some (srlwRs1VReg, [1, 0]) := by
-  decide
-
-/-- Two top-level Rust `allocate()` calls from an empty instruction-local live
-set produce `SRAW`'s `v_rs1`, `v_bitmask` guards. -/
-theorem sraw_allocate_layout :
-    allocateInstructionRegister [] = some (srawRs1VReg, [0]) ∧
-    allocateInstructionRegister [0] = some (srawBitmaskVReg, [1, 0]) := by
-  decide
-
 /-- Bitmask immediate used by RV64 `VirtualSRLI` for `SRLI`.  Its trailing-zero
 count is the six-bit shift amount. -/
 def srliBitmask (shamt : BitVec 6) : Nat :=

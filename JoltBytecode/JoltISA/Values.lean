@@ -1,16 +1,22 @@
 import JoltBytecode.JoltISA.Core
-import JoltBytecode.JoltISA.Values.Shift
--- NOTE: I'll likely keep these, since the values are useful.
+import Mathlib.Tactic
+import Mathlib.Data.BitVec
+
 /-!
-# Semantic Helper
+# Semantic value helpers
 
-This file contains functions that make `Semantics.lean` easier to define.
-They capture purely computational tasks written as Lean functions.
+Pure value-level functions used by `JoltISA/Semantics.lean` to express the
+result a single Jolt instruction writes to its destination register, plus the
+shared Sail-side reference definitions used by instruction-equivalence proofs.
 
-TODO: It also contains theorems about these functions, which should eventually
-move to the instruction equivalence machinery. These belong to the proof
-theory, while the Jolt ISA values are pure facts about how the Jolt CPU is
-defined.
+Contents:
+* `ctz` — count trailing zeros, used by the virtual shift family.
+* `Riscv.*` — Sail-equivalent pure reference functions for shift/multiply/
+  bitwise ops, used in math-bridge lemmas.
+* `jolt_*_value` — Jolt-side value functions consumed by `execInstr`.
+
+Proof-side characterisations of these helpers live in
+`InstructionEquivalence/ValueLemmas.lean`.
 -/
 
 set_option linter.unusedVariables false
@@ -21,6 +27,63 @@ set_option autoImplicit true
 
 noncomputable section
 
+-- ============================================================================
+-- Count trailing zeros
+-- ============================================================================
+
+/-- Count trailing zeros of a natural number. Returns 0 for input 0. -/
+def ctz (n : Nat) : Nat :=
+  if n = 0 then 0
+  else if n % 2 = 1 then 0
+  else 1 + ctz (n / 2)
+termination_by n
+
+-- ============================================================================
+-- Riscv pure-function reference definitions (Sail-equivalent abstractions)
+-- ============================================================================
+
+namespace Riscv
+
+variable {w : Nat}
+
+def mul (x y : BitVec w) : BitVec w := x * y
+def slli (x : BitVec w) (shamt : Nat) : BitVec w := x <<< shamt
+def ori (x imm : BitVec w) : BitVec w := x ||| imm
+def andi (x y : BitVec w) : BitVec w := x &&& y
+
+def sllw (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32) <<< (rs2_val.setWidth 5).toNat).signExtend 64
+
+def srlw (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32) >>> (rs2_val.setWidth 5).toNat).signExtend 64
+
+def sraw (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32).sshiftRight (rs2_val.setWidth 5).toNat).signExtend 64
+
+def sll (x y : BitVec 64) : BitVec 64 := x <<< (y.setWidth 6).toNat
+def srl (x y : BitVec 64) : BitVec 64 := x >>> (y.setWidth 6).toNat
+def sra (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  rs1_val.sshiftRight (rs2_val.setWidth 6).toNat
+
+def slli64 (rs1_val shamt : BitVec 64) : BitVec 64 := rs1_val <<< (shamt.setWidth 6).toNat
+def srli64 (rs1_val shamt : BitVec 64) : BitVec 64 := rs1_val >>> (shamt.setWidth 6).toNat
+def srai64 (rs1_val shamt : BitVec 64) : BitVec 64 := rs1_val.sshiftRight (shamt.setWidth 6).toNat
+
+def slliw (rs1_val shamt : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32) <<< (shamt.setWidth 5).toNat).signExtend 64
+
+def srliw (rs1_val shamt : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32) >>> (shamt.setWidth 5).toNat).signExtend 64
+
+def sraiw (rs1_val shamt : BitVec 64) : BitVec 64 :=
+  ((rs1_val.setWidth 32).sshiftRight (shamt.setWidth 5).toNat).signExtend 64
+
+end Riscv
+
+-- ============================================================================
+-- Jolt-side value helpers
+-- ============================================================================
+
 /-- RV64 `VirtualMovsign` value: all ones if the source sign bit is set,
 otherwise zero. -/
 def jolt_movsign_value (x : BitVec 64) : BitVec 64 :=
@@ -29,28 +92,6 @@ def jolt_movsign_value (x : BitVec 64) : BitVec 64 :=
 /-- RV64 `MULHU` value: high 64 bits of the unsigned 64x64 product. -/
 def jolt_mulhu_value (x y : BitVec 64) : BitVec 64 :=
   BitVec.ofNat 64 (x.toNat * y.toNat / 2^64)
-
-/-- If a 64-bit word is below `2^63`, `VirtualMovsign` returns zero. -/
-theorem jolt_movsign_value_eq_zero_of_toNat_lt_half (x : BitVec 64)
-    (h : x.toNat < 9223372036854775808) :
-    jolt_movsign_value x = 0 := by
-  unfold jolt_movsign_value
-  have hmsb : x.msb = false := by
-    rw [BitVec.msb_eq_decide]
-    exact decide_eq_false_iff_not.mpr (by omega)
-  rw [hmsb]
-  rfl
-
-/-- If a 64-bit word is at least `2^63`, `VirtualMovsign` returns all ones. -/
-theorem jolt_movsign_value_eq_neg_one_of_half_le (x : BitVec 64)
-    (h : ¬ x.toNat < 9223372036854775808) :
-    jolt_movsign_value x = (-1 : BitVec 64) := by
-  unfold jolt_movsign_value
-  have hmsb : x.msb = true := by
-    rw [BitVec.msb_eq_decide]
-    exact decide_eq_true_eq.mpr (by omega)
-  rw [hmsb]
-  rfl
 
 /-- RV64 `SLTU` value: one if `x < y` as unsigned 64-bit integers,
 otherwise zero. -/
@@ -96,69 +137,6 @@ def jolt_virtual_shift_right_bitmaski_value (imm : Nat) : BitVec 64 :=
   let ones := (1 <<< (64 - shift)) - 1
   BitVec.ofNat 64 (ones <<< shift)
 
-/-- The natural-number bitmask encoded by `VirtualShiftRightBitmask` fits in
-64 bits.  This justifies reading the produced `BitVec 64` back as a `Nat`
-without changing the trailing-zero structure consumed by `VirtualSRL` and
-`VirtualSRA`. -/
-private theorem jolt_virtual_shift_right_bitmask_nat_lt (x : BitVec 64) :
-    (let shift := (x.setWidth 6).toNat
-     let ones := (1 <<< (64 - shift)) - 1
-     ones <<< shift) < 2 ^ 64 := by
-  simp only [Nat.shiftLeft_eq]
-  set shift := (x.setWidth 6).toNat
-  have hshift_lt : shift < 64 := by
-    have := (x.setWidth 6).isLt
-    norm_num at this
-    exact this
-  have hdiff_pos : 0 < 64 - shift := by omega
-  have hones_lt : 2 ^ (64 - shift) - 1 < 2 ^ (64 - shift) := by
-    have hpow_pos : 0 < 2 ^ (64 - shift) := by positivity
-    omega
-  have hmul_lt :
-      (2 ^ (64 - shift) - 1) * 2 ^ shift <
-        2 ^ (64 - shift) * 2 ^ shift :=
-    Nat.mul_lt_mul_of_pos_right hones_lt (by positivity)
-  have hpow : 2 ^ (64 - shift) * 2 ^ shift = 2 ^ 64 := by
-    rw [← Nat.pow_add]
-    congr 1
-    omega
-  simpa [hpow] using hmul_lt
-
-/-- Reading back the `VirtualShiftRightBitmask` result as a natural number
-recovers the same encoded bitmask used in the Rust expansion. -/
-theorem jolt_virtual_shift_right_bitmask_value_toNat (x : BitVec 64) :
-    (jolt_virtual_shift_right_bitmask_value x).toNat =
-      (let shift := (x.setWidth 6).toNat
-       let ones := (1 <<< (64 - shift)) - 1
-       ones <<< shift) := by
-  unfold jolt_virtual_shift_right_bitmask_value
-  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt]
-  exact jolt_virtual_shift_right_bitmask_nat_lt x
-
-/-- The essential contract of `VirtualShiftRightBitmask`: the word it writes
-has exactly `x[5:0]` trailing zeroes.  `VirtualSRL` and `VirtualSRA` consume
-only this `ctz` value, so this lemma is the reusable bridge from the virtual
-instruction to ordinary Sail shifts. -/
-theorem ctz_jolt_virtual_shift_right_bitmask_value (x : BitVec 64) :
-    ctz (jolt_virtual_shift_right_bitmask_value x).toNat =
-      (x.setWidth 6).toNat := by
-  rw [jolt_virtual_shift_right_bitmask_value_toNat]
-  simp only [Nat.shiftLeft_eq, one_mul]
-  set shift := (x.setWidth 6).toNat
-  have h_lt : shift < 64 := by
-    have := (x.setWidth 6).isLt
-    norm_num at this
-    exact this
-  have h_diff_pos : 0 < 64 - shift := by omega
-  have h_m_pos : 0 < 2 ^ (64 - shift) - 1 := by
-    have : 2 ≤ 2 ^ (64 - shift) :=
-      le_trans (show (2 : Nat) ≤ 2 ^ 1 from by norm_num)
-        (Nat.pow_le_pow_right (by omega) (by omega))
-    omega
-  rw [mul_comm, ctz_mul_pow2 shift h_m_pos,
-    ctz_of_odd (pow2_sub_one_odd h_diff_pos)]
-  omega
-
 /-- RV64 `VirtualSRLI` value: logical right shift by the trailing-zero count
 of the encoded bitmask immediate. -/
 def jolt_virtual_srli_value (x : BitVec 64) (bitmask : Nat) : BitVec 64 :=
@@ -203,33 +181,10 @@ def jolt_virtual_xorrotw_value (rot : Nat) (x y : BitVec 64) : BitVec 64 :=
   zero_extend (m := 64)
     (rotater ((Sail.BitVec.extractLsb x 31 0) ^^^ (Sail.BitVec.extractLsb y 31 0)) rot)
 
-/-- `SLTU` returns one when the unsigned comparison is true. -/
-theorem jolt_sltu_value_eq_one_of_lt (x y : BitVec 64)
-    (h : x.toNat < y.toNat) :
-    jolt_sltu_value x y = 1 := by
-  unfold jolt_sltu_value zopz0zI_u BitVec.toNatInt bool_to_bit
-    bool_bit_forwards zero_extend
-  simp [h]
-  decide
-
-/-- `SLTU` returns zero when the unsigned comparison is false. -/
-theorem jolt_sltu_value_eq_zero_of_not_lt (x y : BitVec 64)
-    (h : ¬ x.toNat < y.toNat) :
-    jolt_sltu_value x y = 0 := by
-  unfold jolt_sltu_value zopz0zI_u BitVec.toNatInt bool_to_bit
-    bool_bit_forwards zero_extend
-  simp [h]
-  decide
-
-/-- The natural-number value of `jolt_sltu_value` is the expected Boolean flag,
-viewed as `0` or `1`. -/
-theorem jolt_sltu_value_toNat (x y : BitVec 64) :
-    (jolt_sltu_value x y).toNat = if x.toNat < y.toNat then 1 else 0 := by
-  by_cases h : x.toNat < y.toNat
-  · rw [jolt_sltu_value_eq_one_of_lt x y h]
-    simp [h]
-  · rw [jolt_sltu_value_eq_zero_of_not_lt x y h]
-    simp [h]
+/-- RV64 `VirtualSignExtendWord` value: sign-extend the low 32 bits to 64
+bits. -/
+def jolt_virtual_sign_extend_word_value (x : BitVec 64) : BitVec 64 :=
+  (x.setWidth 32).signExtend 64
 
 /-- Upper 64 bits of a signed 64×64 multiply. -/
 def mulhs (a b : BitVec 64) : BitVec 64 :=

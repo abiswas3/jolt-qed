@@ -33,14 +33,6 @@ def loadV1 : VReg := inlineTmp1
 /-- Recursive `SLL`/`SRL` scratch while Rust load `v0,v1` guards are live. -/
 def loadInlineTmp : VReg := inlineTmp2
 
-/-- Rust load allocation layout on RV64: top-level `v0`, `v1`, then the
-recursive shift helper's scratch while both guards are live. -/
-theorem load_allocate_layout :
-    allocateInstructionRegister [] = some (loadV0, [0]) ∧
-    allocateInstructionRegister [0] = some (loadV1, [1, 0]) ∧
-    allocateInstructionRegister [1, 0] = some (loadInlineTmp, [2, 1, 0]) := by
-  decide
-
 /-- Rust's RV64 `LB::inline_sequence`. -/
 def lbProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|

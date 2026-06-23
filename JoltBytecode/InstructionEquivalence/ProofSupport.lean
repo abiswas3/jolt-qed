@@ -1,6 +1,9 @@
-import JoltBytecode.JoltISA.Semantics.Lemmas
-import JoltBytecode.JoltISA.Semantics.RegisterOps
+import JoltBytecode.InstructionEquivalence.Semantics.Lemmas
+import JoltBytecode.InstructionEquivalence.Semantics.RegisterOps
 import JoltBytecode.JoltISA.VirtualRegisters
+import JoltBytecode.InstructionEquivalence.ValueLemmas
+import JoltBytecode.InstructionEquivalence.VirtualRegisterProofSupport
+import JoltBytecode.InstructionEquivalence.ExpansionLayoutProofSupport
 
 set_option linter.unusedVariables false
 

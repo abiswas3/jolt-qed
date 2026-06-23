@@ -45,17 +45,6 @@ def storeV3 : VReg := inlineTmp3
 /-- Recursive `SLL` scratch while Rust store `v0..v3` guards are live. -/
 def storeInlineTmp : VReg := inlineTmp4
 
-/-- Rust store allocation layout on RV64: top-level `v0..v3`, then the
-recursive shift helper's scratch while those guards are live. -/
-theorem store_allocate_layout :
-    allocateInstructionRegister [] = some (storeV0, [0]) ∧
-    allocateInstructionRegister [0] = some (storeV1, [1, 0]) ∧
-    allocateInstructionRegister [1, 0] = some (storeV2, [2, 1, 0]) ∧
-    allocateInstructionRegister [2, 1, 0] = some (storeV3, [3, 2, 1, 0]) ∧
-    allocateInstructionRegister [3, 2, 1, 0] =
-      some (storeInlineTmp, [4, 3, 2, 1, 0]) := by
-  decide
-
 /-- RV64 Jolt expansion for `SB`, faithful to
 `tracer/src/instruction/sb.rs::inline_sequence_64`. -/
 def sbProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=

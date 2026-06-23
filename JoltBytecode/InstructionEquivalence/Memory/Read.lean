@@ -1,6 +1,6 @@
-import JoltBytecode.Derived
+import JoltBytecode.InstructionEquivalence.BundleLemmas
 import JoltBytecode.InstructionEquivalence.Memory.Alignment
-import JoltBytecode.JoltISA.Semantics.Instructions.LD
+import JoltBytecode.InstructionEquivalence.Semantics.Instructions.LD
 import Mathlib.Tactic
 
 /-!

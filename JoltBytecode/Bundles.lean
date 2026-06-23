@@ -1,5 +1,5 @@
 import JoltBytecode.Assumptions
-import JoltBytecode.Memory
+import JoltBytecode.JoltISA.MemoryAccess
 import JoltBytecode.JoltISA.SystemCSR
 
 /-!

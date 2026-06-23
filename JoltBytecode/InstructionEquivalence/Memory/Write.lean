@@ -1,4 +1,4 @@
-import JoltBytecode.Derived
+import JoltBytecode.InstructionEquivalence.BundleLemmas
 import JoltBytecode.InstructionEquivalence.Memory.Alignment
 import Mathlib.Tactic.IntervalCases
 

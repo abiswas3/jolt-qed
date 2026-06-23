@@ -1,4 +1,4 @@
-import JoltBytecode.Derived
+import JoltBytecode.InstructionEquivalence.BundleLemmas
 
 set_option linter.unusedVariables false
 set_option mvcgen.warning false

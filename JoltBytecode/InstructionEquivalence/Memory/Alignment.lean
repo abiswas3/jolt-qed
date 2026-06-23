@@ -1,4 +1,4 @@
-import JoltBytecode.Memory
+import JoltBytecode.JoltISA.MemoryAccess
 import JoltBytecode.InstructionEquivalence.Memory.Basic
 import Mathlib.Tactic.IntervalCases
 
