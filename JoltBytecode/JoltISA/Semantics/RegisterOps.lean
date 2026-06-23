@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Operands
+import JoltBytecode.JoltISA.RegisterAccess
 
 /-!
 # Register operation lemmas (independent of SailJoltState architecture)

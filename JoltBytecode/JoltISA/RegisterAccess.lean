@@ -1,34 +1,38 @@
 import JoltBytecode.JoltISA.Core
---TODO: This needs to be unified with environmment as well into helpers.
-/-!
-# Jolt ISA operands
+import JoltBytecode.JoltISA.Instruction
+/-
+# Jolt ISA operand access
 
-Jolt virtual instructions read from and write to either the architectural
-register file or the virtual-register file.  The typed source/destination
-operands here make those flavours explicit.
+The operand *types* `Src`/`Dst`/`VReg` are pure syntax and live with the
+instruction data layer in `Instruction.lean`.  This file is the *access*
+machinery: reading/writing the virtual- and architectural-register files,
+and `readSrc`/`writeDst` which dispatch a typed operand to the right one.
 -/
 
-set_option linter.unusedVariables false
+set_option linter.unusedVariables true
 
 open Sail PreSail LeanRV64D.Functions
 
-set_option autoImplicit true
 
 noncomputable section
 
+-- Get the value in vr as a monadic computation
 def readVReg (vr : BitVec 7) : JoltMonad (BitVec 64) := do
   let js ← get
   pure (js.vregs vr)
 
+-- The general purpose registers are in the Sail hashmap already
 def WritableVReg (vr : BitVec 7) : Prop :=
   ¬ vr.toNat < 32
 
+-- We cannot write the to the first 32 registers, as we use xreg for them.
 def writeVReg (vr : BitVec 7) (val : BitVec 64) : JoltMonad Unit :=
   if vr.toNat < 32 then
     throw (Error.Assertion "writeVReg: architectural xreg address")
   else
     modify fun js => { js with vregs := fun r => if r = vr then val else js.vregs r }
 
+-- Writing to vr leaves final state as 
 theorem writeVReg_run
     (vr : BitVec 7) (val : BitVec 64) (js : SailJoltState) :
     (writeVReg vr val).run js =
@@ -38,18 +42,23 @@ theorem writeVReg_run
         .ok () { js with vregs := fun r => if r = vr then val else js.vregs r } := by
   unfold writeVReg
   by_cases h : vr.toNat < 32
-  · simp only [h, ↓reduceIte, EStateM.run, throw, throwThe,
-      MonadExceptOf.throw, EStateM.throw]
-  · simp only [h, ↓reduceIte, EStateM.run, modify, modifyGet,
-      MonadStateOf.modifyGet, EStateM.modifyGet]
+  · simp only [h]
+    simp only [↓reduceIte]
+    simp only [EStateM.run]
+    -- need this full recipe to get rid of the throw
+    simp only [throw, throwThe, MonadExceptOf.throw, EStateM.throw]
+  · simp only [h, ↓reduceIte]
+    simp only [EStateM.run]
+    simp only [modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
 
+-- Writing to vr when vr is wriable leaves final state as 
 theorem writeVReg_run_of_writable
     (vr : BitVec 7) (val : BitVec 64) (js : SailJoltState)
     (h : WritableVReg vr) :
     (writeVReg vr val).run js =
       .ok () { js with vregs := fun r => if r = vr then val else js.vregs r } := by
   unfold WritableVReg at h
-  rw [writeVReg_run]
+  rw [writeVReg_run vr val js]
   simp only [h, ↓reduceIte]
 
 /-- Running a virtual-register read returns the value currently stored at that
@@ -60,18 +69,6 @@ virtual register and leaves the whole Jolt state unchanged. -/
   rfl
 
 namespace JoltISA
-
-abbrev VReg := BitVec 7
-
-inductive Src where
-  | vreg : VReg → Src
-  | xreg : regidx → Src
-  deriving Repr
-
-inductive Dst where
-  | vreg : VReg → Dst
-  | xreg : regidx → Dst
-  deriving Repr
 
 def readSrc : Src → JoltMonad (BitVec 64)
   | .vreg vr => readVReg vr

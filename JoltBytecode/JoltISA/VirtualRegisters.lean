@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Operands
+import JoltBytecode.JoltISA.RegisterAccess
 
 /-!
 # Rust virtual-register allocation layout

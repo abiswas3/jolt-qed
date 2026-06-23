@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Values
+import JoltBytecode.JoltISA.Core
 
 /-!
 # Jolt ISA syntax
@@ -11,6 +11,25 @@ layer, not as constructors here.
 open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
+
+/-- A Jolt virtual register address (Jolt uses a 7-bit register space). -/
+abbrev VReg := BitVec 7
+
+/-- An instruction *source* operand: either a virtual register or an
+architectural (Sail) register.  Pure syntax — see `JoltISA.readSrc` in
+`Operands.lean` for how a source is read against the register state. -/
+inductive Src where
+  | vreg : VReg → Src
+  | xreg : regidx → Src
+  deriving Repr
+
+/-- An instruction *destination* operand: either a virtual register or an
+architectural (Sail) register.  Pure syntax — see `JoltISA.writeDst` in
+`Operands.lean` for how a destination is written. -/
+inductive Dst where
+  | vreg : VReg → Dst
+  | xreg : regidx → Dst
+  deriving Repr
 
 inductive Instr where
   | NoOp

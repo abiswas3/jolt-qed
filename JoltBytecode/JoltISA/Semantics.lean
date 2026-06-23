@@ -1,4 +1,6 @@
 import JoltBytecode.JoltISA.Instruction
+import JoltBytecode.JoltISA.RegisterAccess
+import JoltBytecode.JoltISA.Values
 
 /-!
 # Jolt ISA semantics

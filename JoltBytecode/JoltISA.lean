@@ -1,5 +1,5 @@
 import JoltBytecode.JoltISA.Core
-import JoltBytecode.JoltISA.Operands
+import JoltBytecode.JoltISA.RegisterAccess
 import JoltBytecode.JoltISA.Values
 import JoltBytecode.JoltISA.VirtualRegisters
 import JoltBytecode.JoltISA.Instruction

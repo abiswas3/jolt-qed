@@ -186,6 +186,8 @@ def csrrwProgram? (csr : BitVec 12) (rs1 rd : regidx) : Option Program :=
 
 The relevant generated Lean code is the important part.
 
+### Nstatus 
+
 For `mstatus`, Sail writes through `legalize_mstatus`:
 
 `LeanRV64D/ZicsrInsts.lean:11708`
@@ -196,6 +198,7 @@ For `mstatus`, Sail writes through `legalize_mstatus`:
     if ((xlen == 64) : Bool)
     then
       (do
+        
         writeReg mstatus (← (legalize_mstatus (← readReg mstatus) value))
         (pure (Ok (← readReg mstatus))))
     else
@@ -210,8 +213,10 @@ The `legalize_mstatus` function is:
 `LeanRV64D/SysRegs.lean:994`
 
 ```lean
+-- v = [rs1]
+-- o = [mstatus]
 def legalize_mstatus (o : (BitVec 64)) (v : (BitVec 64)) : SailM (BitVec 64) := do
-  let v := (Mk_Mstatus v)
+  let v := (Mk_Mstatus v) -- overwrite v 
   let o ← do
     (pure (_update_Mstatus_SIE
         (_update_Mstatus_MIE
@@ -290,6 +295,9 @@ def legalize_mstatus (o : (BitVec 64)) (v : (BitVec 64)) : SailM (BitVec 64) := 
 
 This is not a raw write. It reconstructs a legal `mstatus`, including forcing
 unsupported fields to zero/off, legalizing privilege fields, and recomputing `SD`.
+TODO: parse the legalise 
+
+## MTVec 
 
 For `mtvec`, Sail writes through `set_mtvec`, which calls `legalize_tvec`:
 
@@ -328,6 +336,8 @@ def legalize_tvec (o : (BitVec 64)) (v : (BitVec 64)) : SailM (BitVec 64) := do
 
 This is not a raw write. Reserved `MODE` values are rejected or replaced with the
 old mode, depending on the configured reserved-behavior policy.
+
+## Mepc
 
 For `mepc`, Sail reads through `align_pc` and writes through `legalize_xepc`:
 
