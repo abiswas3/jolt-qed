@@ -1,4 +1,5 @@
 import JoltBytecode.Derived
+import JoltBytecode.JoltISA.Expansions.DivRem
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.Projection
@@ -25,22 +26,6 @@ proof-facing decomposition used to compose the phase lemmas.
 -/
 
 namespace JoltISA
-
-/-- Jolt ISA program for RV64 `DIVUW`. The quotient advice is explicit. -/
-def divuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
-  pureWritebackTraceProgram rd <|
-  .instr (.VirtualZeroExtendWord (.vreg Divuw.rs1VReg) (.xreg rs1)) <|
-  .instr (.VirtualZeroExtendWord (.vreg Divuw.rs2VReg) (.xreg rs2)) <|
-  .instr (.VirtualAdvice Divuw.quoVReg quotient) <|
-  .instr (.VirtualAssertMulUNoOverflow (.vreg Divuw.quoVReg) (.vreg Divuw.rs2VReg)) <|
-  .instr (.MUL (.vreg Divuw.tempVReg) (.vreg Divuw.quoVReg) (.vreg Divuw.rs2VReg)) <|
-  .instr (.VirtualAssertLTE (.vreg Divuw.tempVReg) (.vreg Divuw.rs1VReg)) <|
-  .instr (.SUB (.vreg Divuw.tempVReg) (.vreg Divuw.rs1VReg) (.vreg Divuw.tempVReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Divuw.tempVReg) (.vreg Divuw.rs2VReg)) <|
-  .instr (.VirtualSignExtendWord (.vreg Divuw.tempVReg) (.vreg Divuw.quoVReg)) <|
-  .instr (.VirtualAssertValidDiv0 (.vreg Divuw.rs2VReg) (.vreg Divuw.tempVReg)) <|
-  .instr (.ADDI (.xreg rd) (.vreg Divuw.tempVReg) (0 : BitVec 12)) <|
-  .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `divuwProgram`. -/
 def divuwProgramPhases (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=

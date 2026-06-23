@@ -1,15 +1,16 @@
 import JoltBytecode.JoltISA.Core
 import JoltBytecode.JoltISA.Values.Shift
--- NOTE: i'll likely keep them as these values are useful
+-- NOTE: I'll likely keep these, since the values are useful.
 /-!
-# Pure Jolt ISA values
+# Semantic Helper
 
-These definitions are the non-monadic value computations shared by the
-instruction semantics and the equivalence proofs.
-This makes it easier to describe the instruction semantics for writing and reading.
+This file contains functions that make `Semantics.lean` easier to define.
+They capture purely computational tasks written as Lean functions.
 
-Sometimes it's also helpful to have mini theorems about this computations.
-It helps while proving things.
+TODO: It also contains theorems about these functions, which should eventually
+move to the instruction equivalence machinery. These belong to the proof
+theory, while the Jolt ISA values are pure facts about how the Jolt CPU is
+defined.
 -/
 
 set_option linter.unusedVariables false

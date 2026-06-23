@@ -972,6 +972,48 @@ theorem execProgram_preserves_protected
               cases hrun
               exact hhead
 
+/-- The `isX0` predicate recognizes architectural register `x0`. -/
+theorem isX0_regidx_zero :
+    isX0 (regidx.Regidx 0) = true := by
+  unfold isX0
+  simp
+
+/-- If a register is not architectural `x0`, `isX0` returns `false`. -/
+theorem isX0_eq_false_of_ne_zero
+    {rd : regidx}
+    (hrd : rd ≠ regidx.Regidx 0) :
+    isX0 rd = false := by
+  cases rd with
+  | Regidx bits =>
+      unfold isX0
+      simp only
+      apply decide_eq_false
+      intro hbits
+      apply hrd
+      congr
+      apply BitVec.eq_of_toNat_eq
+      simpa using hbits
+
+/-- For `rd = x0`, pure-writeback trace dispatch uses the no-op replacement
+program. -/
+theorem pureWritebackTraceProgram_regidx_zero (normal : Program) :
+    pureWritebackTraceProgram (regidx.Regidx 0) normal =
+      pureWritebackRdZeroProgram := by
+  unfold pureWritebackTraceProgram
+  rw [isX0_regidx_zero]
+  simp only [↓reduceIte]
+
+/-- For `rd ≠ x0`, pure-writeback trace dispatch uses the ordinary inline
+sequence unchanged. -/
+theorem pureWritebackTraceProgram_of_ne_zero
+    {rd : regidx}
+    (hrd : rd ≠ regidx.Regidx 0)
+    (normal : Program) :
+    pureWritebackTraceProgram rd normal = normal := by
+  unfold pureWritebackTraceProgram
+  rw [isX0_eq_false_of_ne_zero hrd]
+  simp only [Bool.false_eq_true, ↓reduceIte]
+
 theorem pureWritebackRdZeroProgram_writesNoProtected :
     ProgramWritesNoProtectedVReg pureWritebackRdZeroProgram := by
   simp [pureWritebackRdZeroProgram, ProgramWritesNoProtectedVReg,

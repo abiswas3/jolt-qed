@@ -1,4 +1,5 @@
 import JoltBytecode.Derived
+import JoltBytecode.JoltISA.Expansions.DivRem
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.JoltISA.Semantics.ProgramComposition
 import JoltBytecode.Bundles
@@ -25,37 +26,6 @@ decomposition used to compose the phase lemmas.
 -/
 
 namespace JoltISA
-
-/-- Jolt ISA program for RV64 `REMW`.
-
-The advice values are explicit oracle inputs: the 32-bit signed quotient
-loaded into `v0`, and the absolute remainder loaded into `v1`.
--/
-def remwProgram (rs2 rs1 rd : regidx)
-    (quotient remAbs : BitVec 64) : Program :=
-  pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice Remw.a2VReg quotient) <|
-  .instr (.VirtualAdvice Remw.a3VReg remAbs) <|
-  .instr (.VirtualSignExtendWord (.vreg Remw.t4VReg) (.xreg rs1)) <|
-  .instr (.VirtualSignExtendWord (.vreg Remw.t3VReg) (.xreg rs2)) <|
-  .instr (.VirtualAssertValidDiv0 (.vreg Remw.t3VReg) (.vreg Remw.a2VReg)) <|
-  .instr (.VirtualChangeDivisorW (.vreg Remw.t0VReg) (.vreg Remw.t4VReg) (.vreg Remw.t3VReg)) <|
-  .instr (.VirtualSignExtendWord (.vreg Remw.t1VReg) (.vreg Remw.a2VReg)) <|
-  .instr (.VirtualAssertEQ (.vreg Remw.t1VReg) (.vreg Remw.a2VReg)) <|
-  sraiBlock (.vreg Remw.t2VReg) (.vreg Remw.a3VReg) (32 : BitVec 6) <|
-  .instr (.VirtualAssertEQ (.vreg Remw.t2VReg) (.xreg (regidx.Regidx 0))) <|
-  sraiBlock (.vreg Remw.t2VReg) (.vreg Remw.t4VReg) (31 : BitVec 6) <|
-  .instr (.XOR (.vreg Remw.t3VReg) (.vreg Remw.a3VReg) (.vreg Remw.t2VReg)) <|
-  .instr (.SUB (.vreg Remw.t3VReg) (.vreg Remw.t3VReg) (.vreg Remw.t2VReg)) <|
-  .instr (.MUL (.vreg Remw.t1VReg) (.vreg Remw.a2VReg) (.vreg Remw.t0VReg)) <|
-  .instr (.ADD (.vreg Remw.t1VReg) (.vreg Remw.t1VReg) (.vreg Remw.t3VReg)) <|
-  .instr (.VirtualAssertEQ (.vreg Remw.t1VReg) (.vreg Remw.t4VReg)) <|
-  sraiBlock (.vreg Remw.t2VReg) (.vreg Remw.t0VReg) (31 : BitVec 6) <|
-  .instr (.XOR (.vreg Remw.t1VReg) (.vreg Remw.t0VReg) (.vreg Remw.t2VReg)) <|
-  .instr (.SUB (.vreg Remw.t1VReg) (.vreg Remw.t1VReg) (.vreg Remw.t2VReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Remw.a3VReg) (.vreg Remw.t1VReg)) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg Remw.t3VReg)) <|
-  .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `remwProgram`. -/
 def remwProgramPhases (rs2 rs1 rd : regidx)

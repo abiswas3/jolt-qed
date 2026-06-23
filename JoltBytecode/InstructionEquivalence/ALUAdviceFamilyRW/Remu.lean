@@ -1,4 +1,5 @@
 import JoltBytecode.Derived
+import JoltBytecode.JoltISA.Expansions.DivRem
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.Projection
@@ -24,18 +25,6 @@ decomposition used to compose the phase lemmas.
 -/
 
 namespace JoltISA
-
-/-- Jolt ISA program for RV64 `REMU`. The quotient advice is explicit. -/
-def remuProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
-  pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice Remu.v0VReg quotient) <|
-  .instr (.VirtualAssertMulUNoOverflow (.vreg Remu.v0VReg) (.xreg rs2)) <|
-  .instr (.MUL (.vreg Remu.v0VReg) (.vreg Remu.v0VReg) (.xreg rs2)) <|
-  .instr (.VirtualAssertLTE (.vreg Remu.v0VReg) (.xreg rs1)) <|
-  .instr (.SUB (.vreg Remu.v0VReg) (.xreg rs1) (.vreg Remu.v0VReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Remu.v0VReg) (.xreg rs2)) <|
-  .instr (.ADDI (.xreg rd) (.vreg Remu.v0VReg) (0 : BitVec 12)) <|
-  .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `remuProgram`. -/
 def remuProgramPhases (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=

@@ -1,4 +1,5 @@
 import JoltBytecode.Derived
+import JoltBytecode.JoltISA.Expansions.DivRem
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.Projection
@@ -24,20 +25,6 @@ proof-facing decomposition used to compose the phase lemmas.
 -/
 
 namespace JoltISA
-
-/-- Jolt ISA program for RV64 `REMUW`. The quotient advice is explicit. -/
-def remuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
-  pureWritebackTraceProgram rd <|
-  .instr (.VirtualZeroExtendWord (.vreg Remuw.rs1VReg) (.xreg rs1)) <|
-  .instr (.VirtualZeroExtendWord (.vreg Remuw.rs2VReg) (.xreg rs2)) <|
-  .instr (.VirtualAdvice Remuw.vTmpVReg quotient) <|
-  .instr (.VirtualAssertMulUNoOverflow (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs2VReg)) <|
-  .instr (.MUL (.vreg Remuw.vTmpVReg) (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs2VReg)) <|
-  .instr (.VirtualAssertLTE (.vreg Remuw.tempVReg) (.vreg Remuw.rs1VReg)) <|
-  .instr (.SUB (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs1VReg) (.vreg Remuw.vTmpVReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Remuw.vTmpVReg) (.vreg Remuw.rs2VReg)) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg Remuw.vTmpVReg)) <|
-  .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `remuwProgram`. -/
 def remuwProgramPhases (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=

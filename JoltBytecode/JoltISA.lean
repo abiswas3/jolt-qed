@@ -10,6 +10,7 @@ import JoltBytecode.JoltISA.Semantics.StateLemmas
 import JoltBytecode.JoltISA.Semantics.Instructions
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Expansions.Mul
+import JoltBytecode.JoltISA.Expansions.DivRem
 import JoltBytecode.JoltISA.Expansions.Load
 import JoltBytecode.JoltISA.Expansions.LoadReserved
 import JoltBytecode.JoltISA.Expansions.Store

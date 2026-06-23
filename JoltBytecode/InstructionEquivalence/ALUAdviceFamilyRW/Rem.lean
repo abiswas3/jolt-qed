@@ -1,4 +1,5 @@
 import JoltBytecode.Derived
+import JoltBytecode.JoltISA.Expansions.DivRem
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.Projection
@@ -25,36 +26,6 @@ reconstructed signed remainder rather than the quotient.
 -/
 
 namespace JoltISA
-
--- ----------------------------------------------------------------------------
--- Jolt REM program
--- ----------------------------------------------------------------------------
-
-/-- New-style Jolt ISA program for RV64 `REM`. The advice values are explicit
-parameters supplied by the oracle. -/
-def remProgram (rs2 rs1 rd : regidx)
-    (quotient remAbs : BitVec 64) : Program :=
-  pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice Rem.a2VReg quotient) <|
-  .instr (.VirtualAdvice Rem.a3VReg remAbs) <|
-  .instr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg Rem.a2VReg)) <|
-  .instr (.VirtualChangeDivisor (.vreg Rem.t0VReg) (.xreg rs1) (.xreg rs2)) <|
-  mulhBlock Div.t2VReg Div.t3VReg Div.t4VReg
-    (.vreg Rem.t1VReg) (.vreg Rem.a2VReg) (.vreg Rem.t0VReg) <|
-  .instr (.MUL (.vreg Rem.t2VReg) (.vreg Rem.a2VReg) (.vreg Rem.t0VReg)) <|
-  sraiBlock (.vreg Rem.t3VReg) (.vreg Rem.t2VReg) (63 : BitVec 6) <|
-  .instr (.VirtualAssertEQ (.vreg Rem.t1VReg) (.vreg Rem.t3VReg)) <|
-  sraiBlock (.vreg Rem.t1VReg) (.xreg rs1) (63 : BitVec 6) <|
-  .instr (.XOR (.vreg Rem.t3VReg) (.vreg Rem.a3VReg) (.vreg Rem.t1VReg)) <|
-  .instr (.SUB (.vreg Rem.t3VReg) (.vreg Rem.t3VReg) (.vreg Rem.t1VReg)) <|
-  .instr (.ADD (.vreg Rem.t2VReg) (.vreg Rem.t2VReg) (.vreg Rem.t3VReg)) <|
-  .instr (.VirtualAssertEQ (.vreg Rem.t2VReg) (.xreg rs1)) <|
-  sraiBlock (.vreg Rem.t1VReg) (.vreg Rem.t0VReg) (63 : BitVec 6) <|
-  .instr (.XOR (.vreg Rem.t2VReg) (.vreg Rem.t0VReg) (.vreg Rem.t1VReg)) <|
-  .instr (.SUB (.vreg Rem.t2VReg) (.vreg Rem.t2VReg) (.vreg Rem.t1VReg)) <|
-  .instr (.VirtualAssertValidUnsignedRemainder (.vreg Rem.a3VReg) (.vreg Rem.t2VReg)) <|
-  .instr (.ADDI (.xreg rd) (.vreg Rem.t3VReg) (0 : BitVec 12)) <|
-  .done RETIRE_SUCCESS
 
 /-- Proof-facing phase decomposition of `remProgram`. The canonical program
 above remains the literal bytecode expansion. -/

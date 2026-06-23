@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Semantics
+import JoltBytecode.JoltISA.Instruction
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.VirtualRegisters
 
