@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Environment
+import JoltBytecode.Derived
 import JoltBytecode.JoltISA.Expansions.Load
 import JoltBytecode.InstructionEquivalence.Memory.Read
 import JoltBytecode.InstructionEquivalence.LoadFamily.DwordArithmetic

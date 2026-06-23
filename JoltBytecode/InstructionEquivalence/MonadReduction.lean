@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Environment
+import JoltBytecode.Derived
 
 set_option linter.unusedVariables false
 set_option mvcgen.warning false

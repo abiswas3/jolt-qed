@@ -1,6 +1,5 @@
 import JoltBytecode.Derived
 import JoltBytecode.InstructionEquivalence.Memory.Alignment
-import JoltBytecode.JoltISA.Environment
 import Mathlib.Tactic.IntervalCases
 
 set_option linter.unusedVariables false

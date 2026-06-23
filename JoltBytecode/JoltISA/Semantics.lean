@@ -415,6 +415,17 @@ def execProgram : Program → JoltMonad ExecutionResult
       -- Do not run the rest of the instructions in program.
       | result => pure result
 
+/-- The two execution shapes on the Jolt side: native final instructions run
+through `execInstr`; expanded source instructions run through `execProgram`. -/
+inductive JoltExecution where
+  | nativeInstr (instr : Instr)
+  | expandedInstr (program : Program)
+  deriving Repr
+
+noncomputable def JoltExecution.run : JoltExecution → JoltMonad ExecutionResult
+  | .nativeInstr instr => execInstr instr
+  | .expandedInstr program => execProgram program
+
 end JoltISA
 
 end

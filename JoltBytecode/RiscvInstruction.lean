@@ -1,6 +1,6 @@
 import LeanRV64D.InstsEnd
 import JoltBytecode.Bundles
-import JoltBytecode.JoltISA.Execution
+import JoltBytecode.JoltISA.Semantics
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Expansions.Atomics
 import JoltBytecode.JoltISA.Expansions.Load

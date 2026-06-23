@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Environment
+import JoltBytecode.Derived
 import JoltBytecode.JoltISA.Semantics.RegisterOps
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.Projection

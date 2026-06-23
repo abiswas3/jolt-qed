@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.RegisterAccess
+import JoltBytecode.JoltISA.Core
 
 /-!
 # Rust virtual-register allocation layout
@@ -12,6 +12,10 @@ larger inline allocations at `48`.
 -/
 
 namespace JoltISA
+
+/-- A Jolt virtual register address: Jolt uses a 7-bit (2⁷ = 128) register
+address space.  All facts about the virtual-register space live in this file. -/
+abbrev VReg := BitVec 7
 
 /-- Number of architectural RISC-V integer registers; virtual registers start
 immediately after this base.

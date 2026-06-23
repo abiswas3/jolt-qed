@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Environment
+import JoltBytecode.Derived
 
 /-!
 # `SailJoltState` bookkeeping lemmas

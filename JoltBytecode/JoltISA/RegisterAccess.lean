@@ -14,7 +14,7 @@ set_option linter.unusedVariables true
 
 open Sail PreSail LeanRV64D.Functions
 
-
+-- TODO: These should use vreg abbrev not BitVec7 directly
 noncomputable section
 
 -- Get the value in vr as a monadic computation

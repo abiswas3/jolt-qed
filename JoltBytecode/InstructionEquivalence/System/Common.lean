@@ -1,6 +1,6 @@
 import JoltBytecode.Assumptions
 import JoltBytecode.JoltISA.Expansions.System
-import JoltBytecode.JoltISA.Environment
+import JoltBytecode.Derived
 import JoltBytecode.JoltISA.Semantics.Instructions.ADDI
 import JoltBytecode.JoltISA.Semantics.Instructions.VirtualMULI
 

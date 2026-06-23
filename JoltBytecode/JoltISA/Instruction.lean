@@ -1,4 +1,4 @@
-import JoltBytecode.JoltISA.Core
+import JoltBytecode.JoltISA.VirtualRegisters
 
 /-!
 # Jolt ISA syntax
@@ -11,9 +11,6 @@ layer, not as constructors here.
 open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
-
-/-- A Jolt virtual register address (Jolt uses a 7-bit register space). -/
-abbrev VReg := BitVec 7
 
 /-- An instruction *source* operand: either a virtual register or an
 architectural (Sail) register.  Pure syntax — see `JoltISA.readSrc` in
@@ -31,6 +28,7 @@ inductive Dst where
   | xreg : regidx → Dst
   deriving Repr
 
+-- Opcodes
 inductive Instr where
   | NoOp
   | ADDI (dst : Dst) (src : Src) (imm : BitVec 12)
@@ -212,12 +210,14 @@ def Program.append : Program → Program → Program
   | .done result, _ => .done result
   | .instr instruction rest, second => .instr instruction (rest.append second)
 
+
 /-- Rust's trace-dispatch replacement for pure writeback instructions whose
 destination is architectural `x0`: emit a single no-op `ADDI x0, x0, 0` row. -/
 def pureWritebackRdZeroProgram : Program :=
   .instr (.ADDI (.xreg (regidx.Regidx 0)) (.xreg (regidx.Regidx 0)) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
+-- TODO: Everything from below here does not belong in this file, maybe.
 /-- Boolean test for architectural register `x0`.
 
 The generated `regidx` type does not derive `DecidableEq`, so trace-dispatch
