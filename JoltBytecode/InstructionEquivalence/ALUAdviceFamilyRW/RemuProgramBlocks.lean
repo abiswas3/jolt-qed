@@ -57,7 +57,7 @@ theorem phase_setup_run
       js'.vregs v0VReg = q ∧
       js'.sail = js.sail := by
   unfold phase_setup
-  obtain ⟨js', hrun, h_v0, _, h_sail⟩ := vreg_advice_run_ex v0VReg q js (by unfold WritableVReg; decide)
+  obtain ⟨js', hrun, h_v0, _, h_sail⟩ := JoltISA.virtual_advice_run_ex v0VReg q js (by unfold WritableVReg; decide)
   refine ⟨js', ?_, h_v0, h_sail⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js js' hrun]
   rfl
@@ -154,7 +154,7 @@ theorem phase_writeback_run
     rw [hz, BitVec.add_zero]
   obtain ⟨s', hw⟩ := wX_shape rd rem js.sail
   refine ⟨{ sail := s', vregs := js.vregs }, ?_, ?_⟩
-  · have hrun := vreg_ADDI_to_real_run rd v0VReg 0 js s' (by rw [hrem]; exact hw)
+  · have hrun := JoltISA.addi_run_xreg_vreg rd v0VReg 0 js s' (by rw [hrem]; exact hw)
     rw [JoltISA.execProgram_instr_run_retire _ _ js { sail := s', vregs := js.vregs } hrun]
     rfl
   · show s' = stateAfterWrite js_ref rd rem
@@ -173,7 +173,7 @@ theorem phase_setup_run_sound
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
   simp only [JoltISA.execProgram_done, EStateM.run, pure, EStateM.pure] at hdone
   cases hdone
-  obtain ⟨s₁, hrun_ex, hs1_v0, _, hs1_sail⟩ := vreg_advice_run_ex v0VReg q js (by unfold WritableVReg; decide)
+  obtain ⟨s₁, hrun_ex, hs1_v0, _, hs1_sail⟩ := JoltISA.virtual_advice_run_ex v0VReg q js (by unfold WritableVReg; decide)
   rw [hrun_ex] at hrun
   cases hrun
   exact ⟨hs1_v0, hs1_sail⟩
@@ -304,7 +304,7 @@ theorem phase_writeback_run_sound
   have hp_concrete :
       (JoltISA.execInstr (.ADDI (.xreg rd) (.vreg v0VReg) (0 : BitVec 12))).run js =
       .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } :=
-    vreg_ADDI_to_real_run rd v0VReg 0 js s' (by rw [hrem]; exact hw)
+    JoltISA.addi_run_xreg_vreg rd v0VReg 0 js s' (by rw [hrem]; exact hw)
   rw [hp_concrete] at hrun
   cases hrun
   show s' = stateAfterWrite js_ref rd rem

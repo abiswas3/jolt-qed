@@ -147,11 +147,11 @@ theorem phase_quotient_product_run
         ((rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31) ∧
       js'.sail = js.sail := by
   unfold phase_quotient_product Divw.phase_quotient_product
-  obtain ⟨s1, h1, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex t2VReg t4VReg 31 js (by unfold WritableVReg; decide)
-  obtain ⟨s2, h2, hs2_v5, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex t3VReg a3VReg t2VReg s1 (by unfold WritableVReg; decide)
-  obtain ⟨s3, h3, hs3_v5, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex t3VReg t3VReg t2VReg s2 (by unfold WritableVReg; decide)
-  obtain ⟨s4, h4, hs4_v3, hs4_pres, hs4_sail⟩ := vreg_MUL_run_ex t1VReg a2VReg t0VReg s3 (by unfold WritableVReg; decide)
-  obtain ⟨s5, h5, hs5_v3, hs5_pres, hs5_sail⟩ := vreg_ADD_run_ex t1VReg t1VReg t3VReg s4 (by unfold WritableVReg; decide)
+  obtain ⟨s1, h1, hs1_v4, hs1_pres, hs1_sail⟩ := JoltISA.srai_block_run_vreg_vreg_ex t2VReg t4VReg 31 js (by unfold WritableVReg; decide)
+  obtain ⟨s2, h2, hs2_v5, hs2_pres, hs2_sail⟩ := JoltISA.xor_run_vreg_vreg_vreg_ex t3VReg a3VReg t2VReg s1 (by unfold WritableVReg; decide)
+  obtain ⟨s3, h3, hs3_v5, hs3_pres, hs3_sail⟩ := JoltISA.sub_run_vreg_vreg_vreg_ex t3VReg t3VReg t2VReg s2 (by unfold WritableVReg; decide)
+  obtain ⟨s4, h4, hs4_v3, hs4_pres, hs4_sail⟩ := JoltISA.mul_run_vreg_vreg_vreg_ex t1VReg a2VReg t0VReg s3 (by unfold WritableVReg; decide)
+  obtain ⟨s5, h5, hs5_v3, hs5_pres, hs5_sail⟩ := JoltISA.add_run_vreg_vreg_vreg_ex t1VReg t1VReg t3VReg s4 (by unfold WritableVReg; decide)
   have hs5_sail_orig : s5.sail = js.sail :=
     hs5_sail.trans (hs4_sail.trans (hs3_sail.trans (hs2_sail.trans hs1_sail)))
   have hs1_v1 : s1.vregs a3VReg = rem := (hs1_pres a3VReg (by decide)).trans h_v1
@@ -186,7 +186,7 @@ theorem phase_quotient_product_run
   have hguard : s5.vregs t1VReg = s5.vregs t4VReg := by
     rw [hs5_v3_eq, hs5_v6]
     exact hguard_quotient_product
-  have h6 := vreg_assert_eq_run_ok t1VReg t4VReg s5 hguard
+  have h6 := JoltISA.virtual_assert_eq_run_ok t1VReg t4VReg s5 hguard
   have hs5_v0 : s5.vregs a2VReg = q :=
     ((hs5_pres a2VReg (by decide)).trans ((hs4_pres a2VReg (by decide)).trans
       (chain_pres_3 hs1_pres hs2_pres hs3_pres a2VReg (by decide)))).trans h_v0
@@ -224,9 +224,9 @@ theorem phase_remainder_bound_run
       js'.vregs t3VReg = signedRem ∧
       js'.sail = js.sail := by
   unfold phase_remainder_bound Divw.phase_remainder_bound
-  obtain ⟨s1, h1, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex t2VReg t0VReg 31 js (by unfold WritableVReg; decide)
-  obtain ⟨s2, h2, hs2_v3, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex t1VReg t0VReg t2VReg s1 (by unfold WritableVReg; decide)
-  obtain ⟨s3, h3, hs3_v3, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex t1VReg t1VReg t2VReg s2 (by unfold WritableVReg; decide)
+  obtain ⟨s1, h1, hs1_v4, hs1_pres, hs1_sail⟩ := JoltISA.srai_block_run_vreg_vreg_ex t2VReg t0VReg 31 js (by unfold WritableVReg; decide)
+  obtain ⟨s2, h2, hs2_v3, hs2_pres, hs2_sail⟩ := JoltISA.xor_run_vreg_vreg_vreg_ex t1VReg t0VReg t2VReg s1 (by unfold WritableVReg; decide)
+  obtain ⟨s3, h3, hs3_v3, hs3_pres, hs3_sail⟩ := JoltISA.sub_run_vreg_vreg_vreg_ex t1VReg t1VReg t2VReg s2 (by unfold WritableVReg; decide)
   have hs3_sail_orig : s3.sail = js.sail := hs3_sail.trans (hs2_sail.trans hs1_sail)
   have hs1_v2 : s1.vregs t0VReg = adj := (hs1_pres t0VReg (by decide)).trans h_v2
   have hs1_v4_eq : s1.vregs t2VReg = adj.sshiftRight 31 := by
@@ -243,7 +243,7 @@ theorem phase_remainder_bound_run
   have hguard : s3.vregs t1VReg = 0#64 ∨ (s3.vregs a3VReg).toNat < (s3.vregs t1VReg).toNat := by
     rw [hs3_v3_eq, hs3_v1]
     exact hguard_rem_bound
-  have h4 := vreg_assert_valid_unsigned_remainder_run_ok a3VReg t1VReg s3 hguard
+  have h4 := JoltISA.virtual_assert_valid_unsigned_remainder_run_ok a3VReg t1VReg s3 hguard
   have hs3_v5 : s3.vregs t3VReg = signedRem :=
     (chain_pres_3 hs1_pres hs2_pres hs3_pres t3VReg (by decide)).trans h_v5
   refine ⟨s3, ?_, hs3_v5, hs3_sail_orig⟩
@@ -358,26 +358,26 @@ theorem phase_quotient_product_run_sound
       ((rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31) ∧
     js₁.sail = js.sail := by
   unfold phase_quotient_product Divw.phase_quotient_product at hp
-  obtain ⟨s1, hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex t2VReg t4VReg 31 js (by unfold WritableVReg; decide)
+  obtain ⟨s1, hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := JoltISA.srai_block_run_vreg_vreg_ex t2VReg t4VReg 31 js (by unfold WritableVReg; decide)
   rw [hrun1_ex _] at hp
   obtain ⟨s2, hrun2, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s2, hrun2_ex, hs2_v5, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex t3VReg a3VReg t2VReg s1 (by unfold WritableVReg; decide)
+  obtain ⟨s2, hrun2_ex, hs2_v5, hs2_pres, hs2_sail⟩ := JoltISA.xor_run_vreg_vreg_vreg_ex t3VReg a3VReg t2VReg s1 (by unfold WritableVReg; decide)
   rw [hrun2_ex] at hrun2
   cases hrun2
   obtain ⟨s3, hrun3, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s3, hrun3_ex, hs3_v5, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex t3VReg t3VReg t2VReg s2 (by unfold WritableVReg; decide)
+  obtain ⟨s3, hrun3_ex, hs3_v5, hs3_pres, hs3_sail⟩ := JoltISA.sub_run_vreg_vreg_vreg_ex t3VReg t3VReg t2VReg s2 (by unfold WritableVReg; decide)
   rw [hrun3_ex] at hrun3
   cases hrun3
   obtain ⟨s4, hrun4, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s4, hrun4_ex, hs4_v3, hs4_pres, hs4_sail⟩ := vreg_MUL_run_ex t1VReg a2VReg t0VReg s3 (by unfold WritableVReg; decide)
+  obtain ⟨s4, hrun4_ex, hs4_v3, hs4_pres, hs4_sail⟩ := JoltISA.mul_run_vreg_vreg_vreg_ex t1VReg a2VReg t0VReg s3 (by unfold WritableVReg; decide)
   rw [hrun4_ex] at hrun4
   cases hrun4
   obtain ⟨s5, hrun5, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s5, hrun5_ex, hs5_v3, hs5_pres, hs5_sail⟩ := vreg_ADD_run_ex t1VReg t1VReg t3VReg s4 (by unfold WritableVReg; decide)
+  obtain ⟨s5, hrun5_ex, hs5_v3, hs5_pres, hs5_sail⟩ := JoltISA.add_run_vreg_vreg_vreg_ex t1VReg t1VReg t3VReg s4 (by unfold WritableVReg; decide)
   rw [hrun5_ex] at hrun5
   cases hrun5
   obtain ⟨js_afterAssert, hrun6, hdone⟩ :=
@@ -428,14 +428,14 @@ theorem phase_quotient_product_run_sound
       (rem ^^^ sext_dividend.sshiftRight 31) - sext_dividend.sshiftRight 31 :=
     (hs5_pres t3VReg (by decide)).trans hs4_v5
   by_cases hguard : s5.vregs t1VReg = s5.vregs t4VReg
-  · have hok := vreg_assert_eq_run_ok t1VReg t4VReg s5 hguard
+  · have hok := JoltISA.virtual_assert_eq_run_ok t1VReg t4VReg s5 hguard
     rw [hok] at hrun6
     cases hrun6
     refine ⟨?_, hs5_v0, hs5_v1, hs5_v2, hs5_v5, hs5_sail_orig⟩
     rw [hs5_v3_eq, hs5_v6] at hguard
     exact hguard
   · exfalso
-    have herr := vreg_assert_eq_run_err t1VReg t4VReg s5 hguard
+    have herr := JoltISA.virtual_assert_eq_run_err t1VReg t4VReg s5 hguard
     rw [herr] at hrun6
     cases hrun6
 
@@ -453,16 +453,16 @@ theorem phase_remainder_bound_run_sound
     js₁.vregs t3VReg = signedRem ∧
     js₁.sail = js.sail := by
   unfold phase_remainder_bound Divw.phase_remainder_bound at hp
-  obtain ⟨s1, hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := vreg_SRAI_run_ex t2VReg t0VReg 31 js (by unfold WritableVReg; decide)
+  obtain ⟨s1, hrun1_ex, hs1_v4, hs1_pres, hs1_sail⟩ := JoltISA.srai_block_run_vreg_vreg_ex t2VReg t0VReg 31 js (by unfold WritableVReg; decide)
   rw [hrun1_ex _] at hp
   obtain ⟨s2, hrun2, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s2, hrun2_ex, hs2_v3, hs2_pres, hs2_sail⟩ := vreg_XOR_run_ex t1VReg t0VReg t2VReg s1 (by unfold WritableVReg; decide)
+  obtain ⟨s2, hrun2_ex, hs2_v3, hs2_pres, hs2_sail⟩ := JoltISA.xor_run_vreg_vreg_vreg_ex t1VReg t0VReg t2VReg s1 (by unfold WritableVReg; decide)
   rw [hrun2_ex] at hrun2
   cases hrun2
   obtain ⟨s3, hrun3, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s3, hrun3_ex, hs3_v3, hs3_pres, hs3_sail⟩ := vreg_SUB_run_ex t1VReg t1VReg t2VReg s2 (by unfold WritableVReg; decide)
+  obtain ⟨s3, hrun3_ex, hs3_v3, hs3_pres, hs3_sail⟩ := JoltISA.sub_run_vreg_vreg_vreg_ex t1VReg t1VReg t2VReg s2 (by unfold WritableVReg; decide)
   rw [hrun3_ex] at hrun3
   cases hrun3
   obtain ⟨js_afterAssert, hrun4, hdone⟩ :=
@@ -485,7 +485,7 @@ theorem phase_remainder_bound_run_sound
     (chain_pres_3 hs1_pres hs2_pres hs3_pres t3VReg (by decide)).trans h_v5
   have hs3_sail_orig : s3.sail = js.sail := hs3_sail.trans (hs2_sail.trans hs1_sail)
   by_cases hguard : s3.vregs t1VReg = 0#64 ∨ (s3.vregs a3VReg).toNat < (s3.vregs t1VReg).toNat
-  · have hok := vreg_assert_valid_unsigned_remainder_run_ok a3VReg t1VReg s3 hguard
+  · have hok := JoltISA.virtual_assert_valid_unsigned_remainder_run_ok a3VReg t1VReg s3 hguard
     rw [hok] at hrun4
     cases hrun4
     refine ⟨?_, hs3_v5, hs3_sail_orig⟩
@@ -497,7 +497,7 @@ theorem phase_remainder_bound_run_sound
       rw [← hs3_v3_eq, ← hs3_v1]
       exact hlt
   · exfalso
-    have herr := vreg_assert_valid_unsigned_remainder_run_err a3VReg t1VReg s3 hguard
+    have herr := JoltISA.virtual_assert_valid_unsigned_remainder_run_err a3VReg t1VReg s3 hguard
     rw [herr] at hrun4
     cases hrun4
 

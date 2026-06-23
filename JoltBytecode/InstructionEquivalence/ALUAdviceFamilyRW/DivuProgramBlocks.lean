@@ -21,7 +21,7 @@ no sign-fixup machinery.
 
 This file mirrors `DivProgramBlocks.lean` and `DivwProgramBlocks.lean`
 in structure and reuses the generic `_run`/`_run_ex` helpers from the
-former (`vreg_advice_run_ex`, `vreg_assert_eq_run_*`, etc.). New helpers
+former (`JoltISA.virtual_advice_run_ex`, `vreg_assert_eq_run_*`, etc.). New helpers
 are added for the DIVU-specific primitives
 (`vreg_assert_mulu_no_overflow`, `vreg_assert_lte_real`,
 `vreg_assert_valid_unsigned_remainder_real`, plus the mixed
@@ -229,7 +229,7 @@ theorem phase_setup_run
       vregs := fun r => if r = v0VReg then q else js.vregs r }
   have h1 : (JoltISA.execInstr (.VirtualAdvice v0VReg q)).run js =
       .ok RETIRE_SUCCESS s1 :=
-    vreg_advice_run v0VReg q js (by unfold WritableVReg; decide)
+    JoltISA.virtual_advice_run v0VReg q js (by unfold WritableVReg; decide)
   have hs1_v0 : s1.vregs v0VReg = q := by
     show (if v0VReg = v0VReg then q else js.vregs v0VReg) = q
     rw [if_pos rfl]
@@ -240,7 +240,7 @@ theorem phase_setup_run
     exact hguard_div0
   have h2 : (JoltISA.execInstr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg v0VReg))).run s1 =
       .ok RETIRE_SUCCESS s1 :=
-    vreg_assert_valid_div0_run_ok rs2 v0VReg s1 divisor hrs2_s1 hguard_s1
+    JoltISA.virtual_assert_valid_div0_run_ok rs2 v0VReg s1 divisor hrs2_s1 hguard_s1
   refine ⟨s1, ?_, hs1_v0, hs1_sail⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js s1 h1]
   rw [JoltISA.execProgram_instr_run_retire _ _ s1 s1 h2]
@@ -342,7 +342,7 @@ theorem phase_writeback_run
     rw [hz, BitVec.add_zero]
   obtain ⟨s', hw⟩ := wX_shape rd q js.sail
   refine ⟨{ sail := s', vregs := js.vregs }, ?_, ?_⟩
-  · have hrun := vreg_ADDI_to_real_run rd v0VReg 0 js s' (by rw [hq]; exact hw)
+  · have hrun := JoltISA.addi_run_xreg_vreg rd v0VReg 0 js s' (by rw [hq]; exact hw)
     rw [JoltISA.execProgram_instr_run_retire _ _ js { sail := s', vregs := js.vregs } hrun]
     rfl
   · show s' = stateAfterWrite js_ref rd q
@@ -362,7 +362,7 @@ theorem phase_setup_run_sound
   unfold phase_setup at hp
   obtain ⟨s₁, hrun1, hp⟩ :=
     JoltISA.execProgram_instr_run_retire_inv _ _ _ _ hp
-  obtain ⟨s₁, hrun1_ex, hs1_v0, _hs1_pres, hs1_sail⟩ := vreg_advice_run_ex v0VReg q js (by unfold WritableVReg; decide)
+  obtain ⟨s₁, hrun1_ex, hs1_v0, _hs1_pres, hs1_sail⟩ := JoltISA.virtual_advice_run_ex v0VReg q js (by unfold WritableVReg; decide)
   rw [hrun1_ex] at hrun1
   cases hrun1
   obtain ⟨js_afterAssert, hrun2, hdone⟩ :=
@@ -372,10 +372,10 @@ theorem phase_setup_run_sound
   have hrs2_s1 : rX_bits rs2 s₁.sail = .ok divisor s₁.sail := hs1_sail.symm ▸ hrs2
   by_cases hguard : (divisor = 0#64 ∧ s₁.vregs v0VReg ≠ (-1 : BitVec 64))
   · exfalso
-    have herr := vreg_assert_valid_div0_run_err rs2 v0VReg s₁ divisor hrs2_s1 hguard
+    have herr := JoltISA.virtual_assert_valid_div0_run_err rs2 v0VReg s₁ divisor hrs2_s1 hguard
     rw [herr] at hrun2
     cases hrun2
-  · have hok := vreg_assert_valid_div0_run_ok rs2 v0VReg s₁ divisor hrs2_s1 hguard
+  · have hok := JoltISA.virtual_assert_valid_div0_run_ok rs2 v0VReg s₁ divisor hrs2_s1 hguard
     rw [hok] at hrun2
     cases hrun2
     refine ⟨?_, hs1_v0, hs1_sail⟩
@@ -512,7 +512,7 @@ theorem phase_writeback_run_sound
   have hp_concrete :
       (JoltISA.execInstr (.ADDI (.xreg rd) (.vreg v0VReg) (0 : BitVec 12))).run js =
       .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } :=
-    vreg_ADDI_to_real_run rd v0VReg 0 js s' (by rw [hq]; exact hw)
+    JoltISA.addi_run_xreg_vreg rd v0VReg 0 js s' (by rw [hq]; exact hw)
   rw [hp_concrete] at hrun
   cases hrun
   show s' = stateAfterWrite js_ref rd q
