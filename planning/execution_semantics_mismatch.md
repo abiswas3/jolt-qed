@@ -197,8 +197,7 @@ Surface: riscv native/pass-through.
 
 Issues found:
 
-- Final row semantics align: link is `nextPC`, target is `PC + imm`, and Rust call tracking is trace metadata.
-- Guest ELF/source `JAL rd=x0` is side-effecting in Rust, so expansion rewrites `rd` to a temporary virtual register before pass-through. Lean native `JAL (.xreg 0)` discards the link. Control flow is the same, but final-row state/parity is not exact for that source case.
+- Guest ELF/source `JAL rd=x0` is side-effecting in Rust, so expansion rewrites `rd` to a temporary virtual register before pass-through. Lean native `JAL (.xreg 0)` discards the link, so final-row state/parity is not exact for that source case.
 
 ## JALR
 
@@ -208,8 +207,7 @@ Surface: riscv native/pass-through.
 
 Issues found:
 
-- Final row semantics align: link is `nextPC`, target is `(base + imm) & !1`, and Rust call tracking is trace metadata.
-- Guest ELF/source `JALR rd=x0` is side-effecting in Rust, so expansion rewrites `rd` to a temporary virtual register before pass-through. Lean native `JALR (.xreg 0)` discards the link. Control flow is the same, but final-row state/parity is not exact for that source case.
+- Guest ELF/source `JALR rd=x0` is side-effecting in Rust, so expansion rewrites `rd` to a temporary virtual register before pass-through. Lean native `JALR (.xreg 0)` discards the link, so final-row state/parity is not exact for that source case.
 
 ## LD
 
@@ -219,19 +217,7 @@ Surface: riscv native/pass-through and tracer-generated helper row.
 
 Issues found:
 
-- Final row successful semantics align with Rust `load_doubleword`, modulo the Sail-facing failure model and the Lean-only `LoadFaultClass` proof marker.
-- Guest ELF/source `LD rd=x0` is side-effecting in Rust. Expansion rewrites `rd` to a temporary virtual register before pass-through, so the final row is not `LD x0`. Lean native `LD ... (.xreg 0)` performs the load and discards the writeback. Memory read behavior remains, but final-row state/parity is not exact for that source case.
-
-## VirtualAdvice
-
-Status: NEXT: representational narrowing
-
-Surface: tracer-generated final row.
-
-Issues found:
-
-- For current built-in DIV/REM uses, Lean's explicit oracle value matches Rust's patched `VirtualAdvice.advice` field.
-- Lean restricts the destination to `VReg`. Rust stores a general `rd` field and calls `cpu.write_register`, so the raw Rust row can target any register index.
+- Guest ELF/source `LD rd=x0` is side-effecting in Rust. Expansion rewrites `rd` to a temporary virtual register before pass-through, so the final row is not `LD x0`. Lean native `LD ... (.xreg 0)` keeps `x0` as the destination, so final-row state/parity is not exact for that source case.
 
 ## VirtualAdviceLoad
 
@@ -266,18 +252,6 @@ Issues found:
 - Rust dispatches on registers `x10` through `x13` and may mutate host/advice/output/cycle-marker state.
 - Lean treats `VirtualHostIO` as a no-op.
 
-## VirtualAssertEQ
-
-Status: WARNING: assertion mode missing
-
-Surface: custom-elf native/pass-through and tracer-generated assertion row.
-
-Issues found:
-
-- Rust uses the row immediate as a mode: `imm = 0` is a hard assertion, while nonzero immediate is spoil mode that warns but does not panic.
-- Lean has no immediate/mode field and always asserts equality.
-- Current built-in expansion uses found in this audit use `imm = 0`, so those uses align.
-
 ## VirtualChangeDivisorW
 
 Status: NEXT: standalone row is narrower than Rust
@@ -288,7 +262,6 @@ Issues found:
 
 - Rust casts both operands to `i32`, checks `(INT32_MIN, -1)`, and writes the divisor sign-extended to 64 bits.
 - Lean assumes both operands are already sign-extended 32-bit values in 64-bit words.
-- Current `DIVW`/`REMW` expansion paths sign-extend operands before this row, so built-in uses align.
 
 # Expanded
 
@@ -305,7 +278,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv source-only.
 
-Issues found: Normal byte-load extraction aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
 
 ## LBU
 
@@ -313,7 +286,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv source-only.
 
-Issues found: Normal byte-load extraction aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
 
 ## LH
 
@@ -321,7 +294,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv source-only.
 
-Issues found: Normal halfword-load extraction and load alignment assertion align. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
 
 ## LHU
 
@@ -329,7 +302,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv source-only.
 
-Issues found: Normal halfword-load extraction and load alignment assertion align. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
 
 ## LW
 
@@ -337,7 +310,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv source-only.
 
-Issues found: Normal word-load extraction and load alignment assertion align. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
 
 ## LWU
 
@@ -345,7 +318,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv source-only.
 
-Issues found: Normal word-load extraction and load alignment assertion align. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
 
 ## AdviceLB
 
@@ -353,7 +326,7 @@ Status: WARNING: advice tape state and `rd=x0` rewrite missing
 
 Surface: custom-elf source-only.
 
-Issues found: Rust expands to `VirtualAdviceLoad imm=1` and consumes advice tape bytes. Lean takes explicit advice and currently no-ops `rd=x0` through `pureWritebackTraceProgram`, while Rust rewrites `rd=x0` to a temporary to preserve the tape read.
+Issues found: Lean takes explicit advice instead of modeling advice-tape consumption, and currently no-ops `rd=x0` through `pureWritebackTraceProgram` while Rust rewrites `rd=x0` to a temporary to preserve the tape read.
 
 ## AdviceLH
 
@@ -361,7 +334,7 @@ Status: WARNING: advice tape state and `rd=x0` rewrite missing
 
 Surface: custom-elf source-only.
 
-Issues found: Rust expands to `VirtualAdviceLoad imm=2` and consumes advice tape bytes. Lean takes explicit advice and currently no-ops `rd=x0` through `pureWritebackTraceProgram`, while Rust rewrites `rd=x0` to a temporary to preserve the tape read.
+Issues found: Lean takes explicit advice instead of modeling advice-tape consumption, and currently no-ops `rd=x0` through `pureWritebackTraceProgram` while Rust rewrites `rd=x0` to a temporary to preserve the tape read.
 
 ## AdviceLW
 
@@ -369,7 +342,7 @@ Status: WARNING: advice tape state and `rd=x0` rewrite missing
 
 Surface: custom-elf source-only.
 
-Issues found: Rust expands to `VirtualAdviceLoad imm=4` and consumes advice tape bytes. Lean takes explicit advice and currently no-ops `rd=x0` through `pureWritebackTraceProgram`, while Rust rewrites `rd=x0` to a temporary to preserve the tape read.
+Issues found: Lean takes explicit advice instead of modeling advice-tape consumption, and currently no-ops `rd=x0` through `pureWritebackTraceProgram` while Rust rewrites `rd=x0` to a temporary to preserve the tape read.
 
 ## AdviceLD
 
@@ -377,7 +350,7 @@ Status: WARNING: advice tape state and `rd=x0` rewrite missing
 
 Surface: custom-elf source-only.
 
-Issues found: Rust expands to `VirtualAdviceLoad imm=8` and consumes advice tape bytes. Lean takes explicit advice and currently no-ops `rd=x0` through `pureWritebackTraceProgram`, while Rust rewrites `rd=x0` to a temporary to preserve the tape read.
+Issues found: Lean takes explicit advice instead of modeling advice-tape consumption, and currently no-ops `rd=x0` through `pureWritebackTraceProgram` while Rust rewrites `rd=x0` to a temporary to preserve the tape read.
 
 ## AMOADDD
 
@@ -385,7 +358,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOANDD
 
@@ -393,7 +366,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOORD
 
@@ -401,7 +374,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOXORD
 
@@ -409,7 +382,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOSWAPD
 
@@ -417,7 +390,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Read-store-return-old shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOMAXD
 
@@ -425,7 +398,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Signed max read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOMAXUD
 
@@ -433,7 +406,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Unsigned max read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOMIND
 
@@ -441,7 +414,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Signed min read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOMINUD
 
@@ -449,7 +422,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Unsigned min read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOADDW
 
@@ -457,7 +430,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Word-lane read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOANDW
 
@@ -465,7 +438,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Word-lane read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOORW
 
@@ -473,7 +446,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Word-lane read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOXORW
 
@@ -481,7 +454,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Word-lane read-modify-write shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOSWAPW
 
@@ -489,7 +462,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Word-lane swap shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOMAXW
 
@@ -497,7 +470,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Signed word max shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOMAXUW
 
@@ -505,7 +478,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Unsigned word max shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOMINW
 
@@ -513,7 +486,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Signed word min shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## AMOMINUW
 
@@ -521,7 +494,7 @@ Status: NEXT: side-effecting `rd=x0` source rewrite missing
 
 Surface: riscv-atomic source-only.
 
-Issues found: Unsigned word min shape aligns. Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
+Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## LRD
 
