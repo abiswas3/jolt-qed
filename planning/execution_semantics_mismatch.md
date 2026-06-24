@@ -189,16 +189,6 @@ Native audit convention:
 - Rust handles `rd = x0` before pass-through or source-only expansion. Pure writeback rows become `ADDI x0, x0, 0`; side-effecting rows rewrite `rd` to a temporary virtual register.
 - Pure `rd = x0` source rewrites are not marked as issues below when the visible CPU state is unchanged. Side-effecting `rd = x0` rewrites are marked when Lean does not model the temporary destination row shape.
 
-## LD
-
-Status: NEXT: source materialization issue
-
-Surface: riscv native/pass-through and tracer-generated helper row.
-
-Issues found:
-
-- Guest ELF/source `LD rd=x0` is side-effecting in Rust. Expansion rewrites `rd` to a temporary virtual register before pass-through, so the final row is not `LD x0`. Lean native `LD ... (.xreg 0)` keeps `x0` as the destination, so final-row state/parity is not exact for that source case.
-
 ## VirtualAdviceLoad
 
 Status: WARNING: advice tape state not modeled
@@ -240,54 +230,6 @@ Expanded audit convention:
 - For source-only pure writeback instructions, `rd=x0` should become `ADDI x0, x0, 0`; Lean programs that use `pureWritebackTraceProgram` match that rule.
 - For source-only side-effecting instructions, Rust rewrites `rd=x0` to a temporary virtual register before expanding. Lean programs that take `rd` literally are marked below.
 - The LR/SC family remains out of proof scope by audit direction.
-
-## LB
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
-
-## LBU
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
-
-## LH
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
-
-## LHU
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
-
-## LW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
-
-## LWU
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's program takes `rd` literally.
 
 ## AdviceLB
 
