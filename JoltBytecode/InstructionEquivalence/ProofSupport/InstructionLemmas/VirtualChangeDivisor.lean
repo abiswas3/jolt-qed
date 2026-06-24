@@ -32,18 +32,18 @@ theorem virtual_change_divisor_run (vd : VReg) (dividend divisor : regidx)
 
 /-- `VirtualChangeDivisorW` reads virtual dividend/divisor and writes the adjusted divisor. -/
 theorem virtual_change_divisor_w_run (vd dividend divisor : VReg)
-    (js : SailJoltState) (hvd : WritableVReg vd) :
+    (js : SailJoltState) (adjusted : BitVec 64)
+    (hadjusted : adjusted = change_divisor_w_value (js.vregs dividend) (js.vregs divisor))
+    (hvd : WritableVReg vd) :
     (execInstr (.VirtualChangeDivisorW (.vreg vd) (.vreg dividend) (.vreg divisor))).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r =>
-            if r = vd then change_divisor_w_value (js.vregs dividend) (js.vregs divisor)
-            else js.vregs r } := by
-  unfold execInstr readSrc writeDst readVReg
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-    get, getThe, MonadStateOf.get, EStateM.get]
-  exact writeVReg_retire_run_of_writable vd
-    (change_divisor_w_value (js.vregs dividend) (js.vregs divisor)) js hvd
+            if r = vd then adjusted else js.vregs r } := by
+  simpa only [execInstr, readSrc, writeDst, readVReg, hadjusted,
+    bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get] using
+      writeVReg_retire_run_of_writable vd adjusted js hvd
 
 /-- Existential single-write post-state for `VirtualChangeDivisor`. -/
 theorem virtual_change_divisor_run_ex (vd : VReg) (dividend divisor : regidx)

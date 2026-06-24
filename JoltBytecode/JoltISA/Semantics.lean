@@ -307,7 +307,7 @@ def execInstr : Instr → JoltMonad ExecutionResult
       if addr &&& (7 : BitVec 64) = 0 then
         match ← liftSail (vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false) with
         | .Ok dword =>
-            writeDst dst dword
+            writeDst (sideEffectingDst dst) dword
             pure RETIRE_SUCCESS
         | .Err e => pure e
       else

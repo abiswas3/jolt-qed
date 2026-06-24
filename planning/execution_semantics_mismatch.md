@@ -189,26 +189,6 @@ Native audit convention:
 - Rust handles `rd = x0` before pass-through or source-only expansion. Pure writeback rows become `ADDI x0, x0, 0`; side-effecting rows rewrite `rd` to a temporary virtual register.
 - Pure `rd = x0` source rewrites are not marked as issues below when the visible CPU state is unchanged. Side-effecting `rd = x0` rewrites are marked when Lean does not model the temporary destination row shape.
 
-## JAL
-
-Status: NEXT: source materialization issue
-
-Surface: riscv native/pass-through.
-
-Issues found:
-
-- Guest ELF/source `JAL rd=x0` is side-effecting in Rust, so expansion rewrites `rd` to a temporary virtual register before pass-through. Lean native `JAL (.xreg 0)` discards the link, so final-row state/parity is not exact for that source case.
-
-## JALR
-
-Status: NEXT: source materialization issue
-
-Surface: riscv native/pass-through.
-
-Issues found:
-
-- Guest ELF/source `JALR rd=x0` is side-effecting in Rust, so expansion rewrites `rd` to a temporary virtual register before pass-through. Lean native `JALR (.xreg 0)` discards the link, so final-row state/parity is not exact for that source case.
-
 ## LD
 
 Status: NEXT: source materialization issue
@@ -251,17 +231,6 @@ Issues found:
 
 - Rust dispatches on registers `x10` through `x13` and may mutate host/advice/output/cycle-marker state.
 - Lean treats `VirtualHostIO` as a no-op.
-
-## VirtualChangeDivisorW
-
-Status: NEXT: standalone row is narrower than Rust
-
-Surface: tracer-generated final row.
-
-Issues found:
-
-- Rust casts both operands to `i32`, checks `(INT32_MIN, -1)`, and writes the divisor sign-extended to 64 bits.
-- Lean assumes both operands are already sign-extended 32-bit values in 64-bit words.
 
 # Expanded
 

@@ -141,15 +141,17 @@ theorem vreg_sign_extend_word_to_real_run
 Pure. -/
 theorem vreg_change_divisor_w_run
     (vd vs1 vs2 : BitVec 7) (js : SailJoltState)
+    (adjusted : BitVec 64)
+    (hadjusted : adjusted = change_divisor_w_value (js.vregs vs1) (js.vregs vs2))
     (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.VirtualChangeDivisorW (.vreg vd) (.vreg vs1) (.vreg vs2))).run js =
       .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
           if r = vd
-          then change_divisor_w_value (js.vregs vs1) (js.vregs vs2)
+          then adjusted
           else js.vregs r } :=
-  JoltISA.virtual_change_divisor_w_run vd vs1 vs2 js hvd
+  JoltISA.virtual_change_divisor_w_run vd vs1 vs2 js adjusted hadjusted hvd
 
 /-- Existential variant of `vreg_change_divisor_w_run`. -/
 theorem vreg_change_divisor_w_run_ex
@@ -161,14 +163,16 @@ theorem vreg_change_divisor_w_run_ex
       js'.vregs vd = change_divisor_w_value (js.vregs vs1) (js.vregs vs2) ∧
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
       js'.sail = js.sail := by
+  let adjusted : BitVec 64 := change_divisor_w_value (js.vregs vs1) (js.vregs vs2)
   let js' : SailJoltState :=
     { sail := js.sail
       vregs := fun r =>
         if r = vd
-        then change_divisor_w_value (js.vregs vs1) (js.vregs vs2)
+        then adjusted
         else js.vregs r }
   refine ⟨js', ?_, ?_, ?_, rfl⟩
-  · simpa only [js'] using vreg_change_divisor_w_run vd vs1 vs2 js hvd
+  · simpa only [js', adjusted] using
+      vreg_change_divisor_w_run vd vs1 vs2 js adjusted rfl hvd
   · show (if vd = vd then _ else js.vregs vd) = _
     rw [if_pos rfl]
   · intro k h

@@ -122,7 +122,7 @@ def InstrWritesNoProtectedVReg : Instr → Prop
   | .VirtualMovsign dst _ => DstWritesNoProtectedVReg dst
   | .VirtualAssertHalfwordAlignment _ _ _ => True
   | .VirtualAssertWordAlignment _ _ _ => True
-  | .LD _ dst _ _ => DstWritesNoProtectedVReg dst
+  | .LD _ dst _ _ => DstWritesNoProtectedVReg (sideEffectingDst dst)
   | .SD _ _ _ => True
   | .VirtualAdvice dst _ => DstWritesNoProtectedVReg dst
   | .VirtualAdviceLoad dst _ => DstWritesNoProtectedVReg dst
@@ -584,7 +584,7 @@ private theorem vregVregWrite_preserves_protected
 private theorem ld_preserves_protected
     {faultClass : LoadFaultClass} {dst : Dst} {base : Src} {imm : BitVec 12}
     {js js' : SailJoltState} {result : ExecutionResult}
-    (hsafe : DstWritesNoProtectedVReg dst)
+    (hsafe : DstWritesNoProtectedVReg (sideEffectingDst dst))
     (hrun : (do
         let baseValue ← readSrc base
         let addr := baseValue + sign_extend (m := 64) imm
@@ -592,7 +592,7 @@ private theorem ld_preserves_protected
           match ← liftSail
               (vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false) with
           | .Ok dword =>
-              writeDst dst dword
+              writeDst (sideEffectingDst dst) dword
               pure RETIRE_SUCCESS
           | .Err e => pure e
         else
@@ -622,9 +622,10 @@ private theorem ld_preserves_protected
             cases memResult with
             | Ok dword =>
                 simp only at hrun
-                cases hwrite : (writeDst dst dword).run js_afterMem with
+                cases hwrite : (writeDst (sideEffectingDst dst) dword).run js_afterMem with
                 | ok u js_afterWrite =>
-                    change writeDst dst dword js_afterMem = .ok u js_afterWrite at hwrite
+                    change writeDst (sideEffectingDst dst) dword js_afterMem =
+                      .ok u js_afterWrite at hwrite
                     simp only [EStateM.bind, hwrite] at hrun
                     simp only [pure, EStateM.pure] at hrun
                     cases hrun
@@ -634,7 +635,8 @@ private theorem ld_preserves_protected
                     intro vr hprotected
                     rw [hwrite_frame vr hprotected, hmem_frame, hbase_frame]
                 | error e js_error =>
-                    change writeDst dst dword js_afterMem = .error e js_error at hwrite
+                    change writeDst (sideEffectingDst dst) dword js_afterMem =
+                      .error e js_error at hwrite
                     simp only [EStateM.bind, hwrite] at hrun
                     cases hrun
             | Err e =>

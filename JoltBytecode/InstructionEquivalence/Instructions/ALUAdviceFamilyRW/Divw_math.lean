@@ -153,6 +153,26 @@ private lemma extractLsb_sail_signExtend_32_64 (x : BitVec 32) :
     Nat.reduceSub, Nat.reduceAdd, hi32_bool, hi64_bool, Bool.true_and, Nat.zero_add,
     if_pos]
 
+private lemma extractLsb_31_0_eq_setWidth32 (x : BitVec 64) :
+    x.extractLsb 31 0 = x.setWidth 32 := by
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  rw [BitVec.getLsbD_extractLsb]
+  simp
+
+private lemma setWidth_sail_signExtend_32_64 (x : BitVec 32) :
+    (sign_extend (m := 64) x).setWidth 32 = x := by
+  rw [← extractLsb_31_0_eq_setWidth32]
+  simpa [Sail.BitVec.extractLsb] using extractLsb_sail_signExtend_32_64 x
+
+private lemma jolt_virtual_sign_extend_word_value_of_sail_signExtend (x : BitVec 32) :
+    jolt_virtual_sign_extend_word_value (sign_extend (m := 64) x) =
+      sign_extend (m := 64) x := by
+  unfold jolt_virtual_sign_extend_word_value
+  rw [setWidth_sail_signExtend_32_64]
+  unfold sign_extend Sail.BitVec.signExtend
+  rfl
+
 /-- For a sign-extended 32-bit value, `sshiftRight 31 = sshiftRight 63`.
 Both produce the sign-broadcast (all-zeros or all-ones). -/
 private lemma sshiftRight31_eq_63_of_sext32 (x : BitVec 32) :
@@ -372,11 +392,13 @@ private lemma change_divisor_w_value_of_zero (x : BitVec 32) :
   have hzero : sign_extend (m := 64) (0#32 : BitVec 32) = 0#64 := by
     unfold sign_extend Sail.BitVec.signExtend
     decide
-  rw [hzero]
   unfold change_divisor_w_value
+  rw [jolt_virtual_sign_extend_word_value_of_sail_signExtend x,
+    jolt_virtual_sign_extend_word_value_of_sail_signExtend (0#32)]
   rw [if_neg (by
     intro h
     exact (by decide : (0#64 : BitVec 64) ≠ -1) h.2)]
+  exact hzero
 
 private lemma change_divisor_w_value_of_overflow :
     change_divisor_w_value
@@ -388,8 +410,9 @@ private lemma change_divisor_w_value_of_overflow :
   have hneg : sign_extend (m := 64) (-1#32 : BitVec 32) = (-1 : BitVec 64) := by
     unfold sign_extend Sail.BitVec.signExtend
     decide
-  rw [hmin, hneg]
   unfold change_divisor_w_value
+  rw [jolt_virtual_sign_extend_word_value_of_sail_signExtend (BitVec.intMin 32),
+    jolt_virtual_sign_extend_word_value_of_sail_signExtend (-1#32), hmin, hneg]
   rw [if_pos (by constructor <;> rfl)]
   rfl
 
@@ -397,16 +420,18 @@ private lemma change_divisor_w_value_of_normal (x y : BitVec 32)
     (hno : ¬ (x = BitVec.intMin 32 ∧ y = -1#32)) :
     change_divisor_w_value (sign_extend (m := 64) x)
       (sign_extend (m := 64) y) = sign_extend (m := 64) y := by
-  unfold change_divisor_w_value sign_extend Sail.BitVec.signExtend
+  unfold change_divisor_w_value
+  rw [jolt_virtual_sign_extend_word_value_of_sail_signExtend x,
+    jolt_virtual_sign_extend_word_value_of_sail_signExtend y]
   rw [if_neg]
   intro hoverflow
   apply hno
   rcases hoverflow with ⟨hx, hy⟩
   constructor
-  · have hxlow := congrArg (fun z : BitVec 64 => z.extractLsb 31 0) hx
-    simpa [extractLsb_signExtend_32_64] using hxlow
-  · have hylow := congrArg (fun z : BitVec 64 => z.extractLsb 31 0) hy
-    simpa [extractLsb_signExtend_32_64] using hylow
+  · have hxlow := congrArg (fun z : BitVec 64 => Sail.BitVec.extractLsb z 31 0) hx
+    simpa [extractLsb_sail_signExtend_32_64] using hxlow
+  · have hylow := congrArg (fun z : BitVec 64 => Sail.BitVec.extractLsb z 31 0) hy
+    simpa [extractLsb_sail_signExtend_32_64] using hylow
 
 -- ----------------------------------------------------------------------------
 -- Case helpers for sail_divw_value / sail_remw_value

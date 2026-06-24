@@ -202,9 +202,11 @@ def change_divisor_value (dividend divisor : BitVec 64) : BitVec 64 :=
 
 /-- Word-sized version of `change_divisor_value`.
 
-The operands are already sign-extended 32-bit values stored in 64-bit words.
-The overflow pair is `(INT32_MIN, -1)`. -/
+Rust casts both operands to `i32`, so this uses the low 32 bits for the
+overflow check and sign-extends the low-word divisor on the normal path. -/
 def change_divisor_w_value (dividend divisor : BitVec 64) : BitVec 64 :=
+  let dividend := jolt_virtual_sign_extend_word_value dividend
+  let divisor := jolt_virtual_sign_extend_word_value divisor
   let i32MinSext : BitVec 64 := -((1 : BitVec 64) <<< 31)
   let negOne : BitVec 64 := -1
   if dividend = i32MinSext ∧ divisor = negOne then 1 else divisor

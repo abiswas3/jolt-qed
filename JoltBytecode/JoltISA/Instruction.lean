@@ -224,4 +224,34 @@ def isX0 (rd : regidx) : Bool :=
 def pureWritebackTraceProgram (rd : regidx) (normal : Program) : Program :=
   if isX0 rd then pureWritebackRdZeroProgram else normal
 
+/-- The first virtual register Rust's `allocate()` returns for top-level
+side-effecting `rd = x0` source rewrites. -/
+def rdZeroRewriteVReg : VReg := inlineTmp 0
+
+/-- Rust's source-materialization rule for side-effecting instructions with
+`rd = x0`: keep the side effect, but rewrite the destination to a temporary
+virtual register so the final row never writes `x0`. -/
+def sideEffectingRdZeroDst (rd : regidx) : Dst :=
+  if isX0 rd then .vreg rdZeroRewriteVReg else .xreg rd
+
+/-- Lift Rust's source-materialization rule to an already-parsed destination. -/
+def sideEffectingDst : Dst → Dst
+  | .xreg rd => sideEffectingRdZeroDst rd
+  | .vreg v => .vreg v
+
+@[simp] theorem sideEffectingDst_vreg (v : VReg) :
+    sideEffectingDst (.vreg v) = .vreg v := rfl
+
+/-- Source-level `JAL` materialization, including Rust's side-effecting
+`rd = x0` destination rewrite. Native final-row `JAL` semantics are unchanged. -/
+def jalProgram (rd : regidx) (imm : BitVec 21) : Program :=
+  .instr (.JAL (sideEffectingRdZeroDst rd) imm) <|
+  .done RETIRE_SUCCESS
+
+/-- Source-level `JALR` materialization, including Rust's side-effecting
+`rd = x0` destination rewrite. Native final-row `JALR` semantics are unchanged. -/
+def jalrProgram (rd rs1 : regidx) (imm : BitVec 12) : Program :=
+  .instr (.JALR (sideEffectingRdZeroDst rd) (.xreg rs1) imm) <|
+  .done RETIRE_SUCCESS
+
 end JoltISA

@@ -37,8 +37,8 @@ theorem ld_run_vreg_vreg_from_memory_read {faultClass : LoadFaultClass}
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
   rw [if_pos h_align]
-  simp only [EStateM.bind, h, writeVReg, hvd, ↓reduceIte, modify, modifyGet,
-    MonadStateOf.modifyGet, EStateM.modifyGet, EStateM.pure]
+  simp only [EStateM.bind, h, sideEffectingDst, writeVReg, hvd, ↓reduceIte,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet, EStateM.pure]
 
 /-- Successful `LD` from an architectural-register base into a virtual
 register. -/
@@ -63,8 +63,8 @@ theorem ld_run_vreg_xreg_from_memory_read {faultClass : LoadFaultClass}
   rw [hbase]
   dsimp only
   rw [if_pos h_align]
-  simp only [EStateM.bind, hread, writeVReg, hvd, ↓reduceIte, modify, modifyGet,
-    MonadStateOf.modifyGet, EStateM.modifyGet, EStateM.pure]
+  simp only [EStateM.bind, hread, sideEffectingDst, writeVReg, hvd, ↓reduceIte,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet, EStateM.pure]
 
 end JoltISA
 
