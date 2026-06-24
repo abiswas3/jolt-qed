@@ -19,6 +19,31 @@ Status markers:
 - `WARNING:` not major, but should be fixed.
 - `FIXME:` major issue.
 
+# Notes
+
+## LD fault classes :
+
+Rust/Jolt uses the same `load_doubleword` pathway for ordinary loads and for
+the read side of AMO expansions. Sail does not: ordinary load faults and AMO
+faults use different exception constructors.
+
+- Normal Sail load alignment faults use `E_Load_Addr_Align`.
+- Sail store and AMO alignment faults use `E_SAMO_Addr_Align`.
+
+Lean therefore gives `Instr.LD` a `LoadFaultClass` marker:
+
+- `.normal` is used for native loads, source load expansions, store helper
+  loads, and LR-related load rows.
+- `.amo` is used when an `LD` row is serving as the read side of an AMO
+  expansion.
+
+This marker is Lean proof metadata for Sail comparison, not a Rust-emitted
+opcode bit. It only selects the structured exception constructor on the Lean
+misalignment branch; the successful path still uses the same
+`vmem_read_addr ... (Load Data)` read shape. `SD` does not need the same marker
+because both ordinary stores and AMO write-side failures already fall under
+Sail's `E_SAMO_Addr_Align` class.
+
 # Natives
 
 ## NoOp :
@@ -471,15 +496,17 @@ Issues found:
 
 ## LD :
 
-Status: FIXME: issues found
+Status: WARNING: issues found
 
 Perfectly aligned: no
 
 Issues found:
 
-- Lean's misaligned path returns `E_SAMO_Addr_Align`; a load row should not hard-code the store/AMO alignment fault. Sail classifies `Load Data` alignment as `E_Load_Addr_Align`.
 - Rust's `LD` path calls `load_doubleword`; unaligned or failing MMU paths assert/panic rather than returning a structured `ExecutionResult`. Lean is using Sail-style structured memory results.
-- The single Lean `LD` row is currently trying to serve native loads and AMO expansion reuse. Native/load-source alignment wants load fault classification, while AMO source semantics wants SAMO fault classification. That context split is not represented in `Instr.LD`.
+
+Resolved:
+
+- The previous normal-load versus AMO-read-side alignment-class split is now explicit in `Instr.LD` via `LoadFaultClass`. Successful `LD` still uses the same `vmem_read_addr ... (Load Data)` path; the flag only selects the structured exception class on the Lean misalignment branch.
 
 ## SD :
 
@@ -621,15 +648,14 @@ Issues found: None. The fixed scratch-register layout, recursive lowering shape,
 
 ## Loads :
 
-Status: WARNING: issues found
+Status: NEXT: issues found
 
 Perfectly aligned: no
 
 Issues found:
 
 - Normal byte/halfword/word extraction shape aligns with Rust.
-- Source load instructions with `rd = x0` do not match Rust materialization: Rust treats loads as side-effecting and rewrites the discarded destination to a temporary so memory faults and row shape are preserved; Lean load programs take `rd` literally.
-- These expansions inherit the row-level `LD` exception-class issue recorded above.
+- Source load instructions with `rd = x0` do not exactly match Rust materialization: Rust rewrites the discarded destination to a temporary, while Lean load programs take `rd` literally and let the final write to `x0` be a no-op. The load sequence still runs, so this is row-parity drift rather than a dropped memory effect.
 
 ## Stores :
 
@@ -645,17 +671,19 @@ Status: WARNING: issues found
 
 Perfectly aligned: no
 
+Issues found:
+
 - Source `AdviceLB`/`AdviceLH`/`AdviceLW`/`AdviceLD` with `rd = x0`: Rust treats advice loads as side-effecting and rewrites `rd = x0` to a temporary before expansion, so the advice tape is still consumed. Lean's `advicel*Program` currently uses `pureWritebackTraceProgram`, which turns `rd = x0` into `ADDI x0, x0, 0` and drops the advice-load effect.
 
 ## Atomics :
 
-Status: WARNING: issues found
+Status: NEXT: issues found
 
 Perfectly aligned: no
 
 - Normal AMO doubleword and word read-modify-write expansion shape aligns with Rust for ordinary destinations.
+- AMO expansion `LD` rows now use `.amo`, so the Sail AMO alignment-fault class is represented without changing Rust's successful load-row shape.
 - Source AMO expansions with `rd = x0`: Rust treats AMOs as side-effecting and rewrites the destination to a temporary before expansion. Lean AMO programs take `rd` literally. The memory update still occurs, but exact Rust final-row parity differs.
-- These expansions also inherit the row-level `LD` exception-context split: native load rows want load alignment faults, while AMO source semantics wants SAMO fault classification.
 
 ## System / CSR :
 
