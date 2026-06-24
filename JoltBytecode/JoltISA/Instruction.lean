@@ -102,11 +102,11 @@ inductive Instr where
   | VirtualAssertWordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
   | LD (faultClass : LoadFaultClass) (dst : Dst) (base : Src) (imm : BitVec 12)
   | SD (base value : Src) (imm : BitVec 12)
-  | VirtualAdvice (vd : VReg) (value : BitVec 64)
+  | VirtualAdvice (dst : Dst) (value : BitVec 64)
   | VirtualAdviceLoad (dst : Dst) (value : BitVec 64)
   | VirtualAdviceLen (dst : Dst) (remaining : BitVec 64)
   | VirtualHostIO
-  | VirtualAssertEQ (lhs rhs : Src)
+  | VirtualAssertEQ (lhs rhs : Src) (imm: BitVec 13)
   | VirtualAssertValidDiv0 (divisor quotient : Src)
   | VirtualChangeDivisor (dst : Dst) (dividend divisor : Src)
   | VirtualChangeDivisorW (dst : Dst) (dividend divisor : Src)

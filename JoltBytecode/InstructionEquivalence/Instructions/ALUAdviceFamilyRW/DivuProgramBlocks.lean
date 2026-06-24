@@ -188,7 +188,7 @@ theorem allocate_layout :
 
 /-- Phase 1 — advice load + div-by-zero assert. -/
 def phase_setup (rs2 : regidx) (quotient : BitVec 64) : JoltISA.Program :=
-  .instr (.VirtualAdvice v0VReg quotient) <|
+  .instr (.VirtualAdvice (.vreg v0VReg) quotient) <|
   .instr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg v0VReg)) <|
   .done RETIRE_SUCCESS
 
@@ -227,7 +227,7 @@ theorem phase_setup_run
   let s1 : SailJoltState :=
     { sail := js.sail
       vregs := fun r => if r = v0VReg then q else js.vregs r }
-  have h1 : (JoltISA.execInstr (.VirtualAdvice v0VReg q)).run js =
+  have h1 : (JoltISA.execInstr (.VirtualAdvice (.vreg v0VReg) q)).run js =
       .ok RETIRE_SUCCESS s1 :=
     JoltISA.virtual_advice_run v0VReg q js (by unfold WritableVReg; decide)
   have hs1_v0 : s1.vregs v0VReg = q := by

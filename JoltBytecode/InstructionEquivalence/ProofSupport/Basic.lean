@@ -124,11 +124,11 @@ def InstrWritesNoProtectedVReg : Instr → Prop
   | .VirtualAssertWordAlignment _ _ _ => True
   | .LD _ dst _ _ => DstWritesNoProtectedVReg dst
   | .SD _ _ _ => True
-  | .VirtualAdvice vd _ => VRegWritesNoProtectedVReg vd
+  | .VirtualAdvice dst _ => DstWritesNoProtectedVReg dst
   | .VirtualAdviceLoad dst _ => DstWritesNoProtectedVReg dst
   | .VirtualAdviceLen _ _ => False
   | .VirtualHostIO => False
-  | .VirtualAssertEQ _ _ => True
+  | .VirtualAssertEQ _ _ _ => True
   | .VirtualAssertValidDiv0 _ _ => True
   | .VirtualChangeDivisor dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualChangeDivisorW dst _ _ => DstWritesNoProtectedVReg dst
@@ -861,19 +861,24 @@ theorem execInstr_preserves_protected
       exact ld_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | SD base value imm =>
       exact sd_preserves_protected (by simpa [execInstr] using hrun)
-  | VirtualAdvice vd value =>
-      exact vregWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualAdvice dst value =>
+      exact dstWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualAdviceLoad dst value =>
       exact dstWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualAdviceLen dst remaining =>
       cases hsafe
   | VirtualHostIO =>
       cases hsafe
-  | VirtualAssertEQ lhs rhs =>
-      exact binaryReadIfPureElseThrow_preserves_protected
-        (p := fun x y => x = y)
-        (msg := "VirtualAssertEQ")
-        (by simpa [execInstr] using hrun)
+  | VirtualAssertEQ lhs rhs imm =>
+      by_cases himm : imm = 0#13
+      · exact binaryReadIfPureElseThrow_preserves_protected
+          (p := fun x y => x = y)
+          (msg := "VirtualAssertEQ")
+          (by simpa [execInstr, himm] using hrun)
+      · simp only [execInstr, himm, ↓reduceIte, pure, EStateM.pure, EStateM.run] at hrun
+        cases hrun
+        intro vr hprotected
+        rfl
   | VirtualAssertValidDiv0 divisor quotient =>
       exact binaryReadIfThrowElsePure_preserves_protected
         (p := fun d q => d = 0#64 ∧ q ≠ (-1 : BitVec 64))

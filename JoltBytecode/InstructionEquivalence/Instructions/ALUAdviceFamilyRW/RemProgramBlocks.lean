@@ -54,7 +54,7 @@ def phase_quotient_product (rs1 : regidx) : JoltISA.Program :=
   .instr (.XOR (.vreg t3VReg) (.vreg a3VReg) (.vreg t1VReg)) <|
   .instr (.SUB (.vreg t3VReg) (.vreg t3VReg) (.vreg t1VReg)) <|
   .instr (.ADD (.vreg t2VReg) (.vreg t2VReg) (.vreg t3VReg)) <|
-  .instr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1)) <|
+  .instr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1) (0 : BitVec 13)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 4 — compute `|adj_div|` into Rust `t2`, preserving signed remainder in `t3`. -/
@@ -155,7 +155,7 @@ theorem phase_quotient_product_run
     rw [h4_v7, hs3_v7, hs3_v8]
     exact hguard_quotient_product
   have hrs1_s4 : rX_bits rs1 s4.sail = .ok dividend s4.sail := hs4_sail.symm ▸ hrs1
-  have h5 : (JoltISA.execInstr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1))).run s4 =
+  have h5 : (JoltISA.execInstr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1) (0 : BitVec 13))).run s4 =
       .ok RETIRE_SUCCESS s4 :=
     JoltISA.virtual_assert_eq_real_run_ok t2VReg rs1 s4 dividend hrs1_s4 hs4_v7
   have hs4_v0 : s4.vregs a2VReg = q :=

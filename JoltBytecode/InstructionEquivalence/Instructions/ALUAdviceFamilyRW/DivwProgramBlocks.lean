@@ -248,8 +248,8 @@ the program can run on virtual sign-extended copies), and asserts the
 div-by-zero constraint on the *sign-extended* divisor `t3`. -/
 def phase_setup (rs1 rs2 : regidx) (quotient rem_abs : BitVec 64) :
     JoltISA.Program :=
-  .instr (.VirtualAdvice a2VReg quotient) <|
-  .instr (.VirtualAdvice a3VReg rem_abs) <|
+  .instr (.VirtualAdvice (.vreg a2VReg) quotient) <|
+  .instr (.VirtualAdvice (.vreg a3VReg) rem_abs) <|
   .instr (.VirtualSignExtendWord (.vreg t4VReg) (.xreg rs1)) <|
   .instr (.VirtualSignExtendWord (.vreg t3VReg) (.xreg rs2)) <|
   .instr (.VirtualAssertValidDiv0 (.vreg t3VReg) (.vreg a2VReg)) <|
@@ -263,7 +263,7 @@ fits in 32 bits via the round-trip `t1 = sext(a2); t1 = a2`. -/
 def phase_overflow_check : JoltISA.Program :=
   .instr (.VirtualChangeDivisorW (.vreg t0VReg) (.vreg t4VReg) (.vreg t3VReg)) <|
   .instr (.VirtualSignExtendWord (.vreg t1VReg) (.vreg a2VReg)) <|
-  .instr (.VirtualAssertEQ (.vreg t1VReg) (.vreg a2VReg)) <|
+  .instr (.VirtualAssertEQ (.vreg t1VReg) (.vreg a2VReg) (0 : BitVec 13)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 3 — remainder-non-negative check (DIVW-only, no DIV analogue).
@@ -281,7 +281,7 @@ For DIVW the `|rem|` lives inside a 64-bit BitVec but represents a u32,
 so the high half must be checked explicitly. -/
 def phase_rem_nonneg : JoltISA.Program :=
   JoltISA.sraiBlock (.vreg t2VReg) (.vreg a3VReg) (32 : BitVec 6) <|
-  .instr (.VirtualAssertEQ (.vreg t2VReg) (.xreg (regidx.Regidx 0))) <|
+  .instr (.VirtualAssertEQ (.vreg t2VReg) (.xreg (regidx.Regidx 0)) (0 : BitVec 13)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 4 — reconstruct signed remainder, sum, assert equals
@@ -297,7 +297,7 @@ def phase_quotient_product : JoltISA.Program :=
   .instr (.SUB (.vreg t3VReg) (.vreg t3VReg) (.vreg t2VReg)) <|
   .instr (.MUL (.vreg t1VReg) (.vreg a2VReg) (.vreg t0VReg)) <|
   .instr (.ADD (.vreg t1VReg) (.vreg t1VReg) (.vreg t3VReg)) <|
-  .instr (.VirtualAssertEQ (.vreg t1VReg) (.vreg t4VReg)) <|
+  .instr (.VirtualAssertEQ (.vreg t1VReg) (.vreg t4VReg) (0 : BitVec 13)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 5 — compute `|adj_div|` (32-bit shamt) + `|rem| < |adj_div|` check.

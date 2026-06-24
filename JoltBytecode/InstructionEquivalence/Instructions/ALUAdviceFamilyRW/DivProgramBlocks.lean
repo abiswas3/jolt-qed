@@ -54,8 +54,8 @@ abbrev t4VReg : JoltISA.VReg := JoltISA.inlineTmp6
 /-- Phase 1 — advice loads + div-by-zero assert. -/
 def phase_setup (rs2 : regidx) (quotient rem_abs : BitVec 64) :
     JoltISA.Program :=
-  .instr (.VirtualAdvice a2VReg quotient) <|
-  .instr (.VirtualAdvice a3VReg rem_abs) <|
+  .instr (.VirtualAdvice (.vreg a2VReg) quotient) <|
+  .instr (.VirtualAdvice (.vreg a3VReg) rem_abs) <|
   .instr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg a2VReg)) <|
   .done RETIRE_SUCCESS
 
@@ -66,7 +66,7 @@ def phase_overflow_check (rs1 rs2 : regidx) : JoltISA.Program :=
     (.vreg t1VReg) (.vreg a2VReg) (.vreg t0VReg) <|
   .instr (.MUL (.vreg t2VReg) (.vreg a2VReg) (.vreg t0VReg)) <|
   JoltISA.sraiBlock (.vreg t3VReg) (.vreg t2VReg) (63 : BitVec 6) <|
-  .instr (.VirtualAssertEQ (.vreg t1VReg) (.vreg t3VReg)) <|
+  .instr (.VirtualAssertEQ (.vreg t1VReg) (.vreg t3VReg) (0 : BitVec 13)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 3 — reconstruct signed remainder, sum, assert equals dividend. -/
@@ -75,7 +75,7 @@ def phase_quotient_product (rs1 : regidx) : JoltISA.Program :=
   .instr (.XOR (.vreg t3VReg) (.vreg a3VReg) (.vreg t1VReg)) <|
   .instr (.SUB (.vreg t3VReg) (.vreg t3VReg) (.vreg t1VReg)) <|
   .instr (.ADD (.vreg t2VReg) (.vreg t2VReg) (.vreg t3VReg)) <|
-  .instr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1)) <|
+  .instr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1) (0 : BitVec 13)) <|
   .done RETIRE_SUCCESS
 
 /-- Phase 4 — compute |adj_div|, assert |r| < |adj_div|. -/
@@ -113,9 +113,9 @@ theorem phase_setup_run
   let s2 : SailJoltState :=
     { sail := s1.sail
       vregs := fun r => if r = a3VReg then rem else s1.vregs r }
-  have h1 : (JoltISA.execInstr (.VirtualAdvice a2VReg q)).run js =
+  have h1 : (JoltISA.execInstr (.VirtualAdvice (.vreg a2VReg) q)).run js =
       .ok RETIRE_SUCCESS s1 := JoltISA.virtual_advice_run a2VReg q js (by unfold WritableVReg; decide)
-  have h2 : (JoltISA.execInstr (.VirtualAdvice a3VReg rem)).run s1 =
+  have h2 : (JoltISA.execInstr (.VirtualAdvice (.vreg a3VReg) rem)).run s1 =
       .ok RETIRE_SUCCESS s2 := JoltISA.virtual_advice_run a3VReg rem s1 (by unfold WritableVReg; decide)
   have hs2_v0 : s2.vregs a2VReg = q := by
     show (if a2VReg = a3VReg then rem else s1.vregs a2VReg) = q
@@ -190,7 +190,7 @@ theorem phase_overflow_check_run
   -- Step 5: assert v3 = v8 — discharged via the overflow guard.
   have hguard_eq : s4.vregs t1VReg = s4.vregs t3VReg := by
     rw [hs4_v3, hs4_v8]; exact hguard_overflow
-  have h5 : (JoltISA.execInstr (.VirtualAssertEQ (.vreg t1VReg) (.vreg t3VReg))).run s4 =
+  have h5 : (JoltISA.execInstr (.VirtualAssertEQ (.vreg t1VReg) (.vreg t3VReg) (0 : BitVec 13))).run s4 =
       .ok RETIRE_SUCCESS s4 :=
     JoltISA.virtual_assert_eq_run_ok t1VReg t3VReg s4 hguard_eq
   -- Post-condition vregs lookups on s4.
@@ -270,7 +270,7 @@ theorem phase_quotient_product_run
     rw [h4_v7, hs3_v7, hs3_v8]; exact hguard_quotient_product
   -- Step 5: assert v7 = rs1 — discharged via hguard_quotient_product.
   have hrs1_s4 : rX_bits rs1 s4.sail = .ok dividend s4.sail := hs4_sail.symm ▸ hrs1
-  have h5 : (JoltISA.execInstr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1))).run s4 =
+  have h5 : (JoltISA.execInstr (.VirtualAssertEQ (.vreg t2VReg) (.xreg rs1) (0 : BitVec 13))).run s4 =
       .ok RETIRE_SUCCESS s4 :=
     JoltISA.virtual_assert_eq_real_run_ok t2VReg rs1 s4 dividend hrs1_s4 hs4_v7
   -- Post-condition vregs lookups: v0/v1/v2 all preserved through writes {3, 8, 8, 7}.

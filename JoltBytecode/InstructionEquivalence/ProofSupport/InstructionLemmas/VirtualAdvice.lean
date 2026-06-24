@@ -19,7 +19,7 @@ namespace JoltISA
 /-- `VirtualAdvice` writes the supplied advice value into a virtual register. -/
 theorem virtual_advice_run (vd : VReg) (advice : BitVec 64) (js : SailJoltState)
     (hvd : WritableVReg vd) :
-    (execInstr (.VirtualAdvice vd advice)).run js =
+    (execInstr (.VirtualAdvice (.vreg vd) advice)).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r => if r = vd then advice else js.vregs r } := by
@@ -58,7 +58,7 @@ theorem exists_state_after_virtual_advice_load_run_xreg
 theorem virtual_advice_run_ex (vd : VReg) (advice : BitVec 64) (js : SailJoltState)
     (hvd : WritableVReg vd) :
     ∃ js',
-      (execInstr (.VirtualAdvice vd advice)).run js = .ok RETIRE_SUCCESS js' ∧
+      (execInstr (.VirtualAdvice (.vreg vd) advice)).run js = .ok RETIRE_SUCCESS js' ∧
       js'.vregs vd = advice ∧
       (∀ k, k ≠ vd → js'.vregs k = js.vregs k) ∧
       js'.sail = js.sail :=

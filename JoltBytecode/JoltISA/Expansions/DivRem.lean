@@ -17,20 +17,20 @@ inputs: quotient and absolute remainder. -/
 def divProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice inlineTmp0 quotient) <|
-  .instr (.VirtualAdvice inlineTmp1 remAbs) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp0) quotient) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp1) remAbs) <|
   .instr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg inlineTmp0)) <|
   .instr (.VirtualChangeDivisor (.vreg inlineTmp2) (.xreg rs1) (.xreg rs2)) <|
   mulhBlock inlineTmp4 inlineTmp5 inlineTmp6
     (.vreg inlineTmp3) (.vreg inlineTmp0) (.vreg inlineTmp2) <|
   .instr (.MUL (.vreg inlineTmp4) (.vreg inlineTmp0) (.vreg inlineTmp2)) <|
   sraiBlock (.vreg inlineTmp5) (.vreg inlineTmp4) (63 : BitVec 6) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp5)) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp5) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp3) (.xreg rs1) (63 : BitVec 6) <|
   .instr (.XOR (.vreg inlineTmp5) (.vreg inlineTmp1) (.vreg inlineTmp3)) <|
   .instr (.SUB (.vreg inlineTmp5) (.vreg inlineTmp5) (.vreg inlineTmp3)) <|
   .instr (.ADD (.vreg inlineTmp4) (.vreg inlineTmp4) (.vreg inlineTmp5)) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp4) (.xreg rs1)) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp4) (.xreg rs1) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp3) (.vreg inlineTmp2) (63 : BitVec 6) <|
   .instr (.XOR (.vreg inlineTmp5) (.vreg inlineTmp2) (.vreg inlineTmp3)) <|
   .instr (.SUB (.vreg inlineTmp5) (.vreg inlineTmp5) (.vreg inlineTmp3)) <|
@@ -41,7 +41,7 @@ def divProgram (rs2 rs1 rd : regidx)
 /-- Jolt ISA program for RV64 `DIVU`. The quotient advice is explicit. -/
 def divuProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice inlineTmp0 quotient) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp0) quotient) <|
   .instr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg inlineTmp0)) <|
   .instr (.VirtualAssertMulUNoOverflow (.vreg inlineTmp0) (.xreg rs2)) <|
   .instr (.MUL (.vreg inlineTmp1) (.vreg inlineTmp0) (.xreg rs2)) <|
@@ -59,22 +59,22 @@ loaded into `v0`, and the absolute remainder loaded into `v1`.
 def divwProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice inlineTmp0 quotient) <|
-  .instr (.VirtualAdvice inlineTmp1 remAbs) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp0) quotient) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp1) remAbs) <|
   .instr (.VirtualSignExtendWord (.vreg inlineTmp6) (.xreg rs1)) <|
   .instr (.VirtualSignExtendWord (.vreg inlineTmp5) (.xreg rs2)) <|
   .instr (.VirtualAssertValidDiv0 (.vreg inlineTmp5) (.vreg inlineTmp0)) <|
   .instr (.VirtualChangeDivisorW (.vreg inlineTmp2) (.vreg inlineTmp6) (.vreg inlineTmp5)) <|
   .instr (.VirtualSignExtendWord (.vreg inlineTmp3) (.vreg inlineTmp0)) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp0)) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp0) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp4) (.vreg inlineTmp1) (32 : BitVec 6) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp4) (.xreg (regidx.Regidx 0))) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp4) (.xreg (regidx.Regidx 0)) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp4) (.vreg inlineTmp6) (31 : BitVec 6) <|
   .instr (.XOR (.vreg inlineTmp5) (.vreg inlineTmp1) (.vreg inlineTmp4)) <|
   .instr (.SUB (.vreg inlineTmp5) (.vreg inlineTmp5) (.vreg inlineTmp4)) <|
   .instr (.MUL (.vreg inlineTmp3) (.vreg inlineTmp0) (.vreg inlineTmp2)) <|
   .instr (.ADD (.vreg inlineTmp3) (.vreg inlineTmp3) (.vreg inlineTmp5)) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp6)) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp6) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp4) (.vreg inlineTmp2) (31 : BitVec 6) <|
   .instr (.XOR (.vreg inlineTmp3) (.vreg inlineTmp2) (.vreg inlineTmp4)) <|
   .instr (.SUB (.vreg inlineTmp3) (.vreg inlineTmp3) (.vreg inlineTmp4)) <|
@@ -87,7 +87,7 @@ def divuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
   .instr (.VirtualZeroExtendWord (.vreg inlineTmp0) (.xreg rs1)) <|
   .instr (.VirtualZeroExtendWord (.vreg inlineTmp1) (.xreg rs2)) <|
-  .instr (.VirtualAdvice inlineTmp2 quotient) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp2) quotient) <|
   .instr (.VirtualAssertMulUNoOverflow (.vreg inlineTmp2) (.vreg inlineTmp1)) <|
   .instr (.MUL (.vreg inlineTmp3) (.vreg inlineTmp2) (.vreg inlineTmp1)) <|
   .instr (.VirtualAssertLTE (.vreg inlineTmp3) (.vreg inlineTmp0)) <|
@@ -103,20 +103,20 @@ inputs: quotient and absolute remainder. -/
 def remProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice inlineTmp0 quotient) <|
-  .instr (.VirtualAdvice inlineTmp1 remAbs) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp0) quotient) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp1) remAbs) <|
   .instr (.VirtualAssertValidDiv0 (.xreg rs2) (.vreg inlineTmp0)) <|
   .instr (.VirtualChangeDivisor (.vreg inlineTmp2) (.xreg rs1) (.xreg rs2)) <|
   mulhBlock inlineTmp4 inlineTmp5 inlineTmp6
     (.vreg inlineTmp3) (.vreg inlineTmp0) (.vreg inlineTmp2) <|
   .instr (.MUL (.vreg inlineTmp4) (.vreg inlineTmp0) (.vreg inlineTmp2)) <|
   sraiBlock (.vreg inlineTmp5) (.vreg inlineTmp4) (63 : BitVec 6) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp5)) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp5) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp3) (.xreg rs1) (63 : BitVec 6) <|
   .instr (.XOR (.vreg inlineTmp5) (.vreg inlineTmp1) (.vreg inlineTmp3)) <|
   .instr (.SUB (.vreg inlineTmp5) (.vreg inlineTmp5) (.vreg inlineTmp3)) <|
   .instr (.ADD (.vreg inlineTmp4) (.vreg inlineTmp4) (.vreg inlineTmp5)) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp4) (.xreg rs1)) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp4) (.xreg rs1) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp3) (.vreg inlineTmp2) (63 : BitVec 6) <|
   .instr (.XOR (.vreg inlineTmp4) (.vreg inlineTmp2) (.vreg inlineTmp3)) <|
   .instr (.SUB (.vreg inlineTmp4) (.vreg inlineTmp4) (.vreg inlineTmp3)) <|
@@ -127,7 +127,7 @@ def remProgram (rs2 rs1 rd : regidx)
 /-- Jolt ISA program for RV64 `REMU`. The quotient advice is explicit. -/
 def remuProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice inlineTmp0 quotient) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp0) quotient) <|
   .instr (.VirtualAssertMulUNoOverflow (.vreg inlineTmp0) (.xreg rs2)) <|
   .instr (.MUL (.vreg inlineTmp0) (.vreg inlineTmp0) (.xreg rs2)) <|
   .instr (.VirtualAssertLTE (.vreg inlineTmp0) (.xreg rs1)) <|
@@ -144,22 +144,22 @@ loaded into `v0`, and the absolute remainder loaded into `v1`.
 def remwProgram (rs2 rs1 rd : regidx)
     (quotient remAbs : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
-  .instr (.VirtualAdvice inlineTmp0 quotient) <|
-  .instr (.VirtualAdvice inlineTmp1 remAbs) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp0) quotient) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp1) remAbs) <|
   .instr (.VirtualSignExtendWord (.vreg inlineTmp6) (.xreg rs1)) <|
   .instr (.VirtualSignExtendWord (.vreg inlineTmp5) (.xreg rs2)) <|
   .instr (.VirtualAssertValidDiv0 (.vreg inlineTmp5) (.vreg inlineTmp0)) <|
   .instr (.VirtualChangeDivisorW (.vreg inlineTmp2) (.vreg inlineTmp6) (.vreg inlineTmp5)) <|
   .instr (.VirtualSignExtendWord (.vreg inlineTmp3) (.vreg inlineTmp0)) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp0)) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp0) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp4) (.vreg inlineTmp1) (32 : BitVec 6) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp4) (.xreg (regidx.Regidx 0))) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp4) (.xreg (regidx.Regidx 0)) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp4) (.vreg inlineTmp6) (31 : BitVec 6) <|
   .instr (.XOR (.vreg inlineTmp5) (.vreg inlineTmp1) (.vreg inlineTmp4)) <|
   .instr (.SUB (.vreg inlineTmp5) (.vreg inlineTmp5) (.vreg inlineTmp4)) <|
   .instr (.MUL (.vreg inlineTmp3) (.vreg inlineTmp0) (.vreg inlineTmp2)) <|
   .instr (.ADD (.vreg inlineTmp3) (.vreg inlineTmp3) (.vreg inlineTmp5)) <|
-  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp6)) <|
+  .instr (.VirtualAssertEQ (.vreg inlineTmp3) (.vreg inlineTmp6) (0 : BitVec 13)) <|
   sraiBlock (.vreg inlineTmp4) (.vreg inlineTmp2) (31 : BitVec 6) <|
   .instr (.XOR (.vreg inlineTmp3) (.vreg inlineTmp2) (.vreg inlineTmp4)) <|
   .instr (.SUB (.vreg inlineTmp3) (.vreg inlineTmp3) (.vreg inlineTmp4)) <|
@@ -172,7 +172,7 @@ def remuwProgram (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
   .instr (.VirtualZeroExtendWord (.vreg inlineTmp0) (.xreg rs1)) <|
   .instr (.VirtualZeroExtendWord (.vreg inlineTmp1) (.xreg rs2)) <|
-  .instr (.VirtualAdvice inlineTmp2 quotient) <|
+  .instr (.VirtualAdvice (.vreg inlineTmp2) quotient) <|
   .instr (.VirtualAssertMulUNoOverflow (.vreg inlineTmp2) (.vreg inlineTmp1)) <|
   .instr (.MUL (.vreg inlineTmp2) (.vreg inlineTmp2) (.vreg inlineTmp1)) <|
   .instr (.VirtualAssertLTE (.vreg inlineTmp2) (.vreg inlineTmp0)) <|

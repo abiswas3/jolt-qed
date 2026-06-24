@@ -29,7 +29,7 @@ theorem allocate_layout :
   decide
 
 def phase_setup (quotient : BitVec 64) : JoltISA.Program :=
-  .instr (.VirtualAdvice v0VReg quotient) <|
+  .instr (.VirtualAdvice (.vreg v0VReg) quotient) <|
   .done RETIRE_SUCCESS
 
 def phase_overflow_check (rs2 : regidx) : JoltISA.Program :=

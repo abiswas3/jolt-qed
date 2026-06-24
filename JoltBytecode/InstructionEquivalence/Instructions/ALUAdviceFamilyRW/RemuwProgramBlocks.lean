@@ -44,7 +44,7 @@ def phase_setup (rs1 rs2 : regidx) (quotient : BitVec 64) :
     JoltISA.Program :=
   .instr (.VirtualZeroExtendWord (.vreg rs1VReg) (.xreg rs1)) <|
   .instr (.VirtualZeroExtendWord (.vreg rs2VReg) (.xreg rs2)) <|
-  .instr (.VirtualAdvice vTmpVReg quotient) <|
+  .instr (.VirtualAdvice (.vreg vTmpVReg) quotient) <|
   .instr (.VirtualAssertMulUNoOverflow (.vreg vTmpVReg) (.vreg rs2VReg)) <|
   .done RETIRE_SUCCESS
 

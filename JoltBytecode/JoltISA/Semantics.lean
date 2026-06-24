@@ -324,8 +324,8 @@ def execInstr : Instr → JoltMonad ExecutionResult
       else
         pure (ExecutionResult.Memory_Exception
           (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ()))
-  | .VirtualAdvice vd value => do
-      writeVReg vd value
+  | .VirtualAdvice dst value => do
+      writeDst dst value
       pure RETIRE_SUCCESS
   | .VirtualAdviceLoad dst value => do
       writeDst dst value
@@ -335,11 +335,16 @@ def execInstr : Instr → JoltMonad ExecutionResult
       pure RETIRE_SUCCESS
   | .VirtualHostIO =>
       pure RETIRE_SUCCESS
-  | .VirtualAssertEQ lhs rhs => do
-      let x ← readSrc lhs
-      let y ← readSrc rhs
-      if x = y then pure RETIRE_SUCCESS
-      else throw (Error.Assertion "VirtualAssertEQ")
+  | .VirtualAssertEQ lhs rhs imm => do
+      if imm = 0#13 then
+        let x ← readSrc lhs
+        let y ← readSrc rhs
+        if x = y then pure RETIRE_SUCCESS
+        else throw (Error.Assertion "VirtualAssertEQ")
+      else
+        -- WARNING: Rust only logs a warning here; logs are not modeled in execution state.
+        -- Unclear why Rust source does this, but this models the Rust code
+        pure RETIRE_SUCCESS
   | .VirtualAssertValidDiv0 divisor quotient => do
       let d ← readSrc divisor
       let q ← readSrc quotient
