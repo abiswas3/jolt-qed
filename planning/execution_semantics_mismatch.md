@@ -44,6 +44,24 @@ misalignment branch; the successful path still uses the same
 because both ordinary stores and AMO write-side failures already fall under
 Sail's `E_SAMO_Addr_Align` class.
 
+## Rust panic versus Lean memory exceptions :
+
+Rust Jolt tracer rows often treat invalid memory paths as host-side failures:
+`load_doubleword` / `store_doubleword` assert alignment or unwrap/panic on MMU
+errors. Sail does not model those paths as host panics; it returns structured
+architectural exceptions such as `ExecutionResult.Memory_Exception`.
+
+A panic/assert is outside the modeled CPU state: the host Rust program fails.
+`Memory_Exception` is inside the modeled CPU state: the instruction step returns
+a structured architectural result.
+
+Lean follows the Sail-facing model for `LD`, `SD`, and explicit alignment
+assert rows. That means the successful row behavior is still checked against
+Rust, but failure behavior is intentionally structured so instruction proofs can
+compare against Sail. When native entries below mention Rust assert/panic versus
+Lean `Memory_Exception`, this is a modeling-boundary caveat rather than a claim
+that the successful Rust row semantics are wrong.
+
 # Natives
 
 ## NoOp :
@@ -472,37 +490,41 @@ Issues found: None. Writes all ones for a set sign bit and zero otherwise, match
 
 ## VirtualAssertHalfwordAlignment :
 
-Status: WARNING: issues found
+Status: DONE: perfectly aligned
 
-Perfectly aligned: no
+Perfectly aligned: yes
 
-Issues found:
+Issues found: None under the Sail-facing failure model.
 
-- Pass condition and wrapping address arithmetic align with Rust.
-- Failure behavior does not exactly align with Rust `cpu_exec`: Rust asserts/panics and has no fault operand, while Lean returns `ExecutionResult.Memory_Exception` with a caller-supplied `ExceptionType`.
-- This is intentional for source-instruction equivalence against Sail exceptions, but it is not exact Rust row execution semantics.
+Notes: Pass condition and wrapping address arithmetic align with Rust. Rust
+assert/panic versus Lean `Memory_Exception` is the intentional modeling boundary
+described under `# Notes`.
 
 ## VirtualAssertWordAlignment :
 
-Status: WARNING: issues found
+Status: DONE: perfectly aligned
 
-Perfectly aligned: no
+Perfectly aligned: yes
 
-Issues found:
+Issues found: None under the Sail-facing failure model.
 
-- Pass condition and wrapping address arithmetic align with Rust.
-- Failure behavior does not exactly align with Rust `cpu_exec`: Rust asserts/panics and has no fault operand, while Lean returns `ExecutionResult.Memory_Exception` with a caller-supplied `ExceptionType`.
-- This is intentional for source-instruction equivalence against Sail exceptions, but it is not exact Rust row execution semantics.
+Notes: Pass condition and wrapping address arithmetic align with Rust. Rust
+assert/panic versus Lean `Memory_Exception` is the intentional modeling boundary
+described under `# Notes`.
 
 ## LD :
 
-Status: WARNING: issues found
+Status: DONE: perfectly aligned
 
-Perfectly aligned: no
+Perfectly aligned: yes
 
-Issues found:
+Issues found: None under the Sail-facing failure model.
 
-- Rust's `LD` path calls `load_doubleword`; unaligned or failing MMU paths assert/panic rather than returning a structured `ExecutionResult`. Lean is using Sail-style structured memory results.
+Notes: The successful `LD` path aligns with Rust `load_doubleword`. Native
+`rd = x0` still performs the memory read before the architectural writeback
+becomes a no-op, so the native row does not have the source-expansion
+materialization issue. Rust assert/panic versus Lean `Memory_Exception` is the
+intentional modeling boundary described under `# Notes`.
 
 Resolved:
 
@@ -510,15 +532,16 @@ Resolved:
 
 ## SD :
 
-Status: WARNING: issues found
+Status: DONE: perfectly aligned
 
-Perfectly aligned: no
+Perfectly aligned: yes
 
-Issues found:
+Issues found: None under the Sail-facing failure model.
 
-- Successful aligned store semantics align with Rust.
-- Failure behavior is not exact Rust `cpu_exec`: Rust `store_doubleword` asserts/unwraps on failing MMU paths, while Lean returns Sail-style `ExecutionResult.Memory_Exception`.
-- The alignment fault class itself is consistent with Sail store/AMO behavior (`E_SAMO_Addr_Align`).
+Notes: Successful aligned store semantics align with Rust, and the alignment
+fault class is consistent with Sail store/AMO behavior
+(`E_SAMO_Addr_Align`). Rust assert/panic versus Lean `Memory_Exception` is the
+intentional modeling boundary described under `# Notes`.
 
 ## VirtualAdvice :
 
@@ -642,7 +665,7 @@ The expansion pass checked the Lean expansion files under `JoltBytecode/JoltISA/
 
 Status: DONE: expansion shape aligned
 
-Perfectly aligned: yes, modulo the row-level caveats already listed under `# Natives`.
+Perfectly aligned: yes, modulo the row-level statuses already listed under `# Natives`.
 
 Issues found: None. The fixed scratch-register layout, recursive lowering shape, word sign/zero extension, shift bitmask conventions, and division advice-verifier sequences line up with Rust.
 
@@ -661,7 +684,7 @@ Issues found:
 
 Status: DONE: expansion shape aligned
 
-Perfectly aligned: yes, modulo the row-level `LD`/`SD` structured-failure caveats already listed under `# Natives`.
+Perfectly aligned: yes.
 
 Issues found: None in expansion shape. `SB`/`SH`/`SW` splicing and alignment assertions match the Rust recipes.
 
