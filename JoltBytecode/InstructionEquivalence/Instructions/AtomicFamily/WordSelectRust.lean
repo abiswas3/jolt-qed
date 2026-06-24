@@ -87,7 +87,7 @@ theorem amo_word_rust_select_pre64_aligned_run
     exact hread_mmio
   have hld :
       (JoltISA.execInstr
-        (.LD (.vreg JoltISA.amoWordSelectDwordVReg)
+        (.LD .amo (.vreg JoltISA.amoWordSelectDwordVReg)
           (.vreg JoltISA.amoWordSelectShiftVReg) (0 : BitVec 12))).run js_base =
         .ok RETIRE_SUCCESS
           { sail := js_base.sail
@@ -113,7 +113,7 @@ theorem amo_word_rust_select_pre64_aligned_run
         else js_base.vregs r }
   have hld_named :
       (JoltISA.execInstr
-        (.LD (.vreg JoltISA.amoWordSelectDwordVReg)
+        (.LD .amo (.vreg JoltISA.amoWordSelectDwordVReg)
           (.vreg JoltISA.amoWordSelectShiftVReg) (0 : BitVec 12))).run js_base =
         .ok RETIRE_SUCCESS js_load := by
     exact hld

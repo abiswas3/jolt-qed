@@ -50,7 +50,7 @@ def storeInlineTmp : VReg := inlineTmp4
 def sbProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
   .instr (.ADDI (.vreg storeV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg storeV1) (.vreg storeV0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg storeV2) (.vreg storeV1) 0) <|
+  .instr (.LD .normal (.vreg storeV2) (.vreg storeV1) 0) <|
   slliBlock (.vreg storeV3) (.vreg storeV0) (3 : BitVec 6) <|
   .instr (.LUI (.vreg storeV0) (0xff : BitVec 64)) <|
   sllBlock (.vreg storeV0) (.vreg storeV0) (.vreg storeV3) storeInlineTmp <|
@@ -67,7 +67,7 @@ def shProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
   .instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_SAMO_Addr_Align ())) <|
   .instr (.ADDI (.vreg storeV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg storeV1) (.vreg storeV0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg storeV2) (.vreg storeV1) 0) <|
+  .instr (.LD .normal (.vreg storeV2) (.vreg storeV1) 0) <|
   slliBlock (.vreg storeV3) (.vreg storeV0) (3 : BitVec 6) <|
   .instr (.LUI (.vreg storeV0) (0xffff : BitVec 64)) <|
   sllBlock (.vreg storeV0) (.vreg storeV0) (.vreg storeV3) storeInlineTmp <|
@@ -84,7 +84,7 @@ def swProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
   .instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_SAMO_Addr_Align ())) <|
   .instr (.ADDI (.vreg storeV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg storeV1) (.vreg storeV0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg storeV2) (.vreg storeV1) 0) <|
+  .instr (.LD .normal (.vreg storeV2) (.vreg storeV1) 0) <|
   slliBlock (.vreg storeV0) (.vreg storeV0) (3 : BitVec 6) <|
   .instr (.ORI (.vreg storeV3) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
   srliBlock (.vreg storeV3) (.vreg storeV3) (32 : BitVec 6) <|

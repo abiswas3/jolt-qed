@@ -26,6 +26,23 @@ inductive Dst where
   | xreg : regidx → Dst
   deriving Repr
 
+/-- Sail-facing fault classification for a Jolt `LD` row.
+
+Rust/Jolt does not carry a separate opcode bit for normal loads versus the read
+side of an AMO expansion. Sail does distinguish those pathways when classifying
+memory exceptions. This marker is Lean proof metadata used to preserve the Rust
+row shape while selecting the Sail exception class expected at that expansion
+boundary. It does not change the successful load path.
+-/
+inductive LoadFaultClass where
+  | normal
+  | amo
+  deriving Repr
+
+def LoadFaultClass.alignFault : LoadFaultClass → ExceptionType
+  | .normal => ExceptionType.E_Load_Addr_Align ()
+  | .amo => ExceptionType.E_SAMO_Addr_Align ()
+
 -- Opcodes
 inductive Instr where
   | NoOp
@@ -83,7 +100,7 @@ inductive Instr where
   | VirtualMovsign (dst : Dst) (src : Src)
   | VirtualAssertHalfwordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
   | VirtualAssertWordAlignment (base : regidx) (imm : BitVec 12) (fault : ExceptionType)
-  | LD (dst : Dst) (base : Src) (imm : BitVec 12)
+  | LD (faultClass : LoadFaultClass) (dst : Dst) (base : Src) (imm : BitVec 12)
   | SD (base value : Src) (imm : BitVec 12)
   | VirtualAdvice (vd : VReg) (value : BitVec 64)
   | VirtualAdviceLoad (dst : Dst) (value : BitVec 64)

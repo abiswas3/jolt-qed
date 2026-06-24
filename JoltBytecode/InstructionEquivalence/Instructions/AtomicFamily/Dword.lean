@@ -92,7 +92,7 @@ theorem amo_dword_ld_xreg_misaligned_run
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (h_align : addr &&& (7 : BitVec 64) ≠ 0) :
     (JoltISA.execInstr
-      (.LD (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
+      (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js := by
   have haddr0 := amo_dword_zero_offset_addr addr
@@ -154,7 +154,7 @@ theorem amo_dword_ld_old_run_into
     (holdReg : WritableVReg oldReg) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
-        (.LD (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
+        (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
         .ok RETIRE_SUCCESS js_afterLoad ∧
       js_afterLoad.sail = js.sail ∧
       js_afterLoad.vregs oldReg = oldVal := by
@@ -200,7 +200,7 @@ theorem amo_dword_ld_old_run
         .ok (Ok oldVal) js.sail) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
-        (.LD (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
+        (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
         .ok RETIRE_SUCCESS js_afterLoad ∧
       js_afterLoad.sail = js.sail ∧
       js_afterLoad.vregs JoltISA.amoOldVReg = oldVal := by
@@ -402,7 +402,7 @@ theorem amo_dword_load_old_aligned_run_into
     (holdReg : WritableVReg oldReg) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
-        (.LD (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
+        (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
         .ok RETIRE_SUCCESS js_afterLoad ∧
       js_afterLoad.sail = js.sail ∧
       js_afterLoad.vregs oldReg =
@@ -435,7 +435,7 @@ theorem amo_dword_load_old_aligned_run
     (h_align : addr &&& (7 : BitVec 64) = 0) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
-        (.LD (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
+        (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
         .ok RETIRE_SUCCESS js_afterLoad ∧
       js_afterLoad.sail = js.sail ∧
       js_afterLoad.vregs JoltISA.amoOldVReg =
@@ -1760,14 +1760,14 @@ theorem amo_dword_double_binop_program_concrete_misaligned
   let e := (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())
   have hld :
       (JoltISA.execInstr
-        (.LD (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
+        (.LD .amo (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
       .ok (ExecutionResult.Memory_Exception e) js := by
     exact amo_dword_ld_xreg_misaligned_run
       JoltISA.amoDoubleBinopOldVReg rs1 js addr hrs1 h_align
   unfold JoltISA.amoDoubleBinopProgram
   exact
     JoltISA.execProgram_instr_run_memory_exception
-      (.LD (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs1) (0 : BitVec 12))
+      (.LD .amo (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs1) (0 : BitVec 12))
       rest js js e hld
 
 /-- An 8-byte aligned virtual address satisfies Sail's aligned-address test. -/
@@ -2457,14 +2457,14 @@ theorem amo_dword_double_select_program_concrete_misaligned
   let e := (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())
   have hld :
       (JoltISA.execInstr
-        (.LD (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
+        (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
       .ok (ExecutionResult.Memory_Exception e) js := by
     exact amo_dword_ld_xreg_misaligned_run
       JoltISA.amoOldVReg rs1 js addr hrs1 h_align
   unfold JoltISA.amoDoubleSelectProgram
   exact
     JoltISA.execProgram_instr_run_memory_exception
-      (.LD (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))
+      (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))
       rest js js e hld
 
 /-- Shared aligned public branch for dword AMO double-select expansions. -/

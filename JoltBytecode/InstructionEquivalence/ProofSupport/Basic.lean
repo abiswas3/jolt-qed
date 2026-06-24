@@ -122,7 +122,7 @@ def InstrWritesNoProtectedVReg : Instr → Prop
   | .VirtualMovsign dst _ => DstWritesNoProtectedVReg dst
   | .VirtualAssertHalfwordAlignment _ _ _ => True
   | .VirtualAssertWordAlignment _ _ _ => True
-  | .LD dst _ _ => DstWritesNoProtectedVReg dst
+  | .LD _ dst _ _ => DstWritesNoProtectedVReg dst
   | .SD _ _ _ => True
   | .VirtualAdvice vd _ => VRegWritesNoProtectedVReg vd
   | .VirtualAdviceLoad dst _ => DstWritesNoProtectedVReg dst
@@ -582,7 +582,7 @@ private theorem vregVregWrite_preserves_protected
   exact vregWrite_preserves_protected hsafe hrun
 
 private theorem ld_preserves_protected
-    {dst : Dst} {base : Src} {imm : BitVec 12}
+    {faultClass : LoadFaultClass} {dst : Dst} {base : Src} {imm : BitVec 12}
     {js js' : SailJoltState} {result : ExecutionResult}
     (hsafe : DstWritesNoProtectedVReg dst)
     (hrun : (do
@@ -597,7 +597,7 @@ private theorem ld_preserves_protected
           | .Err e => pure e
         else
           pure (ExecutionResult.Memory_Exception
-            (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) :
+            (Virtaddr addr, LoadFaultClass.alignFault faultClass)) :
         JoltMonad ExecutionResult).run js = .ok result js') :
     ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
   simp only [EStateM.run, bind, EStateM.bind] at hrun
@@ -857,7 +857,7 @@ theorem execInstr_preserves_protected
   | VirtualAssertWordAlignment base imm fault =>
       exact alignmentAssert_preserves_protected
         (mask := (3 : BitVec 64)) (by simpa [execInstr] using hrun)
-  | LD dst base imm =>
+  | LD faultClass dst base imm =>
       exact ld_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | SD base value imm =>
       exact sd_preserves_protected (by simpa [execInstr] using hrun)

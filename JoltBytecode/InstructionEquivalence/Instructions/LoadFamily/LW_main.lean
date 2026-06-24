@@ -225,7 +225,7 @@ theorem lwProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
       (.instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
        .instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
-       .instr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
+       .instr (.LD .normal (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
     rw [hload_run, hlogic_run, hwrite_run]
   · rw [hwrite_sail, hlogic_val]
     exact congrArg (stateAfterWrite js.sail rd)
@@ -258,7 +258,7 @@ theorem lwProgram_concrete_misaligned (imm : BitVec 12) (rs1 rd : regidx)
     (LoadProgramBlocks.assertWordBlockMisaligned
       (.instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
-       .instr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) <|
+       .instr (.LD .normal (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) <|
        JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
        JoltISA.srlBlock (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp2 <|
        .instr (.VirtualSignExtendWord (.xreg rd) (.vreg JoltISA.inlineTmp1)) <|

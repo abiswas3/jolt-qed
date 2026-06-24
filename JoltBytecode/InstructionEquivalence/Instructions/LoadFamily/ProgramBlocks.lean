@@ -67,7 +67,7 @@ theorem setupBlock (rest : JoltISA.Program)
       (JoltISA.execProgram
         (.instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
          .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
-         .instr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) rest)).run js =
+         .instr (.LD .normal (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) rest)).run js =
         (JoltISA.execProgram rest).run js_load ∧
       js_load.sail = js.sail ∧
       js_load.vregs JoltISA.inlineTmp0 = load_effective_address val imm ∧
@@ -125,7 +125,7 @@ theorem setupBlock (rest : JoltISA.Program)
     rw [hv1, haddr0]
     simpa [dword] using hread
   have hld :
-      (JoltISA.execInstr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0)).run js1 =
+      (JoltISA.execInstr (.LD .normal (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0)).run js1 =
         .ok RETIRE_SUCCESS js_load := by
     have hld_align :
         (js1.vregs JoltISA.inlineTmp1 + sign_extend (m := 64) (0 : BitVec 12)) &&&
@@ -178,7 +178,7 @@ theorem assertHalfwordSetupBlockAligned (rest : JoltISA.Program)
         (.instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
          .instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
          .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
-         .instr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) rest)).run js =
+         .instr (.LD .normal (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) rest)).run js =
         (JoltISA.execProgram rest).run js_load ∧
       js_load.sail = js.sail ∧
       js_load.vregs JoltISA.inlineTmp0 = load_effective_address val imm ∧
@@ -223,7 +223,7 @@ theorem assertWordSetupBlockAligned (rest : JoltISA.Program)
         (.instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
          .instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
          .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
-         .instr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) rest)).run js =
+         .instr (.LD .normal (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) rest)).run js =
         (JoltISA.execProgram rest).run js_load ∧
       js_load.sail = js.sail ∧
       js_load.vregs JoltISA.inlineTmp0 = load_effective_address val imm ∧

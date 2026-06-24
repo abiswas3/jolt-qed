@@ -192,7 +192,7 @@ theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
     change (JoltISA.execProgram
       (.instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
        .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
-       .instr (.LD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
+       .instr (.LD .normal (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
     rw [hload_run, hlogic_run, hwrite_run]
     rfl
   · rw [hwrite_sail]

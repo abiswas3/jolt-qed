@@ -518,6 +518,7 @@ theorem aligned_dword_vmem_read_reduces (addr : BitVec 64) (s : SailState)
 aligned dword address backed by exact flat-memory facts, then `vreg_LD` writes
 the corresponding `loaded_dword_at` value into `vd`. -/
 theorem vreg_LD_run_of_aligned_dword_phys
+    {faultClass : JoltISA.LoadFaultClass}
     (vd vs1 : BitVec 7) (js : SailJoltState) (addr : BitVec 64)
     (hvs1 : js.vregs vs1 = addr)
     (hpriv : Assumptions.CurPrivilegeMachine js.sail)
@@ -527,7 +528,7 @@ theorem vreg_LD_run_of_aligned_dword_phys
     (hpmp : Assumptions.LoadPmpOk addr 8 js.sail)
     (hmmio : Assumptions.NotReadableMmio addr 8 js.sail)
     (hvd : WritableVReg vd) :
-    (JoltISA.execInstr (.LD (.vreg vd) (.vreg vs1) 0)).run js = .ok RETIRE_SUCCESS
+    (JoltISA.execInstr (.LD faultClass (.vreg vd) (.vreg vs1) 0)).run js = .ok RETIRE_SUCCESS
       { sail := js.sail
         vregs := fun r =>
           if r = vd then loaded_dword_at js.sail addr hbytes haligned.no_ovf else js.vregs r } := by

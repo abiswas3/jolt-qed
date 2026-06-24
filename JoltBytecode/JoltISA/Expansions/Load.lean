@@ -37,7 +37,7 @@ def loadInlineTmp : VReg := inlineTmp2
 def lbProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.LD .normal (.vreg loadV1) (.vreg loadV1) 0) <|
   .instr (.XORI (.vreg loadV0) (.vreg loadV0) 7) <|
   slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
   sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
@@ -48,7 +48,7 @@ def lbProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
 def lbuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.LD .normal (.vreg loadV1) (.vreg loadV1) 0) <|
   .instr (.XORI (.vreg loadV0) (.vreg loadV0) 7) <|
   slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
   sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
@@ -60,7 +60,7 @@ def lhProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
   .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.LD .normal (.vreg loadV1) (.vreg loadV1) 0) <|
   .instr (.XORI (.vreg loadV0) (.vreg loadV0) 6) <|
   slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
   sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
@@ -72,7 +72,7 @@ def lhuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
   .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.LD .normal (.vreg loadV1) (.vreg loadV1) 0) <|
   .instr (.XORI (.vreg loadV0) (.vreg loadV0) 6) <|
   slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
   sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
@@ -84,7 +84,7 @@ def lwProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
   .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.LD .normal (.vreg loadV1) (.vreg loadV1) 0) <|
   slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
   srlBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|
   .instr (.VirtualSignExtendWord (.xreg rd) (.vreg loadV1)) <|
@@ -95,7 +95,7 @@ def lwuProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
   .instr (.VirtualAssertWordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
   .instr (.ADDI (.vreg loadV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg loadV1) (.vreg loadV0) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg loadV1) (.vreg loadV1) 0) <|
+  .instr (.LD .normal (.vreg loadV1) (.vreg loadV1) 0) <|
   .instr (.XORI (.vreg loadV0) (.vreg loadV0) 4) <|
   slliBlock (.vreg loadV0) (.vreg loadV0) (3 : BitVec 6) <|
   sllBlock (.vreg loadV1) (.vreg loadV1) (.vreg loadV0) loadInlineTmp <|

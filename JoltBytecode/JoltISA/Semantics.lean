@@ -301,7 +301,7 @@ def execInstr : Instr → JoltMonad ExecutionResult
         pure RETIRE_SUCCESS
       else
         pure (ExecutionResult.Memory_Exception (Virtaddr addr, fault))
-  | .LD dst base imm => do
+  | .LD faultClass dst base imm => do
       let baseValue ← readSrc base
       let addr := baseValue + sign_extend (m := 64) imm
       if addr &&& (7 : BitVec 64) = 0 then
@@ -312,7 +312,7 @@ def execInstr : Instr → JoltMonad ExecutionResult
         | .Err e => pure e
       else
         pure (ExecutionResult.Memory_Exception
-          (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ()))
+          (Virtaddr addr, LoadFaultClass.alignFault faultClass))
   | .SD base value imm => do
       let baseValue ← readSrc base
       let addr := baseValue + sign_extend (m := 64) imm

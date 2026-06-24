@@ -78,7 +78,7 @@ private theorem amoswapdProgram_project_eq_sail
     let e := (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())
     have hld :
         (JoltISA.execInstr
-          (.LD (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
+          (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
         .ok (ExecutionResult.Memory_Exception e) js := by
       exact
         amo_dword_ld_xreg_misaligned_run
@@ -89,7 +89,7 @@ private theorem amoswapdProgram_project_eq_sail
       unfold JoltISA.amoswapdProgram
       exact
         JoltISA.execProgram_instr_run_memory_exception
-          (.LD (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))
+          (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))
           rest js js e hld
     have hsail :=
       execute_AMO_dword_misaligned

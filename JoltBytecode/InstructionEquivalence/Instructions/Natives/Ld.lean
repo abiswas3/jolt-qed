@@ -17,7 +17,7 @@ def ldInstrEqSailStatement
     (js : SailJoltState)
     (_h : LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
   System.systemProjectResult
-    ((JoltISA.execInstr (.LD (.xreg rd) (.xreg rs1) imm)).run js) =
+    ((JoltISA.execInstr (.LD .normal (.xreg rd) (.xreg rs1) imm)).run js) =
     ((execute_LOAD imm rs1 rd false 8).run js.sail)
 
 theorem ldInstr_eq_sail

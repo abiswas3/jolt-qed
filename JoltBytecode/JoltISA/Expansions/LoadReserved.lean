@@ -42,7 +42,7 @@ def lrwProgram (rs1 rd : regidx) : Program :=
     (ExceptionType.E_Load_Addr_Align ())) <|
   .instr (.ADDI (.vreg lrwAddrVReg) (.xreg rs1) (0 : BitVec 12)) <|
   .instr (.ANDI (.vreg lrwDwordVReg) (.vreg lrwAddrVReg) (-8 : BitVec 12)) <|
-  .instr (.LD (.vreg lrwDwordVReg) (.vreg lrwDwordVReg) (0 : BitVec 12)) <|
+  .instr (.LD .normal (.vreg lrwDwordVReg) (.vreg lrwDwordVReg) (0 : BitVec 12)) <|
   slliBlock (.vreg lrwAddrVReg) (.vreg lrwAddrVReg) (3 : BitVec 6) <|
   srlBlock (.vreg lrwDwordVReg) (.vreg lrwDwordVReg) (.vreg lrwAddrVReg)
     lrwShiftMaskVReg <|
@@ -60,7 +60,7 @@ Faithful to `lrd.rs::inline_sequence`:
 def lrdProgram (rs1 rd : regidx) : Program :=
   .instr (.ADDI (.vreg reservationDReg) (.xreg rs1) (0 : BitVec 12)) <|
   .instr (.ADDI (.vreg reservationWReg) (.xreg rs1) (0 : BitVec 12)) <|
-  .instr (.LD (.xreg rd) (.xreg rs1) (0 : BitVec 12)) <|
+  .instr (.LD .normal (.xreg rd) (.xreg rs1) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 end JoltISA

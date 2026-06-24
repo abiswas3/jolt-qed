@@ -134,7 +134,7 @@ theorem ld_run_vreg_vreg_from_memory_read (vd base : VReg) (imm : BitVec 12)
         (Load Data) false false false js.sail =
         .ok (Ok value) js.sail)
     (hvd : WritableVReg vd) :
-    (execInstr (.LD (.vreg vd) (.vreg base) imm)).run js =
+    (execInstr (.LD .normal (.vreg vd) (.vreg base) imm)).run js =
       .ok RETIRE_SUCCESS
         { sail := js.sail
           vregs := fun r => if r = vd then value else js.vregs r } := by
