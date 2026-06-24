@@ -4,8 +4,10 @@ This is the row-level audit snapshot for `JoltBytecode/JoltISA`.
 
 Scope notes:
 
-- The `# Natives` entries below cover every current `JoltISA.Instr` constructor in `JoltBytecode/JoltISA/Instruction.lean`.
-- The `# Expanded` entries below cover every current `JoltISA.Expanded` constructor in `JoltBytecode/JoltISA/Instruction.lean`.
+- The audit covers every current `JoltISA.Instr` constructor in `JoltBytecode/JoltISA/Instruction.lean`.
+- The audit covers every current `JoltISA.Expanded` constructor in `JoltBytecode/JoltISA/Instruction.lean`.
+- The entries below intentionally retain only non-`DONE` issues; perfectly
+  aligned instructions are omitted to keep the file focused.
 - "Perfectly aligned" means no row-body mismatch was found against the Rust tracer instruction semantics for the audited architectural/proof-visible state.
 - The normal Rust fetch-stage PC increment, trace stamping, lookup-table behavior, and trace-only call metadata are not counted as row-body mismatches here.
 - Assertion panic in Rust versus `Error.Assertion` in Lean is treated as aligned when the pass/fail predicate is the same.
@@ -61,6 +63,21 @@ Rust, but failure behavior is intentionally structured so instruction proofs can
 compare against Sail. When native entries below mention Rust assert/panic versus
 Lean `Memory_Exception`, this is a modeling-boundary caveat rather than a claim
 that the successful Rust row semantics are wrong.
+
+## AMO `rd=x0` source rewrite :
+
+Rust treats AMO source instructions as side-effecting even when `rd = x0`: the
+load/store side effect remains, but the destination write is redirected to a
+temporary virtual register and the later scratch allocation moves up by one
+slot.
+
+Lean now mirrors that rule for AMO expansions with `amoDstFor rd` and
+`amoVRegFor rd n`. When `rd = x0`, `amoDstFor` writes the old value to the
+same temporary destination shape as Rust, and `amoVRegFor` shifts AMO scratch
+registers so the expansion rows line up with the Rust allocator order.
+
+The former AMO `rd=x0` entries are therefore closed and omitted from the
+remaining issue list.
 
 ## VirtualHostIO provenance :
 
@@ -262,150 +279,6 @@ Status: WARNING: advice tape state and `rd=x0` rewrite missing
 Surface: custom-elf source-only.
 
 Issues found: Lean takes explicit advice instead of modeling advice-tape consumption, and currently no-ops `rd=x0` through `pureWritebackTraceProgram` while Rust rewrites `rd=x0` to a temporary to preserve the tape read.
-
-## AMOADDD
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOANDD
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOORD
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOXORD
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOSWAPD
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOMAXD
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOMAXUD
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOMIND
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOMINUD
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOADDW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOANDW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOORW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOXORW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOSWAPW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOMAXW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOMAXUW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOMINW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
-
-## AMOMINUW
-
-Status: NEXT: side-effecting `rd=x0` source rewrite missing
-
-Surface: riscv-atomic source-only.
-
-Issues found: Rust rewrites source `rd=x0` to a temporary before expansion; Lean's AMO program takes `rd` literally.
 
 ## LRD
 

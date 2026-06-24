@@ -177,13 +177,11 @@ theorem amoxorwProgram_eq_sail
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact amoxorwProgram_project_eq_sail rs2 rs1 rd js h
   · simp [JoltISA.amoxorwProgram, JoltISA.amoWordBinopProgram,
-      JoltISA.amoPre64Program, JoltISA.amoPre64ProgramWithScratch,
-      JoltISA.amoPost64Program, JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64ProgramWithScratch,
       JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.amoOldVReg, JoltISA.amoNewVReg, JoltISA.amoMaskVReg,
-      JoltISA.amoDwordVReg, JoltISA.amoShiftVReg, JoltISA.amoInlineTmpVReg]
+      JoltISA.DstWritesNoProtectedVReg]
     exact JoltISA.amoDstFor_writesNoProtectedVReg rd
 
 end AtomicFamily

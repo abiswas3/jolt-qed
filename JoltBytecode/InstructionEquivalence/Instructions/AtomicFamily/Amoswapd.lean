@@ -120,8 +120,7 @@ theorem amoswapdProgram_eq_sail
   · simp [JoltISA.amoswapdProgram,
       JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.amoOldVReg]
+      JoltISA.DstWritesNoProtectedVReg]
     exact JoltISA.amoDstFor_writesNoProtectedVReg rd
 
 end AtomicFamily

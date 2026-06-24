@@ -97,8 +97,7 @@ theorem amomaxdProgram_eq_sail
   · simp [JoltISA.amomaxdProgram, JoltISA.amoDoubleSelectProgram,
       JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.amoOldVReg, JoltISA.amoNewVReg, JoltISA.amoTmpVReg]
+      JoltISA.DstWritesNoProtectedVReg]
     exact JoltISA.amoDstFor_writesNoProtectedVReg rd
 
 end AtomicFamily
