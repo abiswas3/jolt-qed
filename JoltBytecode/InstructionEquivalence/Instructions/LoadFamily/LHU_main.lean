@@ -163,21 +163,32 @@ theorem lhuProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
         (zero_extend (m := 64)
           (loaded_halfword_at js.sail (load_effective_address val imm)
             hbytes_half h_half_no_ovf)) := by
+  let v0 := JoltISA.loadV0For rd
+  let v1 := JoltISA.loadV1For rd
+  let tmp := JoltISA.loadInlineTmpFor rd
+  let dst := JoltISA.loadDstFor rd
+  have hv0 : WritableVReg v0 := by simp [v0]
+  have hv1 : WritableVReg v1 := by simp [v1]
+  have htmp : WritableVReg tmp := by simp [tmp]
+  have hv0_ne_v1 : v0 ≠ v1 := by simp [v0, v1]
+  have hv0_ne_tmp : v0 ≠ tmp := by simp [v0, tmp]
+  have hv1_ne_tmp : v1 ≠ tmp := by simp [v1, tmp]
   let writeTail : JoltISA.Program :=
-    .instr (.VirtualSRLI (.xreg rd) (.vreg JoltISA.inlineTmp1) (JoltISA.srliBitmask (48 : BitVec 6)))
+    .instr (.VirtualSRLI dst (.vreg v1) (JoltISA.srliBitmask (48 : BitVec 6)))
       (.done RETIRE_SUCCESS)
   let logicTail : JoltISA.Program :=
-    .instr (.XORI (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (6 : BitVec 12)) <|
-    JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp2 writeTail
+    .instr (.XORI (.vreg v0) (.vreg v0) (6 : BitVec 12)) <|
+    JoltISA.slliBlock (.vreg v0) (.vreg v0) (3 : BitVec 6) <|
+    JoltISA.sllBlock (.vreg v1) (.vreg v1) (.vreg v0) tmp writeTail
   rcases LoadProgramBlocks.assertHalfwordSetupBlockAligned logicTail
-      imm rs1 js hpriv hmprv val hrx halign hbytes_base hload_pmp_base
-      hread_mmio_base with
+      v0 v1 imm rs1 js hpriv hmprv val hrx halign hbytes_base hload_pmp_base
+      hread_mmio_base hv0 hv1 hv0_ne_v1 with
     ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
   let dword := loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
     hbytes_base (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf
-  rcases LoadProgramBlocks.xoriSlliSllBlock writeTail imm (6 : BitVec 12)
-      js js_load val dword hload_sail hload_v0 hload_v1 with
+  rcases LoadProgramBlocks.xoriSlliSllBlock writeTail v0 v1 tmp imm (6 : BitVec 12)
+      js js_load val dword hload_sail hload_v0 hload_v1 hv0 hv1 htmp
+      hv0_ne_v1 hv0_ne_tmp hv1_ne_tmp with
     ⟨js_shift, hlogic_run, hshift_sail, _hshift_v0, hshift_v1⟩
   let shiftedValue :=
     shift_bits_left
@@ -186,18 +197,18 @@ theorem lhuProgram_concrete_aligned (imm : BitVec 12) (rs1 rd : regidx)
         (shift_bits_left
           (load_effective_address val imm ^^^ sign_extend (m := 64) (6 : BitVec 12))
           (3 : BitVec 6)) 5 0)
-  have hshifted : js_shift.vregs JoltISA.inlineTmp1 = shiftedValue := by
+  have hshifted : js_shift.vregs v1 = shiftedValue := by
     simpa [shiftedValue] using hshift_v1
   rcases LoadProgramBlocks.srliWriteBlock (.done RETIRE_SUCCESS)
-      rd (48 : BitVec 6) js js_shift shiftedValue hshift_sail hshifted with
+      rd v1 (48 : BitVec 6) js js_shift shiftedValue hshift_sail hshifted with
     ⟨js', hwrite_run, hwrite_sail⟩
   refine ⟨js', ?_, ?_⟩
   · unfold JoltISA.lhuProgram
     change (JoltISA.execProgram
       (.instr (.VirtualAssertHalfwordAlignment rs1 imm (ExceptionType.E_Load_Addr_Align ())) <|
-       .instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
-       .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
-       .instr (.LD .normal (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
+       .instr (.ADDI (.vreg v0) (.xreg rs1) imm) <|
+       .instr (.ANDI (.vreg v1) (.vreg v0) (-8 : BitVec 12)) <|
+       .instr (.LD .normal (.vreg v1) (.vreg v1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
     rw [hload_run, hlogic_run, hwrite_run]
     rfl
   · rw [hwrite_sail]
@@ -221,16 +232,20 @@ theorem lhuProgram_concrete_misaligned (imm : BitVec 12) (rs1 rd : regidx)
         (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())) js := by
   let e :=
     (Virtaddr (load_effective_address val imm), ExceptionType.E_Load_Addr_Align ())
+  let v0 := JoltISA.loadV0For rd
+  let v1 := JoltISA.loadV1For rd
+  let tmp := JoltISA.loadInlineTmpFor rd
+  let dst := JoltISA.loadDstFor rd
   unfold JoltISA.lhuProgram
   simpa [e] using
     (LoadProgramBlocks.assertHalfwordBlockMisaligned
-      (.instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
-       .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
-       .instr (.LD .normal (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) 0) <|
-       .instr (.XORI (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (6 : BitVec 12)) <|
-       JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
-       JoltISA.sllBlock (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp2 <|
-       .instr (.VirtualSRLI (.xreg rd) (.vreg JoltISA.inlineTmp1) (JoltISA.srliBitmask (48 : BitVec 6))) <|
+      (.instr (.ADDI (.vreg v0) (.xreg rs1) imm) <|
+       .instr (.ANDI (.vreg v1) (.vreg v0) (-8 : BitVec 12)) <|
+       .instr (.LD .normal (.vreg v1) (.vreg v1) 0) <|
+       .instr (.XORI (.vreg v0) (.vreg v0) (6 : BitVec 12)) <|
+       JoltISA.slliBlock (.vreg v0) (.vreg v0) (3 : BitVec 6) <|
+       JoltISA.sllBlock (.vreg v1) (.vreg v1) (.vreg v0) tmp <|
+       .instr (.VirtualSRLI dst (.vreg v1) (JoltISA.srliBitmask (48 : BitVec 6))) <|
        .done RETIRE_SUCCESS)
       imm rs1 js val hrx h_align)
 
@@ -308,9 +323,7 @@ theorem lhuProgram_preserves_projected_vregs
       (JoltISA.lhuProgram imm rs1 rd) := by
     unfold JoltISA.lhuProgram JoltISA.slliBlock JoltISA.sllBlock
     simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.loadV0, JoltISA.loadV1, JoltISA.loadInlineTmp]
+      JoltISA.InstrWritesNoProtectedVReg]
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     hsafe hrun
 

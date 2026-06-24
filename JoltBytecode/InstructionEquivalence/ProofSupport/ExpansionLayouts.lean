@@ -2,6 +2,7 @@ import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Expansions.Load
 import JoltBytecode.JoltISA.Expansions.Store
 import JoltBytecode.JoltISA.Expansions.Atomics
+import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 import JoltBytecode.InstructionEquivalence.ProofSupport.VirtualRegisters
 
 /-!
@@ -52,6 +53,70 @@ theorem load_allocate_layout :
     allocateInstructionRegister [0] = some (loadV1, [1, 0]) ∧
     allocateInstructionRegister [1, 0] = some (loadInlineTmp, [2, 1, 0]) := by
   decide
+
+/-! Load expansion selector facts.
+
+When Rust first rewrites a side-effecting `rd = x0` destination to a virtual
+register, the ordinary load temporaries shift up by one allocator slot.  These
+small facts keep the instruction proofs phrased in terms of the selector
+functions rather than open-coding that branch. -/
+
+@[simp] theorem loadV0For_writable (rd : regidx) :
+    WritableVReg (loadV0For rd) := by
+  unfold WritableVReg loadV0For loadV0
+  split <;> decide
+
+@[simp] theorem loadV1For_writable (rd : regidx) :
+    WritableVReg (loadV1For rd) := by
+  unfold WritableVReg loadV1For loadV1
+  split <;> decide
+
+@[simp] theorem loadInlineTmpFor_writable (rd : regidx) :
+    WritableVReg (loadInlineTmpFor rd) := by
+  unfold WritableVReg loadInlineTmpFor loadInlineTmp
+  split <;> decide
+
+@[simp] theorem loadV0For_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (loadV0For rd) := by
+  unfold loadV0For loadV0
+  split <;> simp
+
+@[simp] theorem loadV1For_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (loadV1For rd) := by
+  unfold loadV1For loadV1
+  split <;> simp
+
+@[simp] theorem loadInlineTmpFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (loadInlineTmpFor rd) := by
+  unfold loadInlineTmpFor loadInlineTmp
+  split <;> simp
+
+@[simp] theorem loadV0For_ne_loadV1For (rd : regidx) :
+    loadV0For rd ≠ loadV1For rd := by
+  unfold loadV0For loadV1For loadV0 loadV1
+  split <;> simp
+
+@[simp] theorem loadV1For_ne_loadV0For (rd : regidx) :
+    loadV1For rd ≠ loadV0For rd := by
+  exact (loadV0For_ne_loadV1For rd).symm
+
+@[simp] theorem loadV0For_ne_loadInlineTmpFor (rd : regidx) :
+    loadV0For rd ≠ loadInlineTmpFor rd := by
+  unfold loadV0For loadInlineTmpFor loadV0 loadInlineTmp
+  split <;> simp
+
+@[simp] theorem loadInlineTmpFor_ne_loadV0For (rd : regidx) :
+    loadInlineTmpFor rd ≠ loadV0For rd := by
+  exact (loadV0For_ne_loadInlineTmpFor rd).symm
+
+@[simp] theorem loadV1For_ne_loadInlineTmpFor (rd : regidx) :
+    loadV1For rd ≠ loadInlineTmpFor rd := by
+  unfold loadV1For loadInlineTmpFor loadV1 loadInlineTmp
+  split <;> simp
+
+@[simp] theorem loadInlineTmpFor_ne_loadV1For (rd : regidx) :
+    loadInlineTmpFor rd ≠ loadV1For rd := by
+  exact (loadV1For_ne_loadInlineTmpFor rd).symm
 
 /-! ## Store expansion layout -/
 

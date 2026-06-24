@@ -63,6 +63,26 @@ def DstWritesNoProtectedVReg : Dst → Prop
   | .xreg _ => True
   | .vreg vr => ¬ IsProtectedJoltRegister vr
 
+@[simp] theorem loadDstFor_writesNoProtectedVReg (rd : regidx) :
+    DstWritesNoProtectedVReg (loadDstFor rd) := by
+  by_cases hx0 : isX0 rd = true
+  · simpa [loadDstFor, sideEffectingRdZeroDst, DstWritesNoProtectedVReg,
+      hx0, rdZeroRewriteVReg] using
+      (not_protected_of_instructionTmp (r := inlineTmp 0) (n := 0) rfl)
+  · simp [loadDstFor, sideEffectingRdZeroDst, DstWritesNoProtectedVReg, hx0]
+
+@[simp] theorem loadV0For_dstWritesNoProtectedVReg (rd : regidx) :
+    DstWritesNoProtectedVReg (.vreg (loadV0For rd)) := by
+  simp [DstWritesNoProtectedVReg]
+
+@[simp] theorem loadV1For_dstWritesNoProtectedVReg (rd : regidx) :
+    DstWritesNoProtectedVReg (.vreg (loadV1For rd)) := by
+  simp [DstWritesNoProtectedVReg]
+
+@[simp] theorem loadInlineTmpFor_dstWritesNoProtectedVReg (rd : regidx) :
+    DstWritesNoProtectedVReg (.vreg (loadInlineTmpFor rd)) := by
+  simp [DstWritesNoProtectedVReg]
+
 def VRegWritesNoProtectedVReg (vr : VReg) : Prop :=
   ¬ IsProtectedJoltRegister vr
 
@@ -987,6 +1007,29 @@ theorem isX0_regidx_zero :
     isX0 (regidx.Regidx 0) = true := by
   unfold isX0
   simp
+
+/-- If `isX0` succeeds, the register index is architectural `x0`. -/
+theorem eq_regidx_zero_of_isX0_eq_true
+    {rd : regidx}
+    (h : isX0 rd = true) :
+    rd = regidx.Regidx 0 := by
+  cases rd with
+  | Regidx bits =>
+      unfold isX0 at h
+      simp only at h
+      have hbits : bits.toNat = 0 := of_decide_eq_true h
+      congr
+      exact BitVec.eq_of_toNat_eq hbits
+
+/-- A write to a register recognized by `isX0` is a no-op in the pure Sail
+write model. -/
+theorem stateAfterWrite_of_isX0_eq_true
+    {rd : regidx}
+    (h : isX0 rd = true)
+    (s : SailState) (val : BitVec 64) :
+    stateAfterWrite s rd val = s := by
+  rw [eq_regidx_zero_of_isX0_eq_true h]
+  exact stateAfterWrite_regidx_zero s val
 
 /-- If a register is not architectural `x0`, `isX0` returns `false`. -/
 theorem isX0_eq_false_of_ne_zero
