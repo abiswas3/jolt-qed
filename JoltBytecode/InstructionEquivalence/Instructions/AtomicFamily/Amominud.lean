@@ -49,13 +49,13 @@ private theorem amominudProgram_project_eq_sail
     projectResult ((JoltISA.execProgram
       (JoltISA.amoDoubleSelectProgram
         (fun dst lhs rhs => .SLTU dst lhs rhs)
-        (.xreg rs2) (.vreg JoltISA.amoOldVReg) rs2 rs1 rd)).run js) =
+        (.xreg rs2) (.vreg (JoltISA.amoOldVRegFor rd)) rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOMINU false false rs2 rs1 8 rd).run js.sail
   by_cases h_align : addr &&& (7 : BitVec 64) = 0
   · exact
       amo_dword_double_select_program_eq_sail_aligned
         amoop.AMOMINU (fun dst lhs rhs => .SLTU dst lhs rhs)
-        (.xreg rs2) (.vreg JoltISA.amoOldVReg)
+        (.xreg rs2) (.vreg (JoltISA.amoOldVRegFor rd))
         rs2 rs1 rd js h.cur_privilege h.mstatus_mprv addr rs2Val
         (if (zopz0zI_u rs2Val
             (loaded_dword_at js.sail addr hbytes
@@ -67,7 +67,7 @@ private theorem amominudProgram_project_eq_sail
         h.rs1_read h.rs2_read h.rdReadable.exists_value
         hbytes hload_pmp hstore_pmp hatomic_pmp hread_mmio hwrite_mmio
         h_align (by decide)
-        (amo_dword_minu_middle_after_load rs2 js addr rs2Val
+        (amo_dword_minu_middle_after_load_for rd rs2 js addr rs2Val
           (loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align))
           h.rs2_read)
@@ -77,7 +77,7 @@ private theorem amominudProgram_project_eq_sail
   · exact
       amo_dword_double_select_program_eq_sail_misaligned
         amoop.AMOMINU (fun dst lhs rhs => .SLTU dst lhs rhs)
-        (.xreg rs2) (.vreg JoltISA.amoOldVReg)
+        (.xreg rs2) (.vreg (JoltISA.amoOldVRegFor rd))
         rs2 rs1 rd js addr rs2Val h.rs1_read h.rs2_read h_align
 
 /-- Main public theorem for `AMOMINU.D`. -/
@@ -99,6 +99,7 @@ theorem amominudProgram_eq_sail
       JoltISA.InstrWritesNoProtectedVReg,
       JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoOldVReg, JoltISA.amoNewVReg, JoltISA.amoTmpVReg]
+    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
 
 end AtomicFamily
 

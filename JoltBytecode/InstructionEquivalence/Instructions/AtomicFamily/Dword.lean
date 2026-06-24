@@ -332,57 +332,70 @@ theorem amo_dword_sd_vreg_result_run
   · rfl
   · rfl
 
-/-- `ADDI rd, old, 0` writes the old dword value from the chosen scratch
-register back to `rd`. -/
+/-- `ADDI writeback, old, 0` writes the old dword value from the chosen scratch
+register back through Rust's side-effecting `rd = x0` destination rewrite. -/
 theorem amo_dword_addi_writeback_old_run_from
     (oldReg : JoltISA.VReg)
     (rd : regidx) (js_afterStore : SailJoltState) (oldVal : BitVec 64)
     (hold : js_afterStore.vregs oldReg = oldVal) :
     ∃ js_afterWrite : SailJoltState,
       (JoltISA.execInstr
-        (.ADDI (.xreg rd) (.vreg oldReg) (0 : BitVec 12))).run
+        (.ADDI (JoltISA.amoDstFor rd) (.vreg oldReg) (0 : BitVec 12))).run
           js_afterStore =
         .ok RETIRE_SUCCESS js_afterWrite ∧
-      js_afterWrite.sail = stateAfterWrite js_afterStore.sail rd oldVal ∧
-      js_afterWrite.vregs = js_afterStore.vregs := by
-  obtain ⟨s', hw⟩ := wX_shape rd oldVal js_afterStore.sail
-  let js_afterWrite : SailJoltState :=
-    { sail := s'
-      vregs := js_afterStore.vregs }
-  refine ⟨js_afterWrite, ?_, ?_, ?_⟩
-  · have hsext0 :
-        sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by
-      decide
-    have hvalue0 :
-        js_afterStore.vregs oldReg +
-          sign_extend (m := 64) (0 : BitVec 12) = oldVal := by
-      rw [hold, hsext0]
-      norm_num
-    have hw' :
-        wX_bits rd
-          (js_afterStore.vregs oldReg +
-            sign_extend (m := 64) (0 : BitVec 12))
-          js_afterStore.sail = .ok () s' := by
-      rw [hvalue0]
-      exact hw
-    exact
-      JoltISA.addi_run_xreg_vreg
-        rd oldReg (0 : BitVec 12) js_afterStore s' hw'
-  · exact wX_bits_eq_stateAfterWrite rd oldVal js_afterStore.sail s' hw
-  · rfl
+      js_afterWrite.sail = stateAfterWrite js_afterStore.sail rd oldVal := by
+  have hsext0 :
+      sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by
+    decide
+  have hvalue0 :
+      js_afterStore.vregs oldReg +
+        sign_extend (m := 64) (0 : BitVec 12) = oldVal := by
+    rw [hold, hsext0]
+    norm_num
+  by_cases hx0 : JoltISA.isX0 rd = true
+  · let js_afterWrite : SailJoltState :=
+      { sail := js_afterStore.sail
+        vregs := fun r =>
+          if r = JoltISA.rdZeroRewriteVReg then
+            js_afterStore.vregs oldReg + sign_extend (m := 64) (0 : BitVec 12)
+          else js_afterStore.vregs r }
+    refine ⟨js_afterWrite, ?_, ?_⟩
+    · have hrun :=
+        JoltISA.addi_run_vreg_vreg
+          JoltISA.rdZeroRewriteVReg oldReg (0 : BitVec 12)
+          js_afterStore (by unfold WritableVReg JoltISA.rdZeroRewriteVReg; decide)
+      simpa [js_afterWrite, JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hx0]
+        using hrun
+    · rw [JoltISA.stateAfterWrite_of_isX0_eq_true hx0]
+  · obtain ⟨s', hw⟩ := wX_shape rd oldVal js_afterStore.sail
+    let js_afterWrite : SailJoltState :=
+      { sail := s'
+        vregs := js_afterStore.vregs }
+    refine ⟨js_afterWrite, ?_, ?_⟩
+    · have hw' :
+          wX_bits rd
+            (js_afterStore.vregs oldReg +
+              sign_extend (m := 64) (0 : BitVec 12))
+            js_afterStore.sail = .ok () s' := by
+        rw [hvalue0]
+        exact hw
+      have hrun :=
+        JoltISA.addi_run_xreg_vreg
+          rd oldReg (0 : BitVec 12) js_afterStore s' hw'
+      simpa [JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hx0] using hrun
+    · exact wX_bits_eq_stateAfterWrite rd oldVal js_afterStore.sail s' hw
 
-/-- `ADDI rd, old, 0` writes the standard dword-select and swap old-value
-register back to `rd`. -/
+/-- `ADDI writeback, old, 0` writes the standard dword-select and swap
+old-value register back through Rust's side-effecting destination rewrite. -/
 theorem amo_dword_addi_writeback_old_run
     (rd : regidx) (js_afterStore : SailJoltState) (oldVal : BitVec 64)
     (hold : js_afterStore.vregs JoltISA.amoOldVReg = oldVal) :
     ∃ js_afterWrite : SailJoltState,
       (JoltISA.execInstr
-        (.ADDI (.xreg rd) (.vreg JoltISA.amoOldVReg) (0 : BitVec 12))).run
+        (.ADDI (JoltISA.amoDstFor rd) (.vreg JoltISA.amoOldVReg) (0 : BitVec 12))).run
           js_afterStore =
         .ok RETIRE_SUCCESS js_afterWrite ∧
-      js_afterWrite.sail = stateAfterWrite js_afterStore.sail rd oldVal ∧
-      js_afterWrite.vregs = js_afterStore.vregs := by
+      js_afterWrite.sail = stateAfterWrite js_afterStore.sail rd oldVal := by
   exact amo_dword_addi_writeback_old_run_from JoltISA.amoOldVReg
     rd js_afterStore oldVal hold
 
@@ -497,15 +510,20 @@ expansion.
 
 The middle instruction computes the new dword into `amoNewVReg`, leaves the
 Sail state unchanged, and preserves the loaded old dword in `amoOldVReg`. -/
-structure AmoDwordMiddleStep
+structure AmoDwordMiddleStepInto
+    (newReg oldReg : JoltISA.VReg)
     (middle : JoltISA.Instr) (old result : BitVec 64)
     (js_before js_after : SailJoltState) : Prop where
   run :
     (JoltISA.execInstr middle).run js_before =
       .ok RETIRE_SUCCESS js_after
   sail : js_after.sail = js_before.sail
-  result_vreg : js_after.vregs JoltISA.amoDoubleBinopNewVReg = result
-  old_vreg : js_after.vregs JoltISA.amoDoubleBinopOldVReg = old
+  result_vreg : js_after.vregs newReg = result
+  old_vreg : js_after.vregs oldReg = old
+
+abbrev AmoDwordMiddleStep :=
+  AmoDwordMiddleStepInto
+    JoltISA.amoDoubleBinopNewVReg JoltISA.amoDoubleBinopOldVReg
 
 /-- Dword addition is commutative at the bitvector level. -/
 theorem amo_dword_add_comm (lhs rhs : BitVec 64) :
@@ -533,6 +551,45 @@ theorem amo_dword_or_comm (lhs rhs : BitVec 64) :
   rw [BitVec.getLsbD_or, BitVec.getLsbD_or]
   exact Bool.or_comm (lhs.getLsbD i) (rhs.getLsbD i)
 
+/-- The `AMOADD.D` middle instruction writes `rs2 + old` to `newReg` and
+preserves the loaded old dword in `oldReg`. -/
+theorem amo_dword_add_middle_run_into
+    (newReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js_afterLoad : SailJoltState)
+    (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js_afterLoad.sail =
+      .ok rs2Val js_afterLoad.sail)
+    (hold : js_afterLoad.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (hne : oldReg ≠ newReg) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordMiddleStepInto newReg oldReg
+        (.ADD (.vreg newReg) (.vreg oldReg) (.xreg rs2))
+        old (rs2Val + old) js_afterLoad js_afterMiddle := by
+  let js_afterMiddle : SailJoltState :=
+    { sail := js_afterLoad.sail
+      vregs := fun r =>
+        if r = newReg then old + rs2Val else js_afterLoad.vregs r }
+  refine ⟨js_afterMiddle, ?_, ?_, ?_, ?_⟩
+  · unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst readVReg
+      writeVReg liftSail
+    unfold WritableVReg at hnew
+    simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+      get, getThe, MonadStateOf.get, EStateM.get,
+      modify, modifyGet, MonadStateOf.modifyGet,
+      hold, hrs2, hnew, ↓reduceIte]
+    rfl
+  · rfl
+  · change
+      (if newReg = newReg then old + rs2Val else js_afterLoad.vregs newReg) =
+        rs2Val + old
+    rw [if_pos rfl]
+    exact amo_dword_add_comm old rs2Val
+  · change
+      (if oldReg = newReg then old + rs2Val else js_afterLoad.vregs oldReg) = old
+    rw [if_neg hne]
+    exact hold
+
 /-- The `AMOADD.D` middle instruction writes `rs2 + old` to `amoNewVReg` and
 preserves the loaded old dword. -/
 theorem amo_dword_add_middle_run
@@ -545,29 +602,49 @@ theorem amo_dword_add_middle_run
       AmoDwordMiddleStep
         (.ADD (.vreg JoltISA.amoDoubleBinopNewVReg)
           (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs2))
-        old (rs2Val + old) js_afterLoad js_afterMiddle := by
+        old (rs2Val + old) js_afterLoad js_afterMiddle :=
+  amo_dword_add_middle_run_into
+    JoltISA.amoDoubleBinopNewVReg JoltISA.amoDoubleBinopOldVReg
+    rs2 js_afterLoad rs2Val old hrs2 hold
+    (by unfold WritableVReg; decide) (by decide)
+
+/-- The `AMOXOR.D` middle instruction writes `rs2 ^ old` to `newReg` and
+preserves the loaded old dword in `oldReg`. -/
+theorem amo_dword_xor_middle_run_into
+    (newReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js_afterLoad : SailJoltState)
+    (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js_afterLoad.sail =
+      .ok rs2Val js_afterLoad.sail)
+    (hold : js_afterLoad.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (hne : oldReg ≠ newReg) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordMiddleStepInto newReg oldReg
+        (.XOR (.vreg newReg) (.vreg oldReg) (.xreg rs2))
+        old (rs2Val ^^^ old) js_afterLoad js_afterMiddle := by
   let js_afterMiddle : SailJoltState :=
     { sail := js_afterLoad.sail
       vregs := fun r =>
-        if r = JoltISA.amoDoubleBinopNewVReg then old + rs2Val else js_afterLoad.vregs r }
+        if r = newReg then old ^^^ rs2Val else js_afterLoad.vregs r }
   refine ⟨js_afterMiddle, ?_, ?_, ?_, ?_⟩
   · unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst readVReg
       writeVReg liftSail
+    unfold WritableVReg at hnew
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
       modify, modifyGet, MonadStateOf.modifyGet,
-      hold, hrs2]
+      hold, hrs2, hnew, ↓reduceIte]
     rfl
   · rfl
   · change
-      (if JoltISA.amoDoubleBinopNewVReg = JoltISA.amoDoubleBinopNewVReg then old + rs2Val
-        else js_afterLoad.vregs JoltISA.amoDoubleBinopNewVReg) = rs2Val + old
+      (if newReg = newReg then old ^^^ rs2Val else js_afterLoad.vregs newReg) =
+        rs2Val ^^^ old
     rw [if_pos rfl]
-    exact amo_dword_add_comm old rs2Val
+    exact amo_dword_xor_comm old rs2Val
   · change
-      (if JoltISA.amoDoubleBinopOldVReg = JoltISA.amoDoubleBinopNewVReg then old + rs2Val
-        else js_afterLoad.vregs JoltISA.amoDoubleBinopOldVReg) = old
-    rw [if_neg (by decide)]
+      (if oldReg = newReg then old ^^^ rs2Val else js_afterLoad.vregs oldReg) = old
+    rw [if_neg hne]
     exact hold
 
 /-- The `AMOXOR.D` middle instruction writes `rs2 ^ old` to `amoNewVReg` and
@@ -582,29 +659,49 @@ theorem amo_dword_xor_middle_run
       AmoDwordMiddleStep
         (.XOR (.vreg JoltISA.amoDoubleBinopNewVReg)
           (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs2))
-        old (rs2Val ^^^ old) js_afterLoad js_afterMiddle := by
+        old (rs2Val ^^^ old) js_afterLoad js_afterMiddle :=
+  amo_dword_xor_middle_run_into
+    JoltISA.amoDoubleBinopNewVReg JoltISA.amoDoubleBinopOldVReg
+    rs2 js_afterLoad rs2Val old hrs2 hold
+    (by unfold WritableVReg; decide) (by decide)
+
+/-- The `AMOAND.D` middle instruction writes `rs2 & old` to `newReg` and
+preserves the loaded old dword in `oldReg`. -/
+theorem amo_dword_and_middle_run_into
+    (newReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js_afterLoad : SailJoltState)
+    (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js_afterLoad.sail =
+      .ok rs2Val js_afterLoad.sail)
+    (hold : js_afterLoad.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (hne : oldReg ≠ newReg) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordMiddleStepInto newReg oldReg
+        (.AND (.vreg newReg) (.vreg oldReg) (.xreg rs2))
+        old (rs2Val &&& old) js_afterLoad js_afterMiddle := by
   let js_afterMiddle : SailJoltState :=
     { sail := js_afterLoad.sail
       vregs := fun r =>
-        if r = JoltISA.amoDoubleBinopNewVReg then old ^^^ rs2Val else js_afterLoad.vregs r }
+        if r = newReg then old &&& rs2Val else js_afterLoad.vregs r }
   refine ⟨js_afterMiddle, ?_, ?_, ?_, ?_⟩
   · unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst readVReg
       writeVReg liftSail
+    unfold WritableVReg at hnew
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
       modify, modifyGet, MonadStateOf.modifyGet,
-      hold, hrs2]
+      hold, hrs2, hnew, ↓reduceIte]
     rfl
   · rfl
   · change
-      (if JoltISA.amoDoubleBinopNewVReg = JoltISA.amoDoubleBinopNewVReg then old ^^^ rs2Val
-        else js_afterLoad.vregs JoltISA.amoDoubleBinopNewVReg) = rs2Val ^^^ old
+      (if newReg = newReg then old &&& rs2Val else js_afterLoad.vregs newReg) =
+        rs2Val &&& old
     rw [if_pos rfl]
-    exact amo_dword_xor_comm old rs2Val
+    exact amo_dword_and_comm old rs2Val
   · change
-      (if JoltISA.amoDoubleBinopOldVReg = JoltISA.amoDoubleBinopNewVReg then old ^^^ rs2Val
-        else js_afterLoad.vregs JoltISA.amoDoubleBinopOldVReg) = old
-    rw [if_neg (by decide)]
+      (if oldReg = newReg then old &&& rs2Val else js_afterLoad.vregs oldReg) = old
+    rw [if_neg hne]
     exact hold
 
 /-- The `AMOAND.D` middle instruction writes `rs2 & old` to `amoNewVReg` and
@@ -619,29 +716,49 @@ theorem amo_dword_and_middle_run
       AmoDwordMiddleStep
         (.AND (.vreg JoltISA.amoDoubleBinopNewVReg)
           (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs2))
-        old (rs2Val &&& old) js_afterLoad js_afterMiddle := by
+        old (rs2Val &&& old) js_afterLoad js_afterMiddle :=
+  amo_dword_and_middle_run_into
+    JoltISA.amoDoubleBinopNewVReg JoltISA.amoDoubleBinopOldVReg
+    rs2 js_afterLoad rs2Val old hrs2 hold
+    (by unfold WritableVReg; decide) (by decide)
+
+/-- The `AMOOR.D` middle instruction writes `rs2 | old` to `newReg` and
+preserves the loaded old dword in `oldReg`. -/
+theorem amo_dword_or_middle_run_into
+    (newReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js_afterLoad : SailJoltState)
+    (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js_afterLoad.sail =
+      .ok rs2Val js_afterLoad.sail)
+    (hold : js_afterLoad.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (hne : oldReg ≠ newReg) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordMiddleStepInto newReg oldReg
+        (.OR (.vreg newReg) (.vreg oldReg) (.xreg rs2))
+        old (rs2Val ||| old) js_afterLoad js_afterMiddle := by
   let js_afterMiddle : SailJoltState :=
     { sail := js_afterLoad.sail
       vregs := fun r =>
-        if r = JoltISA.amoDoubleBinopNewVReg then old &&& rs2Val else js_afterLoad.vregs r }
+        if r = newReg then old ||| rs2Val else js_afterLoad.vregs r }
   refine ⟨js_afterMiddle, ?_, ?_, ?_, ?_⟩
   · unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst readVReg
       writeVReg liftSail
+    unfold WritableVReg at hnew
     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
       get, getThe, MonadStateOf.get, EStateM.get,
       modify, modifyGet, MonadStateOf.modifyGet,
-      hold, hrs2]
+      hold, hrs2, hnew, ↓reduceIte]
     rfl
   · rfl
   · change
-      (if JoltISA.amoDoubleBinopNewVReg = JoltISA.amoDoubleBinopNewVReg then old &&& rs2Val
-        else js_afterLoad.vregs JoltISA.amoDoubleBinopNewVReg) = rs2Val &&& old
+      (if newReg = newReg then old ||| rs2Val else js_afterLoad.vregs newReg) =
+        rs2Val ||| old
     rw [if_pos rfl]
-    exact amo_dword_and_comm old rs2Val
+    exact amo_dword_or_comm old rs2Val
   · change
-      (if JoltISA.amoDoubleBinopOldVReg = JoltISA.amoDoubleBinopNewVReg then old &&& rs2Val
-        else js_afterLoad.vregs JoltISA.amoDoubleBinopOldVReg) = old
-    rw [if_neg (by decide)]
+      (if oldReg = newReg then old ||| rs2Val else js_afterLoad.vregs oldReg) = old
+    rw [if_neg hne]
     exact hold
 
 /-- The `AMOOR.D` middle instruction writes `rs2 | old` to `amoNewVReg` and
@@ -656,30 +773,11 @@ theorem amo_dword_or_middle_run
       AmoDwordMiddleStep
         (.OR (.vreg JoltISA.amoDoubleBinopNewVReg)
           (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs2))
-        old (rs2Val ||| old) js_afterLoad js_afterMiddle := by
-  let js_afterMiddle : SailJoltState :=
-    { sail := js_afterLoad.sail
-      vregs := fun r =>
-        if r = JoltISA.amoDoubleBinopNewVReg then old ||| rs2Val else js_afterLoad.vregs r }
-  refine ⟨js_afterMiddle, ?_, ?_, ?_, ?_⟩
-  · unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst readVReg
-      writeVReg liftSail
-    simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
-      get, getThe, MonadStateOf.get, EStateM.get,
-      modify, modifyGet, MonadStateOf.modifyGet,
-      hold, hrs2]
-    rfl
-  · rfl
-  · change
-      (if JoltISA.amoDoubleBinopNewVReg = JoltISA.amoDoubleBinopNewVReg then old ||| rs2Val
-        else js_afterLoad.vregs JoltISA.amoDoubleBinopNewVReg) = rs2Val ||| old
-    rw [if_pos rfl]
-    exact amo_dword_or_comm old rs2Val
-  · change
-      (if JoltISA.amoDoubleBinopOldVReg = JoltISA.amoDoubleBinopNewVReg then old ||| rs2Val
-        else js_afterLoad.vregs JoltISA.amoDoubleBinopOldVReg) = old
-    rw [if_neg (by decide)]
-    exact hold
+        old (rs2Val ||| old) js_afterLoad js_afterMiddle :=
+  amo_dword_or_middle_run_into
+    JoltISA.amoDoubleBinopNewVReg JoltISA.amoDoubleBinopOldVReg
+    rs2 js_afterLoad rs2Val old hrs2 hold
+    (by unfold WritableVReg; decide) (by decide)
 
 /-- After the common dword load, the `AMOADD.D` middle instruction is ready
 for the shared double-binop program helper. -/
@@ -707,6 +805,32 @@ theorem amo_dword_add_middle_after_load
     amo_dword_add_middle_run rs2 js_afterLoad rs2Val
       old hrs2_afterLoad hld_old
 
+/-- Selected-register version of `amo_dword_add_middle_after_load`. -/
+theorem amo_dword_add_middle_after_load_into
+    (rs2 : regidx) (js : SailJoltState) (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ oldReg newReg : JoltISA.VReg,
+      WritableVReg newReg →
+      oldReg ≠ newReg →
+      ∀ js_afterLoad : SailJoltState,
+        js_afterLoad.sail = js.sail →
+        js_afterLoad.vregs oldReg = old →
+        ∃ js_afterMiddle : SailJoltState,
+          AmoDwordMiddleStepInto newReg oldReg
+            (.ADD (.vreg newReg) (.vreg oldReg) (.xreg rs2))
+          old
+          (rs2Val + old)
+          js_afterLoad js_afterMiddle := by
+  intro oldReg newReg hnew hne js_afterLoad hld_sail hld_old
+  have hrs2_afterLoad :
+      rX_bits rs2 js_afterLoad.sail =
+        .ok rs2Val js_afterLoad.sail := by
+    rw [hld_sail]
+    exact hrs2
+  exact
+    amo_dword_add_middle_run_into newReg oldReg rs2 js_afterLoad rs2Val
+      old hrs2_afterLoad hld_old hnew hne
+
 /-- After the common dword load, the `AMOXOR.D` middle instruction is ready
 for the shared double-binop program helper. -/
 theorem amo_dword_xor_middle_after_load
@@ -732,6 +856,32 @@ theorem amo_dword_xor_middle_after_load
   exact
     amo_dword_xor_middle_run rs2 js_afterLoad rs2Val
       old hrs2_afterLoad hld_old
+
+/-- Selected-register version of `amo_dword_xor_middle_after_load`. -/
+theorem amo_dword_xor_middle_after_load_into
+    (rs2 : regidx) (js : SailJoltState) (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ oldReg newReg : JoltISA.VReg,
+      WritableVReg newReg →
+      oldReg ≠ newReg →
+      ∀ js_afterLoad : SailJoltState,
+        js_afterLoad.sail = js.sail →
+        js_afterLoad.vregs oldReg = old →
+        ∃ js_afterMiddle : SailJoltState,
+          AmoDwordMiddleStepInto newReg oldReg
+            (.XOR (.vreg newReg) (.vreg oldReg) (.xreg rs2))
+          old
+          (rs2Val ^^^ old)
+          js_afterLoad js_afterMiddle := by
+  intro oldReg newReg hnew hne js_afterLoad hld_sail hld_old
+  have hrs2_afterLoad :
+      rX_bits rs2 js_afterLoad.sail =
+        .ok rs2Val js_afterLoad.sail := by
+    rw [hld_sail]
+    exact hrs2
+  exact
+    amo_dword_xor_middle_run_into newReg oldReg rs2 js_afterLoad rs2Val
+      old hrs2_afterLoad hld_old hnew hne
 
 /-- After the common dword load, the `AMOAND.D` middle instruction is ready
 for the shared double-binop program helper. -/
@@ -759,6 +909,32 @@ theorem amo_dword_and_middle_after_load
     amo_dword_and_middle_run rs2 js_afterLoad rs2Val
       old hrs2_afterLoad hld_old
 
+/-- Selected-register version of `amo_dword_and_middle_after_load`. -/
+theorem amo_dword_and_middle_after_load_into
+    (rs2 : regidx) (js : SailJoltState) (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ oldReg newReg : JoltISA.VReg,
+      WritableVReg newReg →
+      oldReg ≠ newReg →
+      ∀ js_afterLoad : SailJoltState,
+        js_afterLoad.sail = js.sail →
+        js_afterLoad.vregs oldReg = old →
+        ∃ js_afterMiddle : SailJoltState,
+          AmoDwordMiddleStepInto newReg oldReg
+            (.AND (.vreg newReg) (.vreg oldReg) (.xreg rs2))
+          old
+          (rs2Val &&& old)
+          js_afterLoad js_afterMiddle := by
+  intro oldReg newReg hnew hne js_afterLoad hld_sail hld_old
+  have hrs2_afterLoad :
+      rX_bits rs2 js_afterLoad.sail =
+        .ok rs2Val js_afterLoad.sail := by
+    rw [hld_sail]
+    exact hrs2
+  exact
+    amo_dword_and_middle_run_into newReg oldReg rs2 js_afterLoad rs2Val
+      old hrs2_afterLoad hld_old hnew hne
+
 /-- After the common dword load, the `AMOOR.D` middle instruction is ready
 for the shared double-binop program helper. -/
 theorem amo_dword_or_middle_after_load
@@ -784,6 +960,32 @@ theorem amo_dword_or_middle_after_load
   exact
     amo_dword_or_middle_run rs2 js_afterLoad rs2Val
       old hrs2_afterLoad hld_old
+
+/-- Selected-register version of `amo_dword_or_middle_after_load`. -/
+theorem amo_dword_or_middle_after_load_into
+    (rs2 : regidx) (js : SailJoltState) (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ oldReg newReg : JoltISA.VReg,
+      WritableVReg newReg →
+      oldReg ≠ newReg →
+      ∀ js_afterLoad : SailJoltState,
+        js_afterLoad.sail = js.sail →
+        js_afterLoad.vregs oldReg = old →
+        ∃ js_afterMiddle : SailJoltState,
+          AmoDwordMiddleStepInto newReg oldReg
+            (.OR (.vreg newReg) (.vreg oldReg) (.xreg rs2))
+          old
+          (rs2Val ||| old)
+          js_afterLoad js_afterMiddle := by
+  intro oldReg newReg hnew hne js_afterLoad hld_sail hld_old
+  have hrs2_afterLoad :
+      rX_bits rs2 js_afterLoad.sail =
+        .ok rs2Val js_afterLoad.sail := by
+    rw [hld_sail]
+    exact hrs2
+  exact
+    amo_dword_or_middle_run_into newReg oldReg rs2 js_afterLoad rs2Val
+      old hrs2_afterLoad hld_old hnew hne
 
 /-- The comparison phase of dword select AMOs writes the boolean flag into
 `amoNewVReg`. -/
@@ -812,6 +1014,31 @@ abbrev amoDwordSelectMiddleProgram
     (tail : JoltISA.Program) : JoltISA.Program :=
   (amoDwordSelectComparePhase cmpInstr cmpLhs cmpRhs).append <|
   (amoDwordSelectTailPhase rs2).append tail
+
+/-- Selected-register comparison phase for dword select AMOs. -/
+abbrev amoDwordSelectComparePhaseInto
+    (newReg : JoltISA.VReg)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src) : JoltISA.Program :=
+  .instr (cmpInstr (.vreg newReg) cmpLhs cmpRhs) <|
+  .done RETIRE_SUCCESS
+
+/-- Selected-register arithmetic tail for dword select AMOs. -/
+abbrev amoDwordSelectTailPhaseInto
+    (newReg tmpReg oldReg : JoltISA.VReg) (rs2 : regidx) : JoltISA.Program :=
+  .instr (.SUB (.vreg tmpReg) (.xreg rs2) (.vreg oldReg)) <|
+  .instr (.MUL (.vreg tmpReg) (.vreg tmpReg) (.vreg newReg)) <|
+  .instr (.ADD (.vreg newReg) (.vreg oldReg) (.vreg tmpReg)) <|
+  .done RETIRE_SUCCESS
+
+/-- Selected-register full middle block for dword select AMOs. -/
+abbrev amoDwordSelectMiddleProgramInto
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src) (rs2 : regidx)
+    (tail : JoltISA.Program) : JoltISA.Program :=
+  (amoDwordSelectComparePhaseInto newReg cmpInstr cmpLhs cmpRhs).append <|
+  (amoDwordSelectTailPhaseInto newReg tmpReg oldReg rs2).append tail
 
 /-- Shape produced by the comparison phase of a dword select AMO.
 
@@ -859,6 +1086,50 @@ structure AmoDwordSelectMiddleStep
   sail : js_after.sail = js_before.sail
   result_vreg : js_after.vregs JoltISA.amoNewVReg = result
   old_vreg : js_after.vregs JoltISA.amoOldVReg = old
+
+/-- Selected-register shape produced by the full dword select middle block. -/
+structure AmoDwordSelectMiddleStepInto
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src) (rs2 : regidx)
+    (old result : BitVec 64)
+    (js_before js_after : SailJoltState) : Prop where
+  run :
+    ∀ tail,
+      (JoltISA.execProgram
+        (amoDwordSelectMiddleProgramInto newReg tmpReg oldReg
+          cmpInstr cmpLhs cmpRhs rs2 tail)).run js_before =
+        (JoltISA.execProgram tail).run js_after
+  sail : js_after.sail = js_before.sail
+  result_vreg : js_after.vregs newReg = result
+  old_vreg : js_after.vregs oldReg = old
+
+/-- Selected-register shape produced by a dword-select comparison phase. -/
+structure AmoDwordSelectCompareStepInto
+    (newReg oldReg : JoltISA.VReg)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src) (old flag : BitVec 64)
+    (js_before js_after : SailJoltState) : Prop where
+  run :
+    JoltISA.Program.Run
+      (amoDwordSelectComparePhaseInto newReg cmpInstr cmpLhs cmpRhs)
+      js_before js_after
+  sail : js_after.sail = js_before.sail
+  flag_vreg : js_after.vregs newReg = flag
+  old_vreg : js_after.vregs oldReg = old
+
+/-- Selected-register shape produced by the common dword-select tail. -/
+structure AmoDwordSelectTailStepInto
+    (newReg tmpReg oldReg : JoltISA.VReg) (rs2 : regidx)
+    (old result : BitVec 64)
+    (js_before js_after : SailJoltState) : Prop where
+  run :
+    JoltISA.Program.Run
+      (amoDwordSelectTailPhaseInto newReg tmpReg oldReg rs2)
+      js_before js_after
+  sail : js_after.sail = js_before.sail
+  result_vreg : js_after.vregs newReg = result
+  old_vreg : js_after.vregs oldReg = old
 
 /-- `SLTU` with a real left source and virtual right source writes the unsigned
 less-than flag to a virtual destination without changing Sail state. -/
@@ -1046,6 +1317,105 @@ theorem amo_dword_select_tail_phase_run
   · exact hadd_result
   · exact hadd_old
 
+/-- Selected-register version of `amo_dword_select_tail_phase_run`. -/
+theorem amo_dword_select_tail_phase_run_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js : SailJoltState)
+    (rs2Val old flag : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hold : js.vregs oldReg = old)
+    (hflag : js.vregs newReg = flag)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg) :
+    ∃ js_afterTail : SailJoltState,
+      AmoDwordSelectTailStepInto newReg tmpReg oldReg rs2 old
+        (old + (rs2Val - old) * flag) js js_afterTail := by
+  let delta : BitVec 64 := rs2Val - old
+  let scaled : BitVec 64 := delta * flag
+  let js_afterSub : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = tmpReg then delta else js.vregs r }
+  let js_afterMul : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = tmpReg then scaled else js_afterSub.vregs r }
+  let js_afterAdd : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then old + scaled else js_afterMul.vregs r }
+  have hnew_ne_tmp : newReg ≠ tmpReg := by
+    exact Ne.symm htmp_ne_new
+  have hsub_new : js_afterSub.vregs newReg = flag := by
+    change (if newReg = tmpReg then delta else js.vregs newReg) = flag
+    rw [if_neg hnew_ne_tmp, hflag]
+  have hsub_old : js_afterSub.vregs oldReg = old := by
+    change (if oldReg = tmpReg then delta else js.vregs oldReg) = old
+    rw [if_neg hold_ne_tmp, hold]
+  have hsub_tmp : js_afterSub.vregs tmpReg = delta := by
+    change (if tmpReg = tmpReg then delta else js.vregs tmpReg) = delta
+    rw [if_pos rfl]
+  have hsub_run :
+      (JoltISA.execInstr
+        (.SUB (.vreg tmpReg) (.xreg rs2) (.vreg oldReg))).run js =
+        .ok RETIRE_SUCCESS js_afterSub := by
+    rw [JoltISA.sub_run_vreg_xreg_vreg
+      tmpReg rs2 oldReg js rs2Val hrs2 htmp]
+    unfold js_afterSub delta
+    rw [hold]
+  have hmul_old : js_afterMul.vregs oldReg = old := by
+    change (if oldReg = tmpReg then scaled
+      else js_afterSub.vregs oldReg) = old
+    rw [if_neg hold_ne_tmp, hsub_old]
+  have hmul_tmp : js_afterMul.vregs tmpReg = scaled := by
+    change (if tmpReg = tmpReg then scaled
+      else js_afterSub.vregs tmpReg) = scaled
+    rw [if_pos rfl]
+  have hmul_run :
+      (JoltISA.execInstr
+        (.MUL (.vreg tmpReg) (.vreg tmpReg) (.vreg newReg))).run
+          js_afterSub =
+        .ok RETIRE_SUCCESS js_afterMul := by
+    rw [JoltISA.mul_run_vreg_vreg_vreg
+      tmpReg tmpReg newReg js_afterSub htmp]
+    unfold js_afterMul scaled
+    rw [hsub_tmp, hsub_new]
+  have hadd_old : js_afterAdd.vregs oldReg = old := by
+    change (if oldReg = newReg then old + scaled
+      else js_afterMul.vregs oldReg) = old
+    rw [if_neg hold_ne_new, hmul_old]
+  have hadd_result :
+      js_afterAdd.vregs newReg =
+        old + (rs2Val - old) * flag := by
+    change (if newReg = newReg then old + scaled
+      else js_afterMul.vregs newReg) =
+        old + (rs2Val - old) * flag
+    rw [if_pos rfl]
+  have hadd_run :
+      (JoltISA.execInstr
+        (.ADD (.vreg newReg) (.vreg oldReg) (.vreg tmpReg))).run
+          js_afterMul =
+        .ok RETIRE_SUCCESS js_afterAdd := by
+    rw [JoltISA.add_run_vreg_vreg_vreg
+      newReg oldReg tmpReg js_afterMul hnew]
+    unfold js_afterAdd
+    rw [hmul_old, hmul_tmp]
+  refine ⟨js_afterAdd, ?_, ?_, ?_, ?_⟩
+  · change
+      (JoltISA.execProgram
+        (amoDwordSelectTailPhaseInto newReg tmpReg oldReg rs2)).run js =
+      .ok RETIRE_SUCCESS js_afterAdd
+    unfold amoDwordSelectTailPhaseInto
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSub hsub_run]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterSub js_afterMul
+      hmul_run]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterMul js_afterAdd
+      hadd_run]
+    rfl
+  · rfl
+  · exact hadd_result
+  · exact hadd_old
+
 /-- `AMOMINU.D`'s comparison phase writes the unsigned less-than flag for
 `rs2 < old`. -/
 theorem amo_dword_minu_compare_phase_run
@@ -1089,6 +1459,48 @@ theorem amo_dword_minu_compare_phase_run
   · change (if JoltISA.amoOldVReg = JoltISA.amoNewVReg then flag
       else js.vregs JoltISA.amoOldVReg) = old
     rw [if_neg (by decide), hold]
+
+/-- Selected-register version of `amo_dword_minu_compare_phase_run`. -/
+theorem amo_dword_minu_compare_phase_run_into
+    (newReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js : SailJoltState) (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hold : js.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (hold_ne_new : oldReg ≠ newReg) :
+    ∃ js_afterCmp : SailJoltState,
+      AmoDwordSelectCompareStepInto newReg oldReg
+        (fun dst lhs rhs => .SLTU dst lhs rhs)
+        (.xreg rs2) (.vreg oldReg) old
+        (jolt_sltu_value rs2Val old) js js_afterCmp := by
+  let flag : BitVec 64 := jolt_sltu_value rs2Val old
+  let js_afterCmp : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then flag else js.vregs r }
+  have hcmp_run :
+      (JoltISA.execInstr
+        (.SLTU (.vreg newReg) (.xreg rs2) (.vreg oldReg))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp := by
+    rw [amo_dword_sltu_run_vreg_xreg_vreg
+      newReg oldReg rs2 js rs2Val hrs2 hnew]
+    unfold js_afterCmp flag
+    rw [hold]
+  refine ⟨js_afterCmp, ?_, ?_, ?_, ?_⟩
+  · change
+      (JoltISA.execProgram
+        (amoDwordSelectComparePhaseInto newReg
+          (fun dst lhs rhs => .SLTU dst lhs rhs)
+          (.xreg rs2) (.vreg oldReg))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp
+    unfold amoDwordSelectComparePhaseInto
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterCmp hcmp_run]
+    rfl
+  · rfl
+  · change (if newReg = newReg then flag else js.vregs newReg) =
+      jolt_sltu_value rs2Val old
+    rw [if_pos rfl]
+  · change (if oldReg = newReg then flag else js.vregs oldReg) = old
+    rw [if_neg hold_ne_new, hold]
 
 /-- A dword select middle block composes an instruction-specific comparison
 phase with the shared select-tail phase. -/
@@ -1134,6 +1546,66 @@ theorem amo_dword_select_middle_phase_run
       exact
         JoltISA.execProgram_append_of_first_succeeds
           (amoDwordSelectTailPhase rs2) tail
+          js_afterCmp js_afterTail htail_step.run
+    rw [hcmp_append, htail_append]
+  · rw [htail_step.sail, hcmp_step.sail]
+  · rw [htail_step.result_vreg, hresult]
+  · exact htail_step.old_vreg
+
+/-- Selected-register version of `amo_dword_select_middle_phase_run`. -/
+theorem amo_dword_select_middle_phase_run_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src) (rs2 : regidx)
+    (js : SailJoltState) (rs2Val old flag result : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg)
+    (hcompare :
+      ∃ js_afterCmp : SailJoltState,
+        AmoDwordSelectCompareStepInto newReg oldReg cmpInstr cmpLhs cmpRhs
+          old flag js js_afterCmp)
+    (hresult : old + (rs2Val - old) * flag = result) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordSelectMiddleStepInto newReg tmpReg oldReg cmpInstr cmpLhs cmpRhs
+        rs2 old result js js_afterMiddle := by
+  obtain ⟨js_afterCmp, hcmp_step⟩ := hcompare
+  have hrs2_afterCmp :
+      rX_bits rs2 js_afterCmp.sail = .ok rs2Val js_afterCmp.sail := by
+    rw [hcmp_step.sail]
+    exact hrs2
+  obtain ⟨js_afterTail, htail_step⟩ :=
+    amo_dword_select_tail_phase_run_into
+      newReg tmpReg oldReg rs2 js_afterCmp rs2Val old flag
+      hrs2_afterCmp hcmp_step.old_vreg hcmp_step.flag_vreg
+      hnew htmp hold_ne_tmp hold_ne_new htmp_ne_new
+  refine ⟨js_afterTail, ?_, ?_, ?_, ?_⟩
+  · intro tail
+    unfold amoDwordSelectMiddleProgramInto
+    have hcmp_append :
+        (JoltISA.execProgram
+          ((amoDwordSelectComparePhaseInto newReg cmpInstr cmpLhs cmpRhs).append
+            ((amoDwordSelectTailPhaseInto newReg tmpReg oldReg rs2).append
+              tail))).run js =
+          (JoltISA.execProgram
+            ((amoDwordSelectTailPhaseInto newReg tmpReg oldReg rs2).append
+              tail)).run js_afterCmp := by
+      exact
+        JoltISA.execProgram_append_of_first_succeeds
+          (amoDwordSelectComparePhaseInto newReg cmpInstr cmpLhs cmpRhs)
+          ((amoDwordSelectTailPhaseInto newReg tmpReg oldReg rs2).append tail)
+          js js_afterCmp hcmp_step.run
+    have htail_append :
+        (JoltISA.execProgram
+          ((amoDwordSelectTailPhaseInto newReg tmpReg oldReg rs2).append
+            tail)).run js_afterCmp =
+          (JoltISA.execProgram tail).run js_afterTail := by
+      exact
+        JoltISA.execProgram_append_of_first_succeeds
+          (amoDwordSelectTailPhaseInto newReg tmpReg oldReg rs2) tail
           js_afterCmp js_afterTail htail_step.run
     rw [hcmp_append, htail_append]
   · rw [htail_step.sail, hcmp_step.sail]
@@ -1248,6 +1720,50 @@ theorem amo_dword_min_compare_phase_run
       else js.vregs JoltISA.amoOldVReg) = old
     rw [if_neg (by decide), hold]
 
+/-- Selected-register version of `amo_dword_min_compare_phase_run`. -/
+theorem amo_dword_min_compare_phase_run_into
+    (newReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js : SailJoltState) (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hold : js.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (hold_ne_new : oldReg ≠ newReg) :
+    ∃ js_afterCmp : SailJoltState,
+      AmoDwordSelectCompareStepInto newReg oldReg
+        (fun dst lhs rhs => .SLT dst lhs rhs)
+        (.xreg rs2) (.vreg oldReg) old
+        (zero_extend (m := 64) (bool_to_bit (zopz0zI_s rs2Val old)))
+        js js_afterCmp := by
+  let flag : BitVec 64 :=
+    zero_extend (m := 64) (bool_to_bit (zopz0zI_s rs2Val old))
+  let js_afterCmp : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then flag else js.vregs r }
+  have hcmp_run :
+      (JoltISA.execInstr
+        (.SLT (.vreg newReg) (.xreg rs2) (.vreg oldReg))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp := by
+    rw [amo_dword_slt_run_vreg_xreg_vreg
+      newReg oldReg rs2 js rs2Val hrs2 hnew]
+    unfold js_afterCmp flag
+    rw [hold]
+  refine ⟨js_afterCmp, ?_, ?_, ?_, ?_⟩
+  · change
+      (JoltISA.execProgram
+        (amoDwordSelectComparePhaseInto newReg
+          (fun dst lhs rhs => .SLT dst lhs rhs)
+          (.xreg rs2) (.vreg oldReg))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp
+    unfold amoDwordSelectComparePhaseInto
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterCmp hcmp_run]
+    rfl
+  · rfl
+  · change (if newReg = newReg then flag else js.vregs newReg) =
+      zero_extend (m := 64) (bool_to_bit (zopz0zI_s rs2Val old))
+    rw [if_pos rfl]
+  · change (if oldReg = newReg then flag else js.vregs oldReg) = old
+    rw [if_neg hold_ne_new, hold]
+
 /-- `AMOMIN.D`'s select middle block chooses `rs2` exactly when `rs2 < old`
 as signed dwords. -/
 theorem amo_dword_min_middle_run
@@ -1303,6 +1819,97 @@ theorem amo_dword_min_middle_after_load
     amo_dword_min_middle_run rs2 js_afterLoad rs2Val
       old hrs2_afterLoad hld_old
 
+/-- Selected-register version of `amo_dword_min_middle_run`. -/
+theorem amo_dword_min_middle_run_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js_afterLoad : SailJoltState)
+    (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js_afterLoad.sail =
+      .ok rs2Val js_afterLoad.sail)
+    (hold : js_afterLoad.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordSelectMiddleStepInto newReg tmpReg oldReg
+        (fun dst lhs rhs => .SLT dst lhs rhs)
+        (.xreg rs2) (.vreg oldReg) rs2
+        old
+        (if (zopz0zI_s rs2Val old : Bool) then rs2Val else old)
+        js_afterLoad js_afterMiddle := by
+  exact
+    amo_dword_select_middle_phase_run_into newReg tmpReg oldReg
+      (fun dst lhs rhs => .SLT dst lhs rhs)
+      (.xreg rs2) (.vreg oldReg) rs2
+      js_afterLoad rs2Val old
+      (zero_extend (m := 64) (bool_to_bit (zopz0zI_s rs2Val old)))
+      (if (zopz0zI_s rs2Val old : Bool) then rs2Val else old)
+      hrs2 hnew htmp hold_ne_tmp hold_ne_new htmp_ne_new
+      (amo_dword_min_compare_phase_run_into newReg oldReg rs2 js_afterLoad
+        rs2Val old hrs2 hold hnew hold_ne_new)
+      (amo_dword_select_value_of_slt old rs2Val)
+
+/-- Selected-register version of `amo_dword_min_middle_after_load`. -/
+theorem amo_dword_min_middle_after_load_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js : SailJoltState) (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg) :
+    ∀ js_afterLoad : SailJoltState,
+      js_afterLoad.sail = js.sail →
+      js_afterLoad.vregs oldReg = old →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoDwordSelectMiddleStepInto newReg tmpReg oldReg
+          (fun dst lhs rhs => .SLT dst lhs rhs)
+          (.xreg rs2) (.vreg oldReg) rs2
+          old
+          (if (zopz0zI_s rs2Val old : Bool) then rs2Val else old)
+          js_afterLoad js_afterMiddle := by
+  intro js_afterLoad hld_sail hld_old
+  have hrs2_afterLoad :
+      rX_bits rs2 js_afterLoad.sail =
+        .ok rs2Val js_afterLoad.sail := by
+    rw [hld_sail]
+    exact hrs2
+  exact
+    amo_dword_min_middle_run_into newReg tmpReg oldReg rs2 js_afterLoad
+      rs2Val old hrs2_afterLoad hld_old hnew htmp hold_ne_tmp
+      hold_ne_new htmp_ne_new
+
+/-- `AMOMIN.D` selected-register middle helper specialized to Rust's `rd`
+dependent register allocation. -/
+theorem amo_dword_min_middle_after_load_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ js_afterLoad : SailJoltState,
+      js_afterLoad.sail = js.sail →
+      js_afterLoad.vregs (JoltISA.amoOldVRegFor rd) = old →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoDwordSelectMiddleStepInto
+          (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+          (JoltISA.amoOldVRegFor rd)
+          (fun dst lhs rhs => .SLT dst lhs rhs)
+          (.xreg rs2) (.vreg (JoltISA.amoOldVRegFor rd)) rs2
+          old
+          (if (zopz0zI_s rs2Val old : Bool) then rs2Val else old)
+          js_afterLoad js_afterMiddle := by
+  exact
+    amo_dword_min_middle_after_load_into
+      (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+      (JoltISA.amoOldVRegFor rd) rs2 js addr rs2Val old hrs2
+      (JoltISA.amoNewVRegFor_writable rd)
+      (JoltISA.amoTmpVRegFor_writable rd)
+      (JoltISA.amoOldVRegFor_ne_amoTmpVRegFor rd)
+      (JoltISA.amoOldVRegFor_ne_amoNewVRegFor rd)
+      (JoltISA.amoTmpVRegFor_ne_amoNewVRegFor rd)
+
 /-- `AMOMAX.D`'s comparison phase writes the signed less-than flag for
 `old < rs2`. -/
 theorem amo_dword_max_compare_phase_run
@@ -1349,6 +1956,50 @@ theorem amo_dword_max_compare_phase_run
   · change (if JoltISA.amoOldVReg = JoltISA.amoNewVReg then flag
       else js.vregs JoltISA.amoOldVReg) = old
     rw [if_neg (by decide), hold]
+
+/-- Selected-register version of `amo_dword_max_compare_phase_run`. -/
+theorem amo_dword_max_compare_phase_run_into
+    (newReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js : SailJoltState) (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hold : js.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (hold_ne_new : oldReg ≠ newReg) :
+    ∃ js_afterCmp : SailJoltState,
+      AmoDwordSelectCompareStepInto newReg oldReg
+        (fun dst lhs rhs => .SLT dst lhs rhs)
+        (.vreg oldReg) (.xreg rs2) old
+        (zero_extend (m := 64) (bool_to_bit (zopz0zI_s old rs2Val)))
+        js js_afterCmp := by
+  let flag : BitVec 64 :=
+    zero_extend (m := 64) (bool_to_bit (zopz0zI_s old rs2Val))
+  let js_afterCmp : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then flag else js.vregs r }
+  have hcmp_run :
+      (JoltISA.execInstr
+        (.SLT (.vreg newReg) (.vreg oldReg) (.xreg rs2))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp := by
+    rw [amo_dword_slt_run_vreg_vreg_xreg
+      newReg oldReg rs2 js rs2Val hrs2 hnew]
+    unfold js_afterCmp flag
+    rw [hold]
+  refine ⟨js_afterCmp, ?_, ?_, ?_, ?_⟩
+  · change
+      (JoltISA.execProgram
+        (amoDwordSelectComparePhaseInto newReg
+          (fun dst lhs rhs => .SLT dst lhs rhs)
+          (.vreg oldReg) (.xreg rs2))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp
+    unfold amoDwordSelectComparePhaseInto
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterCmp hcmp_run]
+    rfl
+  · rfl
+  · change (if newReg = newReg then flag else js.vregs newReg) =
+      zero_extend (m := 64) (bool_to_bit (zopz0zI_s old rs2Val))
+    rw [if_pos rfl]
+  · change (if oldReg = newReg then flag else js.vregs oldReg) = old
+    rw [if_neg hold_ne_new, hold]
 
 /-- `AMOMAX.D`'s select middle block chooses `rs2` exactly when `rs2 > old`
 as signed dwords. -/
@@ -1405,6 +2056,97 @@ theorem amo_dword_max_middle_after_load
     amo_dword_max_middle_run rs2 js_afterLoad rs2Val
       old hrs2_afterLoad hld_old
 
+/-- Selected-register version of `amo_dword_max_middle_run`. -/
+theorem amo_dword_max_middle_run_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js_afterLoad : SailJoltState)
+    (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js_afterLoad.sail =
+      .ok rs2Val js_afterLoad.sail)
+    (hold : js_afterLoad.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordSelectMiddleStepInto newReg tmpReg oldReg
+        (fun dst lhs rhs => .SLT dst lhs rhs)
+        (.vreg oldReg) (.xreg rs2) rs2
+        old
+        (if (zopz0zK_s rs2Val old : Bool) then rs2Val else old)
+        js_afterLoad js_afterMiddle := by
+  exact
+    amo_dword_select_middle_phase_run_into newReg tmpReg oldReg
+      (fun dst lhs rhs => .SLT dst lhs rhs)
+      (.vreg oldReg) (.xreg rs2) rs2
+      js_afterLoad rs2Val old
+      (zero_extend (m := 64) (bool_to_bit (zopz0zI_s old rs2Val)))
+      (if (zopz0zK_s rs2Val old : Bool) then rs2Val else old)
+      hrs2 hnew htmp hold_ne_tmp hold_ne_new htmp_ne_new
+      (amo_dword_max_compare_phase_run_into newReg oldReg rs2 js_afterLoad
+        rs2Val old hrs2 hold hnew hold_ne_new)
+      (amo_dword_select_value_of_sgt old rs2Val)
+
+/-- Selected-register version of `amo_dword_max_middle_after_load`. -/
+theorem amo_dword_max_middle_after_load_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js : SailJoltState) (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg) :
+    ∀ js_afterLoad : SailJoltState,
+      js_afterLoad.sail = js.sail →
+      js_afterLoad.vregs oldReg = old →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoDwordSelectMiddleStepInto newReg tmpReg oldReg
+          (fun dst lhs rhs => .SLT dst lhs rhs)
+          (.vreg oldReg) (.xreg rs2) rs2
+          old
+          (if (zopz0zK_s rs2Val old : Bool) then rs2Val else old)
+          js_afterLoad js_afterMiddle := by
+  intro js_afterLoad hld_sail hld_old
+  have hrs2_afterLoad :
+      rX_bits rs2 js_afterLoad.sail =
+        .ok rs2Val js_afterLoad.sail := by
+    rw [hld_sail]
+    exact hrs2
+  exact
+    amo_dword_max_middle_run_into newReg tmpReg oldReg rs2 js_afterLoad
+      rs2Val old hrs2_afterLoad hld_old hnew htmp hold_ne_tmp
+      hold_ne_new htmp_ne_new
+
+/-- `AMOMAX.D` selected-register middle helper specialized to Rust's `rd`
+dependent register allocation. -/
+theorem amo_dword_max_middle_after_load_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ js_afterLoad : SailJoltState,
+      js_afterLoad.sail = js.sail →
+      js_afterLoad.vregs (JoltISA.amoOldVRegFor rd) = old →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoDwordSelectMiddleStepInto
+          (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+          (JoltISA.amoOldVRegFor rd)
+          (fun dst lhs rhs => .SLT dst lhs rhs)
+          (.vreg (JoltISA.amoOldVRegFor rd)) (.xreg rs2) rs2
+          old
+          (if (zopz0zK_s rs2Val old : Bool) then rs2Val else old)
+          js_afterLoad js_afterMiddle := by
+  exact
+    amo_dword_max_middle_after_load_into
+      (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+      (JoltISA.amoOldVRegFor rd) rs2 js addr rs2Val old hrs2
+      (JoltISA.amoNewVRegFor_writable rd)
+      (JoltISA.amoTmpVRegFor_writable rd)
+      (JoltISA.amoOldVRegFor_ne_amoTmpVRegFor rd)
+      (JoltISA.amoOldVRegFor_ne_amoNewVRegFor rd)
+      (JoltISA.amoTmpVRegFor_ne_amoNewVRegFor rd)
+
 /-- `AMOMINU.D`'s select middle block chooses `rs2` exactly when `rs2 < old`
 as unsigned dwords. -/
 theorem amo_dword_minu_middle_run
@@ -1459,6 +2201,96 @@ theorem amo_dword_minu_middle_after_load
     amo_dword_minu_middle_run rs2 js_afterLoad rs2Val
       old hrs2_afterLoad hld_old
 
+/-- Selected-register version of `amo_dword_minu_middle_run`. -/
+theorem amo_dword_minu_middle_run_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js_afterLoad : SailJoltState)
+    (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js_afterLoad.sail =
+      .ok rs2Val js_afterLoad.sail)
+    (hold : js_afterLoad.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordSelectMiddleStepInto newReg tmpReg oldReg
+        (fun dst lhs rhs => .SLTU dst lhs rhs)
+        (.xreg rs2) (.vreg oldReg) rs2
+        old
+        (if (zopz0zI_u rs2Val old : Bool) then rs2Val else old)
+        js_afterLoad js_afterMiddle := by
+  exact
+    amo_dword_select_middle_phase_run_into newReg tmpReg oldReg
+      (fun dst lhs rhs => .SLTU dst lhs rhs)
+      (.xreg rs2) (.vreg oldReg) rs2
+      js_afterLoad rs2Val old (jolt_sltu_value rs2Val old)
+      (if (zopz0zI_u rs2Val old : Bool) then rs2Val else old)
+      hrs2 hnew htmp hold_ne_tmp hold_ne_new htmp_ne_new
+      (amo_dword_minu_compare_phase_run_into newReg oldReg rs2 js_afterLoad
+        rs2Val old hrs2 hold hnew hold_ne_new)
+      (amo_dword_select_value_of_sltu old rs2Val)
+
+/-- Selected-register version of `amo_dword_minu_middle_after_load`. -/
+theorem amo_dword_minu_middle_after_load_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js : SailJoltState) (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg) :
+    ∀ js_afterLoad : SailJoltState,
+      js_afterLoad.sail = js.sail →
+      js_afterLoad.vregs oldReg = old →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoDwordSelectMiddleStepInto newReg tmpReg oldReg
+          (fun dst lhs rhs => .SLTU dst lhs rhs)
+          (.xreg rs2) (.vreg oldReg) rs2
+          old
+          (if (zopz0zI_u rs2Val old : Bool) then rs2Val else old)
+          js_afterLoad js_afterMiddle := by
+  intro js_afterLoad hld_sail hld_old
+  have hrs2_afterLoad :
+      rX_bits rs2 js_afterLoad.sail =
+        .ok rs2Val js_afterLoad.sail := by
+    rw [hld_sail]
+    exact hrs2
+  exact
+    amo_dword_minu_middle_run_into newReg tmpReg oldReg rs2 js_afterLoad
+      rs2Val old hrs2_afterLoad hld_old hnew htmp hold_ne_tmp
+      hold_ne_new htmp_ne_new
+
+/-- `AMOMINU.D` selected-register middle helper specialized to Rust's `rd`
+dependent register allocation. -/
+theorem amo_dword_minu_middle_after_load_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ js_afterLoad : SailJoltState,
+      js_afterLoad.sail = js.sail →
+      js_afterLoad.vregs (JoltISA.amoOldVRegFor rd) = old →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoDwordSelectMiddleStepInto
+          (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+          (JoltISA.amoOldVRegFor rd)
+          (fun dst lhs rhs => .SLTU dst lhs rhs)
+          (.xreg rs2) (.vreg (JoltISA.amoOldVRegFor rd)) rs2
+          old
+          (if (zopz0zI_u rs2Val old : Bool) then rs2Val else old)
+          js_afterLoad js_afterMiddle := by
+  exact
+    amo_dword_minu_middle_after_load_into
+      (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+      (JoltISA.amoOldVRegFor rd) rs2 js addr rs2Val old hrs2
+      (JoltISA.amoNewVRegFor_writable rd)
+      (JoltISA.amoTmpVRegFor_writable rd)
+      (JoltISA.amoOldVRegFor_ne_amoTmpVRegFor rd)
+      (JoltISA.amoOldVRegFor_ne_amoNewVRegFor rd)
+      (JoltISA.amoTmpVRegFor_ne_amoNewVRegFor rd)
+
 /-- `AMOMAXU.D`'s comparison phase writes the unsigned less-than flag for
 `old < rs2`. -/
 theorem amo_dword_maxu_compare_phase_run
@@ -1502,6 +2334,48 @@ theorem amo_dword_maxu_compare_phase_run
   · change (if JoltISA.amoOldVReg = JoltISA.amoNewVReg then flag
       else js.vregs JoltISA.amoOldVReg) = old
     rw [if_neg (by decide), hold]
+
+/-- Selected-register version of `amo_dword_maxu_compare_phase_run`. -/
+theorem amo_dword_maxu_compare_phase_run_into
+    (newReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js : SailJoltState) (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hold : js.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (hold_ne_new : oldReg ≠ newReg) :
+    ∃ js_afterCmp : SailJoltState,
+      AmoDwordSelectCompareStepInto newReg oldReg
+        (fun dst lhs rhs => .SLTU dst lhs rhs)
+        (.vreg oldReg) (.xreg rs2) old
+        (jolt_sltu_value old rs2Val) js js_afterCmp := by
+  let flag : BitVec 64 := jolt_sltu_value old rs2Val
+  let js_afterCmp : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then flag else js.vregs r }
+  have hcmp_run :
+      (JoltISA.execInstr
+        (.SLTU (.vreg newReg) (.vreg oldReg) (.xreg rs2))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp := by
+    rw [amo_dword_sltu_run_vreg_vreg_xreg
+      newReg oldReg rs2 js rs2Val hrs2 hnew]
+    unfold js_afterCmp flag
+    rw [hold]
+  refine ⟨js_afterCmp, ?_, ?_, ?_, ?_⟩
+  · change
+      (JoltISA.execProgram
+        (amoDwordSelectComparePhaseInto newReg
+          (fun dst lhs rhs => .SLTU dst lhs rhs)
+          (.vreg oldReg) (.xreg rs2))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp
+    unfold amoDwordSelectComparePhaseInto
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterCmp hcmp_run]
+    rfl
+  · rfl
+  · change (if newReg = newReg then flag else js.vregs newReg) =
+      jolt_sltu_value old rs2Val
+    rw [if_pos rfl]
+  · change (if oldReg = newReg then flag else js.vregs oldReg) = old
+    rw [if_neg hold_ne_new, hold]
 
 /-- `AMOMAXU.D`'s select middle block chooses `rs2` exactly when `rs2 > old`
 as unsigned dwords. -/
@@ -1556,6 +2430,96 @@ theorem amo_dword_maxu_middle_after_load
   exact
     amo_dword_maxu_middle_run rs2 js_afterLoad rs2Val
       old hrs2_afterLoad hld_old
+
+/-- Selected-register version of `amo_dword_maxu_middle_run`. -/
+theorem amo_dword_maxu_middle_run_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js_afterLoad : SailJoltState)
+    (rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js_afterLoad.sail =
+      .ok rs2Val js_afterLoad.sail)
+    (hold : js_afterLoad.vregs oldReg = old)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoDwordSelectMiddleStepInto newReg tmpReg oldReg
+        (fun dst lhs rhs => .SLTU dst lhs rhs)
+        (.vreg oldReg) (.xreg rs2) rs2
+        old
+        (if (zopz0zK_u rs2Val old : Bool) then rs2Val else old)
+        js_afterLoad js_afterMiddle := by
+  exact
+    amo_dword_select_middle_phase_run_into newReg tmpReg oldReg
+      (fun dst lhs rhs => .SLTU dst lhs rhs)
+      (.vreg oldReg) (.xreg rs2) rs2
+      js_afterLoad rs2Val old (jolt_sltu_value old rs2Val)
+      (if (zopz0zK_u rs2Val old : Bool) then rs2Val else old)
+      hrs2 hnew htmp hold_ne_tmp hold_ne_new htmp_ne_new
+      (amo_dword_maxu_compare_phase_run_into newReg oldReg rs2 js_afterLoad
+        rs2Val old hrs2 hold hnew hold_ne_new)
+      (amo_dword_select_value_of_sgtu old rs2Val)
+
+/-- Selected-register version of `amo_dword_maxu_middle_after_load`. -/
+theorem amo_dword_maxu_middle_after_load_into
+    (newReg tmpReg oldReg : JoltISA.VReg)
+    (rs2 : regidx) (js : SailJoltState) (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hnew : WritableVReg newReg)
+    (htmp : WritableVReg tmpReg)
+    (hold_ne_tmp : oldReg ≠ tmpReg)
+    (hold_ne_new : oldReg ≠ newReg)
+    (htmp_ne_new : tmpReg ≠ newReg) :
+    ∀ js_afterLoad : SailJoltState,
+      js_afterLoad.sail = js.sail →
+      js_afterLoad.vregs oldReg = old →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoDwordSelectMiddleStepInto newReg tmpReg oldReg
+          (fun dst lhs rhs => .SLTU dst lhs rhs)
+          (.vreg oldReg) (.xreg rs2) rs2
+          old
+          (if (zopz0zK_u rs2Val old : Bool) then rs2Val else old)
+          js_afterLoad js_afterMiddle := by
+  intro js_afterLoad hld_sail hld_old
+  have hrs2_afterLoad :
+      rX_bits rs2 js_afterLoad.sail =
+        .ok rs2Val js_afterLoad.sail := by
+    rw [hld_sail]
+    exact hrs2
+  exact
+    amo_dword_maxu_middle_run_into newReg tmpReg oldReg rs2 js_afterLoad
+      rs2Val old hrs2_afterLoad hld_old hnew htmp hold_ne_tmp
+      hold_ne_new htmp_ne_new
+
+/-- `AMOMAXU.D` selected-register middle helper specialized to Rust's `rd`
+dependent register allocation. -/
+theorem amo_dword_maxu_middle_after_load_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (addr rs2Val old : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ js_afterLoad : SailJoltState,
+      js_afterLoad.sail = js.sail →
+      js_afterLoad.vregs (JoltISA.amoOldVRegFor rd) = old →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoDwordSelectMiddleStepInto
+          (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+          (JoltISA.amoOldVRegFor rd)
+          (fun dst lhs rhs => .SLTU dst lhs rhs)
+          (.vreg (JoltISA.amoOldVRegFor rd)) (.xreg rs2) rs2
+          old
+          (if (zopz0zK_u rs2Val old : Bool) then rs2Val else old)
+          js_afterLoad js_afterMiddle := by
+  exact
+    amo_dword_maxu_middle_after_load_into
+      (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+      (JoltISA.amoOldVRegFor rd) rs2 js addr rs2Val old hrs2
+      (JoltISA.amoNewVRegFor_writable rd)
+      (JoltISA.amoTmpVRegFor_writable rd)
+      (JoltISA.amoOldVRegFor_ne_amoTmpVRegFor rd)
+      (JoltISA.amoOldVRegFor_ne_amoNewVRegFor rd)
+      (JoltISA.amoTmpVRegFor_ne_amoNewVRegFor rd)
 
 /-- After a pure AMO middle instruction, `SD amoNewVReg, 0(rs1)` writes the
 computed dword result. -/
@@ -1629,7 +2593,8 @@ theorem amo_dword_store_vreg_result_after_middle_aligned_run
       hstore_pmp hwrite_mmio h_align hmiddle_sail hmiddle_result
 
 /-- After the AMO store, the final `ADDI rd, old, 0` writes the loaded old
-dword from the chosen old-value scratch register into `rd`. -/
+dword from the chosen old-value scratch register through Rust's side-effecting
+destination rewrite. -/
 theorem amo_dword_writeback_after_store_run_from
     (oldReg : JoltISA.VReg)
     (rd : regidx) (js js_afterStore : SailJoltState)
@@ -1638,11 +2603,10 @@ theorem amo_dword_writeback_after_store_run_from
     (hold : js.vregs oldReg = oldVal) :
     ∃ js_afterWrite : SailJoltState,
       (JoltISA.execInstr
-        (.ADDI (.xreg rd) (.vreg oldReg) (0 : BitVec 12))).run
+        (.ADDI (JoltISA.amoDstFor rd) (.vreg oldReg) (0 : BitVec 12))).run
           js_afterStore =
         .ok RETIRE_SUCCESS js_afterWrite ∧
-      js_afterWrite.sail = stateAfterWrite js_afterStore.sail rd oldVal ∧
-      js_afterWrite.vregs = js_afterStore.vregs := by
+      js_afterWrite.sail = stateAfterWrite js_afterStore.sail rd oldVal := by
   have hold_afterStore :
       js_afterStore.vregs oldReg = oldVal := by
     rw [hstore_vregs]
@@ -1660,11 +2624,10 @@ theorem amo_dword_writeback_after_store_run
     (hold : js.vregs JoltISA.amoOldVReg = oldVal) :
     ∃ js_afterWrite : SailJoltState,
       (JoltISA.execInstr
-        (.ADDI (.xreg rd) (.vreg JoltISA.amoOldVReg) (0 : BitVec 12))).run
+        (.ADDI (JoltISA.amoDstFor rd) (.vreg JoltISA.amoOldVReg) (0 : BitVec 12))).run
           js_afterStore =
         .ok RETIRE_SUCCESS js_afterWrite ∧
-      js_afterWrite.sail = stateAfterWrite js_afterStore.sail rd oldVal ∧
-      js_afterWrite.vregs = js_afterStore.vregs := by
+      js_afterWrite.sail = stateAfterWrite js_afterStore.sail rd oldVal := by
   exact
     amo_dword_writeback_after_store_run_from JoltISA.amoOldVReg
       rd js js_afterStore addr oldVal hstore_vregs hold
@@ -1688,15 +2651,17 @@ theorem amo_dword_double_binop_program_concrete_aligned
     (hwrite_mmio : Assumptions.NotWritableMmio addr 8 js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hmiddle :
+      ∀ oldReg newReg : JoltISA.VReg,
+      WritableVReg newReg →
+      oldReg ≠ newReg →
       ∀ js_afterLoad : SailJoltState,
         js_afterLoad.sail = js.sail →
-        js_afterLoad.vregs JoltISA.amoDoubleBinopOldVReg =
+        js_afterLoad.vregs oldReg =
           loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align) →
         ∃ js_afterMiddle : SailJoltState,
-          AmoDwordMiddleStep
-            (binop (.vreg JoltISA.amoDoubleBinopNewVReg)
-              (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs2))
+          AmoDwordMiddleStepInto newReg oldReg
+            (binop (.vreg newReg) (.vreg oldReg) (.xreg rs2))
             (loaded_dword_at js.sail addr hbytes
               (amo_dword_aligned_no_ovf addr h_align)) result
             js_afterLoad js_afterMiddle) :
@@ -1706,23 +2671,38 @@ theorem amo_dword_double_binop_program_concrete_aligned
       jsf.sail = amoDwordFinalSailState rd js.sail addr result
         (loaded_dword_at js.sail addr hbytes
           (amo_dword_aligned_no_ovf addr h_align)) := by
+  let oldReg := JoltISA.amoDoubleBinopOldVRegFor rd
+  let newReg := JoltISA.amoDoubleBinopNewVRegFor rd
+  have holdWritable : WritableVReg oldReg := by
+    unfold oldReg JoltISA.amoDoubleBinopOldVRegFor JoltISA.amoVRegFor
+    unfold WritableVReg
+    split <;> decide
+  have hnewWritable : WritableVReg newReg := by
+    unfold newReg JoltISA.amoDoubleBinopNewVRegFor JoltISA.amoVRegFor
+    unfold WritableVReg
+    split <;> decide
+  have hne_old_new : oldReg ≠ newReg := by
+    unfold oldReg newReg JoltISA.amoDoubleBinopOldVRegFor
+      JoltISA.amoDoubleBinopNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
   obtain ⟨js_afterLoad, hld, hld_sail, hld_old⟩ :=
     amo_dword_load_old_aligned_run_into
-      JoltISA.amoDoubleBinopOldVReg rs1 js hpriv hmprv addr hrs1
+      oldReg rs1 js hpriv hmprv addr hrs1
       hbytes hload_pmp hread_mmio h_align
-      (by unfold WritableVReg; decide)
+      holdWritable
   obtain ⟨js_afterMiddle, hmiddle_step⟩ :=
-    hmiddle js_afterLoad hld_sail hld_old
+    hmiddle oldReg newReg hnewWritable hne_old_new
+      js_afterLoad hld_sail hld_old
   have hmiddle_sail : js_afterMiddle.sail = js.sail := by
     rw [hmiddle_step.sail, hld_sail]
   obtain ⟨js_afterStore, hsd, hsd_sail, hsd_vregs⟩ :=
     amo_dword_store_vreg_result_after_middle_aligned_run_from
-      JoltISA.amoDoubleBinopNewVReg
+      newReg
       rs1 js js_afterMiddle hpriv hmprv addr result hrs1
       hstore_pmp hwrite_mmio h_align
       hmiddle_sail hmiddle_step.result_vreg
-  obtain ⟨js_afterWrite, haddi, haddi_sail, _haddi_vregs⟩ :=
-    amo_dword_writeback_after_store_run_from JoltISA.amoDoubleBinopOldVReg
+  obtain ⟨js_afterWrite, haddi, haddi_sail⟩ :=
+    amo_dword_writeback_after_store_run_from oldReg
       rd js_afterMiddle js_afterStore addr
       (loaded_dword_at js.sail addr hbytes
         (amo_dword_aligned_no_ovf addr h_align))
@@ -1751,23 +2731,25 @@ theorem amo_dword_double_binop_program_concrete_misaligned
     (JoltISA.execProgram (JoltISA.amoDoubleBinopProgram binop rs2 rs1 rd)).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js := by
+  let oldReg := JoltISA.amoDoubleBinopOldVRegFor rd
+  let newReg := JoltISA.amoDoubleBinopNewVRegFor rd
+  let dst := JoltISA.amoDstFor rd
   let rest : JoltISA.Program :=
-    .instr (binop (.vreg JoltISA.amoDoubleBinopNewVReg)
-      (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs2)) <|
-    .instr (.SD (.xreg rs1) (.vreg JoltISA.amoDoubleBinopNewVReg) (0 : BitVec 12)) <|
-    .instr (.ADDI (.xreg rd) (.vreg JoltISA.amoDoubleBinopOldVReg) (0 : BitVec 12)) <|
+    .instr (binop (.vreg newReg) (.vreg oldReg) (.xreg rs2)) <|
+    .instr (.SD (.xreg rs1) (.vreg newReg) (0 : BitVec 12)) <|
+    .instr (.ADDI dst (.vreg oldReg) (0 : BitVec 12)) <|
     .done RETIRE_SUCCESS
   let e := (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())
   have hld :
       (JoltISA.execInstr
-        (.LD .amo (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
+        (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
       .ok (ExecutionResult.Memory_Exception e) js := by
     exact amo_dword_ld_xreg_misaligned_run
-      JoltISA.amoDoubleBinopOldVReg rs1 js addr hrs1 h_align
+      oldReg rs1 js addr hrs1 h_align
   unfold JoltISA.amoDoubleBinopProgram
   exact
     JoltISA.execProgram_instr_run_memory_exception
-      (.LD .amo (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs1) (0 : BitVec 12))
+      (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))
       rest js js e hld
 
 /-- An 8-byte aligned virtual address satisfies Sail's aligned-address test. -/
@@ -2205,15 +3187,17 @@ theorem amo_dword_double_binop_program_eq_sail_aligned
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hnot_cas : (op == amoop.AMOCAS) = false)
     (hmiddle :
+      ∀ oldReg newReg : JoltISA.VReg,
+      WritableVReg newReg →
+      oldReg ≠ newReg →
       ∀ js_afterLoad : SailJoltState,
         js_afterLoad.sail = js.sail →
-        js_afterLoad.vregs JoltISA.amoDoubleBinopOldVReg =
+        js_afterLoad.vregs oldReg =
           loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align) →
         ∃ js_afterMiddle : SailJoltState,
-          AmoDwordMiddleStep
-            (binop (.vreg JoltISA.amoDoubleBinopNewVReg)
-              (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs2))
+          AmoDwordMiddleStepInto newReg oldReg
+            (binop (.vreg newReg) (.vreg oldReg) (.xreg rs2))
             (loaded_dword_at js.sail addr hbytes
               (amo_dword_aligned_no_ovf addr h_align)) result
             js_afterLoad js_afterMiddle)
@@ -2316,15 +3300,17 @@ theorem amo_dword_double_binop_program_project_eq_sail
     (hnot_cas : (op == amoop.AMOCAS) = false)
     (hmiddle :
       ∀ h_align : addr &&& (7 : BitVec 64) = 0,
+      ∀ oldReg newReg : JoltISA.VReg,
+      WritableVReg newReg →
+      oldReg ≠ newReg →
       ∀ js_afterLoad : SailJoltState,
         js_afterLoad.sail = js.sail →
-        js_afterLoad.vregs JoltISA.amoDoubleBinopOldVReg =
+        js_afterLoad.vregs oldReg =
           loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align) →
         ∃ js_afterMiddle : SailJoltState,
-          AmoDwordMiddleStep
-            (binop (.vreg JoltISA.amoDoubleBinopNewVReg)
-              (.vreg JoltISA.amoDoubleBinopOldVReg) (.xreg rs2))
+          AmoDwordMiddleStepInto newReg oldReg
+            (binop (.vreg newReg) (.vreg oldReg) (.xreg rs2))
             (loaded_dword_at js.sail addr hbytes
               (amo_dword_aligned_no_ovf addr h_align)) result
             js_afterLoad js_afterMiddle)
@@ -2373,11 +3359,14 @@ theorem amo_dword_double_select_program_concrete_aligned
     (hmiddle :
       ∀ js_afterLoad : SailJoltState,
         js_afterLoad.sail = js.sail →
-        js_afterLoad.vregs JoltISA.amoOldVReg =
+        js_afterLoad.vregs (JoltISA.amoOldVRegFor rd) =
           loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align) →
         ∃ js_afterMiddle : SailJoltState,
-          AmoDwordSelectMiddleStep cmpInstr cmpLhs cmpRhs rs2
+          AmoDwordSelectMiddleStepInto
+            (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+            (JoltISA.amoOldVRegFor rd)
+            cmpInstr cmpLhs cmpRhs rs2
             (loaded_dword_at js.sail addr hbytes
               (amo_dword_aligned_no_ovf addr h_align)) result
             js_afterLoad js_afterMiddle) :
@@ -2388,38 +3377,67 @@ theorem amo_dword_double_select_program_concrete_aligned
       jsf.sail = amoDwordFinalSailState rd js.sail addr result
         (loaded_dword_at js.sail addr hbytes
           (amo_dword_aligned_no_ovf addr h_align)) := by
+  let oldReg := JoltISA.amoOldVRegFor rd
+  let newReg := JoltISA.amoNewVRegFor rd
+  let tmpReg := JoltISA.amoTmpVRegFor rd
+  let dst := JoltISA.amoDstFor rd
+  have holdWritable : WritableVReg oldReg := by
+    unfold oldReg JoltISA.amoOldVRegFor JoltISA.amoVRegFor
+    unfold WritableVReg
+    split <;> decide
+  have hnewWritable : WritableVReg newReg := by
+    unfold newReg JoltISA.amoNewVRegFor JoltISA.amoVRegFor
+    unfold WritableVReg
+    split <;> decide
+  have htmpWritable : WritableVReg tmpReg := by
+    unfold tmpReg JoltISA.amoTmpVRegFor JoltISA.amoVRegFor
+    unfold WritableVReg
+    split <;> decide
+  have hold_ne_new : oldReg ≠ newReg := by
+    unfold oldReg newReg JoltISA.amoOldVRegFor JoltISA.amoNewVRegFor
+      JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_tmp : oldReg ≠ tmpReg := by
+    unfold oldReg tmpReg JoltISA.amoOldVRegFor JoltISA.amoTmpVRegFor
+      JoltISA.amoVRegFor
+    split <;> decide
+  have htmp_ne_new : tmpReg ≠ newReg := by
+    unfold tmpReg newReg JoltISA.amoTmpVRegFor JoltISA.amoNewVRegFor
+      JoltISA.amoVRegFor
+    split <;> decide
   obtain ⟨js_afterLoad, hld, hld_sail, hld_old⟩ :=
-    amo_dword_load_old_aligned_run rs1 js hpriv hmprv addr hrs1
-      hbytes hload_pmp hread_mmio h_align
+    amo_dword_load_old_aligned_run_into oldReg rs1 js hpriv hmprv addr hrs1
+      hbytes hload_pmp hread_mmio h_align holdWritable
   obtain ⟨js_afterMiddle, hmiddle_step⟩ :=
     hmiddle js_afterLoad hld_sail hld_old
   have hmiddle_sail : js_afterMiddle.sail = js.sail := by
     rw [hmiddle_step.sail, hld_sail]
   obtain ⟨js_afterStore, hsd, hsd_sail, hsd_vregs⟩ :=
-    amo_dword_store_vreg_result_after_middle_aligned_run
-      rs1 js js_afterMiddle hpriv hmprv addr result hrs1
+    amo_dword_store_vreg_result_after_middle_aligned_run_from
+      newReg rs1 js js_afterMiddle hpriv hmprv addr result hrs1
       hstore_pmp hwrite_mmio h_align
       hmiddle_sail hmiddle_step.result_vreg
-  obtain ⟨js_afterWrite, haddi, haddi_sail, _haddi_vregs⟩ :=
-    amo_dword_writeback_after_store_run rd js_afterMiddle js_afterStore addr
+  obtain ⟨js_afterWrite, haddi, haddi_sail⟩ :=
+    amo_dword_writeback_after_store_run_from oldReg
+      rd js_afterMiddle js_afterStore addr
       (loaded_dword_at js.sail addr hbytes
         (amo_dword_aligned_no_ovf addr h_align))
       hsd_vregs hmiddle_step.old_vreg
   let tail : JoltISA.Program :=
-    .instr (.SD (.xreg rs1) (.vreg JoltISA.amoNewVReg) (0 : BitVec 12)) <|
-    .instr (.ADDI (.xreg rd) (.vreg JoltISA.amoOldVReg) (0 : BitVec 12)) <|
+    .instr (.SD (.xreg rs1) (.vreg newReg) (0 : BitVec 12)) <|
+    .instr (.ADDI dst (.vreg oldReg) (0 : BitVec 12)) <|
     .done RETIRE_SUCCESS
   have hmiddle_run := hmiddle_step.run tail
-  unfold amoDwordSelectMiddleProgram amoDwordSelectComparePhase
-    amoDwordSelectTailPhase at hmiddle_run
+  unfold amoDwordSelectMiddleProgramInto amoDwordSelectComparePhaseInto
+    amoDwordSelectTailPhaseInto at hmiddle_run
   change (JoltISA.execProgram
-      (.instr (cmpInstr (.vreg JoltISA.amoNewVReg) cmpLhs cmpRhs) <|
-       .instr (.SUB (.vreg JoltISA.amoTmpVReg)
-         (.xreg rs2) (.vreg JoltISA.amoOldVReg)) <|
-       .instr (.MUL (.vreg JoltISA.amoTmpVReg)
-         (.vreg JoltISA.amoTmpVReg) (.vreg JoltISA.amoNewVReg)) <|
-       .instr (.ADD (.vreg JoltISA.amoNewVReg)
-         (.vreg JoltISA.amoOldVReg) (.vreg JoltISA.amoTmpVReg)) <|
+      (.instr (cmpInstr (.vreg newReg) cmpLhs cmpRhs) <|
+       .instr (.SUB (.vreg tmpReg)
+         (.xreg rs2) (.vreg oldReg)) <|
+       .instr (.MUL (.vreg tmpReg)
+         (.vreg tmpReg) (.vreg newReg)) <|
+       .instr (.ADD (.vreg newReg)
+         (.vreg oldReg) (.vreg tmpReg)) <|
        tail)).run js_afterLoad =
       (JoltISA.execProgram tail).run js_afterMiddle at hmiddle_run
   refine ⟨js_afterWrite, ?_, ?_⟩
@@ -2443,28 +3461,29 @@ theorem amo_dword_double_select_program_concrete_misaligned
       (JoltISA.amoDoubleSelectProgram cmpInstr cmpLhs cmpRhs rs2 rs1 rd)).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js := by
+  let oldReg := JoltISA.amoOldVRegFor rd
+  let newReg := JoltISA.amoNewVRegFor rd
+  let tmpReg := JoltISA.amoTmpVRegFor rd
+  let dst := JoltISA.amoDstFor rd
   let rest : JoltISA.Program :=
-    .instr (cmpInstr (.vreg JoltISA.amoNewVReg) cmpLhs cmpRhs) <|
-    .instr (.SUB (.vreg JoltISA.amoTmpVReg)
-      (.xreg rs2) (.vreg JoltISA.amoOldVReg)) <|
-    .instr (.MUL (.vreg JoltISA.amoTmpVReg)
-      (.vreg JoltISA.amoTmpVReg) (.vreg JoltISA.amoNewVReg)) <|
-    .instr (.ADD (.vreg JoltISA.amoNewVReg)
-      (.vreg JoltISA.amoOldVReg) (.vreg JoltISA.amoTmpVReg)) <|
-    .instr (.SD (.xreg rs1) (.vreg JoltISA.amoNewVReg) (0 : BitVec 12)) <|
-    .instr (.ADDI (.xreg rd) (.vreg JoltISA.amoOldVReg) (0 : BitVec 12)) <|
+    .instr (cmpInstr (.vreg newReg) cmpLhs cmpRhs) <|
+    .instr (.SUB (.vreg tmpReg) (.xreg rs2) (.vreg oldReg)) <|
+    .instr (.MUL (.vreg tmpReg) (.vreg tmpReg) (.vreg newReg)) <|
+    .instr (.ADD (.vreg newReg) (.vreg oldReg) (.vreg tmpReg)) <|
+    .instr (.SD (.xreg rs1) (.vreg newReg) (0 : BitVec 12)) <|
+    .instr (.ADDI dst (.vreg oldReg) (0 : BitVec 12)) <|
     .done RETIRE_SUCCESS
   let e := (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())
   have hld :
       (JoltISA.execInstr
-        (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
+        (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
       .ok (ExecutionResult.Memory_Exception e) js := by
     exact amo_dword_ld_xreg_misaligned_run
-      JoltISA.amoOldVReg rs1 js addr hrs1 h_align
+      oldReg rs1 js addr hrs1 h_align
   unfold JoltISA.amoDoubleSelectProgram
   exact
     JoltISA.execProgram_instr_run_memory_exception
-      (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))
+      (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))
       rest js js e hld
 
 /-- Shared aligned public branch for dword AMO double-select expansions. -/
@@ -2490,11 +3509,14 @@ theorem amo_dword_double_select_program_eq_sail_aligned
     (hmiddle :
       ∀ js_afterLoad : SailJoltState,
         js_afterLoad.sail = js.sail →
-        js_afterLoad.vregs JoltISA.amoOldVReg =
+        js_afterLoad.vregs (JoltISA.amoOldVRegFor rd) =
           loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align) →
         ∃ js_afterMiddle : SailJoltState,
-          AmoDwordSelectMiddleStep cmpInstr cmpLhs cmpRhs rs2
+          AmoDwordSelectMiddleStepInto
+            (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+            (JoltISA.amoOldVRegFor rd)
+            cmpInstr cmpLhs cmpRhs rs2
             (loaded_dword_at js.sail addr hbytes
               (amo_dword_aligned_no_ovf addr h_align)) result
             js_afterLoad js_afterMiddle)
@@ -2570,11 +3592,14 @@ theorem amo_dword_double_select_program_project_eq_sail
       ∀ h_align : addr &&& (7 : BitVec 64) = 0,
       ∀ js_afterLoad : SailJoltState,
         js_afterLoad.sail = js.sail →
-        js_afterLoad.vregs JoltISA.amoOldVReg =
+        js_afterLoad.vregs (JoltISA.amoOldVRegFor rd) =
           loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align) →
         ∃ js_afterMiddle : SailJoltState,
-          AmoDwordSelectMiddleStep cmpInstr cmpLhs cmpRhs rs2
+          AmoDwordSelectMiddleStepInto
+            (JoltISA.amoNewVRegFor rd) (JoltISA.amoTmpVRegFor rd)
+            (JoltISA.amoOldVRegFor rd)
+            cmpInstr cmpLhs cmpRhs rs2
             (loaded_dword_at js.sail addr hbytes
               (amo_dword_aligned_no_ovf addr h_align)) result
             js_afterLoad js_afterMiddle)

@@ -734,32 +734,12 @@ theorem amo_word_rust_select_writeback_old_run
       js'.sail = amoWordFinalSailState rd s addr result oldWord ∧
       ∀ tail,
         (JoltISA.execProgram
-          (.instr (.VirtualSignExtendWord (.xreg rd)
+          (.instr (.VirtualSignExtendWord (JoltISA.amoDstFor rd)
           (.vreg JoltISA.amoWordSelectOldVReg)) tail)).run js =
           (JoltISA.execProgram tail).run js' := by
-  obtain ⟨writebackState, hwriteback, hwriteback_state⟩ :=
-    amo_word_writeback_old_shape rd s addr result oldWord
-  have hwriteback_current :
-      wX_bits rd
-        (sign_extend (m := 64)
-          ((Sail.BitVec.extractLsb
-            (js.vregs JoltISA.amoWordSelectOldVReg) 31 0) : BitVec 32))
-        js.sail =
-      .ok () writebackState := by
-    rw [h_sail, h_old, h_old_word]
-    exact hwriteback
-  let js' : SailJoltState := { sail := writebackState, vregs := js.vregs }
-  have hsext :
-      (JoltISA.execInstr
-        (.VirtualSignExtendWord (.xreg rd)
-          (.vreg JoltISA.amoWordSelectOldVReg))).run js =
-        .ok RETIRE_SUCCESS js' :=
-    JoltISA.virtual_sign_extend_word_run_xreg_vreg
-      rd JoltISA.amoWordSelectOldVReg js writebackState hwriteback_current
-  refine ⟨js', ?_, ?_⟩
-  · exact hwriteback_state
-  · intro tail
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js' hsext]
+  exact
+    amo_word_writeback_old_run_from JoltISA.amoWordSelectOldVReg
+      rd js s addr result oldWord old h_sail h_old h_old_word
 
 /-- The aligned word-AMO postlude stores the low 32 bits of a virtual-register
 new value into the selected word lane and writes the sign-extended old word
@@ -881,6 +861,658 @@ theorem amo_word_rust_select_post64_vreg_aligned_run
     rfl
   · exact hwriteback_sail
 
+/-- Selected-register version of `amo_word_rust_select_mask32_prefix_run`. -/
+theorem amo_word_rust_select_mask32_prefix_run_for
+    (rd : regidx) (js : SailJoltState) (s : SailState)
+    (shift64 dword old : BitVec 64)
+    (h_sail : js.sail = s)
+    (h_shift : js.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift64)
+    (h_dword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (h_old : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old) :
+    ∃ js',
+      js'.sail = s ∧
+      js'.vregs (JoltISA.amoWordSelectMaskVRegFor rd) =
+        (0x00000000FFFFFFFF : BitVec 64) ∧
+      js'.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift64 ∧
+      js'.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword ∧
+      js'.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old ∧
+      js'.vregs (JoltISA.amoWordSelectNewVRegFor rd) =
+        js.vregs (JoltISA.amoWordSelectNewVRegFor rd) ∧
+      ∀ tail,
+        (JoltISA.execProgram
+          (.instr (.ORI (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+            (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
+           .instr (.VirtualSRLI (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+            (JoltISA.srliBitmask (32 : BitVec 6))) tail)).run js =
+          (JoltISA.execProgram tail).run js' := by
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let newReg := JoltISA.amoWordSelectNewVRegFor rd
+  have hmask_w : WritableVReg maskReg := by
+    unfold maskReg JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hshift_ne_mask : shiftReg ≠ maskReg := by
+    unfold shiftReg maskReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_mask : dwordReg ≠ maskReg := by
+    unfold dwordReg maskReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_mask : oldReg ≠ maskReg := by
+    unfold oldReg maskReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hnew_ne_mask : newReg ≠ maskReg := by
+    unfold newReg maskReg JoltISA.amoWordSelectNewVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  obtain ⟨js_ones, _hx0, hones_sail_raw, hones_mask_raw,
+      hones_preserves, hones_run⟩ :=
+    JoltISA.exists_state_after_ori_run_vreg_xreg_of_sail_eq
+      maskReg (regidx.Regidx 0) (-1 : BitVec 12) js s (0#64)
+      h_sail (amo_word_read_x0_eq_zero s) hmask_w
+  have hones_sail : js_ones.sail = s := by
+    rw [hones_sail_raw, h_sail]
+  have hones_mask : js_ones.vregs maskReg = (-1 : BitVec 64) := by
+    rw [hones_mask_raw]
+    exact amo_word_seed_mask_value
+  have hones_shift : js_ones.vregs shiftReg = shift64 := by
+    rw [hones_preserves shiftReg hshift_ne_mask]
+    exact h_shift
+  have hones_dword : js_ones.vregs dwordReg = dword := by
+    rw [hones_preserves dwordReg hdword_ne_mask]
+    exact h_dword
+  have hones_old : js_ones.vregs oldReg = old := by
+    rw [hones_preserves oldReg hold_ne_mask]
+    exact h_old
+  have hones_new : js_ones.vregs newReg = js.vregs newReg := by
+    rw [hones_preserves newReg hnew_ne_mask]
+  obtain ⟨js_mask, hmask_sail_raw, hmask_raw, hmask_preserves,
+      hmask_tail⟩ :=
+    JoltISA.exists_state_after_srli_block_run_vreg_vreg
+      maskReg maskReg (32 : BitVec 6) js_ones hmask_w
+  refine ⟨js_mask, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · rw [hmask_sail_raw, hones_sail]
+  · rw [hmask_raw, hones_mask]
+    exact amo_word_low_word_mask_value
+  · rw [hmask_preserves shiftReg hshift_ne_mask]
+    exact hones_shift
+  · rw [hmask_preserves dwordReg hdword_ne_mask]
+    exact hones_dword
+  · rw [hmask_preserves oldReg hold_ne_mask]
+    exact hones_old
+  · rw [hmask_preserves newReg hnew_ne_mask]
+    exact hones_new
+  · intro tail
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_ones hones_run]
+    have htail := hmask_tail tail
+    unfold JoltISA.srliBlock at htail
+    simpa [maskReg] using htail
+
+/-- Selected-register version of `amo_word_rust_select_shift_mask_prefix_run`. -/
+theorem amo_word_rust_select_shift_mask_prefix_run_for
+    (rd : regidx) (js : SailJoltState) (s : SailState)
+    (shift64 dword old : BitVec 64)
+    (h_sail : js.sail = s)
+    (h_mask : js.vregs (JoltISA.amoWordSelectMaskVRegFor rd) =
+      (0x00000000FFFFFFFF : BitVec 64))
+    (h_shift : js.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift64)
+    (h_dword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (h_old : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old) :
+    ∃ js',
+      js'.sail = s ∧
+      js'.vregs (JoltISA.amoWordSelectMaskVRegFor rd) =
+        shift_bits_left (0x00000000FFFFFFFF : BitVec 64)
+          (Sail.BitVec.extractLsb shift64 5 0) ∧
+      js'.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift64 ∧
+      js'.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword ∧
+      js'.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old ∧
+      js'.vregs (JoltISA.amoWordSelectNewVRegFor rd) =
+        js.vregs (JoltISA.amoWordSelectNewVRegFor rd) ∧
+      ∀ tail,
+        (JoltISA.execProgram
+          (.instr (.VirtualPow2 (.vreg (JoltISA.amoWordSelectInlineTmpVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectShiftVRegFor rd))) <|
+           .instr (.MUL (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectInlineTmpVRegFor rd))) tail)).run js =
+          (JoltISA.execProgram tail).run js' := by
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let newReg := JoltISA.amoWordSelectNewVRegFor rd
+  let tmpReg := JoltISA.amoWordSelectInlineTmpVRegFor rd
+  have hmask_w : WritableVReg maskReg := by
+    unfold maskReg JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have htmp_w : WritableVReg tmpReg := by
+    unfold tmpReg JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hmask_ne_tmp : maskReg ≠ tmpReg := by
+    unfold maskReg tmpReg JoltISA.amoWordSelectMaskVRegFor
+      JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_mask : shiftReg ≠ maskReg := by
+    unfold shiftReg maskReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_tmp : shiftReg ≠ tmpReg := by
+    unfold shiftReg tmpReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_mask : dwordReg ≠ maskReg := by
+    unfold dwordReg maskReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_tmp : dwordReg ≠ tmpReg := by
+    unfold dwordReg tmpReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_mask : oldReg ≠ maskReg := by
+    unfold oldReg maskReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_tmp : oldReg ≠ tmpReg := by
+    unfold oldReg tmpReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hnew_ne_mask : newReg ≠ maskReg := by
+    unfold newReg maskReg JoltISA.amoWordSelectNewVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hnew_ne_tmp : newReg ≠ tmpReg := by
+    unfold newReg tmpReg JoltISA.amoWordSelectNewVRegFor
+      JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  obtain ⟨js', h_sail_raw, h_mask_raw, h_preserves, htail⟩ :=
+    JoltISA.exists_state_after_sll_block_run_vreg_vreg_vreg
+      maskReg maskReg shiftReg tmpReg js hmask_ne_tmp hmask_w htmp_w
+  refine ⟨js', ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · rw [h_sail_raw, h_sail]
+  · rw [h_mask_raw, h_mask, h_shift]
+  · rw [h_preserves shiftReg hshift_ne_mask hshift_ne_tmp]
+    exact h_shift
+  · rw [h_preserves dwordReg hdword_ne_mask hdword_ne_tmp]
+    exact h_dword
+  · rw [h_preserves oldReg hold_ne_mask hold_ne_tmp]
+    exact h_old
+  · rw [h_preserves newReg hnew_ne_mask hnew_ne_tmp]
+  · intro tail
+    have h := htail tail
+    unfold JoltISA.sllBlock at h
+    simpa [maskReg, shiftReg, tmpReg] using h
+
+/-- Selected-register version of
+`amo_word_rust_select_shift_new_vreg_prefix_run`, specialized to Rust's
+word-select `new` register for `rd`. -/
+theorem amo_word_rust_select_shift_new_vreg_prefix_run_for
+    (rd : regidx) (js : SailJoltState) (s : SailState)
+    (newValue shift64 shiftedMask dword old : BitVec 64)
+    (h_sail : js.sail = s)
+    (h_new : js.vregs (JoltISA.amoWordSelectNewVRegFor rd) = newValue)
+    (h_mask : js.vregs (JoltISA.amoWordSelectMaskVRegFor rd) = shiftedMask)
+    (h_shift : js.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift64)
+    (h_dword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (h_old : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old) :
+    ∃ js',
+      js'.sail = s ∧
+      js'.vregs (JoltISA.amoWordSelectShiftVRegFor rd) =
+        shift_bits_left newValue (Sail.BitVec.extractLsb shift64 5 0) ∧
+      js'.vregs (JoltISA.amoWordSelectMaskVRegFor rd) = shiftedMask ∧
+      js'.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword ∧
+      js'.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old ∧
+      ∀ tail,
+        (JoltISA.execProgram
+          (.instr (.VirtualPow2 (.vreg (JoltISA.amoWordSelectInlineTmpVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectShiftVRegFor rd))) <|
+           .instr (.MUL (.vreg (JoltISA.amoWordSelectShiftVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectInlineTmpVRegFor rd))) tail)).run js =
+          (JoltISA.execProgram tail).run js' := by
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let newReg := JoltISA.amoWordSelectNewVRegFor rd
+  let tmpReg := JoltISA.amoWordSelectInlineTmpVRegFor rd
+  have hshift_w : WritableVReg shiftReg := by
+    unfold shiftReg JoltISA.amoWordSelectShiftVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have htmp_w : WritableVReg tmpReg := by
+    unfold tmpReg JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hnew_ne_tmp : newReg ≠ tmpReg := by
+    unfold newReg tmpReg JoltISA.amoWordSelectNewVRegFor
+      JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hmask_ne_shift : maskReg ≠ shiftReg := by
+    unfold maskReg shiftReg JoltISA.amoWordSelectMaskVRegFor
+      JoltISA.amoWordSelectShiftVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hmask_ne_tmp : maskReg ≠ tmpReg := by
+    unfold maskReg tmpReg JoltISA.amoWordSelectMaskVRegFor
+      JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_shift : dwordReg ≠ shiftReg := by
+    unfold dwordReg shiftReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectShiftVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_tmp : dwordReg ≠ tmpReg := by
+    unfold dwordReg tmpReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_shift : oldReg ≠ shiftReg := by
+    unfold oldReg shiftReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectShiftVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_tmp : oldReg ≠ tmpReg := by
+    unfold oldReg tmpReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectInlineTmpVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  obtain ⟨js', h_sail_raw, h_shift_raw, h_preserves, htail⟩ :=
+    JoltISA.exists_state_after_sll_block_run_vreg_vreg_vreg
+      shiftReg newReg shiftReg tmpReg js hnew_ne_tmp hshift_w htmp_w
+  refine ⟨js', ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · rw [h_sail_raw, h_sail]
+  · rw [h_shift_raw, h_new, h_shift]
+  · rw [h_preserves maskReg hmask_ne_shift hmask_ne_tmp]
+    exact h_mask
+  · rw [h_preserves dwordReg hdword_ne_shift hdword_ne_tmp]
+    exact h_dword
+  · rw [h_preserves oldReg hold_ne_shift hold_ne_tmp]
+    exact h_old
+  · intro tail
+    have h := htail tail
+    unfold JoltISA.sllBlock at h
+    simpa [shiftReg, newReg, tmpReg] using h
+
+/-- Selected-register version of `amo_word_rust_select_splice_block_run`. -/
+theorem amo_word_rust_select_splice_block_run_for
+    (rd : regidx) (js : SailJoltState) (s : SailState)
+    (addr newValue dword old : BitVec 64)
+    (hsetup : StoreSplice.WordStoreFacts addr (amoWordBase addr))
+    (h_sail : js.sail = s)
+    (h_dword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (h_shift :
+      js.vregs (JoltISA.amoWordSelectShiftVRegFor rd) =
+        shift_bits_left newValue
+          (Sail.BitVec.extractLsb
+            (shift_bits_left addr (3 : BitVec 6)) 5 0))
+    (h_mask :
+      js.vregs (JoltISA.amoWordSelectMaskVRegFor rd) =
+        shift_bits_left (0x00000000FFFFFFFF : BitVec 64)
+          (Sail.BitVec.extractLsb
+            (shift_bits_left addr (3 : BitVec 6)) 5 0))
+    (h_old : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old) :
+    ∃ js',
+      js'.sail = s ∧
+      js'.vregs (JoltISA.amoWordSelectDwordVRegFor rd) =
+        amoWordSplicedDword addr newValue dword ∧
+      js'.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old ∧
+      ∀ tail,
+        (JoltISA.execProgram
+          (.instr (.XOR (.vreg (JoltISA.amoWordSelectShiftVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectDwordVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectShiftVRegFor rd))) <|
+           .instr (.AND (.vreg (JoltISA.amoWordSelectShiftVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectShiftVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))) <|
+           .instr (.XOR (.vreg (JoltISA.amoWordSelectDwordVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectDwordVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectShiftVRegFor rd))) tail)).run js =
+          (JoltISA.execProgram tail).run js' := by
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let shiftedNew :=
+    shift_bits_left newValue
+      (Sail.BitVec.extractLsb (shift_bits_left addr (3 : BitVec 6)) 5 0)
+  let shiftedMask :=
+    shift_bits_left (0x00000000FFFFFFFF : BitVec 64)
+      (Sail.BitVec.extractLsb (shift_bits_left addr (3 : BitVec 6)) 5 0)
+  have hshift_w : WritableVReg shiftReg := by
+    unfold shiftReg JoltISA.amoWordSelectShiftVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hdword_w : WritableVReg dwordReg := by
+    unfold dwordReg JoltISA.amoWordSelectDwordVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hmask_ne_shift : maskReg ≠ shiftReg := by
+    unfold maskReg shiftReg JoltISA.amoWordSelectMaskVRegFor
+      JoltISA.amoWordSelectShiftVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_shift : dwordReg ≠ shiftReg := by
+    unfold dwordReg shiftReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectShiftVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_shift : oldReg ≠ shiftReg := by
+    unfold oldReg shiftReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectShiftVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_dword : oldReg ≠ dwordReg := by
+    unfold oldReg dwordReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectDwordVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  obtain ⟨js_xor, hxor_sail_raw, hxor_shift_raw, hxor_preserves,
+      hxor_run⟩ :=
+    JoltISA.exists_state_after_xor_run_vreg_vreg_vreg
+      shiftReg dwordReg shiftReg js dword shiftedNew h_dword h_shift
+      hshift_w
+  have hxor_sail : js_xor.sail = s := by
+    rw [hxor_sail_raw, h_sail]
+  have hxor_shift : js_xor.vregs shiftReg = dword ^^^ shiftedNew := by
+    exact hxor_shift_raw
+  have hxor_mask : js_xor.vregs maskReg = shiftedMask := by
+    rw [hxor_preserves maskReg hmask_ne_shift]
+    exact h_mask
+  have hxor_dword : js_xor.vregs dwordReg = dword := by
+    rw [hxor_preserves dwordReg hdword_ne_shift]
+    exact h_dword
+  have hxor_old : js_xor.vregs oldReg = old := by
+    rw [hxor_preserves oldReg hold_ne_shift]
+    exact h_old
+  obtain ⟨js_and, hand_sail_raw, hand_shift_raw, hand_preserves,
+      hand_run⟩ :=
+    amo_word_exists_state_after_and_run_vreg_vreg_vreg
+      shiftReg shiftReg maskReg js_xor (dword ^^^ shiftedNew) shiftedMask
+      hxor_shift hxor_mask hshift_w
+  have hand_sail : js_and.sail = s := by
+    rw [hand_sail_raw, hxor_sail]
+  have hand_shift : js_and.vregs shiftReg =
+      (dword ^^^ shiftedNew) &&& shiftedMask := by
+    exact hand_shift_raw
+  have hand_dword : js_and.vregs dwordReg = dword := by
+    rw [hand_preserves dwordReg hdword_ne_shift]
+    exact hxor_dword
+  have hand_old : js_and.vregs oldReg = old := by
+    rw [hand_preserves oldReg hold_ne_shift]
+    exact hxor_old
+  obtain ⟨js_splice, hsplice_sail_raw, hsplice_dword_raw,
+      hsplice_preserves, hxor2_run⟩ :=
+    JoltISA.exists_state_after_xor_run_vreg_vreg_vreg
+      dwordReg dwordReg shiftReg js_and dword
+      ((dword ^^^ shiftedNew) &&& shiftedMask) hand_dword hand_shift
+      hdword_w
+  have hspliced_value := amo_word_splice_shifted_eq addr newValue dword hsetup
+  refine ⟨js_splice, ?_, ?_, ?_, ?_⟩
+  · rw [hsplice_sail_raw, hand_sail]
+  · rw [hsplice_dword_raw]
+    exact hspliced_value
+  · rw [hsplice_preserves oldReg hold_ne_dword]
+    exact hand_old
+  · intro tail
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_xor hxor_run]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_xor js_and hand_run]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_and js_splice hxor2_run]
+
+/-- Selected-register version of
+`amo_word_rust_select_store_base_prefix_run`. -/
+theorem amo_word_rust_select_store_base_prefix_run_for
+    (rd rs1 : regidx) (js : SailJoltState) (s : SailState)
+    (addr dwordNew old : BitVec 64)
+    (h_sail : js.sail = s)
+    (hrs1 : rX_bits rs1 s = .ok addr s)
+    (h_dword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dwordNew)
+    (h_old : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old) :
+    ∃ js',
+      js'.sail = s ∧
+      js'.vregs (JoltISA.amoWordSelectMaskVRegFor rd) = amoWordBase addr ∧
+      js'.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dwordNew ∧
+      js'.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old ∧
+      ∀ tail,
+        (JoltISA.execProgram
+          (.instr (.ANDI (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+            (.xreg rs1) (-8 : BitVec 12)) tail)).run js =
+          (JoltISA.execProgram tail).run js' := by
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  have hmask_w : WritableVReg maskReg := by
+    unfold maskReg JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hdword_ne_mask : dwordReg ≠ maskReg := by
+    unfold dwordReg maskReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_mask : oldReg ≠ maskReg := by
+    unfold oldReg maskReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  obtain ⟨js', _hrs1, h_sail_raw, h_base_raw, h_preserves, hrun⟩ :=
+    JoltISA.exists_state_after_andi_run_vreg_xreg_of_sail_eq
+      maskReg rs1 (-8 : BitVec 12) js s addr h_sail hrs1 hmask_w
+  refine ⟨js', ?_, ?_, ?_, ?_, ?_⟩
+  · rw [h_sail_raw, h_sail]
+  · rw [h_base_raw]
+    exact amo_word_base_mask addr
+  · rw [h_preserves dwordReg hdword_ne_mask]
+    exact h_dword
+  · rw [h_preserves oldReg hold_ne_mask]
+    exact h_old
+  · intro tail
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js' hrun]
+
+/-- Selected-register version of `amo_word_rust_select_sd_spliced_dword_run`. -/
+theorem amo_word_rust_select_sd_spliced_dword_run_for
+    (rd : regidx)
+    (js : SailJoltState) (s : SailState) (addr dwordNew old : BitVec 64)
+    (hpriv : Assumptions.CurPrivilegeMachine s)
+    (hmprv : Assumptions.MstatusMprvZero s)
+    (hstore_pmp : Assumptions.StorePmpOk (amoWordBase addr) 8 s)
+    (hwrite_mmio : Assumptions.NotWritableMmio (amoWordBase addr) 8 s)
+    (h_no_ovf : (amoWordBase addr).toNat + 7 < 2 ^ 64)
+    (h_sail : js.sail = s)
+    (h_base : js.vregs (JoltISA.amoWordSelectMaskVRegFor rd) = amoWordBase addr)
+    (h_dword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dwordNew)
+    (h_old : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old) :
+    ∃ js',
+      js'.sail = state_after_dword_store s (amoWordBase addr) dwordNew ∧
+      js'.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old ∧
+      ∀ tail,
+        (JoltISA.execProgram
+          (.instr (.SD (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectDwordVRegFor rd))
+            (0 : BitVec 12)) tail)).run js =
+          (JoltISA.execProgram tail).run js' := by
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  have hwrite_dword :
+      vmem_write_addr (Virtaddr (amoWordBase addr)) 8 dwordNew
+        (Store Data) false false false s =
+      .ok (Ok true) (state_after_dword_store s (amoWordBase addr) dwordNew) :=
+    vmem_write_addr_dword_store_reduces (amoWordBase addr) dwordNew s
+      hpriv hmprv
+      (amo_word_base_aligned_access addr h_no_ovf).toAlignedAccess
+      hstore_pmp hwrite_mmio
+  have hwrite_current :
+      vmem_write_addr (Virtaddr (js.vregs maskReg +
+          sign_extend (m := 64) (0 : BitVec 12))) 8
+        (js.vregs dwordReg)
+        (Store Data) false false false js.sail =
+      .ok (Ok true) (state_after_dword_store s (amoWordBase addr) dwordNew) := by
+    rw [h_sail, h_base, h_dword, amo_word_zero_offset_addr (amoWordBase addr)]
+    exact hwrite_dword
+  let js' : SailJoltState :=
+    { sail := state_after_dword_store s (amoWordBase addr) dwordNew
+      vregs := js.vregs }
+  have hsd_align :
+      (js.vregs maskReg + sign_extend (m := 64) (0 : BitVec 12)) &&&
+          (7 : BitVec 64) =
+        0 := by
+    rw [h_base, amo_word_zero_offset_addr (amoWordBase addr)]
+    exact amo_word_base_aligned addr
+  have hsd :
+      (JoltISA.execInstr
+        (.SD (.vreg maskReg) (.vreg dwordReg) (0 : BitVec 12))).run js =
+        .ok RETIRE_SUCCESS js' :=
+    JoltISA.execInstr_sd_vreg_run_of_write
+      maskReg dwordReg (0 : BitVec 12)
+      js (state_after_dword_store s (amoWordBase addr) dwordNew)
+      hsd_align hwrite_current
+  refine ⟨js', rfl, ?_, ?_⟩
+  · exact h_old
+  · intro tail
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js' hsd]
+
+/-- Selected-register version of
+`amo_word_rust_select_writeback_old_run`. -/
+theorem amo_word_rust_select_writeback_old_run_for
+    (rd : regidx) (js : SailJoltState) (s : SailState)
+    (addr : BitVec 64) (result oldWord : BitVec 32) (old : BitVec 64)
+    (h_sail : js.sail = state_after_word_store s addr result)
+    (h_old : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (h_old_word :
+      sign_extend (m := 64)
+        ((Sail.BitVec.extractLsb old 31 0) : BitVec 32) =
+      sign_extend (m := 64) oldWord) :
+    ∃ js',
+      js'.sail = amoWordFinalSailState rd s addr result oldWord ∧
+      ∀ tail,
+        (JoltISA.execProgram
+          (.instr (.VirtualSignExtendWord (JoltISA.amoDstFor rd)
+          (.vreg (JoltISA.amoWordSelectOldVRegFor rd))) tail)).run js =
+          (JoltISA.execProgram tail).run js' := by
+  exact
+    amo_word_writeback_old_run_from (JoltISA.amoWordSelectOldVRegFor rd)
+      rd js s addr result oldWord old h_sail h_old h_old_word
+
+/-- Selected-register version of
+`amo_word_rust_select_post64_vreg_aligned_run`. -/
+theorem amo_word_rust_select_post64_vreg_aligned_run_for
+    (rs1 rd : regidx)
+    (js js_pre : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
+    (addr newValue dword : BitVec 64) (oldWord : BitVec 32)
+    (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
+    (hbytes_base : MemBytesPresentAt js.sail (amoWordBase addr) 8)
+    (hstore_pmp : Assumptions.StorePmpOk (amoWordBase addr) 8 js.sail)
+    (hwrite_mmio : Assumptions.NotWritableMmio (amoWordBase addr) 8 js.sail)
+    (h_no_ovf : (amoWordBase addr).toNat + 7 < 2 ^ 64)
+    (h_align : addr &&& (3 : BitVec 64) = 0)
+    (hdword :
+      dword =
+        loaded_dword_at js.sail (amoWordBase addr) hbytes_base h_no_ovf)
+    (hpre_sail : js_pre.sail = js.sail)
+    (hpre_new : js_pre.vregs (JoltISA.amoWordSelectNewVRegFor rd) = newValue)
+    (hpre_dword :
+      js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hpre_shift :
+      js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) =
+        shift_bits_left addr (3 : BitVec 6))
+    (hpre_old :
+      js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) =
+        amoWordShiftedOld addr dword)
+    (hold :
+      (Sail.BitVec.extractLsb (amoWordShiftedOld addr dword) 31 0 :
+        BitVec 32) = oldWord) :
+    ∃ jsf : SailJoltState,
+      (JoltISA.execProgram
+        (JoltISA.amoPost64ProgramWithScratch rs1 rd
+          (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+          (JoltISA.amoWordSelectDwordVRegFor rd)
+          (JoltISA.amoWordSelectShiftVRegFor rd)
+          (JoltISA.amoWordSelectMaskVRegFor rd)
+          (JoltISA.amoWordSelectOldVRegFor rd)
+          (JoltISA.amoWordSelectInlineTmpVRegFor rd))).run js_pre =
+        .ok RETIRE_SUCCESS jsf ∧
+      jsf.sail =
+        amoWordFinalSailState rd js.sail addr
+          (Sail.BitVec.extractLsb newValue 31 0) oldWord := by
+  let shift64 := shift_bits_left addr (3 : BitVec 6)
+  let shift6 := Sail.BitVec.extractLsb shift64 5 0
+  let old := amoWordShiftedOld addr dword
+  let mask32 := (0x00000000FFFFFFFF : BitVec 64)
+  let shiftedMask := shift_bits_left mask32 shift6
+  let dwordNew := amoWordSplicedDword addr newValue dword
+  let wordResult : BitVec 32 := Sail.BitVec.extractLsb newValue 31 0
+  have hsetup := amo_word_store_facts addr h_no_ovf h_align
+  obtain ⟨js_mask32, hmask_sail, hmask_mask, hmask_shift, hmask_dword,
+      hmask_old, hmask_new_preserve, hmask_tail⟩ :=
+    amo_word_rust_select_mask32_prefix_run_for rd js_pre js.sail shift64
+      dword old hpre_sail hpre_shift hpre_dword
+      (by simpa [old] using hpre_old)
+  have hmask_new :
+      js_mask32.vregs (JoltISA.amoWordSelectNewVRegFor rd) = newValue := by
+    rw [hmask_new_preserve]
+    exact hpre_new
+  obtain ⟨js_shifted_mask, hshift_mask_sail, hshift_mask_mask,
+      hshift_mask_shift, hshift_mask_dword, hshift_mask_old,
+      hshift_mask_new_preserve, hshift_mask_tail⟩ :=
+    amo_word_rust_select_shift_mask_prefix_run_for rd js_mask32 js.sail
+      shift64 dword old hmask_sail hmask_mask hmask_shift hmask_dword
+      hmask_old
+  have hshift_mask_new :
+      js_shifted_mask.vregs (JoltISA.amoWordSelectNewVRegFor rd) =
+        newValue := by
+    rw [hshift_mask_new_preserve]
+    exact hmask_new
+  obtain ⟨js_shifted_new, hshift_new_sail, hshift_new_shift,
+      hshift_new_mask, hshift_new_dword, hshift_new_old,
+      hshift_new_tail⟩ :=
+    amo_word_rust_select_shift_new_vreg_prefix_run_for rd js_shifted_mask
+      js.sail newValue shift64 shiftedMask dword old hshift_mask_sail
+      hshift_mask_new hshift_mask_mask hshift_mask_shift hshift_mask_dword
+      hshift_mask_old
+  obtain ⟨js_splice, hsplice_sail, hsplice_dword, hsplice_old,
+      hsplice_tail⟩ :=
+    amo_word_rust_select_splice_block_run_for rd js_shifted_new js.sail addr
+      newValue dword old hsetup hshift_new_sail hshift_new_dword
+      hshift_new_shift hshift_new_mask hshift_new_old
+  obtain ⟨js_store_base, hstore_base_sail, hstore_base, hstore_base_dword,
+      hstore_base_old, hstore_base_tail⟩ :=
+    amo_word_rust_select_store_base_prefix_run_for rd rs1 js_splice js.sail
+      addr dwordNew old hsplice_sail hrs1 hsplice_dword hsplice_old
+  obtain ⟨js_store, hstore_sail, hstore_old, hstore_tail⟩ :=
+    amo_word_rust_select_sd_spliced_dword_run_for rd js_store_base js.sail
+      addr dwordNew old hpriv hmprv hstore_pmp hwrite_mmio h_no_ovf
+      hstore_base_sail hstore_base hstore_base_dword hstore_base_old
+  have hword_store :
+      state_after_dword_store js.sail (amoWordBase addr) dwordNew =
+        state_after_word_store js.sail addr wordResult := by
+    subst dwordNew
+    rw [hdword]
+    exact
+      amo_word_spliced_dword_store_eq_word_store
+        js.sail addr newValue hsetup hbytes_base
+  have hstore_sail_word :
+      js_store.sail = state_after_word_store js.sail addr wordResult := by
+    rw [hstore_sail, hword_store]
+  have hold_writeback :
+      sign_extend (m := 64)
+        ((Sail.BitVec.extractLsb old 31 0) : BitVec 32) =
+      sign_extend (m := 64) oldWord := by
+    exact
+      amo_word_shifted_old_sign_extend_eq_loaded_word
+        addr dword oldWord (by simpa [old] using hold)
+  obtain ⟨jsf, hwriteback_sail, hwriteback_tail⟩ :=
+    amo_word_rust_select_writeback_old_run_for rd js_store js.sail addr
+      wordResult oldWord old hstore_sail_word hstore_old hold_writeback
+  refine ⟨jsf, ?_, ?_⟩
+  · unfold JoltISA.amoPost64ProgramWithScratch
+    rw [hmask_tail]
+    rw [hshift_mask_tail]
+    rw [hshift_new_tail]
+    rw [hsplice_tail]
+    rw [hstore_base_tail]
+    rw [hstore_tail]
+    rw [hwriteback_tail]
+    rfl
+  · exact hwriteback_sail
+
 def amoWordSelectRustExtendProgram
     (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
     (rs2 : regidx) (tail : JoltISA.Program) : JoltISA.Program :=
@@ -918,6 +1550,50 @@ def amoWordSelectRustMiddleProgram
   amoWordSelectRustExtendProgram extend rs2 <|
   amoWordSelectRustCompareProgram cmpInstr cmpLhs cmpRhs <|
   amoWordSelectRustTailProgram rs2 tail
+
+/-- Selected-register version of `amoWordSelectRustExtendProgram`. -/
+def amoWordSelectRustExtendProgramFor
+    (rd : regidx)
+    (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
+    (rs2 : regidx) (tail : JoltISA.Program) : JoltISA.Program :=
+  .instr (extend (.vreg (JoltISA.amoWordSelectNewVRegFor rd)) (.xreg rs2)) <|
+  .instr (extend (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+    (.vreg (JoltISA.amoWordSelectOldVRegFor rd))) <|
+  tail
+
+/-- Selected-register version of `amoWordSelectRustCompareProgram`. -/
+def amoWordSelectRustCompareProgramFor
+    (rd : regidx)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src) (tail : JoltISA.Program) :
+    JoltISA.Program :=
+  .instr (cmpInstr (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+    cmpLhs cmpRhs) tail
+
+/-- Selected-register version of `amoWordSelectRustTailProgram`. -/
+def amoWordSelectRustTailProgramFor
+    (rd : regidx) (rs2 : regidx) (tail : JoltISA.Program) :
+    JoltISA.Program :=
+  .instr (.SUB (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+    (.xreg rs2) (.vreg (JoltISA.amoWordSelectOldVRegFor rd))) <|
+  .instr (.MUL (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+    (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+    (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))) <|
+  .instr (.ADD (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+    (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+    (.vreg (JoltISA.amoWordSelectOldVRegFor rd))) <|
+  tail
+
+/-- Selected-register version of `amoWordSelectRustMiddleProgram`. -/
+def amoWordSelectRustMiddleProgramFor
+    (rd : regidx)
+    (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src) (rs2 : regidx)
+    (tail : JoltISA.Program) : JoltISA.Program :=
+  amoWordSelectRustExtendProgramFor rd extend rs2 <|
+  amoWordSelectRustCompareProgramFor rd cmpInstr cmpLhs cmpRhs <|
+  amoWordSelectRustTailProgramFor rd rs2 tail
 
 /-- Shape produced by the extension phase of a word select AMO.
 
@@ -994,6 +1670,76 @@ structure AmoWordSelectRustMiddleStep
   old_vreg : js_after.vregs JoltISA.amoWordSelectOldVReg = old
   dword_vreg : js_after.vregs JoltISA.amoWordSelectDwordVReg = dword
   shift_vreg : js_after.vregs JoltISA.amoWordSelectShiftVReg = shift
+
+/-- Shape produced by the selected-register word-select middle block. -/
+structure AmoWordSelectRustMiddleStepFor
+    (rd : regidx)
+    (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src) (rs2 : regidx)
+    (old dword shift result : BitVec 64)
+    (js_before js_after : SailJoltState) : Prop where
+  run :
+    ∀ tail,
+      (JoltISA.execProgram
+        (amoWordSelectRustMiddleProgramFor rd extend cmpInstr cmpLhs cmpRhs rs2
+          tail)).run js_before =
+        (JoltISA.execProgram tail).run js_after
+  sail : js_after.sail = js_before.sail
+  result_vreg : js_after.vregs (JoltISA.amoWordSelectNewVRegFor rd) = result
+  old_vreg : js_after.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old
+  dword_vreg : js_after.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword
+  shift_vreg : js_after.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift
+
+structure AmoWordSelectRustExtendStepFor
+    (rd : regidx)
+    (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
+    (rs2 : regidx)
+    (old dword shift rs2Ext oldExt : BitVec 64)
+    (js_before js_after : SailJoltState) : Prop where
+  run :
+    ∀ tail,
+      (JoltISA.execProgram
+        (amoWordSelectRustExtendProgramFor rd extend rs2 tail)).run js_before =
+        (JoltISA.execProgram tail).run js_after
+  sail : js_after.sail = js_before.sail
+  rs2_ext_vreg : js_after.vregs (JoltISA.amoWordSelectNewVRegFor rd) = rs2Ext
+  old_ext_vreg : js_after.vregs (JoltISA.amoWordSelectMaskVRegFor rd) = oldExt
+  old_vreg : js_after.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old
+  dword_vreg : js_after.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword
+  shift_vreg : js_after.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift
+
+structure AmoWordSelectRustCompareStepFor
+    (rd : regidx)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src)
+    (old dword shift flag : BitVec 64)
+    (js_before js_after : SailJoltState) : Prop where
+  run :
+    ∀ tail,
+      (JoltISA.execProgram
+        (amoWordSelectRustCompareProgramFor rd cmpInstr cmpLhs cmpRhs tail)).run
+          js_before =
+        (JoltISA.execProgram tail).run js_after
+  sail : js_after.sail = js_before.sail
+  flag_vreg : js_after.vregs (JoltISA.amoWordSelectMaskVRegFor rd) = flag
+  old_vreg : js_after.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old
+  dword_vreg : js_after.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword
+  shift_vreg : js_after.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift
+
+structure AmoWordSelectRustTailStepFor
+    (rd : regidx) (rs2 : regidx) (old dword shift result : BitVec 64)
+    (js_before js_after : SailJoltState) : Prop where
+  run :
+    ∀ tail,
+      (JoltISA.execProgram
+        (amoWordSelectRustTailProgramFor rd rs2 tail)).run js_before =
+        (JoltISA.execProgram tail).run js_after
+  sail : js_after.sail = js_before.sail
+  result_vreg : js_after.vregs (JoltISA.amoWordSelectNewVRegFor rd) = result
+  old_vreg : js_after.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old
+  dword_vreg : js_after.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword
+  shift_vreg : js_after.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift
 
 theorem amo_word_rust_select_signed_extend_phase_run
     (rs2 : regidx) (js : SailJoltState)
@@ -1477,6 +2223,545 @@ theorem amo_word_rust_select_middle_phase_run
   · exact htail_step.dword_vreg
   · exact htail_step.shift_vreg
 
+/-- Selected-register signed extension phase for word-select AMOs. -/
+theorem amo_word_rust_select_signed_extend_phase_run_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (rs2Val old dword shift : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hold : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (hdword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hshift : js.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift) :
+    ∃ js_afterExt : SailJoltState,
+      AmoWordSelectRustExtendStepFor rd
+        (fun dst src => .VirtualSignExtendWord dst src) rs2
+        old dword shift
+        (sign_extend (m := 64)
+          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+        (sign_extend (m := 64)
+          (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+        js js_afterExt := by
+  let newReg := JoltISA.amoWordSelectNewVRegFor rd
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let rs2Ext : BitVec 64 :=
+    sign_extend (m := 64)
+      (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+  let oldExt : BitVec 64 :=
+    sign_extend (m := 64)
+      (Sail.BitVec.extractLsb old 31 0 : BitVec 32)
+  have hnew_w : WritableVReg newReg := by
+    unfold newReg JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hmask_w : WritableVReg maskReg := by
+    unfold maskReg JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hnew_ne_mask : newReg ≠ maskReg := by
+    unfold newReg maskReg JoltISA.amoWordSelectNewVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_new : oldReg ≠ newReg := by
+    unfold oldReg newReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_mask : oldReg ≠ maskReg := by
+    unfold oldReg maskReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_new : dwordReg ≠ newReg := by
+    unfold dwordReg newReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_mask : dwordReg ≠ maskReg := by
+    unfold dwordReg maskReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_new : shiftReg ≠ newReg := by
+    unfold shiftReg newReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_mask : shiftReg ≠ maskReg := by
+    unfold shiftReg maskReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  let js_afterRs2 : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then rs2Ext else js.vregs r }
+  let js_afterExt : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = maskReg then oldExt else js_afterRs2.vregs r }
+  have hrs2_run :
+      (JoltISA.execInstr
+        (.VirtualSignExtendWord (.vreg newReg) (.xreg rs2))).run js =
+        .ok RETIRE_SUCCESS js_afterRs2 := by
+    exact
+      JoltISA.virtual_sign_extend_word_run_vreg_xreg
+        newReg rs2 js rs2Val hrs2 hnew_w
+  have hold_afterRs2 : js_afterRs2.vregs oldReg = old := by
+    change (if oldReg = newReg then rs2Ext else js.vregs oldReg) = old
+    rw [if_neg hold_ne_new, hold]
+  have hold_run :
+      (JoltISA.execInstr
+        (.VirtualSignExtendWord (.vreg maskReg) (.vreg oldReg))).run
+          js_afterRs2 =
+        .ok RETIRE_SUCCESS js_afterExt := by
+    rw [JoltISA.virtual_sign_extend_word_run_vreg_vreg
+      maskReg oldReg js_afterRs2 hmask_w]
+    unfold js_afterExt oldExt
+    rw [hold_afterRs2]
+  refine ⟨js_afterExt, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro tail
+    unfold amoWordSelectRustExtendProgramFor
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterRs2 hrs2_run]
+    rw [JoltISA.execProgram_instr_run_retire
+      _ _ js_afterRs2 js_afterExt hold_run]
+  · rfl
+  · change (if newReg = maskReg then oldExt else js_afterRs2.vregs newReg) =
+      rs2Ext
+    rw [if_neg hnew_ne_mask]
+    change (if newReg = newReg then rs2Ext else js.vregs newReg) = rs2Ext
+    rw [if_pos rfl]
+  · change (if maskReg = maskReg then oldExt else js_afterRs2.vregs maskReg) =
+      oldExt
+    rw [if_pos rfl]
+  · change (if oldReg = maskReg then oldExt else js_afterRs2.vregs oldReg) =
+      old
+    rw [if_neg hold_ne_mask, hold_afterRs2]
+  · change (if dwordReg = maskReg then oldExt else js_afterRs2.vregs dwordReg) =
+      dword
+    rw [if_neg hdword_ne_mask]
+    change (if dwordReg = newReg then rs2Ext else js.vregs dwordReg) = dword
+    rw [if_neg hdword_ne_new, hdword]
+  · change (if shiftReg = maskReg then oldExt else js_afterRs2.vregs shiftReg) =
+      shift
+    rw [if_neg hshift_ne_mask]
+    change (if shiftReg = newReg then rs2Ext else js.vregs shiftReg) = shift
+    rw [if_neg hshift_ne_new, hshift]
+
+/-- Selected-register unsigned extension phase for word-select AMOs. -/
+theorem amo_word_rust_select_unsigned_extend_phase_run_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (rs2Val old dword shift : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hold : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (hdword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hshift : js.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift) :
+    ∃ js_afterExt : SailJoltState,
+      AmoWordSelectRustExtendStepFor rd
+        (fun dst src => .VirtualZeroExtendWord dst src) rs2
+        old dword shift
+        (zero_extend (m := 64)
+          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+        (zero_extend (m := 64)
+          (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+        js js_afterExt := by
+  let newReg := JoltISA.amoWordSelectNewVRegFor rd
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let rs2Ext : BitVec 64 :=
+    zero_extend (m := 64)
+      (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+  let oldExt : BitVec 64 :=
+    zero_extend (m := 64)
+      (Sail.BitVec.extractLsb old 31 0 : BitVec 32)
+  have hnew_w : WritableVReg newReg := by
+    unfold newReg JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hmask_w : WritableVReg maskReg := by
+    unfold maskReg JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hnew_ne_mask : newReg ≠ maskReg := by
+    unfold newReg maskReg JoltISA.amoWordSelectNewVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_new : oldReg ≠ newReg := by
+    unfold oldReg newReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_mask : oldReg ≠ maskReg := by
+    unfold oldReg maskReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_new : dwordReg ≠ newReg := by
+    unfold dwordReg newReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_mask : dwordReg ≠ maskReg := by
+    unfold dwordReg maskReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_new : shiftReg ≠ newReg := by
+    unfold shiftReg newReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_mask : shiftReg ≠ maskReg := by
+    unfold shiftReg maskReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  let js_afterRs2 : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then rs2Ext else js.vregs r }
+  let js_afterExt : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = maskReg then oldExt else js_afterRs2.vregs r }
+  have hrs2_run :
+      (JoltISA.execInstr
+        (.VirtualZeroExtendWord (.vreg newReg) (.xreg rs2))).run js =
+        .ok RETIRE_SUCCESS js_afterRs2 := by
+    exact
+      JoltISA.virtual_zero_extend_word_run_vreg_xreg
+        newReg rs2 js rs2Val hrs2 hnew_w
+  have hold_afterRs2 : js_afterRs2.vregs oldReg = old := by
+    change (if oldReg = newReg then rs2Ext else js.vregs oldReg) = old
+    rw [if_neg hold_ne_new, hold]
+  have hold_run :
+      (JoltISA.execInstr
+        (.VirtualZeroExtendWord (.vreg maskReg) (.vreg oldReg))).run
+          js_afterRs2 =
+        .ok RETIRE_SUCCESS js_afterExt := by
+    rw [amo_word_virtual_zero_extend_word_run_vreg_vreg
+      maskReg oldReg js_afterRs2 hmask_w]
+    unfold js_afterExt oldExt
+    rw [hold_afterRs2]
+  refine ⟨js_afterExt, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro tail
+    unfold amoWordSelectRustExtendProgramFor
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterRs2 hrs2_run]
+    rw [JoltISA.execProgram_instr_run_retire
+      _ _ js_afterRs2 js_afterExt hold_run]
+  · rfl
+  · change (if newReg = maskReg then oldExt else js_afterRs2.vregs newReg) =
+      rs2Ext
+    rw [if_neg hnew_ne_mask]
+    change (if newReg = newReg then rs2Ext else js.vregs newReg) = rs2Ext
+    rw [if_pos rfl]
+  · change (if maskReg = maskReg then oldExt else js_afterRs2.vregs maskReg) =
+      oldExt
+    rw [if_pos rfl]
+  · change (if oldReg = maskReg then oldExt else js_afterRs2.vregs oldReg) =
+      old
+    rw [if_neg hold_ne_mask, hold_afterRs2]
+  · change (if dwordReg = maskReg then oldExt else js_afterRs2.vregs dwordReg) =
+      dword
+    rw [if_neg hdword_ne_mask]
+    change (if dwordReg = newReg then rs2Ext else js.vregs dwordReg) = dword
+    rw [if_neg hdword_ne_new, hdword]
+  · change (if shiftReg = maskReg then oldExt else js_afterRs2.vregs shiftReg) =
+      shift
+    rw [if_neg hshift_ne_mask]
+    change (if shiftReg = newReg then rs2Ext else js.vregs shiftReg) = shift
+    rw [if_neg hshift_ne_new, hshift]
+
+/-- Selected-register signed comparison phase for word-select AMOs. -/
+theorem amo_word_rust_select_slt_compare_phase_run_vreg_vreg_for
+    (rd : regidx) (lhs rhs : JoltISA.VReg) (js : SailJoltState)
+    (x y old dword shift : BitVec 64)
+    (hlhs : js.vregs lhs = x)
+    (hrhs : js.vregs rhs = y)
+    (hold : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (hdword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hshift : js.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift) :
+    ∃ js_afterCmp : SailJoltState,
+      AmoWordSelectRustCompareStepFor rd
+        (fun dst lhs rhs => .SLT dst lhs rhs) (.vreg lhs) (.vreg rhs)
+        old dword shift
+        (zero_extend (m := 64) (bool_to_bit (zopz0zI_s x y)))
+        js js_afterCmp := by
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let flag : BitVec 64 :=
+    zero_extend (m := 64) (bool_to_bit (zopz0zI_s x y))
+  let js_afterCmp : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = maskReg then flag else js.vregs r }
+  have hmask_w : WritableVReg maskReg := by
+    unfold maskReg JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hold_ne_mask : oldReg ≠ maskReg := by
+    unfold oldReg maskReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_mask : dwordReg ≠ maskReg := by
+    unfold dwordReg maskReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_mask : shiftReg ≠ maskReg := by
+    unfold shiftReg maskReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hcmp_run :
+      (JoltISA.execInstr
+        (.SLT (.vreg maskReg) (.vreg lhs) (.vreg rhs))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp := by
+    rw [amo_word_slt_run_vreg_vreg_vreg maskReg lhs rhs js hmask_w]
+    unfold js_afterCmp flag
+    rw [hlhs, hrhs]
+  refine ⟨js_afterCmp, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro tail
+    unfold amoWordSelectRustCompareProgramFor
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterCmp hcmp_run]
+  · rfl
+  · change (if maskReg = maskReg then flag else js.vregs maskReg) =
+      zero_extend (m := 64) (bool_to_bit (zopz0zI_s x y))
+    rw [if_pos rfl]
+  · change (if oldReg = maskReg then flag else js.vregs oldReg) = old
+    rw [if_neg hold_ne_mask, hold]
+  · change (if dwordReg = maskReg then flag else js.vregs dwordReg) = dword
+    rw [if_neg hdword_ne_mask, hdword]
+  · change (if shiftReg = maskReg then flag else js.vregs shiftReg) = shift
+    rw [if_neg hshift_ne_mask, hshift]
+
+/-- Selected-register unsigned comparison phase for word-select AMOs. -/
+theorem amo_word_rust_select_sltu_compare_phase_run_vreg_vreg_for
+    (rd : regidx) (lhs rhs : JoltISA.VReg) (js : SailJoltState)
+    (x y old dword shift : BitVec 64)
+    (hlhs : js.vregs lhs = x)
+    (hrhs : js.vregs rhs = y)
+    (hold : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (hdword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hshift : js.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift) :
+    ∃ js_afterCmp : SailJoltState,
+      AmoWordSelectRustCompareStepFor rd
+        (fun dst lhs rhs => .SLTU dst lhs rhs) (.vreg lhs) (.vreg rhs)
+        old dword shift (jolt_sltu_value x y) js js_afterCmp := by
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let flag : BitVec 64 := jolt_sltu_value x y
+  let js_afterCmp : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = maskReg then flag else js.vregs r }
+  have hmask_w : WritableVReg maskReg := by
+    unfold maskReg JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hold_ne_mask : oldReg ≠ maskReg := by
+    unfold oldReg maskReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_mask : dwordReg ≠ maskReg := by
+    unfold dwordReg maskReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_mask : shiftReg ≠ maskReg := by
+    unfold shiftReg maskReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectMaskVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hcmp_run :
+      (JoltISA.execInstr
+        (.SLTU (.vreg maskReg) (.vreg lhs) (.vreg rhs))).run js =
+        .ok RETIRE_SUCCESS js_afterCmp := by
+    rw [amo_word_sltu_run_vreg_vreg_vreg maskReg lhs rhs js hmask_w]
+    unfold js_afterCmp flag
+    rw [hlhs, hrhs]
+  refine ⟨js_afterCmp, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro tail
+    unfold amoWordSelectRustCompareProgramFor
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterCmp hcmp_run]
+  · rfl
+  · change (if maskReg = maskReg then flag else js.vregs maskReg) =
+      jolt_sltu_value x y
+    rw [if_pos rfl]
+  · change (if oldReg = maskReg then flag else js.vregs oldReg) = old
+    rw [if_neg hold_ne_mask, hold]
+  · change (if dwordReg = maskReg then flag else js.vregs dwordReg) = dword
+    rw [if_neg hdword_ne_mask, hdword]
+  · change (if shiftReg = maskReg then flag else js.vregs shiftReg) = shift
+    rw [if_neg hshift_ne_mask, hshift]
+
+/-- Selected-register select tail for word-select AMOs. -/
+theorem amo_word_rust_select_tail_phase_run_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (rs2Val old flag dword shift : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hold : js.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (hflag : js.vregs (JoltISA.amoWordSelectMaskVRegFor rd) = flag)
+    (hdword : js.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hshift : js.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift) :
+    ∃ js_afterTail : SailJoltState,
+      AmoWordSelectRustTailStepFor rd rs2 old dword shift
+        ((rs2Val - old) * flag + old) js js_afterTail := by
+  let newReg := JoltISA.amoWordSelectNewVRegFor rd
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let delta : BitVec 64 := rs2Val - old
+  let scaled : BitVec 64 := delta * flag
+  let js_afterSub : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then delta else js.vregs r }
+  let js_afterMul : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then scaled else js_afterSub.vregs r }
+  let js_afterAdd : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = newReg then scaled + old else js_afterMul.vregs r }
+  have hnew_w : WritableVReg newReg := by
+    unfold newReg JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hmask_ne_new : maskReg ≠ newReg := by
+    unfold maskReg newReg JoltISA.amoWordSelectMaskVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hold_ne_new : oldReg ≠ newReg := by
+    unfold oldReg newReg JoltISA.amoWordSelectOldVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_new : dwordReg ≠ newReg := by
+    unfold dwordReg newReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_new : shiftReg ≠ newReg := by
+    unfold shiftReg newReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hsub_new : js_afterSub.vregs newReg = delta := by
+    change (if newReg = newReg then delta else js.vregs newReg) = delta
+    rw [if_pos rfl]
+  have hsub_flag : js_afterSub.vregs maskReg = flag := by
+    change (if maskReg = newReg then delta else js.vregs maskReg) = flag
+    rw [if_neg hmask_ne_new, hflag]
+  have hsub_old : js_afterSub.vregs oldReg = old := by
+    change (if oldReg = newReg then delta else js.vregs oldReg) = old
+    rw [if_neg hold_ne_new, hold]
+  have hsub_dword : js_afterSub.vregs dwordReg = dword := by
+    change (if dwordReg = newReg then delta else js.vregs dwordReg) = dword
+    rw [if_neg hdword_ne_new, hdword]
+  have hsub_shift : js_afterSub.vregs shiftReg = shift := by
+    change (if shiftReg = newReg then delta else js.vregs shiftReg) = shift
+    rw [if_neg hshift_ne_new, hshift]
+  have hsub_run :
+      (JoltISA.execInstr
+        (.SUB (.vreg newReg) (.xreg rs2) (.vreg oldReg))).run js =
+        .ok RETIRE_SUCCESS js_afterSub := by
+    rw [JoltISA.sub_run_vreg_xreg_vreg newReg rs2 oldReg js rs2Val hrs2
+      hnew_w]
+    unfold js_afterSub delta
+    rw [hold]
+  have hmul_new : js_afterMul.vregs newReg = scaled := by
+    change (if newReg = newReg then scaled else js_afterSub.vregs newReg) =
+      scaled
+    rw [if_pos rfl]
+  have hmul_old : js_afterMul.vregs oldReg = old := by
+    change (if oldReg = newReg then scaled else js_afterSub.vregs oldReg) =
+      old
+    rw [if_neg hold_ne_new, hsub_old]
+  have hmul_dword : js_afterMul.vregs dwordReg = dword := by
+    change (if dwordReg = newReg then scaled else js_afterSub.vregs dwordReg) =
+      dword
+    rw [if_neg hdword_ne_new, hsub_dword]
+  have hmul_shift : js_afterMul.vregs shiftReg = shift := by
+    change (if shiftReg = newReg then scaled else js_afterSub.vregs shiftReg) =
+      shift
+    rw [if_neg hshift_ne_new, hsub_shift]
+  have hmul_run :
+      (JoltISA.execInstr
+        (.MUL (.vreg newReg) (.vreg newReg) (.vreg maskReg))).run js_afterSub =
+        .ok RETIRE_SUCCESS js_afterMul := by
+    rw [JoltISA.mul_run_vreg_vreg_vreg newReg newReg maskReg js_afterSub
+      hnew_w]
+    unfold js_afterMul scaled
+    rw [hsub_new, hsub_flag]
+  have hadd_result :
+      js_afterAdd.vregs newReg = (rs2Val - old) * flag + old := by
+    change (if newReg = newReg then scaled + old else js_afterMul.vregs newReg) =
+      (rs2Val - old) * flag + old
+    rw [if_pos rfl]
+  have hadd_old : js_afterAdd.vregs oldReg = old := by
+    change (if oldReg = newReg then scaled + old else js_afterMul.vregs oldReg) =
+      old
+    rw [if_neg hold_ne_new, hmul_old]
+  have hadd_dword : js_afterAdd.vregs dwordReg = dword := by
+    change
+      (if dwordReg = newReg then scaled + old else js_afterMul.vregs dwordReg) =
+        dword
+    rw [if_neg hdword_ne_new, hmul_dword]
+  have hadd_shift : js_afterAdd.vregs shiftReg = shift := by
+    change
+      (if shiftReg = newReg then scaled + old else js_afterMul.vregs shiftReg) =
+        shift
+    rw [if_neg hshift_ne_new, hmul_shift]
+  have hadd_run :
+      (JoltISA.execInstr
+        (.ADD (.vreg newReg) (.vreg newReg) (.vreg oldReg))).run js_afterMul =
+        .ok RETIRE_SUCCESS js_afterAdd := by
+    rw [JoltISA.add_run_vreg_vreg_vreg newReg newReg oldReg js_afterMul hnew_w]
+    unfold js_afterAdd
+    rw [hmul_new, hmul_old]
+  refine ⟨js_afterAdd, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro tail
+    unfold amoWordSelectRustTailProgramFor
+    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSub hsub_run]
+    rw [JoltISA.execProgram_instr_run_retire
+      _ _ js_afterSub js_afterMul hmul_run]
+    rw [JoltISA.execProgram_instr_run_retire
+      _ _ js_afterMul js_afterAdd hadd_run]
+  · rfl
+  · exact hadd_result
+  · exact hadd_old
+  · exact hadd_dword
+  · exact hadd_shift
+
+theorem amo_word_rust_select_middle_phase_run_for
+    (rd : regidx)
+    (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
+    (cmpInstr : JoltISA.Dst → JoltISA.Src → JoltISA.Src → JoltISA.Instr)
+    (cmpLhs cmpRhs : JoltISA.Src) (rs2 : regidx)
+    (js : SailJoltState)
+    (rs2Val old dword shift rs2Ext oldExt flag result : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hext :
+      ∃ js_afterExt : SailJoltState,
+        AmoWordSelectRustExtendStepFor rd extend rs2 old dword shift rs2Ext
+          oldExt js js_afterExt)
+    (hcompare :
+      ∀ js_afterExt : SailJoltState,
+        AmoWordSelectRustExtendStepFor rd extend rs2 old dword shift rs2Ext
+          oldExt js js_afterExt →
+        ∃ js_afterCmp : SailJoltState,
+          AmoWordSelectRustCompareStepFor rd cmpInstr cmpLhs cmpRhs old dword
+            shift flag js_afterExt js_afterCmp)
+    (hresult : (rs2Val - old) * flag + old = result) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoWordSelectRustMiddleStepFor rd extend cmpInstr cmpLhs cmpRhs rs2
+        old dword shift result js js_afterMiddle := by
+  obtain ⟨js_afterExt, hext_step⟩ := hext
+  obtain ⟨js_afterCmp, hcmp_step⟩ := hcompare js_afterExt hext_step
+  have hrs2_afterCmp :
+      rX_bits rs2 js_afterCmp.sail = .ok rs2Val js_afterCmp.sail := by
+    rw [hcmp_step.sail, hext_step.sail]
+    exact hrs2
+  obtain ⟨js_afterTail, htail_step⟩ :=
+    amo_word_rust_select_tail_phase_run_for rd rs2 js_afterCmp rs2Val old flag
+      dword shift hrs2_afterCmp hcmp_step.old_vreg hcmp_step.flag_vreg
+      hcmp_step.dword_vreg hcmp_step.shift_vreg
+  refine ⟨js_afterTail, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro tail
+    unfold amoWordSelectRustMiddleProgramFor
+    rw [hext_step.run
+      (amoWordSelectRustCompareProgramFor rd cmpInstr cmpLhs cmpRhs
+        (amoWordSelectRustTailProgramFor rd rs2 tail))]
+    rw [hcmp_step.run (amoWordSelectRustTailProgramFor rd rs2 tail)]
+    rw [htail_step.run tail]
+  · rw [htail_step.sail, hcmp_step.sail, hext_step.sail]
+  · rw [htail_step.result_vreg, hresult]
+  · exact htail_step.old_vreg
+  · exact htail_step.dword_vreg
+  · exact htail_step.shift_vreg
+
 /-- `AMOMIN.W`'s select middle chooses the full `rs2` scratch value exactly
 when the low words satisfy signed `<`. -/
 theorem amo_word_rust_select_min_middle_run
@@ -1709,6 +2994,246 @@ theorem amo_word_rust_select_maxu_middle_run
           hext_step.old_vreg hext_step.dword_vreg hext_step.shift_vreg)
       (amo_word_select_value_of_sgtu_zext old rs2Val)
 
+/-- Selected-register version of `amo_word_rust_select_min_middle_run`. -/
+theorem amo_word_rust_select_min_middle_run_for
+    (rd rs2 : regidx) (js_pre : SailJoltState)
+    (rs2Val old dword shift : BitVec 64)
+    (hrs2 : rX_bits rs2 js_pre.sail = .ok rs2Val js_pre.sail)
+    (hold : js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (hdword : js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hshift : js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoWordSelectRustMiddleStepFor rd
+        (fun dst src => .VirtualSignExtendWord dst src)
+        (fun dst lhs rhs => .SLT dst lhs rhs)
+        (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+        (.vreg (JoltISA.amoWordSelectMaskVRegFor rd)) rs2
+        old dword shift
+        (if (zopz0zI_s
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+            (Sail.BitVec.extractLsb old 31 0 : BitVec 32) : Bool) then
+          rs2Val
+        else
+          old)
+        js_pre js_afterMiddle := by
+  exact
+    amo_word_rust_select_middle_phase_run_for rd
+      (fun dst src => .VirtualSignExtendWord dst src)
+      (fun dst lhs rhs => .SLT dst lhs rhs)
+      (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+      (.vreg (JoltISA.amoWordSelectMaskVRegFor rd)) rs2 js_pre rs2Val old
+      dword shift
+      (sign_extend (m := 64)
+        (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+      (sign_extend (m := 64)
+        (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+      (zero_extend (m := 64)
+        (bool_to_bit
+          (zopz0zI_s
+            (sign_extend (m := 64)
+              (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+            (sign_extend (m := 64)
+              (Sail.BitVec.extractLsb old 31 0 : BitVec 32)))))
+      (if (zopz0zI_s
+          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+          (Sail.BitVec.extractLsb old 31 0 : BitVec 32) : Bool) then
+        rs2Val
+      else
+        old)
+      hrs2
+      (amo_word_rust_select_signed_extend_phase_run_for rd rs2 js_pre rs2Val
+        old dword shift hrs2 hold hdword hshift)
+      (fun js_afterExt hext_step =>
+        amo_word_rust_select_slt_compare_phase_run_vreg_vreg_for rd
+          (JoltISA.amoWordSelectNewVRegFor rd)
+          (JoltISA.amoWordSelectMaskVRegFor rd) js_afterExt
+          (sign_extend (m := 64)
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+          (sign_extend (m := 64)
+            (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+          old dword shift hext_step.rs2_ext_vreg hext_step.old_ext_vreg
+          hext_step.old_vreg hext_step.dword_vreg hext_step.shift_vreg)
+      (amo_word_select_value_of_slt_sext old rs2Val)
+
+/-- Selected-register version of `amo_word_rust_select_max_middle_run`. -/
+theorem amo_word_rust_select_max_middle_run_for
+    (rd rs2 : regidx) (js_pre : SailJoltState)
+    (rs2Val old dword shift : BitVec 64)
+    (hrs2 : rX_bits rs2 js_pre.sail = .ok rs2Val js_pre.sail)
+    (hold : js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (hdword : js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hshift : js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoWordSelectRustMiddleStepFor rd
+        (fun dst src => .VirtualSignExtendWord dst src)
+        (fun dst lhs rhs => .SLT dst lhs rhs)
+        (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+        (.vreg (JoltISA.amoWordSelectNewVRegFor rd)) rs2
+        old dword shift
+        (if (zopz0zK_s
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+            (Sail.BitVec.extractLsb old 31 0 : BitVec 32) : Bool) then
+          rs2Val
+        else
+          old)
+        js_pre js_afterMiddle := by
+  exact
+    amo_word_rust_select_middle_phase_run_for rd
+      (fun dst src => .VirtualSignExtendWord dst src)
+      (fun dst lhs rhs => .SLT dst lhs rhs)
+      (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+      (.vreg (JoltISA.amoWordSelectNewVRegFor rd)) rs2 js_pre rs2Val old
+      dword shift
+      (sign_extend (m := 64)
+        (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+      (sign_extend (m := 64)
+        (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+      (zero_extend (m := 64)
+        (bool_to_bit
+          (zopz0zI_s
+            (sign_extend (m := 64)
+              (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+            (sign_extend (m := 64)
+              (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)))))
+      (if (zopz0zK_s
+          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+          (Sail.BitVec.extractLsb old 31 0 : BitVec 32) : Bool) then
+        rs2Val
+      else
+        old)
+      hrs2
+      (amo_word_rust_select_signed_extend_phase_run_for rd rs2 js_pre rs2Val
+        old dword shift hrs2 hold hdword hshift)
+      (fun js_afterExt hext_step =>
+        amo_word_rust_select_slt_compare_phase_run_vreg_vreg_for rd
+          (JoltISA.amoWordSelectMaskVRegFor rd)
+          (JoltISA.amoWordSelectNewVRegFor rd) js_afterExt
+          (sign_extend (m := 64)
+            (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+          (sign_extend (m := 64)
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+          old dword shift hext_step.old_ext_vreg hext_step.rs2_ext_vreg
+          hext_step.old_vreg hext_step.dword_vreg hext_step.shift_vreg)
+      (amo_word_select_value_of_sgt_sext old rs2Val)
+
+/-- Selected-register version of `amo_word_rust_select_minu_middle_run`. -/
+theorem amo_word_rust_select_minu_middle_run_for
+    (rd rs2 : regidx) (js_pre : SailJoltState)
+    (rs2Val old dword shift : BitVec 64)
+    (hrs2 : rX_bits rs2 js_pre.sail = .ok rs2Val js_pre.sail)
+    (hold : js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (hdword : js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hshift : js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoWordSelectRustMiddleStepFor rd
+        (fun dst src => .VirtualZeroExtendWord dst src)
+        (fun dst lhs rhs => .SLTU dst lhs rhs)
+        (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+        (.vreg (JoltISA.amoWordSelectMaskVRegFor rd)) rs2
+        old dword shift
+        (if (zopz0zI_u
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+            (Sail.BitVec.extractLsb old 31 0 : BitVec 32) : Bool) then
+          rs2Val
+        else
+          old)
+        js_pre js_afterMiddle := by
+  exact
+    amo_word_rust_select_middle_phase_run_for rd
+      (fun dst src => .VirtualZeroExtendWord dst src)
+      (fun dst lhs rhs => .SLTU dst lhs rhs)
+      (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+      (.vreg (JoltISA.amoWordSelectMaskVRegFor rd)) rs2 js_pre rs2Val old
+      dword shift
+      (zero_extend (m := 64)
+        (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+      (zero_extend (m := 64)
+        (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+      (jolt_sltu_value
+        (zero_extend (m := 64)
+          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+        (zero_extend (m := 64)
+          (Sail.BitVec.extractLsb old 31 0 : BitVec 32)))
+      (if (zopz0zI_u
+          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+          (Sail.BitVec.extractLsb old 31 0 : BitVec 32) : Bool) then
+        rs2Val
+      else
+        old)
+      hrs2
+      (amo_word_rust_select_unsigned_extend_phase_run_for rd rs2 js_pre rs2Val
+        old dword shift hrs2 hold hdword hshift)
+      (fun js_afterExt hext_step =>
+        amo_word_rust_select_sltu_compare_phase_run_vreg_vreg_for rd
+          (JoltISA.amoWordSelectNewVRegFor rd)
+          (JoltISA.amoWordSelectMaskVRegFor rd) js_afterExt
+          (zero_extend (m := 64)
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+          (zero_extend (m := 64)
+            (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+          old dword shift hext_step.rs2_ext_vreg hext_step.old_ext_vreg
+          hext_step.old_vreg hext_step.dword_vreg hext_step.shift_vreg)
+      (amo_word_select_value_of_sltu_zext old rs2Val)
+
+/-- Selected-register version of `amo_word_rust_select_maxu_middle_run`. -/
+theorem amo_word_rust_select_maxu_middle_run_for
+    (rd rs2 : regidx) (js_pre : SailJoltState)
+    (rs2Val old dword shift : BitVec 64)
+    (hrs2 : rX_bits rs2 js_pre.sail = .ok rs2Val js_pre.sail)
+    (hold : js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) = old)
+    (hdword : js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword)
+    (hshift : js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) = shift) :
+    ∃ js_afterMiddle : SailJoltState,
+      AmoWordSelectRustMiddleStepFor rd
+        (fun dst src => .VirtualZeroExtendWord dst src)
+        (fun dst lhs rhs => .SLTU dst lhs rhs)
+        (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+        (.vreg (JoltISA.amoWordSelectNewVRegFor rd)) rs2
+        old dword shift
+        (if (zopz0zK_u
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+            (Sail.BitVec.extractLsb old 31 0 : BitVec 32) : Bool) then
+          rs2Val
+        else
+          old)
+        js_pre js_afterMiddle := by
+  exact
+    amo_word_rust_select_middle_phase_run_for rd
+      (fun dst src => .VirtualZeroExtendWord dst src)
+      (fun dst lhs rhs => .SLTU dst lhs rhs)
+      (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+      (.vreg (JoltISA.amoWordSelectNewVRegFor rd)) rs2 js_pre rs2Val old
+      dword shift
+      (zero_extend (m := 64)
+        (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+      (zero_extend (m := 64)
+        (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+      (jolt_sltu_value
+        (zero_extend (m := 64)
+          (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+        (zero_extend (m := 64)
+          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)))
+      (if (zopz0zK_u
+          (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+          (Sail.BitVec.extractLsb old 31 0 : BitVec 32) : Bool) then
+        rs2Val
+      else
+        old)
+      hrs2
+      (amo_word_rust_select_unsigned_extend_phase_run_for rd rs2 js_pre rs2Val
+        old dword shift hrs2 hold hdword hshift)
+      (fun js_afterExt hext_step =>
+        amo_word_rust_select_sltu_compare_phase_run_vreg_vreg_for rd
+          (JoltISA.amoWordSelectMaskVRegFor rd)
+          (JoltISA.amoWordSelectNewVRegFor rd) js_afterExt
+          (zero_extend (m := 64)
+            (Sail.BitVec.extractLsb old 31 0 : BitVec 32))
+          (zero_extend (m := 64)
+            (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32))
+          old dword shift hext_step.old_ext_vreg hext_step.rs2_ext_vreg
+          hext_step.old_vreg hext_step.dword_vreg hext_step.shift_vreg)
+      (amo_word_select_value_of_sgtu_zext old rs2Val)
+
 /-- After the common word prelude, the `AMOMIN.W` middle block is ready for the
 shared word-select program helper. -/
 theorem amo_word_rust_select_min_middle_after_pre
@@ -1861,6 +3386,154 @@ theorem amo_word_rust_select_maxu_middle_after_pre
       (amoWordShiftedOld addr dword) dword (shift_bits_left addr (3 : BitVec 6))
       hrs2_pre hpre_old hpre_dword hpre_shift
 
+/-- Selected-register version of `amo_word_rust_select_min_middle_after_pre`. -/
+theorem amo_word_rust_select_min_middle_after_pre_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (addr rs2Val dword : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ js_pre : SailJoltState,
+      js_pre.sail = js.sail →
+      js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword →
+      js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) =
+        shift_bits_left addr (3 : BitVec 6) →
+      js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) =
+        amoWordShiftedOld addr dword →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoWordSelectRustMiddleStepFor rd
+          (fun dst src => .VirtualSignExtendWord dst src)
+          (fun dst lhs rhs => .SLT dst lhs rhs)
+          (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+          (.vreg (JoltISA.amoWordSelectMaskVRegFor rd)) rs2
+          (amoWordShiftedOld addr dword) dword
+          (shift_bits_left addr (3 : BitVec 6))
+          (if (zopz0zI_s
+              (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+              (Sail.BitVec.extractLsb (amoWordShiftedOld addr dword) 31 0 :
+                BitVec 32) : Bool) then
+            rs2Val
+          else
+            amoWordShiftedOld addr dword)
+          js_pre js_afterMiddle := by
+  intro js_pre hpre_sail hpre_dword hpre_shift hpre_old
+  have hrs2_pre : rX_bits rs2 js_pre.sail = .ok rs2Val js_pre.sail := by
+    rw [hpre_sail]
+    exact hrs2
+  exact
+    amo_word_rust_select_min_middle_run_for rd rs2 js_pre rs2Val
+      (amoWordShiftedOld addr dword) dword (shift_bits_left addr (3 : BitVec 6))
+      hrs2_pre hpre_old hpre_dword hpre_shift
+
+/-- Selected-register version of `amo_word_rust_select_max_middle_after_pre`. -/
+theorem amo_word_rust_select_max_middle_after_pre_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (addr rs2Val dword : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ js_pre : SailJoltState,
+      js_pre.sail = js.sail →
+      js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword →
+      js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) =
+        shift_bits_left addr (3 : BitVec 6) →
+      js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) =
+        amoWordShiftedOld addr dword →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoWordSelectRustMiddleStepFor rd
+          (fun dst src => .VirtualSignExtendWord dst src)
+          (fun dst lhs rhs => .SLT dst lhs rhs)
+          (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+          (.vreg (JoltISA.amoWordSelectNewVRegFor rd)) rs2
+          (amoWordShiftedOld addr dword) dword
+          (shift_bits_left addr (3 : BitVec 6))
+          (if (zopz0zK_s
+              (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+              (Sail.BitVec.extractLsb (amoWordShiftedOld addr dword) 31 0 :
+                BitVec 32) : Bool) then
+            rs2Val
+          else
+            amoWordShiftedOld addr dword)
+          js_pre js_afterMiddle := by
+  intro js_pre hpre_sail hpre_dword hpre_shift hpre_old
+  have hrs2_pre : rX_bits rs2 js_pre.sail = .ok rs2Val js_pre.sail := by
+    rw [hpre_sail]
+    exact hrs2
+  exact
+    amo_word_rust_select_max_middle_run_for rd rs2 js_pre rs2Val
+      (amoWordShiftedOld addr dword) dword (shift_bits_left addr (3 : BitVec 6))
+      hrs2_pre hpre_old hpre_dword hpre_shift
+
+/-- Selected-register version of `amo_word_rust_select_minu_middle_after_pre`. -/
+theorem amo_word_rust_select_minu_middle_after_pre_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (addr rs2Val dword : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ js_pre : SailJoltState,
+      js_pre.sail = js.sail →
+      js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword →
+      js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) =
+        shift_bits_left addr (3 : BitVec 6) →
+      js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) =
+        amoWordShiftedOld addr dword →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoWordSelectRustMiddleStepFor rd
+          (fun dst src => .VirtualZeroExtendWord dst src)
+          (fun dst lhs rhs => .SLTU dst lhs rhs)
+          (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+          (.vreg (JoltISA.amoWordSelectMaskVRegFor rd)) rs2
+          (amoWordShiftedOld addr dword) dword
+          (shift_bits_left addr (3 : BitVec 6))
+          (if (zopz0zI_u
+              (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+              (Sail.BitVec.extractLsb (amoWordShiftedOld addr dword) 31 0 :
+                BitVec 32) : Bool) then
+            rs2Val
+          else
+            amoWordShiftedOld addr dword)
+          js_pre js_afterMiddle := by
+  intro js_pre hpre_sail hpre_dword hpre_shift hpre_old
+  have hrs2_pre : rX_bits rs2 js_pre.sail = .ok rs2Val js_pre.sail := by
+    rw [hpre_sail]
+    exact hrs2
+  exact
+    amo_word_rust_select_minu_middle_run_for rd rs2 js_pre rs2Val
+      (amoWordShiftedOld addr dword) dword (shift_bits_left addr (3 : BitVec 6))
+      hrs2_pre hpre_old hpre_dword hpre_shift
+
+/-- Selected-register version of `amo_word_rust_select_maxu_middle_after_pre`. -/
+theorem amo_word_rust_select_maxu_middle_after_pre_for
+    (rd rs2 : regidx) (js : SailJoltState)
+    (addr rs2Val dword : BitVec 64)
+    (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail) :
+    ∀ js_pre : SailJoltState,
+      js_pre.sail = js.sail →
+      js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) = dword →
+      js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) =
+        shift_bits_left addr (3 : BitVec 6) →
+      js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) =
+        amoWordShiftedOld addr dword →
+      ∃ js_afterMiddle : SailJoltState,
+        AmoWordSelectRustMiddleStepFor rd
+          (fun dst src => .VirtualZeroExtendWord dst src)
+          (fun dst lhs rhs => .SLTU dst lhs rhs)
+          (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
+          (.vreg (JoltISA.amoWordSelectNewVRegFor rd)) rs2
+          (amoWordShiftedOld addr dword) dword
+          (shift_bits_left addr (3 : BitVec 6))
+          (if (zopz0zK_u
+              (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
+              (Sail.BitVec.extractLsb (amoWordShiftedOld addr dword) 31 0 :
+                BitVec 32) : Bool) then
+            rs2Val
+          else
+            amoWordShiftedOld addr dword)
+          js_pre js_afterMiddle := by
+  intro js_pre hpre_sail hpre_dword hpre_shift hpre_old
+  have hrs2_pre : rX_bits rs2 js_pre.sail = .ok rs2Val js_pre.sail := by
+    rw [hpre_sail]
+    exact hrs2
+  exact
+    amo_word_rust_select_maxu_middle_run_for rd rs2 js_pre rs2Val
+      (amoWordShiftedOld addr dword) dword (shift_bits_left addr (3 : BitVec 6))
+      hrs2_pre hpre_old hpre_dword hpre_shift
+
 theorem amo_word_rust_select_program_concrete_aligned
     (op : amoop)
     (extend : JoltISA.Dst → JoltISA.Src → JoltISA.Instr)
@@ -1888,19 +3561,19 @@ theorem amo_word_rust_select_program_concrete_aligned
     (hmiddle :
       ∀ js_pre : SailJoltState,
         js_pre.sail = js.sail →
-        js_pre.vregs JoltISA.amoWordSelectDwordVReg =
+        js_pre.vregs (JoltISA.amoWordSelectDwordVRegFor rd) =
           loaded_dword_at js.sail (amoWordBase addr) hbytes_base
             ((amo_word_base_no_ovf addr) :
               (amoWordBase addr).toNat + 7 < 2 ^ 64) →
-        js_pre.vregs JoltISA.amoWordSelectShiftVReg =
+        js_pre.vregs (JoltISA.amoWordSelectShiftVRegFor rd) =
           shift_bits_left addr (3 : BitVec 6) →
-        js_pre.vregs JoltISA.amoWordSelectOldVReg =
+        js_pre.vregs (JoltISA.amoWordSelectOldVRegFor rd) =
           amoWordShiftedOld addr
             (loaded_dword_at js.sail (amoWordBase addr) hbytes_base
               ((amo_word_base_no_ovf addr) :
                 (amoWordBase addr).toNat + 7 < 2 ^ 64)) →
         ∃ js_afterMiddle : SailJoltState,
-          AmoWordSelectRustMiddleStep extend cmpInstr cmpLhs cmpRhs rs2
+          AmoWordSelectRustMiddleStepFor rd extend cmpInstr cmpLhs cmpRhs rs2
             (amoWordShiftedOld addr
               (loaded_dword_at js.sail (amoWordBase addr) hbytes_base
                 ((amo_word_base_no_ovf addr) :
@@ -1916,25 +3589,67 @@ theorem amo_word_rust_select_program_concrete_aligned
           rs2 rs1 rd)).run js =
         .ok RETIRE_SUCCESS jsf ∧
       jsf.sail = amoWordFinalSailState rd js.sail addr result oldWord := by
+  let oldReg := JoltISA.amoWordSelectOldVRegFor rd
+  let dwordReg := JoltISA.amoWordSelectDwordVRegFor rd
+  let shiftReg := JoltISA.amoWordSelectShiftVRegFor rd
+  let newReg := JoltISA.amoWordSelectNewVRegFor rd
+  let maskReg := JoltISA.amoWordSelectMaskVRegFor rd
+  let tmpReg := JoltISA.amoWordSelectInlineTmpVRegFor rd
   let post : JoltISA.Program :=
-    amoWordSelectRustMiddleProgram extend cmpInstr cmpLhs cmpRhs rs2
-      (JoltISA.amoPost64ProgramWithScratch rs1 rd (.vreg JoltISA.amoWordSelectNewVReg)
-        JoltISA.amoWordSelectDwordVReg JoltISA.amoWordSelectShiftVReg
-        JoltISA.amoWordSelectMaskVReg JoltISA.amoWordSelectOldVReg
-        JoltISA.amoWordSelectInlineTmpVReg)
+    amoWordSelectRustMiddleProgramFor rd extend cmpInstr cmpLhs cmpRhs rs2
+      (JoltISA.amoPost64ProgramWithScratch rs1 rd (.vreg newReg)
+        dwordReg shiftReg maskReg oldReg tmpReg)
   have h_no_ovf := amo_word_base_no_ovf addr
   let dword : BitVec 64 :=
     loaded_dword_at js.sail (amoWordBase addr) hbytes_base h_no_ovf
   let old : BitVec 64 := amoWordShiftedOld addr dword
+  have hshift_w : WritableVReg shiftReg := by
+    unfold shiftReg JoltISA.amoWordSelectShiftVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hdword_w : WritableVReg dwordReg := by
+    unfold dwordReg JoltISA.amoWordSelectDwordVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hnew_w : WritableVReg newReg := by
+    unfold newReg JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hold_w : WritableVReg oldReg := by
+    unfold oldReg JoltISA.amoWordSelectOldVRegFor JoltISA.amoVRegFor
+      WritableVReg
+    split <;> decide
+  have hshift_ne_dword : shiftReg ≠ dwordReg := by
+    unfold shiftReg dwordReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectDwordVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_new : dwordReg ≠ newReg := by
+    unfold dwordReg newReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_new : shiftReg ≠ newReg := by
+    unfold shiftReg newReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectNewVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hdword_ne_old : dwordReg ≠ oldReg := by
+    unfold dwordReg oldReg JoltISA.amoWordSelectDwordVRegFor
+      JoltISA.amoWordSelectOldVRegFor JoltISA.amoVRegFor
+    split <;> decide
+  have hshift_ne_old : shiftReg ≠ oldReg := by
+    unfold shiftReg oldReg JoltISA.amoWordSelectShiftVRegFor
+      JoltISA.amoWordSelectOldVRegFor JoltISA.amoVRegFor
+    split <;> decide
   obtain ⟨js_pre, hpre_run, hpre_sail, hpre_dword, hpre_shift, hpre_old⟩ :=
-    amo_word_rust_select_pre64_aligned_run post rs1 js hpriv hmprv addr hrs1
-      hbytes_base hload_pmp hread_mmio h_no_ovf h_align
+    amo_word_pre64_aligned_run_with rs1 oldReg dwordReg shiftReg newReg post
+      js hpriv hmprv addr hrs1 hbytes_base hload_pmp hread_mmio h_no_ovf
+      h_align hshift_w hdword_w hnew_w hold_w hshift_ne_dword
+      hdword_ne_new hshift_ne_new hdword_ne_old hshift_ne_old
   obtain ⟨js_afterMiddle, hmiddle_step⟩ :=
     hmiddle js_pre hpre_sail hpre_dword hpre_shift hpre_old
   have hmiddle_sail : js_afterMiddle.sail = js.sail := by
     rw [hmiddle_step.sail, hpre_sail]
   obtain ⟨jsf, hpost_run, hpost_sail⟩ :=
-    amo_word_rust_select_post64_vreg_aligned_run rs1 rd
+    amo_word_rust_select_post64_vreg_aligned_run_for rs1 rd
       js js_afterMiddle hpriv hmprv addr result64 dword oldWord hrs1
       hbytes_base hstore_pmp hwrite_mmio h_no_ovf h_align rfl
       hmiddle_sail hmiddle_step.result_vreg
@@ -1944,16 +3659,13 @@ theorem amo_word_rust_select_program_concrete_aligned
   · unfold JoltISA.amoWordSelectRustProgram
     change
       (JoltISA.execProgram
-        (JoltISA.amoPre64ProgramWithScratch rs1 JoltISA.amoWordSelectOldVReg
-          JoltISA.amoWordSelectDwordVReg JoltISA.amoWordSelectShiftVReg
-          JoltISA.amoWordSelectNewVReg post)).run js =
+        (JoltISA.amoPre64ProgramWithScratch rs1 oldReg dwordReg shiftReg
+          newReg post)).run js =
         .ok RETIRE_SUCCESS jsf
     rw [hpre_run]
     rw [hmiddle_step.run
-      (JoltISA.amoPost64ProgramWithScratch rs1 rd (.vreg JoltISA.amoWordSelectNewVReg)
-        JoltISA.amoWordSelectDwordVReg JoltISA.amoWordSelectShiftVReg
-        JoltISA.amoWordSelectMaskVReg JoltISA.amoWordSelectOldVReg
-        JoltISA.amoWordSelectInlineTmpVReg)]
+      (JoltISA.amoPost64ProgramWithScratch rs1 rd (.vreg newReg)
+        dwordReg shiftReg maskReg oldReg tmpReg)]
     exact hpost_run
   · rw [hpost_sail, hresult]
 

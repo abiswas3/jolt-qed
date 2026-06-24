@@ -32,6 +32,23 @@ theorem addi_run_vreg_xreg (vd : VReg) (rs : regidx)
     hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
     EStateM.modifyGet]
 
+/-- `ADDI` from a virtual source to a virtual destination leaves Sail unchanged
+and writes the immediate sum to the virtual destination. -/
+theorem addi_run_vreg_vreg (vd vs : VReg)
+    (imm : BitVec 12) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
+    (execInstr (.ADDI (.vreg vd) (.vreg vs) imm)).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r =>
+            if r = vd then js.vregs vs + sign_extend (m := 64) imm
+              else js.vregs r } := by
+  unfold WritableVReg at hvd
+  unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+    get, getThe, MonadStateOf.get, EStateM.get, hvd, ↓reduceIte,
+    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet]
+
 /-- `ADDI` from a virtual source to a real destination writes through Sail. -/
 theorem addi_run_xreg_vreg (rd : regidx) (vs : VReg) (imm : BitVec 12)
     (js : SailJoltState) (s' : SailState)

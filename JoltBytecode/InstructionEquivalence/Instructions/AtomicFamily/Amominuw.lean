@@ -43,8 +43,8 @@ private theorem amominuwProgram_project_eq_sail
       (JoltISA.amoWordSelectRustProgram
         (fun dst src => .VirtualZeroExtendWord dst src)
         (fun dst lhs rhs => .SLTU dst lhs rhs)
-        (.vreg JoltISA.amoWordSelectNewVReg)
-        (.vreg JoltISA.amoWordSelectMaskVReg)
+        (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+        (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
         rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOMINU false false rs2 rs1 4 rd).run js.sail
   by_cases h_align : addr &&& (3 : BitVec 64) = 0
@@ -124,8 +124,8 @@ private theorem amominuwProgram_project_eq_sail
           amoop.AMOMINU
           (fun dst src => .VirtualZeroExtendWord dst src)
           (fun dst lhs rhs => .SLTU dst lhs rhs)
-          (.vreg JoltISA.amoWordSelectNewVReg)
-          (.vreg JoltISA.amoWordSelectMaskVReg)
+          (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+          (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
           rs2 rs1 rd js h.cur_privilege h.mstatus_mprv addr
           (if (zopz0zI_u
               (Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32)
@@ -146,7 +146,7 @@ private theorem amominuwProgram_project_eq_sail
           (amo_word_minu_result_extract_eq rs2Val (amoWordShiftedOld addr dword)
             oldWord hold)
           (by simpa [dword] using hold)
-          (amo_word_rust_select_minu_middle_after_pre rs2 js addr rs2Val dword
+          (amo_word_rust_select_minu_middle_after_pre_for rd rs2 js addr rs2Val dword
             h.rs2_read) with
       ⟨jsf, hjolt, hjolt_sail⟩
     have hsail :=
@@ -170,8 +170,8 @@ private theorem amominuwProgram_project_eq_sail
           (JoltISA.amoWordSelectRustProgram
             (fun dst src => .VirtualZeroExtendWord dst src)
             (fun dst lhs rhs => .SLTU dst lhs rhs)
-            (.vreg JoltISA.amoWordSelectNewVReg)
-            (.vreg JoltISA.amoWordSelectMaskVReg)
+            (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+            (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
             rs2 rs1 rd)).run js =
           .ok (ExecutionResult.Memory_Exception
             (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js := by
@@ -179,8 +179,8 @@ private theorem amominuwProgram_project_eq_sail
         amo_word_rust_select_program_concrete_misaligned
           (fun dst src => .VirtualZeroExtendWord dst src)
           (fun dst lhs rhs => .SLTU dst lhs rhs)
-          (.vreg JoltISA.amoWordSelectNewVReg)
-          (.vreg JoltISA.amoWordSelectMaskVReg)
+          (.vreg (JoltISA.amoWordSelectNewVRegFor rd))
+          (.vreg (JoltISA.amoWordSelectMaskVRegFor rd))
           rs2 rs1 rd js addr h.rs1_read h_align
     have hsail :=
       execute_AMO_word_misaligned
@@ -210,10 +210,8 @@ theorem amominuwProgram_eq_sail
       JoltISA.amoPost64ProgramWithScratch,
       JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.amoWordSelectOldVReg, JoltISA.amoWordSelectDwordVReg,
-      JoltISA.amoWordSelectShiftVReg, JoltISA.amoWordSelectNewVReg,
-      JoltISA.amoWordSelectMaskVReg, JoltISA.amoWordSelectInlineTmpVReg]
+      JoltISA.DstWritesNoProtectedVReg]
+    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
 
 end AtomicFamily
 

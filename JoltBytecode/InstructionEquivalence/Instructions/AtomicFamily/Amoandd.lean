@@ -60,7 +60,7 @@ private theorem amoanddProgram_project_eq_sail
         h.rs1_read h.rs2_read h.rdReadable.exists_value
         hbytes hload_pmp hstore_pmp hatomic_pmp hread_mmio hwrite_mmio
         h_align (by decide)
-        (amo_dword_and_middle_after_load rs2 js addr rs2Val
+        (amo_dword_and_middle_after_load_into rs2 js addr rs2Val
           (loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align))
           h.rs2_read)
@@ -91,6 +91,7 @@ theorem amoanddProgram_eq_sail
       JoltISA.InstrWritesNoProtectedVReg,
       JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoDoubleBinopNewVReg, JoltISA.amoDoubleBinopOldVReg]
+    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
 
 end AtomicFamily
 

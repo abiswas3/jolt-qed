@@ -83,6 +83,155 @@ def DstWritesNoProtectedVReg : Dst → Prop
     DstWritesNoProtectedVReg (.vreg (loadInlineTmpFor rd)) := by
   simp [DstWritesNoProtectedVReg]
 
+@[simp] theorem amoDstFor_writesNoProtectedVReg (rd : regidx) :
+    DstWritesNoProtectedVReg (amoDstFor rd) := by
+  by_cases hx0 : isX0 rd = true
+  · simpa [amoDstFor, sideEffectingRdZeroDst, DstWritesNoProtectedVReg,
+      hx0, rdZeroRewriteVReg] using
+      (not_protected_of_instructionTmp (r := inlineTmp 0) (n := 0) rfl)
+  · simp [amoDstFor, sideEffectingRdZeroDst, DstWritesNoProtectedVReg, hx0]
+
+private theorem inlineTmp_le6_not_protected (n : Nat) (h : n ≤ 6) :
+    ¬ IsProtectedJoltRegister (inlineTmp n) := by
+  interval_cases n
+  · simpa [inlineTmp0] using inlineTmp0_not_protected
+  · simpa [inlineTmp1] using inlineTmp1_not_protected
+  · simpa [inlineTmp2] using inlineTmp2_not_protected
+  · simpa [inlineTmp3] using inlineTmp3_not_protected
+  · simpa [inlineTmp4] using inlineTmp4_not_protected
+  · simpa [inlineTmp5] using inlineTmp5_not_protected
+  · simpa [inlineTmp6] using inlineTmp6_not_protected
+
+@[simp] theorem amoDoubleBinopOldVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoDoubleBinopOldVRegFor rd) := by
+  unfold amoDoubleBinopOldVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoDoubleBinopNewVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoDoubleBinopNewVRegFor rd) := by
+  unfold amoDoubleBinopNewVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoOldVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoOldVRegFor rd) := by
+  unfold amoOldVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoNewVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoNewVRegFor rd) := by
+  unfold amoNewVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoTmpVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoTmpVRegFor rd) := by
+  unfold amoTmpVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoMaskVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoMaskVRegFor rd) := by
+  unfold amoMaskVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoDwordVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoDwordVRegFor rd) := by
+  unfold amoDwordVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoShiftVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoShiftVRegFor rd) := by
+  unfold amoShiftVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoInlineTmpVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoInlineTmpVRegFor rd) := by
+  unfold amoInlineTmpVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSwapMaskVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSwapMaskVRegFor rd) := by
+  unfold amoWordSwapMaskVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSwapDwordVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSwapDwordVRegFor rd) := by
+  unfold amoWordSwapDwordVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSwapShiftVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSwapShiftVRegFor rd) := by
+  unfold amoWordSwapShiftVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSwapOldVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSwapOldVRegFor rd) := by
+  unfold amoWordSwapOldVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSwapInlineTmpVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSwapInlineTmpVRegFor rd) := by
+  unfold amoWordSwapInlineTmpVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSelectOldVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSelectOldVRegFor rd) := by
+  unfold amoWordSelectOldVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSelectDwordVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSelectDwordVRegFor rd) := by
+  unfold amoWordSelectDwordVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSelectShiftVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSelectShiftVRegFor rd) := by
+  unfold amoWordSelectShiftVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSelectNewVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSelectNewVRegFor rd) := by
+  unfold amoWordSelectNewVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSelectMaskVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSelectMaskVRegFor rd) := by
+  unfold amoWordSelectMaskVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoWordSelectInlineTmpVRegFor_not_protected (rd : regidx) :
+    ¬ IsProtectedJoltRegister (amoWordSelectInlineTmpVRegFor rd) := by
+  unfold amoWordSelectInlineTmpVRegFor amoVRegFor
+  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
+
+@[simp] theorem amoOldVRegFor_writable (rd : regidx) :
+    WritableVReg (amoOldVRegFor rd) := by
+  unfold amoOldVRegFor amoVRegFor WritableVReg
+  split <;> decide
+
+@[simp] theorem amoNewVRegFor_writable (rd : regidx) :
+    WritableVReg (amoNewVRegFor rd) := by
+  unfold amoNewVRegFor amoVRegFor WritableVReg
+  split <;> decide
+
+@[simp] theorem amoTmpVRegFor_writable (rd : regidx) :
+    WritableVReg (amoTmpVRegFor rd) := by
+  unfold amoTmpVRegFor amoVRegFor WritableVReg
+  split <;> decide
+
+@[simp] theorem amoOldVRegFor_ne_amoTmpVRegFor (rd : regidx) :
+    amoOldVRegFor rd ≠ amoTmpVRegFor rd := by
+  unfold amoOldVRegFor amoTmpVRegFor amoVRegFor
+  split <;> decide
+
+@[simp] theorem amoOldVRegFor_ne_amoNewVRegFor (rd : regidx) :
+    amoOldVRegFor rd ≠ amoNewVRegFor rd := by
+  unfold amoOldVRegFor amoNewVRegFor amoVRegFor
+  split <;> decide
+
+@[simp] theorem amoTmpVRegFor_ne_amoNewVRegFor (rd : regidx) :
+    amoTmpVRegFor rd ≠ amoNewVRegFor rd := by
+  unfold amoTmpVRegFor amoNewVRegFor amoVRegFor
+  split <;> decide
+
 def VRegWritesNoProtectedVReg (vr : VReg) : Prop :=
   ¬ IsProtectedJoltRegister vr
 

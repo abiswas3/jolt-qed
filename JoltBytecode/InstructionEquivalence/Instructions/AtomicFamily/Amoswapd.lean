@@ -39,17 +39,19 @@ private theorem amoswapdProgram_project_eq_sail
   · let old :=
       loaded_dword_at js.sail addr hbytes
         (amo_dword_aligned_no_ovf addr h_align)
+    let oldReg := JoltISA.amoOldVRegFor rd
     obtain ⟨js_afterLoad, hld, hld_sail, hld_old⟩ :=
-      amo_dword_load_old_aligned_run
+      amo_dword_load_old_aligned_run_into oldReg
         rs1 js h.cur_privilege h.mstatus_mprv addr h.rs1_read
         hbytes hload_pmp hread_mmio h_align
+        (JoltISA.amoOldVRegFor_writable rd)
     obtain ⟨js_afterStore, hsd, hsd_sail, hsd_vregs⟩ :=
       amo_dword_store_xreg_result_after_load_aligned_run
         rs2 rs1 js js_afterLoad h.cur_privilege h.mstatus_mprv
         addr rs2Val h.rs1_read h.rs2_read hstore_pmp hwrite_mmio
         h_align hld_sail
-    obtain ⟨js_afterWrite, haddi, haddi_sail, _haddi_vregs⟩ :=
-      amo_dword_writeback_after_store_run
+    obtain ⟨js_afterWrite, haddi, haddi_sail⟩ :=
+      amo_dword_writeback_after_store_run_from oldReg
         rd js_afterLoad js_afterStore addr old hsd_vregs hld_old
     have hjolt :
         (JoltISA.execProgram (JoltISA.amoswapdProgram rs2 rs1 rd)).run js =
@@ -73,23 +75,25 @@ private theorem amoswapdProgram_project_eq_sail
     rw [haddi_sail, hsd_sail, hld_sail, hsail]
   · let rest : JoltISA.Program :=
       .instr (.SD (.xreg rs1) (.xreg rs2) (0 : BitVec 12)) <|
-      .instr (.ADDI (.xreg rd) (.vreg JoltISA.amoOldVReg) (0 : BitVec 12)) <|
+      .instr (.ADDI (JoltISA.amoDstFor rd) (.vreg (JoltISA.amoOldVRegFor rd))
+        (0 : BitVec 12)) <|
       .done RETIRE_SUCCESS
+    let oldReg := JoltISA.amoOldVRegFor rd
     let e := (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())
     have hld :
         (JoltISA.execInstr
-          (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
+          (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
         .ok (ExecutionResult.Memory_Exception e) js := by
       exact
         amo_dword_ld_xreg_misaligned_run
-          JoltISA.amoOldVReg rs1 js addr h.rs1_read h_align
+          oldReg rs1 js addr h.rs1_read h_align
     have hjolt :
         (JoltISA.execProgram (JoltISA.amoswapdProgram rs2 rs1 rd)).run js =
           .ok (ExecutionResult.Memory_Exception e) js := by
       unfold JoltISA.amoswapdProgram
       exact
         JoltISA.execProgram_instr_run_memory_exception
-          (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))
+          (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))
           rest js js e hld
     have hsail :=
       execute_AMO_dword_misaligned
@@ -118,6 +122,7 @@ theorem amoswapdProgram_eq_sail
       JoltISA.InstrWritesNoProtectedVReg,
       JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoOldVReg]
+    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
 
 end AtomicFamily
 

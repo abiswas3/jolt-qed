@@ -119,7 +119,7 @@ private theorem amoorwProgram_project_eq_sail
           h.rs1_read hbytes_base hload_pmp_base hread_mmio_base
           hstore_pmp_base hwrite_mmio_base h_align
           (amo_word_or_result_extract_eq addr rs2Val dword oldWord hold)
-          (amo_word_or_middle_after_pre rs2 js rs2Val dword
+          (amo_word_or_middle_after_pre_for rd rs2 js rs2Val dword
             (amoWordShiftedOld addr dword)
             (shift_bits_left addr (3 : BitVec 6)) h.rs2_read) with
       ⟨jsf, hjolt, hjolt_sail⟩
@@ -142,13 +142,16 @@ private theorem amoorwProgram_project_eq_sail
             (Virtaddr addr, ExceptionType.E_SAMO_Addr_Align ())) js := by
       unfold JoltISA.amoWordBinopProgram
       exact
-        amo_word_pre64_misaligned_run rs1 JoltISA.amoOldVReg
-          JoltISA.amoDwordVReg JoltISA.amoShiftVReg
-          (.instr (.OR (.vreg JoltISA.amoNewVReg)
-            (.vreg JoltISA.amoOldVReg) (.xreg rs2)) <|
-            JoltISA.amoPost64Program rs1 rd (.vreg JoltISA.amoNewVReg)
-              JoltISA.amoDwordVReg JoltISA.amoShiftVReg
-              JoltISA.amoMaskVReg JoltISA.amoOldVReg)
+        amo_word_pre64_with_scratch_misaligned_run rs1 (JoltISA.amoOldVRegFor rd)
+          (JoltISA.amoDwordVRegFor rd) (JoltISA.amoShiftVRegFor rd)
+          (JoltISA.amoInlineTmpVRegFor rd)
+          (.instr (.OR (.vreg (JoltISA.amoNewVRegFor rd))
+            (.vreg (JoltISA.amoOldVRegFor rd)) (.xreg rs2)) <|
+            JoltISA.amoPost64ProgramWithScratch rs1 rd
+              (.vreg (JoltISA.amoNewVRegFor rd))
+              (JoltISA.amoDwordVRegFor rd) (JoltISA.amoShiftVRegFor rd)
+              (JoltISA.amoMaskVRegFor rd) (JoltISA.amoOldVRegFor rd)
+              (JoltISA.amoInlineTmpVRegFor rd))
           js addr h.rs1_read h_align
     have hsail :=
       execute_AMO_word_misaligned
@@ -181,6 +184,7 @@ theorem amoorwProgram_eq_sail
       JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoOldVReg, JoltISA.amoNewVReg, JoltISA.amoMaskVReg,
       JoltISA.amoDwordVReg, JoltISA.amoShiftVReg, JoltISA.amoInlineTmpVReg]
+    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
 
 end AtomicFamily
 
