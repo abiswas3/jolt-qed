@@ -78,6 +78,40 @@ def amoWordSelectMaskVReg : VReg := inlineTmp4
 /-- Recursive `SRL`/`SLL` scratch after the word-select outer registers. -/
 def amoWordSelectInlineTmpVReg : VReg := inlineTmp5
 
+/-- Rust source `rd = x0` rewrite destination for side-effecting AMO
+expansions. -/
+def amoDstFor (rd : regidx) : Dst :=
+  sideEffectingRdZeroDst rd
+
+/-- Rust AMO scratch slot `n`, shifted when `rd = x0` consumes the first
+temporary. -/
+def amoVRegFor (rd : regidx) (n : Nat) : VReg :=
+  if isX0 rd then inlineTmp (n + 1) else inlineTmp n
+
+def amoOldVRegFor (rd : regidx) : VReg := amoVRegFor rd 0
+def amoNewVRegFor (rd : regidx) : VReg := amoVRegFor rd 1
+def amoTmpVRegFor (rd : regidx) : VReg := amoVRegFor rd 2
+def amoMaskVRegFor (rd : regidx) : VReg := amoVRegFor rd 2
+def amoDwordVRegFor (rd : regidx) : VReg := amoVRegFor rd 3
+def amoShiftVRegFor (rd : regidx) : VReg := amoVRegFor rd 4
+def amoInlineTmpVRegFor (rd : regidx) : VReg := amoVRegFor rd 5
+
+def amoDoubleBinopNewVRegFor (rd : regidx) : VReg := amoVRegFor rd 0
+def amoDoubleBinopOldVRegFor (rd : regidx) : VReg := amoVRegFor rd 1
+
+def amoWordSwapMaskVRegFor (rd : regidx) : VReg := amoVRegFor rd 0
+def amoWordSwapDwordVRegFor (rd : regidx) : VReg := amoVRegFor rd 1
+def amoWordSwapShiftVRegFor (rd : regidx) : VReg := amoVRegFor rd 2
+def amoWordSwapOldVRegFor (rd : regidx) : VReg := amoVRegFor rd 3
+def amoWordSwapInlineTmpVRegFor (rd : regidx) : VReg := amoVRegFor rd 4
+
+def amoWordSelectOldVRegFor (rd : regidx) : VReg := amoVRegFor rd 0
+def amoWordSelectDwordVRegFor (rd : regidx) : VReg := amoVRegFor rd 1
+def amoWordSelectShiftVRegFor (rd : regidx) : VReg := amoVRegFor rd 2
+def amoWordSelectNewVRegFor (rd : regidx) : VReg := amoVRegFor rd 3
+def amoWordSelectMaskVRegFor (rd : regidx) : VReg := amoVRegFor rd 4
+def amoWordSelectInlineTmpVRegFor (rd : regidx) : VReg := amoVRegFor rd 5
+
 /-- Shared Rust `amo_pre64`: assert word alignment, load the containing
 doubleword, then extract the addressed word into `old`.
 
@@ -109,6 +143,7 @@ inline expansion inside the postlude. -/
 def amoPost64ProgramWithScratch
     (rs1 rd : regidx) (newValue : Src) (dword shift mask old inlineTmp : VReg) :
     Program :=
+  let dst := amoDstFor rd
   .instr (.ORI (.vreg mask) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
   .instr (.VirtualSRLI (.vreg mask) (.vreg mask) (srliBitmask (32 : BitVec 6))) <|
   .instr (.VirtualPow2 (.vreg inlineTmp) (.vreg shift)) <|
@@ -120,7 +155,7 @@ def amoPost64ProgramWithScratch
   .instr (.XOR (.vreg dword) (.vreg dword) (.vreg shift)) <|
   .instr (.ANDI (.vreg mask) (.xreg rs1) (-8 : BitVec 12)) <|
   .instr (.SD (.vreg mask) (.vreg dword) (0 : BitVec 12)) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.vreg old)) <|
+  .instr (.VirtualSignExtendWord dst (.vreg old)) <|
   .done RETIRE_SUCCESS
 
 /-- Word-binop instance of Rust `amo_post64`, where recursive `SLL` calls reuse
@@ -132,43 +167,62 @@ def amoPost64Program
 
 def amoDoubleBinopProgram
     (op : Dst → Src → Src → Instr) (rs2 rs1 rd : regidx) : Program :=
-  .instr (.LD .amo (.vreg amoDoubleBinopOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
-  .instr (op (.vreg amoDoubleBinopNewVReg) (.vreg amoDoubleBinopOldVReg) (.xreg rs2)) <|
-  .instr (.SD (.xreg rs1) (.vreg amoDoubleBinopNewVReg) (0 : BitVec 12)) <|
-  .instr (.ADDI (.xreg rd) (.vreg amoDoubleBinopOldVReg) (0 : BitVec 12)) <|
+  let old := amoDoubleBinopOldVRegFor rd
+  let new := amoDoubleBinopNewVRegFor rd
+  let dst := amoDstFor rd
+  .instr (.LD .amo (.vreg old) (.xreg rs1) (0 : BitVec 12)) <|
+  .instr (op (.vreg new) (.vreg old) (.xreg rs2)) <|
+  .instr (.SD (.xreg rs1) (.vreg new) (0 : BitVec 12)) <|
+  .instr (.ADDI dst (.vreg old) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 def amoDoubleSelectProgram
     (cmpInstr : Dst → Src → Src → Instr) (cmpLhs cmpRhs : Src)
     (rs2 rs1 rd : regidx) : Program :=
-  .instr (.LD .amo (.vreg amoOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
-  .instr (cmpInstr (.vreg amoNewVReg) cmpLhs cmpRhs) <|
-  .instr (.SUB (.vreg amoTmpVReg) (.xreg rs2) (.vreg amoOldVReg)) <|
-  .instr (.MUL (.vreg amoTmpVReg) (.vreg amoTmpVReg) (.vreg amoNewVReg)) <|
-  .instr (.ADD (.vreg amoNewVReg) (.vreg amoOldVReg) (.vreg amoTmpVReg)) <|
-  .instr (.SD (.xreg rs1) (.vreg amoNewVReg) (0 : BitVec 12)) <|
-  .instr (.ADDI (.xreg rd) (.vreg amoOldVReg) (0 : BitVec 12)) <|
+  let old := amoOldVRegFor rd
+  let new := amoNewVRegFor rd
+  let tmp := amoTmpVRegFor rd
+  let dst := amoDstFor rd
+  .instr (.LD .amo (.vreg old) (.xreg rs1) (0 : BitVec 12)) <|
+  .instr (cmpInstr (.vreg new) cmpLhs cmpRhs) <|
+  .instr (.SUB (.vreg tmp) (.xreg rs2) (.vreg old)) <|
+  .instr (.MUL (.vreg tmp) (.vreg tmp) (.vreg new)) <|
+  .instr (.ADD (.vreg new) (.vreg old) (.vreg tmp)) <|
+  .instr (.SD (.xreg rs1) (.vreg new) (0 : BitVec 12)) <|
+  .instr (.ADDI dst (.vreg old) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 def amoWordBinopProgram
     (op : Dst → Src → Src → Instr) (rs2 rs1 rd : regidx) : Program :=
-  amoPre64Program rs1 amoOldVReg amoDwordVReg amoShiftVReg <|
-  .instr (op (.vreg amoNewVReg) (.vreg amoOldVReg) (.xreg rs2)) <|
-  amoPost64Program rs1 rd (.vreg amoNewVReg)
-    amoDwordVReg amoShiftVReg amoMaskVReg amoOldVReg
+  let old := amoOldVRegFor rd
+  let new := amoNewVRegFor rd
+  let mask := amoMaskVRegFor rd
+  let dword := amoDwordVRegFor rd
+  let shift := amoShiftVRegFor rd
+  let tmp := amoInlineTmpVRegFor rd
+  amoPre64ProgramWithScratch rs1 old dword shift tmp <|
+  .instr (op (.vreg new) (.vreg old) (.xreg rs2)) <|
+  amoPost64ProgramWithScratch rs1 rd (.vreg new)
+    dword shift mask old tmp
 
 def amoWordSelectProgram
     (extend : Dst → Src → Instr) (cmpInstr : Dst → Src → Src → Instr)
     (cmpLhs cmpRhs : Src) (rs2 rs1 rd : regidx) : Program :=
-  amoPre64Program rs1 amoOldVReg amoDwordVReg amoShiftVReg <|
-  .instr (extend (.vreg amoNewVReg) (.xreg rs2)) <|
-  .instr (extend (.vreg amoMaskVReg) (.vreg amoOldVReg)) <|
-  .instr (cmpInstr (.vreg amoMaskVReg) cmpLhs cmpRhs) <|
-  .instr (.SUB (.vreg amoNewVReg) (.xreg rs2) (.vreg amoOldVReg)) <|
-  .instr (.MUL (.vreg amoNewVReg) (.vreg amoNewVReg) (.vreg amoMaskVReg)) <|
-  .instr (.ADD (.vreg amoNewVReg) (.vreg amoNewVReg) (.vreg amoOldVReg)) <|
-  amoPost64Program rs1 rd (.vreg amoNewVReg)
-    amoDwordVReg amoShiftVReg amoMaskVReg amoOldVReg
+  let old := amoOldVRegFor rd
+  let new := amoNewVRegFor rd
+  let mask := amoMaskVRegFor rd
+  let dword := amoDwordVRegFor rd
+  let shift := amoShiftVRegFor rd
+  let tmp := amoInlineTmpVRegFor rd
+  amoPre64ProgramWithScratch rs1 old dword shift tmp <|
+  .instr (extend (.vreg new) (.xreg rs2)) <|
+  .instr (extend (.vreg mask) (.vreg old)) <|
+  .instr (cmpInstr (.vreg mask) cmpLhs cmpRhs) <|
+  .instr (.SUB (.vreg new) (.xreg rs2) (.vreg old)) <|
+  .instr (.MUL (.vreg new) (.vreg new) (.vreg mask)) <|
+  .instr (.ADD (.vreg new) (.vreg new) (.vreg old)) <|
+  amoPost64ProgramWithScratch rs1 rd (.vreg new)
+    dword shift mask old tmp
 
 /-- Rust-shaped RV64 word min/max helper.
 
@@ -178,22 +232,22 @@ flag and later postlude mask. -/
 def amoWordSelectRustProgram
     (extend : Dst → Src → Instr) (cmpInstr : Dst → Src → Src → Instr)
     (cmpLhs cmpRhs : Src) (rs2 rs1 rd : regidx) : Program :=
+  let old := amoWordSelectOldVRegFor rd
+  let dword := amoWordSelectDwordVRegFor rd
+  let shift := amoWordSelectShiftVRegFor rd
+  let new := amoWordSelectNewVRegFor rd
+  let mask := amoWordSelectMaskVRegFor rd
+  let tmp := amoWordSelectInlineTmpVRegFor rd
   amoPre64ProgramWithScratch rs1
-    amoWordSelectOldVReg amoWordSelectDwordVReg amoWordSelectShiftVReg
-    amoWordSelectNewVReg <|
-  .instr (extend (.vreg amoWordSelectNewVReg) (.xreg rs2)) <|
-  .instr (extend (.vreg amoWordSelectMaskVReg)
-    (.vreg amoWordSelectOldVReg)) <|
-  .instr (cmpInstr (.vreg amoWordSelectMaskVReg) cmpLhs cmpRhs) <|
-  .instr (.SUB (.vreg amoWordSelectNewVReg)
-    (.xreg rs2) (.vreg amoWordSelectOldVReg)) <|
-  .instr (.MUL (.vreg amoWordSelectNewVReg)
-    (.vreg amoWordSelectNewVReg) (.vreg amoWordSelectMaskVReg)) <|
-  .instr (.ADD (.vreg amoWordSelectNewVReg)
-    (.vreg amoWordSelectNewVReg) (.vreg amoWordSelectOldVReg)) <|
-  amoPost64ProgramWithScratch rs1 rd (.vreg amoWordSelectNewVReg)
-    amoWordSelectDwordVReg amoWordSelectShiftVReg amoWordSelectMaskVReg
-    amoWordSelectOldVReg amoWordSelectInlineTmpVReg
+    old dword shift new <|
+  .instr (extend (.vreg new) (.xreg rs2)) <|
+  .instr (extend (.vreg mask) (.vreg old)) <|
+  .instr (cmpInstr (.vreg mask) cmpLhs cmpRhs) <|
+  .instr (.SUB (.vreg new) (.xreg rs2) (.vreg old)) <|
+  .instr (.MUL (.vreg new) (.vreg new) (.vreg mask)) <|
+  .instr (.ADD (.vreg new) (.vreg new) (.vreg old)) <|
+  amoPost64ProgramWithScratch rs1 rd (.vreg new)
+    dword shift mask old tmp
 
 def amoadddProgram (rs2 rs1 rd : regidx) : Program :=
   amoDoubleBinopProgram (fun dst lhs rhs => .ADD dst lhs rhs) rs2 rs1 rd
@@ -208,26 +262,28 @@ def amoxordProgram (rs2 rs1 rd : regidx) : Program :=
   amoDoubleBinopProgram (fun dst lhs rhs => .XOR dst lhs rhs) rs2 rs1 rd
 
 def amoswapdProgram (rs2 rs1 rd : regidx) : Program :=
-  .instr (.LD .amo (.vreg amoOldVReg) (.xreg rs1) (0 : BitVec 12)) <|
+  let old := amoOldVRegFor rd
+  let dst := amoDstFor rd
+  .instr (.LD .amo (.vreg old) (.xreg rs1) (0 : BitVec 12)) <|
   .instr (.SD (.xreg rs1) (.xreg rs2) (0 : BitVec 12)) <|
-  .instr (.ADDI (.xreg rd) (.vreg amoOldVReg) (0 : BitVec 12)) <|
+  .instr (.ADDI dst (.vreg old) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
 def amomindProgram (rs2 rs1 rd : regidx) : Program :=
   amoDoubleSelectProgram (fun dst lhs rhs => .SLT dst lhs rhs)
-    (.xreg rs2) (.vreg amoOldVReg) rs2 rs1 rd
+    (.xreg rs2) (.vreg (amoOldVRegFor rd)) rs2 rs1 rd
 
 def amomaxdProgram (rs2 rs1 rd : regidx) : Program :=
   amoDoubleSelectProgram (fun dst lhs rhs => .SLT dst lhs rhs)
-    (.vreg amoOldVReg) (.xreg rs2) rs2 rs1 rd
+    (.vreg (amoOldVRegFor rd)) (.xreg rs2) rs2 rs1 rd
 
 def amominudProgram (rs2 rs1 rd : regidx) : Program :=
   amoDoubleSelectProgram (fun dst lhs rhs => .SLTU dst lhs rhs)
-    (.xreg rs2) (.vreg amoOldVReg) rs2 rs1 rd
+    (.xreg rs2) (.vreg (amoOldVRegFor rd)) rs2 rs1 rd
 
 def amomaxudProgram (rs2 rs1 rd : regidx) : Program :=
   amoDoubleSelectProgram (fun dst lhs rhs => .SLTU dst lhs rhs)
-    (.vreg amoOldVReg) (.xreg rs2) rs2 rs1 rd
+    (.vreg (amoOldVRegFor rd)) (.xreg rs2) rs2 rs1 rd
 
 def amoaddwProgram (rs2 rs1 rd : regidx) : Program :=
   amoWordBinopProgram (fun dst lhs rhs => .ADD dst lhs rhs) rs2 rs1 rd
@@ -242,31 +298,38 @@ def amoxorwProgram (rs2 rs1 rd : regidx) : Program :=
   amoWordBinopProgram (fun dst lhs rhs => .XOR dst lhs rhs) rs2 rs1 rd
 
 def amoswapwProgram (rs2 rs1 rd : regidx) : Program :=
+  let old := amoWordSwapOldVRegFor rd
+  let dword := amoWordSwapDwordVRegFor rd
+  let shift := amoWordSwapShiftVRegFor rd
+  let mask := amoWordSwapMaskVRegFor rd
+  let tmp := amoWordSwapInlineTmpVRegFor rd
   amoPre64ProgramWithScratch rs1
-    amoWordSwapOldVReg amoWordSwapDwordVReg amoWordSwapShiftVReg
-    amoWordSwapInlineTmpVReg <|
+    old dword shift tmp <|
   amoPost64ProgramWithScratch rs1 rd (.xreg rs2)
-    amoWordSwapDwordVReg amoWordSwapShiftVReg amoWordSwapMaskVReg
-    amoWordSwapOldVReg amoWordSwapInlineTmpVReg
+    dword shift mask old tmp
 
 def amominwProgram (rs2 rs1 rd : regidx) : Program :=
   amoWordSelectRustProgram (fun dst src => .VirtualSignExtendWord dst src)
     (fun dst lhs rhs => .SLT dst lhs rhs)
-    (.vreg amoWordSelectNewVReg) (.vreg amoWordSelectMaskVReg) rs2 rs1 rd
+    (.vreg (amoWordSelectNewVRegFor rd)) (.vreg (amoWordSelectMaskVRegFor rd))
+    rs2 rs1 rd
 
 def amomaxwProgram (rs2 rs1 rd : regidx) : Program :=
   amoWordSelectRustProgram (fun dst src => .VirtualSignExtendWord dst src)
     (fun dst lhs rhs => .SLT dst lhs rhs)
-    (.vreg amoWordSelectMaskVReg) (.vreg amoWordSelectNewVReg) rs2 rs1 rd
+    (.vreg (amoWordSelectMaskVRegFor rd)) (.vreg (amoWordSelectNewVRegFor rd))
+    rs2 rs1 rd
 
 def amominuwProgram (rs2 rs1 rd : regidx) : Program :=
   amoWordSelectRustProgram (fun dst src => .VirtualZeroExtendWord dst src)
     (fun dst lhs rhs => .SLTU dst lhs rhs)
-    (.vreg amoWordSelectNewVReg) (.vreg amoWordSelectMaskVReg) rs2 rs1 rd
+    (.vreg (amoWordSelectNewVRegFor rd)) (.vreg (amoWordSelectMaskVRegFor rd))
+    rs2 rs1 rd
 
 def amomaxuwProgram (rs2 rs1 rd : regidx) : Program :=
   amoWordSelectRustProgram (fun dst src => .VirtualZeroExtendWord dst src)
     (fun dst lhs rhs => .SLTU dst lhs rhs)
-    (.vreg amoWordSelectMaskVReg) (.vreg amoWordSelectNewVReg) rs2 rs1 rd
+    (.vreg (amoWordSelectMaskVRegFor rd)) (.vreg (amoWordSelectNewVRegFor rd))
+    rs2 rs1 rd
 
 end JoltISA
