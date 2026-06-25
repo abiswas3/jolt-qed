@@ -6,10 +6,8 @@ Scope notes:
 
 - The audit covers every current `JoltISA.Instr` constructor in `JoltBytecode/JoltISA/Instruction.lean`.
 - The audit covers every current `JoltISA.Expanded` constructor in `JoltBytecode/JoltISA/Instruction.lean`.
-- The entries below intentionally retain only non-`DONE` issues; perfectly
-  aligned instructions are omitted to keep the file focused.
-- "Perfectly aligned" means no row-body mismatch was found against the Rust tracer instruction semantics for the audited architectural/proof-visible state.
-- The normal Rust fetch-stage PC increment, trace stamping, lookup-table behavior, and trace-only call metadata are not counted as row-body mismatches here.
+- The parts of the code that need to be rust aligned are the semantics/cpu execution behaviour of native/unexpanded/instructions modelled in `Instruction.lean`, and the expansion modelled by the Expansion in Rust. 
+- Additionally, we must model Jolts usage of virtual register faithfully, and any sail state it might touch, like PC.
 - Assertion panic in Rust versus `Error.Assertion` in Lean is treated as aligned when the pass/fail predicate is the same.
 - Rust panic/assertion on invalid memory paths versus Lean `Memory_Exception` is treated as the Sail-facing modeling boundary described under `# Notes`.
 - LR/SC source expansions are explicitly out of proof scope for now, per audit direction.

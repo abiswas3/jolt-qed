@@ -1,5 +1,5 @@
 import JoltBytecode.JoltISA.VirtualRegisters
-
+-- NOTE: Some of the assumptions (the OS ones are stale and need review)
 /-!
 # Jolt proof assumptions
 
