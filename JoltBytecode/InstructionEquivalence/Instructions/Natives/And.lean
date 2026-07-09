@@ -19,6 +19,9 @@ def andInstrEqSailStatement
     ((JoltISA.execInstr (.AND (.xreg rd) (.xreg rs1) (.xreg rs2))).run js) =
     ((execute_RTYPE rs2 rs1 rd rop.AND).run js.sail)
 
+abbrev op (rs1_val rs2_val : BitVec 64): BitVec 64 :=
+  rs1_val &&& rs2_val 
+
 theorem andInstr_eq_sail
     (rs2 rs1 rd : regidx)
     (js : SailJoltState)
@@ -30,7 +33,7 @@ theorem andInstr_eq_sail
   simp only [h.rs1_read, h.rs2_read]
   simp only [pure, EStateM.pure]  
   -- wX_shape is a helper theorem i wrote that write succeeds and there exists state 
-  obtain ⟨s', h_write⟩ := wX_shape rd (h.rs1_val &&& h.rs2_val) js.sail
+  obtain ⟨s', h_write⟩ := wX_shape rd (op h.rs1_val h.rs2_val) js.sail
   simp only [h_write]  -- WE have RHS retires successfully.
 
   -- LHS
