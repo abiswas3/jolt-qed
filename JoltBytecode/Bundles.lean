@@ -44,6 +44,15 @@ structure BinarySourceReadAssumptions
 -- ============================================================================
 
 /-- Persistent CSR virtual registers agree with Sail's architectural CSR state. -/
+abbrev LinkedCSRs (js : SailJoltState) : Prop :=
+  Assumptions.MstatusVRegMatchesSail js ∧
+  Assumptions.MtvecVRegMatchesSail js ∧
+  Assumptions.MscratchVRegMatchesSail js ∧
+  Assumptions.MepcVRegMatchesSail js ∧
+  Assumptions.McauseVRegMatchesSail js ∧
+  Assumptions.MtvalVRegMatchesSail js
+
+/-- Fieldwise carrier for the public linked-CSR invariant. -/
 private structure LinkedCSRRegisterAssumptions (js : SailJoltState) where
   mstatus_matches : Assumptions.MstatusVRegMatchesSail js
   mtvec_matches : Assumptions.MtvecVRegMatchesSail js
@@ -72,46 +81,26 @@ structure BinarySourceReadWithLinkedCSRs
 def LinkedCSRRegisterAssumptions.linkedCSRs
     {js : SailJoltState}
     (h : LinkedCSRRegisterAssumptions js) :
-    Assumptions.MstatusVRegMatchesSail js ∧
-    Assumptions.MtvecVRegMatchesSail js ∧
-    Assumptions.MscratchVRegMatchesSail js ∧
-    Assumptions.MepcVRegMatchesSail js ∧
-    Assumptions.McauseVRegMatchesSail js ∧
-    Assumptions.MtvalVRegMatchesSail js :=
+    LinkedCSRs js :=
   ⟨h.mstatus_matches, h.mtvec_matches, h.mscratch_matches, h.mepc_matches,
     h.mcause_matches, h.mtval_matches⟩
 
 def NoSourceReadWithLinkedCSRs.linkedCSRs
     {js : SailJoltState}
     (h : NoSourceReadWithLinkedCSRs js) :
-    Assumptions.MstatusVRegMatchesSail js ∧
-    Assumptions.MtvecVRegMatchesSail js ∧
-    Assumptions.MscratchVRegMatchesSail js ∧
-    Assumptions.MepcVRegMatchesSail js ∧
-    Assumptions.McauseVRegMatchesSail js ∧
-    Assumptions.MtvalVRegMatchesSail js :=
+    LinkedCSRs js :=
   h.toLinkedCSRRegisterAssumptions.linkedCSRs
 
 def UnarySourceReadWithLinkedCSRs.linkedCSRs
     {rs1 : regidx} {js : SailJoltState}
     (h : UnarySourceReadWithLinkedCSRs rs1 js) :
-    Assumptions.MstatusVRegMatchesSail js ∧
-    Assumptions.MtvecVRegMatchesSail js ∧
-    Assumptions.MscratchVRegMatchesSail js ∧
-    Assumptions.MepcVRegMatchesSail js ∧
-    Assumptions.McauseVRegMatchesSail js ∧
-    Assumptions.MtvalVRegMatchesSail js :=
+    LinkedCSRs js :=
   h.toLinkedCSRRegisterAssumptions.linkedCSRs
 
 def BinarySourceReadWithLinkedCSRs.linkedCSRs
     {rs2 rs1 : regidx} {js : SailJoltState}
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
-    Assumptions.MstatusVRegMatchesSail js ∧
-    Assumptions.MtvecVRegMatchesSail js ∧
-    Assumptions.MscratchVRegMatchesSail js ∧
-    Assumptions.MepcVRegMatchesSail js ∧
-    Assumptions.McauseVRegMatchesSail js ∧
-    Assumptions.MtvalVRegMatchesSail js :=
+    LinkedCSRs js :=
   h.toLinkedCSRRegisterAssumptions.linkedCSRs
 
 -- ============================================================================
