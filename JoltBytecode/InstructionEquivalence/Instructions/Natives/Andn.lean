@@ -40,7 +40,7 @@ theorem andnInstr_eq_sail
   rw [bind_after_success_of_writeDst_xreg rd js _ s' h_write _]
   -- Use the System Project helper 
   -- (NOTE: this helper proof quality  is not super clean but we will get to that later)
-  exact Projection.systemProjectResult_pure_retire_xreg_write rd js s'
+  exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
     (h.rs1_val &&& Complement.complement h.rs2_val)
     h.linkedCSRs h_write
 

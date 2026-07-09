@@ -1,6 +1,7 @@
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 
 open Sail PreSail LeanRV64D.Functions
 
@@ -26,8 +27,20 @@ theorem andiInstr_eq_sail
     (js : SailJoltState)
     (h : UnarySourceReadWithLinkedCSRs rs1 js) :
     andiInstrEqSailStatement imm rs1 rd js h := by
-  sorry
-
+  unfold andiInstrEqSailStatement
+  -- RHS 
+  simp only [execute_ITYPE, EStateM.run, bind, EStateM.bind]
+  simp only [h.rs1_read]
+  obtain ⟨s', h_write⟩ := wX_shape rd (h.rs1_val &&& sign_extend imm) js.sail  
+  simp only [pure, EStateM.pure, h_write] 
+  -- LHS 
+  simp only [JoltISA.execInstr]
+  -- being lazy and letting lean infer all the args
+  rw [bind_after_success_of_readSrc_xreg rs1 js h.rs1_val h.rs1_read]
+  rw [bind_after_success_of_writeDst_xreg rd js (h.rs1_val &&& sign_extend imm) s' h_write _] -- write succeeds and the value is interpreted. 
+  exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
+    (h.rs1_val &&& sign_extend imm)
+    h.linkedCSRs h_write
 end Natives
 
 end

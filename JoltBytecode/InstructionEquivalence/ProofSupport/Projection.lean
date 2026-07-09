@@ -344,7 +344,7 @@ theorem systemProject_eq_sail_of_projected_vregs_preserved_of_sail_regs_eq
 
 /-- A pure `RETIRE_SUCCESS` after a successful architectural x-register write
 projects to the same pure Sail retirement at the written Sail state. -/
-theorem systemProjectResult_pure_retire_xreg_write
+theorem systemProjectResult_pure_retire_after_xreg_write
     (rd : regidx)
     (js : SailJoltState)
     (s' : SailState)

@@ -24,7 +24,25 @@ theorem andInstr_eq_sail
     (js : SailJoltState)
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     andInstrEqSailStatement rs2 rs1 rd js h := by
-  sorry
+  unfold andInstrEqSailStatement
+  -- RHS 
+  simp only [execute_RTYPE, EStateM.run, bind, EStateM.bind]
+  simp only [h.rs1_read, h.rs2_read]
+  simp only [pure, EStateM.pure]  
+  -- wX_shape is a helper theorem i wrote that write succeeds and there exists state 
+  obtain ⟨s', h_write⟩ := wX_shape rd (h.rs1_val &&& h.rs2_val) js.sail
+  simp only [h_write]  -- WE have RHS retires successfully.
+
+  -- LHS
+  simp only [JoltISA.execInstr]
+  -- cutting through the EstateM match madness
+  rw [bind_after_success_of_readSrc_xreg rs1 js h.rs1_val h.rs1_read] -- read of rs1 succeeds 
+  rw [bind_after_success_of_readSrc_xreg rs2 js h.rs2_val h.rs2_read] -- read of rs2 succeeds 
+  rw [bind_after_success_of_writeDst_xreg rd js _ s' h_write _] -- write succeeds and the value is interpreted. 
+  exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
+    (h.rs1_val &&& h.rs2_val)
+    h.linkedCSRs h_write
+
 
 end Natives
 
