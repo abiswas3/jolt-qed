@@ -1,6 +1,7 @@
+import JoltBytecode.JoltISA.Core
 import JoltBytecode.Bundles
+import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
-import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 
 open Sail PreSail LeanRV64D.Functions
 
@@ -24,7 +25,25 @@ theorem andnInstr_eq_sail
     (js : SailJoltState)
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     andnInstrEqSailStatement rs2 rs1 rd js h := by
-  sorry
+  unfold andnInstrEqSailStatement 
+  -- parsing the RHS of the main theorem statement 
+  simp only [execute_ZBB_RTYPE] -- Tell the giant match block we are doing ANDN
+  simp only [EStateM.run_bind] -- Go from do notation to nested matches
+  simp only [EStateM.run]
+  simp only [h.rs1_read, h.rs2_read]
+  obtain ⟨s', h_write⟩ := wX_shape rd (h.rs1_val &&& Complement.complement h.rs2_val) js.sail
+  simp only [h_write]
+  -- parsing the LHS (Jolt side)
+  simp only [JoltISA.execInstr]
+  rw [bind_after_success_of_readSrc_xreg rs1 js h.rs1_val h.rs1_read]
+  rw [bind_after_success_of_readSrc_xreg rs2 js h.rs2_val h.rs2_read]
+  rw [bind_after_success_of_writeDst_xreg rd js _ s' h_write _]
+  -- Use the System Project helper 
+  -- (NOTE: this helper proof quality  is not super clean but we will get to that later)
+  exact Projection.systemProjectResult_pure_retire_xreg_write rd js s'
+    (h.rs1_val &&& Complement.complement h.rs2_val)
+    h.linkedCSRs h_write
+
 
 end Natives
 

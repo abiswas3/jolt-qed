@@ -110,13 +110,7 @@ registers, materializing those virtual registers is the same state as the plain
 projection. This is the global linked-register invariant made explicit. -/
 theorem systemProject_eq_project_of_compatible
     (js : SailJoltState)
-    (h :
-      Assumptions.MstatusVRegMatchesSail js ∧
-      Assumptions.MtvecVRegMatchesSail js ∧
-      Assumptions.MscratchVRegMatchesSail js ∧
-      Assumptions.MepcVRegMatchesSail js ∧
-      Assumptions.McauseVRegMatchesSail js ∧
-      Assumptions.MtvalVRegMatchesSail js) :
+    (h : LinkedCSRs js) :
     systemProject js = project js := by
   have hMstatus := h.1
   have hMtvec := h.2.1

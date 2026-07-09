@@ -1,5 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.InstructionEquivalence.Instructions.System.Common
+import JoltBytecode.Bundles
 
 /-!
 # Projection proof facts
@@ -14,16 +15,6 @@ set_option autoImplicit true
 noncomputable section
 
 namespace Projection
-
-/-- Public invariant that the persistent CSR virtual registers currently agree
-with the generated Sail CSR register map. -/
-abbrev LinkedCSRs (js : SailJoltState) : Prop :=
-  Assumptions.MstatusVRegMatchesSail js ∧
-  Assumptions.MtvecVRegMatchesSail js ∧
-  Assumptions.MscratchVRegMatchesSail js ∧
-  Assumptions.MepcVRegMatchesSail js ∧
-  Assumptions.McauseVRegMatchesSail js ∧
-  Assumptions.MtvalVRegMatchesSail js
 
 /-- The persistent CSR virtual registers materialized by `systemProject` are
 unchanged between two Jolt states. -/
@@ -114,6 +105,38 @@ theorem systemProject_eq_sail_of_projected_vregs_preserved_of_sail_regs_eq
     System.systemProject after = after.sail :=
   systemProject_eq_project_of_projected_vregs_preserved_of_sail_regs_eq
     before after hregs hprojected hlinked
+
+/-- A pure `RETIRE_SUCCESS` after a successful architectural x-register write
+projects to the same pure Sail retirement at the written Sail state. -/
+theorem systemProjectResult_pure_retire_xreg_write
+    (rd : regidx)
+    (js : SailJoltState)
+    (s' : SailState)
+    (value : BitVec 64)
+    (hlinked : LinkedCSRs js)
+    (hwrite : wX_bits rd value js.sail = .ok () s') :
+    System.systemProjectResult
+      (((pure RETIRE_SUCCESS : JoltMonad ExecutionResult)
+        ({ sail := s', vregs := js.vregs } : SailJoltState)))
+    =
+    ((pure RETIRE_SUCCESS : SailM ExecutionResult) s') := by
+  have h_project_initial : System.systemProject js = js.sail :=
+    systemProject_eq_sail_of_compatible js hlinked
+  have h_final_sail :
+      ({ sail := s', vregs := js.vregs } : SailJoltState).sail =
+        stateAfterWrite js.sail rd value :=
+    wX_bits_eq_stateAfterWrite rd value js.sail s' hwrite
+  have h_projected_vregs :
+      ProjectedVRegsPreserved js
+        ({ sail := s', vregs := js.vregs } : SailJoltState) := by
+    unfold ProjectedVRegsPreserved
+    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+  simp only [pure, EStateM.pure, System.systemProjectResult]
+  rw [systemProject_stateAfterWrite_of_projected_vregs_preserved
+    js ({ sail := s', vregs := js.vregs } : SailJoltState) rd value
+      h_final_sail h_projected_vregs]
+  rw [h_project_initial]
+  rw [← h_final_sail]
 
 /-- Generic projected-vreg preservation theorem for any successful program run
 whose instructions avoid protected Jolt registers.  The old classifier is

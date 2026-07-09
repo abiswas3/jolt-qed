@@ -88,6 +88,37 @@ namespace JoltISA
 
 end JoltISA
 
+/-- If the underlying Sail architectural-register read succeeds, a bound Jolt
+`readSrc` line reduces to the continuation at that value and unchanged Jolt
+state. -/
+theorem bind_after_success_of_readSrc_xreg
+    (rs : regidx)
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (hread : rX_bits rs js.sail = .ok v js.sail)
+    (k : BitVec 64 → JoltMonad α) :
+    ((JoltISA.readSrc (.xreg rs) >>= k) js) = k v js := by
+  simp only [JoltISA.readSrc]
+  unfold liftSail
+  simp only [bind, EStateM.bind, hread]
+
+/-- If the underlying Sail architectural-register write succeeds, a bound Jolt
+`writeDst` line reduces to the continuation at `()` with the Sail component
+updated and virtual registers unchanged. -/
+theorem bind_after_success_of_writeDst_xreg
+    (rd : regidx)
+    (js : SailJoltState)
+    (v : BitVec 64)
+    (s' : SailState)
+    (hwrite : wX_bits rd v js.sail = .ok () s')
+    (k : Unit → JoltMonad α) :
+    ((JoltISA.writeDst (.xreg rd) v >>= k) js) =
+      k () { sail := s', vregs := js.vregs } := by
+  simp only [JoltISA.writeDst]
+  unfold liftSail
+  simp only [bind, EStateM.bind]
+  simp only [hwrite]
+
 -- ============================================================================
 -- reg_cases tactic
 -- ============================================================================

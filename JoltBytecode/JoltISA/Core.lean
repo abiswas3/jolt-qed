@@ -8,9 +8,8 @@ augmented `SailJoltState` (Sail + virtual register file), the `JoltMonad`
 effect type, and the lifting/projection machinery that bridges between Sail
 computations and Jolt computations.
 
-Proof-side facts about this embedding (`@[ext]`, `@[simp]` rfl-laws, monad
-laws of `liftSail`) live in
-`InstructionEquivalence/ProofSupport/CoreState.lean`.
+Proof-side facts about this embedding live in the instruction-equivalence
+support modules that use them.
 -/
 
 set_option linter.unusedVariables false
