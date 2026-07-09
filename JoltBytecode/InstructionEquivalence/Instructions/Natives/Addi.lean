@@ -76,6 +76,8 @@ def addiInstrEqSailStatement
     ((JoltISA.execInstr (.ADDI (.xreg rd) (.xreg rs1) imm)).run js) =
     ((execute_ITYPE imm rs1 rd iop.ADDI).run js.sail)
 
+abbrev op (rs1_val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  rs1_val + sign_extend (m := 64) imm
 
 theorem addiInstr_eq_sail
     (imm : BitVec 12)
@@ -83,29 +85,17 @@ theorem addiInstr_eq_sail
     (js : SailJoltState)
     (h : UnarySourceReadWithLinkedCSRs rs1 js) :
     addiInstrEqSailStatement imm rs1 rd js h := by
-  unfold addiInstrEqSailStatement 
-  rw [execute_ITYPE_ADDI_run imm rs1 rd js.sail h.rs1_val h.rs1_read]
-  -- Decompose the LHS Jolt run into its concrete post-state `js_afterAddi`.
-  obtain ⟨js_afterAddi, _h_reads, h_final_sail, h_run⟩ :=
-    JoltISA.exists_state_after_addi_run_xreg_xreg rd rs1 imm js h.rs1_val h.rs1_read
-  rw [h_run]
-  simp only [System.systemProjectResult]
-  -- LHS is now `.ok RETIRE_SUCCESS (System.systemProject js_afterAddi)`.
-  simp only [EStateM.Result.ok.injEq, true_and]
-  -- Goal: System.systemProject js_afterAddi
-  --         = stateAfterWrite js.sail rd (h.rs1_val + sign_extend imm)
-  -- Rewrite the bare `js.sail` into `System.systemProject js`.
-  have h_project_initial : System.systemProject js = js.sail :=
-    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
-  rw [← h_project_initial]
-  -- Goal: System.systemProject js_afterAddi
-  --         = stateAfterWrite (System.systemProject js) rd (h.rs1_val + sign_extend imm)
-  -- ADDI preserves the projected CSR vregs, so projection commutes with the write.
-  have h_projected_vregs : Projection.ProjectedVRegsPreserved js js_afterAddi :=
-    addiInstr_preserves_projected_vregs imm rs1 rd h_run
-  rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
-    js js_afterAddi rd (h.rs1_val + sign_extend (m := 64) imm)
-    h_final_sail h_projected_vregs]
+  unfold addiInstrEqSailStatement
+  simp only [execute_ITYPE, EStateM.run, bind, EStateM.bind]
+  simp only [h.rs1_read]
+  obtain ⟨s', h_write⟩ := wX_shape rd (op h.rs1_val imm) js.sail
+  simp only [pure, EStateM.pure, h_write]
+  simp only [JoltISA.execInstr]
+  rw [bind_after_success_of_readSrc_xreg rs1 js h.rs1_val h.rs1_read]
+  rw [bind_after_success_of_writeDst_xreg rd js (op h.rs1_val imm) s' h_write _]
+  exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
+    (op h.rs1_val imm)
+    h.linkedCSRs h_write
 
 
 

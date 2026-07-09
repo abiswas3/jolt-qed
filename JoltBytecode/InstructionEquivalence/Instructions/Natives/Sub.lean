@@ -66,29 +66,8 @@ def subInstrEqSailStatement
     ((JoltISA.execInstr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2))).run js) =
     ((execute_RTYPE rs2 rs1 rd rop.SUB).run js.sail)
 
-private theorem subInstr_concrete
-    (rs2 : regidx)
-    (rs1 : regidx)
-    (rd : regidx)
-    (js : SailJoltState)
-    (v1 v2 : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail) :
-    ∃ js',
-      (JoltISA.execInstr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
-        .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd (v1 - v2) ∧
-      js'.vregs = js.vregs := by
-  obtain ⟨s', hwrite⟩ := wX_shape rd (v1 - v2) js.sail
-  let js' : SailJoltState := { sail := s', vregs := js.vregs }
-  have h_sail : js'.sail = stateAfterWrite js.sail rd (v1 - v2) :=
-    wX_bits_eq_stateAfterWrite rd (v1 - v2) js.sail s' hwrite
-  have h_run :
-      (JoltISA.execInstr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
-        .ok RETIRE_SUCCESS js' :=
-    JoltISA.sub_run_xreg_xreg_xreg rd rs1 rs2 js v1 v2 s'
-      h_read_rs1 h_read_rs2 hwrite
-  exact ⟨js', h_run, h_sail, rfl⟩
+abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+  rs1_val - rs2_val
 
 /-- Native `SUB` agrees with Sail `execute_RTYPE ... SUB`. -/
 theorem subInstr_eq_sail
@@ -99,34 +78,18 @@ theorem subInstr_eq_sail
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     subInstrEqSailStatement rs2 rs1 rd js h := by
   unfold subInstrEqSailStatement
-  let v1 := h.rs1_val
-  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
-  let v2 := h.rs2_val
-  have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read
-  have h_project_initial : System.systemProject js = js.sail :=
-    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
-
-  obtain ⟨js_afterSub, h_run, h_final_sail, _h_final_vregs⟩ :=
-    subInstr_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2
-  have h_projected_vregs :
-      Projection.ProjectedVRegsPreserved js js_afterSub :=
-    subInstr_preserves_projected_vregs rs2 rs1 rd h_run
-
-  rw [h_run]
-  simp only [System.systemProjectResult]
-
-  rw [execute_RTYPE_SUB_factored rs2 rs1 rd]
-  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-  simp only [h_read_rs1, h_read_rs2]
-
-  obtain ⟨s', h_write⟩ := wX_shape rd (v1 - v2) js.sail
+  simp only [execute_RTYPE, EStateM.run, bind, EStateM.bind]
+  simp only [h.rs1_read, h.rs2_read]
+  simp only [pure, EStateM.pure]
+  obtain ⟨s', h_write⟩ := wX_shape rd (op h.rs1_val h.rs2_val) js.sail
   simp only [h_write]
-  congr 1
-
-  rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
-    js js_afterSub rd (v1 - v2) h_final_sail h_projected_vregs]
-  rw [h_project_initial]
-  exact (wX_bits_eq_stateAfterWrite rd (v1 - v2) js.sail s' h_write).symm
+  simp only [JoltISA.execInstr]
+  rw [bind_after_success_of_readSrc_xreg rs1 js h.rs1_val h.rs1_read]
+  rw [bind_after_success_of_readSrc_xreg rs2 js h.rs2_val h.rs2_read]
+  rw [bind_after_success_of_writeDst_xreg rd js _ s' h_write _]
+  exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
+    (op h.rs1_val h.rs2_val)
+    h.linkedCSRs h_write
 
 end Natives
 
