@@ -103,6 +103,148 @@ theorem jolt_movsign_value_eq_neg_one_of_half_le (x : BitVec 64)
   rw [hmsb]
   rfl
 
+/-- Extracting the low 64 bits of a 128-bit truncated integer is the same as
+viewing that integer as a 64-bit bitvector. -/
+private theorem extract_low64_to_bits_truncate_eq_ofInt (p : Int) :
+    (Sail.BitVec.extractLsb (to_bits_truncate (l := 128) p) 63 0 : BitVec 64) =
+      BitVec.ofInt 64 p := by
+  apply BitVec.eq_of_toNat_eq
+  simp [Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.extractLsb', to_bits_truncate,
+        Sail.get_slice_int, Nat.shiftRight_eq_div_pow]
+  have hnonneg : 0 ≤ p % (680564733841876926926749214863536422912 : Int) := by
+    exact Int.emod_nonneg p (by norm_num)
+  have hcast : (((p % (680564733841876926926749214863536422912 : Int)).toNat : Nat) : Int) =
+      p % (680564733841876926926749214863536422912 : Int) := by
+    exact Int.toNat_of_nonneg hnonneg
+  have hnat_mod :
+      (((p % (680564733841876926926749214863536422912 : Int)).toNat %
+        18446744073709551616 : Nat) : Int) =
+      ((p % (680564733841876926926749214863536422912 : Int)).toNat : Int) %
+        (18446744073709551616 : Int) := by
+    exact Int.natCast_emod
+      ((p % (680564733841876926926749214863536422912 : Int)).toNat)
+      18446744073709551616
+  have h_dvd : (18446744073709551616 : Int) ∣
+      (680564733841876926926749214863536422912 : Int) := by
+    norm_num
+  have h_int :
+      (((p % (680564733841876926926749214863536422912 : Int)).toNat %
+        18446744073709551616 : Nat) : Int) =
+      ((p % (18446744073709551616 : Int)).toNat : Nat) := by
+    rw [hnat_mod, hcast, Int.emod_emod_of_dvd p h_dvd]
+    exact (Int.toNat_of_nonneg (Int.emod_nonneg p (by norm_num))).symm
+  exact_mod_cast h_int
+
+/-- Signed interpretation of the operands does not affect the low 64 bits of a
+64-bit product. -/
+private theorem BitVec.ofInt_mul_toInt_eq_mul (x y : BitVec 64) :
+    BitVec.ofInt 64 (x.toInt * y.toInt) = x * y := by
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_mul]
+  have hx : x.toInt % (18446744073709551616 : Int) =
+      (x.toNat : Int) % (18446744073709551616 : Int) := by
+    rw [BitVec.toInt]
+    split
+    · rfl
+    · omega
+  have hy : y.toInt % (18446744073709551616 : Int) =
+      (y.toNat : Int) % (18446744073709551616 : Int) := by
+    rw [BitVec.toInt]
+    split
+    · rfl
+    · omega
+  have hprod : (x.toInt * y.toInt) % (18446744073709551616 : Int) =
+      ((x.toNat : Int) * (y.toNat : Int)) % (18446744073709551616 : Int) := by
+    calc
+      (x.toInt * y.toInt) % (18446744073709551616 : Int)
+          = ((x.toInt % (18446744073709551616 : Int)) *
+              (y.toInt % (18446744073709551616 : Int))) %
+              (18446744073709551616 : Int) := by
+            rw [Int.mul_emod]
+      _ = (((x.toNat : Int) % (18446744073709551616 : Int)) *
+              ((y.toNat : Int) % (18446744073709551616 : Int))) %
+              (18446744073709551616 : Int) := by
+            rw [hx, hy]
+      _ = ((x.toNat : Int) * (y.toNat : Int)) % (18446744073709551616 : Int) := by
+            rw [← Int.mul_emod]
+  have hnat_mod :
+      (((x.toNat * y.toNat : Nat) % 18446744073709551616 : Nat) : Int) =
+        ((x.toNat : Int) * (y.toNat : Int)) % (18446744073709551616 : Int) := by
+    rw [← Nat.cast_mul]
+    exact Int.natCast_emod (x.toNat * y.toNat) 18446744073709551616
+  rw [hprod]
+  exact congrArg Int.toNat hnat_mod.symm
+
+/-- Sail's signed/signed low-half multiply agrees with Jolt's native `MUL`
+value. -/
+theorem sail_mul_value_eq_jolt_mul_value (x y : BitVec 64) :
+    mult_to_bits_half (l := LeanRV64D.Functions.xlen)
+      Signedness.Signed Signedness.Signed x y VectorHalf.Low =
+    x * y := by
+  unfold mult_to_bits_half LeanRV64D.Functions.xlen
+  simp only
+  change BitVec.setWidth 64
+      (Sail.BitVec.extractLsb
+        (to_bits_truncate (l := 128) (x.toInt * y.toInt)) 63 0) =
+    x * y
+  rw [extract_low64_to_bits_truncate_eq_ofInt]
+  simp only [BitVec.setWidth_eq]
+  exact BitVec.ofInt_mul_toInt_eq_mul x y
+
+/-- Sail's unsigned/unsigned high-half multiply agrees with Jolt's `MULHU`
+value helper. -/
+theorem sail_mulhu_value_eq_jolt_mulhu_value (x y : BitVec 64) :
+    mult_to_bits_half (l := LeanRV64D.Functions.xlen)
+      Signedness.Unsigned Signedness.Unsigned x y VectorHalf.High =
+    jolt_mulhu_value x y := by
+  have h_extract :
+      (Sail.BitVec.extractLsb
+        (to_bits_truncate (l := 128) ((x.toNat : Int) * (y.toNat : Int)))
+        127 64 : BitVec 64) =
+        BitVec.ofInt 64 (((x.toNat : Int) * (y.toNat : Int)) / 2^64) := by
+    apply BitVec.eq_of_toNat_eq
+    simp [Sail.BitVec.extractLsb, BitVec.extractLsb, BitVec.extractLsb',
+      to_bits_truncate, Sail.get_slice_int, Nat.shiftRight_eq_div_pow]
+    omega
+  unfold jolt_mulhu_value mult_to_bits_half LeanRV64D.Functions.xlen
+  simp only
+  change BitVec.setWidth 64
+      (Sail.BitVec.extractLsb
+        (to_bits_truncate (l := 128) ((x.toNat : Int) * (y.toNat : Int)))
+        127 64) =
+      BitVec.ofNat 64 (x.toNat * y.toNat / 2^64)
+  rw [h_extract]
+  have h_div :
+      ((x.toNat : Int) * (y.toNat : Int) / (2^64 : Int)) =
+        ((x.toNat * y.toNat / 2^64 : Nat) : Int) := by
+    rw [← Nat.cast_mul]
+    exact (Int.natCast_ediv (x.toNat * y.toNat) (2^64)).symm
+  have h_div_num :
+      ((x.toNat : Int) * (y.toNat : Int) / (18446744073709551616 : Int)) =
+        ((x.toNat * y.toNat / 18446744073709551616 : Nat) : Int) := by
+    norm_num at h_div ⊢
+  apply BitVec.eq_of_toNat_eq
+  simp
+  have h_mod := congrArg
+    (fun z : Int => (z % (18446744073709551616 : Int)).toNat)
+    h_div_num
+  have h_mod' :
+      ((↑x.toNat * ↑y.toNat / (18446744073709551616 : Int)) %
+          (18446744073709551616 : Int)).toNat =
+        (((x.toNat * y.toNat / 18446744073709551616 : Nat) : Int) %
+          (18446744073709551616 : Int)).toNat := by
+    simpa only using h_mod
+  have h_nat_mod :
+      (((x.toNat * y.toNat / 18446744073709551616 : Nat) : Int) %
+          (18446744073709551616 : Int)).toNat =
+        x.toNat * y.toNat / 18446744073709551616 %
+          18446744073709551616 := by
+    exact congrArg Int.toNat
+      (Int.natCast_emod
+        (x.toNat * y.toNat / 18446744073709551616)
+        18446744073709551616).symm
+  exact h_mod'.trans h_nat_mod
+
 /-- The natural-number bitmask encoded by `VirtualShiftRightBitmask` fits in
 64 bits.  This justifies reading the produced `BitVec 64` back as a `Nat`
 without changing the trailing-zero structure consumed by `VirtualSRL` and
