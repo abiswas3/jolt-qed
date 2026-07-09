@@ -21,7 +21,7 @@ def luiInstrEqSailStatement
     ((JoltISA.execLUI imm rd).run js) =
     ((execute_UTYPE imm rd uop.LUI).run js.sail)
 
-abbrev op (imm : BitVec 20) : BitVec 64 :=
+private abbrev op (imm : BitVec 20) : BitVec 64 :=
   JoltISA.luiValue imm
 
 /-- Native `LUI` writes the normalized immediate in both Jolt and Sail. -/

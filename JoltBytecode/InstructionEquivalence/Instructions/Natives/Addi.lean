@@ -76,7 +76,7 @@ def addiInstrEqSailStatement
     ((JoltISA.execInstr (.ADDI (.xreg rd) (.xreg rs1) imm)).run js) =
     ((execute_ITYPE imm rs1 rd iop.ADDI).run js.sail)
 
-abbrev op (rs1_val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+private abbrev op (rs1_val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
   rs1_val + sign_extend (m := 64) imm
 
 theorem addiInstr_eq_sail

@@ -27,15 +27,15 @@ def mulhuInstrEqSailStatement
     ((execute_MUL rs2 rs1 rd sailMulhuOp).run js.sail)
 
 
-abbrev sail_value (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+private abbrev sail_value (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   mult_to_bits_half (l := LeanRV64D.Functions.xlen)
     sailMulhuOp.signed_rs1 sailMulhuOp.signed_rs2
     rs1_val rs2_val sailMulhuOp.result_part
 
-abbrev jolt_value (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+private abbrev jolt_value (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   jolt_mulhu_value rs1_val rs2_val
 
-abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+private abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   jolt_value rs1_val rs2_val
 
 theorem mulhu_sail_retire_after_write

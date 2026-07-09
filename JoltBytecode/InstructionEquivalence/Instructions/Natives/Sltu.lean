@@ -20,7 +20,7 @@ def sltuInstrEqSailStatement
     ((JoltISA.execInstr (.SLTU (.xreg rd) (.xreg rs1) (.xreg rs2))).run js) =
     ((execute_RTYPE rs2 rs1 rd rop.SLTU).run js.sail)
 
-abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+private abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   jolt_sltu_value rs1_val rs2_val
 
 theorem sltuInstr_eq_sail

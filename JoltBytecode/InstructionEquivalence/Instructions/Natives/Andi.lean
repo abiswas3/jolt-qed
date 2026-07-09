@@ -21,7 +21,7 @@ def andiInstrEqSailStatement
     ((JoltISA.execInstr (.ANDI (.xreg rd) (.xreg rs1) imm)).run js) =
     ((execute_ITYPE imm rs1 rd iop.ANDI).run js.sail)
 
-abbrev op (rs1_val : BitVec 64) (imm: BitVec 12): BitVec 64 :=
+private abbrev op (rs1_val : BitVec 64) (imm: BitVec 12): BitVec 64 :=
   rs1_val &&& sign_extend imm
 
 theorem andiInstr_eq_sail

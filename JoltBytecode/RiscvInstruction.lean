@@ -61,7 +61,15 @@ import JoltBytecode.InstructionEquivalence.Instructions.Natives.Addi
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.And
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Andi
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Auipc
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Beq
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Bge
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Bgeu
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Blt
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Bltu
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Bne
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Fence
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Jal
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Jalr
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Ld
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Lui
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Mul
@@ -244,6 +252,22 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       NoSourceReadWithLinkedCSRs js
   | .AUIPC _rd _imm, js =>
       NoSourceReadWithLinkedCSRs js
+  | .JAL _rd _imm, js =>
+      NoSourceReadWithLinkedCSRs js
+  | .JALR _rd rs1 _imm, js =>
+      JalrInstrEqSailAssumptions rs1 js
+  | .BEQ rs1 rs2 _imm, js =>
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
+  | .BNE rs1 rs2 _imm, js =>
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
+  | .BLT rs1 rs2 _imm, js =>
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
+  | .BGE rs1 rs2 _imm, js =>
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
+  | .BLTU rs1 rs2 _imm, js =>
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
+  | .BGEU rs1 rs2 _imm, js =>
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .FENCE, js =>
       FenceProgramEqSailAssumptions js
   | .LB _rd rs1 imm, js =>
@@ -404,22 +428,22 @@ def equivalenceStatement :
       Natives.luiInstrEqSailStatement imm rd js _h
     | .AUIPC rd imm =>
       Natives.auipcInstrEqSailStatement imm rd js _h
-    | .JAL _rd _imm =>
-      False -- WARNING: unwired instruction equivalence
-    | .JALR _rd _rs1 _imm =>
-      False -- WARNING: unwired instruction equivalence
-    | .BEQ _rs1 _rs2 _imm =>
-      False -- WARNING: unwired instruction equivalence
-    | .BNE _rs1 _rs2 _imm =>
-      False -- WARNING: unwired instruction equivalence
-    | .BLT _rs1 _rs2 _imm =>
-      False -- WARNING: unwired instruction equivalence
-    | .BGE _rs1 _rs2 _imm =>
-      False -- WARNING: unwired instruction equivalence
-    | .BLTU _rs1 _rs2 _imm =>
-      False -- WARNING: unwired instruction equivalence
-    | .BGEU _rs1 _rs2 _imm =>
-      False -- WARNING: unwired instruction equivalence
+    | .JAL rd imm =>
+      Natives.jalInstrEqSailStatement imm rd js _h
+    | .JALR rd rs1 imm =>
+      Natives.jalrInstrEqSailStatement imm rs1 rd js _h
+    | .BEQ rs1 rs2 imm =>
+      Natives.beqInstrEqSailStatement imm rs2 rs1 js _h
+    | .BNE rs1 rs2 imm =>
+      Natives.bneInstrEqSailStatement imm rs2 rs1 js _h
+    | .BLT rs1 rs2 imm =>
+      Natives.bltInstrEqSailStatement imm rs2 rs1 js _h
+    | .BGE rs1 rs2 imm =>
+      Natives.bgeInstrEqSailStatement imm rs2 rs1 js _h
+    | .BLTU rs1 rs2 imm =>
+      Natives.bltuInstrEqSailStatement imm rs2 rs1 js _h
+    | .BGEU rs1 rs2 imm =>
+      Natives.bgeuInstrEqSailStatement imm rs2 rs1 js _h
     | .LB rd rs1 imm =>
       LB_main.lbProgramEqSailStatement imm rs1 rd js _h
     | .LH rd rs1 imm =>
@@ -736,22 +760,22 @@ theorem equivalenceStatement_holds :
       AtomicFamily.amomaxudProgram_eq_sail rs2 rs1 rd js h
   | .CSRRW rd csr rs1, js, h =>
       System.csrrwProgram_eq_sail js csr rs1 rd h
-  | .JAL _rd _imm, _js, _h => by
-      sorry
-  | .JALR _rd _rs1 _imm, _js, _h => by
-      sorry
-  | .BEQ _rs1 _rs2 _imm, _js, _h => by
-      sorry
-  | .BNE _rs1 _rs2 _imm, _js, _h => by
-      sorry
-  | .BLT _rs1 _rs2 _imm, _js, _h => by
-      sorry
-  | .BGE _rs1 _rs2 _imm, _js, _h => by
-      sorry
-  | .BLTU _rs1 _rs2 _imm, _js, _h => by
-      sorry
-  | .BGEU _rs1 _rs2 _imm, _js, _h => by
-      sorry
+  | .JAL rd imm, js, h =>
+      Natives.jalInstr_eq_sail imm rd js h
+  | .JALR rd rs1 imm, js, h =>
+      Natives.jalrInstr_eq_sail imm rs1 rd js h
+  | .BEQ rs1 rs2 imm, js, h =>
+      Natives.beqInstr_eq_sail imm rs2 rs1 js h
+  | .BNE rs1 rs2 imm, js, h =>
+      Natives.bneInstr_eq_sail imm rs2 rs1 js h
+  | .BLT rs1 rs2 imm, js, h =>
+      Natives.bltInstr_eq_sail imm rs2 rs1 js h
+  | .BGE rs1 rs2 imm, js, h =>
+      Natives.bgeInstr_eq_sail imm rs2 rs1 js h
+  | .BLTU rs1 rs2 imm, js, h =>
+      Natives.bltuInstr_eq_sail imm rs2 rs1 js h
+  | .BGEU rs1 rs2 imm, js, h =>
+      Natives.bgeuInstr_eq_sail imm rs2 rs1 js h
   | .FENCE, js, h =>
       Natives.fenceInstr_eq_sail js h
   | .ECALL, _js, _h => by

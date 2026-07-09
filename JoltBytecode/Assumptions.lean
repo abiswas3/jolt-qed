@@ -58,6 +58,15 @@ structure MstatusMprvZero (s : SailState) : Prop where
     s.regs.get? Register.mstatus = some mval ∧
     _get_Mstatus_MPRV mval = 0#1
 
+/-- The generated Sail Zicfilp landing-pad extension is disabled.
+
+Jolt does not model the generated Sail `elp` register or Zicfilp landing-pad
+state, so native control-flow proofs use the Jolt execution profile where
+`update_elp_state` is a no-op.
+-/
+structure ZicfilpDisabled (s : SailState) : Prop where
+  value : currentlyEnabled extension.Ext_Zicfilp s = .ok false s
+
 -- ============================================================================
 -- Register assumptions
 -- ============================================================================
@@ -353,6 +362,7 @@ end Assumptions
 export Assumptions (
   CurPrivilegeMachine
   MstatusMprvZero
+  ZicfilpDisabled
   XRegReadable
   SailRegReadable
   MisaUserDisabled

@@ -19,7 +19,7 @@ def sltInstrEqSailStatement
     ((JoltISA.execInstr (.SLT (.xreg rd) (.xreg rs1) (.xreg rs2))).run js) =
     ((execute_RTYPE rs2 rs1 rd rop.SLT).run js.sail)
 
-abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+private abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   zero_extend (m := 64) (bool_to_bit (zopz0zI_s rs1_val rs2_val))
 
 theorem sltInstr_eq_sail

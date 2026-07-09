@@ -20,7 +20,7 @@ def sltiInstrEqSailStatement
     ((JoltISA.execInstr (.SLTI (.xreg rd) (.xreg rs1) imm)).run js) =
     ((execute_ITYPE imm rs1 rd iop.SLTI).run js.sail)
 
-abbrev op (rs1_val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+private abbrev op (rs1_val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
   zero_extend (m := 64) (bool_to_bit (zopz0zI_s rs1_val (sign_extend (m := 64) imm)))
 
 theorem sltiInstr_eq_sail

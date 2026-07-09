@@ -26,15 +26,15 @@ def mulInstrEqSailStatement
     ((JoltISA.execInstr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2))).run js) =
     ((execute_MUL rs2 rs1 rd sailMulOp).run js.sail)
 
-abbrev sail_value (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+private abbrev sail_value (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   mult_to_bits_half (l := LeanRV64D.Functions.xlen)
     sailMulOp.signed_rs1 sailMulOp.signed_rs2
     rs1_val rs2_val sailMulOp.result_part
 
-abbrev jolt_value (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+private abbrev jolt_value (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   rs1_val * rs2_val
 
-abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+private abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   jolt_value rs1_val rs2_val
 
 theorem mul_sail_retire_after_write

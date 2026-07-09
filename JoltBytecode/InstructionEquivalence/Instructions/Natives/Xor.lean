@@ -19,7 +19,7 @@ def xorInstrEqSailStatement
     ((JoltISA.execInstr (.XOR (.xreg rd) (.xreg rs1) (.xreg rs2))).run js) =
     ((execute_RTYPE rs2 rs1 rd rop.XOR).run js.sail)
 
-abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
+private abbrev op (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
   rs1_val ^^^ rs2_val
 
 theorem xorInstr_eq_sail

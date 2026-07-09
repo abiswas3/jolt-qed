@@ -104,6 +104,26 @@ def BinarySourceReadWithLinkedCSRs.linkedCSRs
   h.toLinkedCSRRegisterAssumptions.linkedCSRs
 
 -- ============================================================================
+-- Native control-flow theorem bundles
+-- ============================================================================
+
+/-- Public assumptions for native JALR equivalence.
+
+Generated Sail runs `update_elp_state rs1` before the ordinary JALR body; Jolt
+does not model Zicfilp/ELP state, so this bundle records that the generated
+Zicfilp hook is disabled in the Jolt profile.
+-/
+structure JalrInstrEqSailAssumptions (rs1 : regidx) (js : SailJoltState)
+    extends UnarySourceReadWithLinkedCSRs rs1 js where
+  zicfilp_disabled : Assumptions.ZicfilpDisabled js.sail
+
+def JalrInstrEqSailAssumptions.linkedCSRs
+    {rs1 : regidx} {js : SailJoltState}
+    (h : JalrInstrEqSailAssumptions rs1 js) :
+    LinkedCSRs js :=
+  h.toUnarySourceReadWithLinkedCSRs.linkedCSRs
+
+-- ============================================================================
 -- Memory-window bundles
 -- ============================================================================
 

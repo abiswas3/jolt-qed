@@ -21,7 +21,7 @@ def andnInstrEqSailStatement
     ((execute_ZBB_RTYPE rs2 rs1 rd brop_zbb.ANDN).run js.sail)
 
 
-abbrev op (rs1_val rs2_val : BitVec 64): BitVec 64 :=
+private abbrev op (rs1_val rs2_val : BitVec 64): BitVec 64 :=
   rs1_val &&& Complement.complement rs2_val 
 
 
