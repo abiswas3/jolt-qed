@@ -43,6 +43,242 @@ theorem systemProject_eq_sail_of_compatible
     System.systemProject js = js.sail :=
   System.systemProject_eq_project_of_compatible js h
 
+/-!
+## System-Project Frame Lemmas
+
+These lemmas state that a Sail computation preserves the six generated-Sail
+registers overwritten by `System.systemProject`: `mstatus`, `mtvec`,
+`mscratch`, `mepc`, `mcause`, and `mtval`.
+
+Instruction proofs can use this as a frame rule: prove the Sail monad does not
+touch those registers, then the projection bridge says `systemProject` is a
+no-op on the final embedded Sail state.
+-/
+
+/-- A pure `RETIRE_SUCCESS` projects to the same pure Sail retirement when the
+initial linked-CSR invariant holds. -/
+theorem systemProjectResult_pure_retire
+    (js : SailJoltState)
+    (hlinked : LinkedCSRs js) :
+    System.systemProjectResult
+      (((pure RETIRE_SUCCESS : JoltMonad ExecutionResult) js))
+    =
+    ((pure RETIRE_SUCCESS : SailM ExecutionResult) js.sail) := by
+  simp only [pure, EStateM.pure, System.systemProjectResult]
+  rw [systemProject_eq_sail_of_compatible js hlinked]
+
+/-- `liftSail` distributes over bind. This lets instruction proofs rewrite a
+lifted Sail `do` block into one lifted monadic line at a time. -/
+theorem liftSail_bind
+    (m : SailM α)
+    (f : α → SailM β) :
+    liftSail (m >>= f) =
+      (liftSail m >>= fun x => liftSail (f x)) := by
+  unfold liftSail
+  funext js
+  simp only [bind, EStateM.bind]
+  cases hm : m js.sail <;> rfl
+
+/-- The six Sail registers that `System.systemProject` overwrites are unchanged
+between `s0` and `s1`. -/
+structure PreservesSystemProjectRegs (s0 s1 : SailState) : Prop where
+  mstatus :
+    s1.regs.get? Register.mstatus = s0.regs.get? Register.mstatus
+  mtvec :
+    s1.regs.get? Register.mtvec = s0.regs.get? Register.mtvec
+  mscratch :
+    s1.regs.get? Register.mscratch = s0.regs.get? Register.mscratch
+  mepc :
+    s1.regs.get? Register.mepc = s0.regs.get? Register.mepc
+  mcause :
+    s1.regs.get? Register.mcause = s0.regs.get? Register.mcause
+  mtval :
+    s1.regs.get? Register.mtval = s0.regs.get? Register.mtval
+
+/-- A monadic result preserves the six system-project registers if its final
+state, whether success or error, preserves them. -/
+def ResultPreservesSystemProjectRegs
+    (s0 : SailState)
+    (r : EStateM.Result (Error exception) SailState α) : Prop :=
+  match r with
+  | .ok _ s1 => PreservesSystemProjectRegs s0 s1
+  | .error _ s1 => PreservesSystemProjectRegs s0 s1
+
+/- Basic algebra for composing register-preservation facts. -/
+
+theorem preservesSystemProjectRegs_refl
+    (s : SailState) :
+    PreservesSystemProjectRegs s s := by
+  refine
+    { mstatus := ?_
+      mtvec := ?_
+      mscratch := ?_
+      mepc := ?_
+      mcause := ?_
+      mtval := ?_ }
+  all_goals
+    rfl
+
+theorem preservesSystemProjectRegs_trans
+    {s0 s1 s2 : SailState}
+    (h01 : PreservesSystemProjectRegs s0 s1)
+    (h12 : PreservesSystemProjectRegs s1 s2) :
+    PreservesSystemProjectRegs s0 s2 := by
+  refine
+    { mstatus := ?_
+      mtvec := ?_
+      mscratch := ?_
+      mepc := ?_
+      mcause := ?_
+      mtval := ?_ }
+  · exact h12.mstatus.trans h01.mstatus
+  · exact h12.mtvec.trans h01.mtvec
+  · exact h12.mscratch.trans h01.mscratch
+  · exact h12.mepc.trans h01.mepc
+  · exact h12.mcause.trans h01.mcause
+  · exact h12.mtval.trans h01.mtval
+
+/- Generic monad-frame lemmas. These are the pieces that let us prove a compound
+Sail monad preserves the six registers by proving each monadic line preserves
+them. -/
+
+theorem pure_preservesSystemProjectRegs
+    (s : SailState)
+    (value : α) :
+    ResultPreservesSystemProjectRegs s
+      (((pure value : SailM α) s)) := by
+  simp only [pure, EStateM.pure, ResultPreservesSystemProjectRegs]
+  exact preservesSystemProjectRegs_refl s
+
+theorem bind_preservesSystemProjectRegs
+    {m : SailM α}
+    {f : α → SailM β}
+    {s0 : SailState}
+    (hm : ResultPreservesSystemProjectRegs s0 (m s0))
+    (hf : ∀ value s1,
+      m s0 = .ok value s1 →
+      ResultPreservesSystemProjectRegs s1 ((f value) s1)) :
+    ResultPreservesSystemProjectRegs s0 (((m >>= f) : SailM β) s0) := by
+  cases hm_run : m s0 with
+  | ok value s1 =>
+      have hm_pres : PreservesSystemProjectRegs s0 s1 := by
+        unfold ResultPreservesSystemProjectRegs at hm
+        rw [hm_run] at hm
+        exact hm
+      have hf_pres := hf value s1 hm_run
+      simp only [bind, EStateM.bind, hm_run]
+      unfold ResultPreservesSystemProjectRegs at hf_pres ⊢
+      cases hf_run : (f value) s1 with
+      | ok result s2 =>
+          rw [hf_run] at hf_pres
+          exact preservesSystemProjectRegs_trans hm_pres hf_pres
+      | error err s2 =>
+          rw [hf_run] at hf_pres
+          exact preservesSystemProjectRegs_trans hm_pres hf_pres
+  | error err s1 =>
+      unfold ResultPreservesSystemProjectRegs at hm
+      rw [hm_run] at hm
+      simp only [bind, EStateM.bind, hm_run, ResultPreservesSystemProjectRegs]
+      exact hm
+
+/- Primitive Sail computations used by branch instructions. -/
+
+theorem readReg_preservesSystemProjectRegs
+    (reg : Register)
+    (s : SailState) :
+    ResultPreservesSystemProjectRegs s
+      (((Sail.readReg reg : SailM (RegisterType reg)) s)) := by
+  unfold Sail.readReg PreSail.readReg
+  simp only [bind, EStateM.bind, get, getThe, MonadStateOf.get, EStateM.get]
+  cases hread : s.regs.get? reg with
+  | some value =>
+      simp only [pure, EStateM.pure, ResultPreservesSystemProjectRegs]
+      exact preservesSystemProjectRegs_refl s
+  | none =>
+      simp only [throw, throwThe, MonadExceptOf.throw, EStateM.throw,
+        ResultPreservesSystemProjectRegs]
+      exact preservesSystemProjectRegs_refl s
+
+theorem setNextPCState_preservesSystemProjectRegs
+    (s : SailState)
+    (target : BitVec 64) :
+    PreservesSystemProjectRegs s (System.setNextPCState s target) := by
+  refine
+    { mstatus := ?_
+      mtvec := ?_
+      mscratch := ?_
+      mepc := ?_
+      mcause := ?_
+      mtval := ?_ }
+  all_goals
+    unfold System.setNextPCState
+    rw [System.extDHashMap_get?_insert_of_ne (h := by decide)]
+
+theorem set_next_pc_preservesSystemProjectRegs
+    (target : BitVec 64)
+    (s : SailState) :
+    ResultPreservesSystemProjectRegs s ((set_next_pc target) s) := by
+  unfold set_next_pc redirect_callback
+  unfold Sail.writeReg PreSail.writeReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, modify, modifyGet,
+    MonadStateOf.modifyGet, EStateM.modifyGet, ResultPreservesSystemProjectRegs]
+  change PreservesSystemProjectRegs s (System.setNextPCState s target)
+  exact setNextPCState_preservesSystemProjectRegs s target
+
+theorem jump_to_preservesSystemProjectRegs
+    (target : BitVec 64)
+    (s : SailState) :
+    ResultPreservesSystemProjectRegs s ((jump_to target) s) := by
+  sorry
+
+/- Projection bridge: preserving these six Sail registers is exactly what is
+needed to keep Jolt's linked CSR virtual registers linked after changing only
+the embedded Sail state. -/
+
+theorem linkedCSRs_of_preservesSystemProjectRegs
+    (js : SailJoltState)
+    (s1 : SailState)
+    (hlinked : LinkedCSRs js)
+    (hpres : PreservesSystemProjectRegs js.sail s1) :
+    LinkedCSRs ({ js with sail := s1 } : SailJoltState) := by
+  rcases hlinked with
+    ⟨hmstatus, hmtvec, hmscratch, hmepc, hmcause, hmtval⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_⟩
+  · exact ⟨by rw [hpres.mstatus, hmstatus.value_eq]⟩
+  · exact ⟨by rw [hpres.mtvec, hmtvec.value_eq]⟩
+  · exact ⟨by rw [hpres.mscratch, hmscratch.value_eq]⟩
+  · exact ⟨by rw [hpres.mepc, hmepc.value_eq]⟩
+  · exact ⟨by rw [hpres.mcause, hmcause.value_eq]⟩
+  · exact ⟨by rw [hpres.mtval, hmtval.value_eq]⟩
+
+theorem systemProject_eq_sail_of_preservesSystemProjectRegs
+    (js : SailJoltState)
+    (s1 : SailState)
+    (hlinked : LinkedCSRs js)
+    (hpres : PreservesSystemProjectRegs js.sail s1) :
+    System.systemProject ({ js with sail := s1 } : SailJoltState) = s1 := by
+  exact systemProject_eq_sail_of_compatible
+    ({ js with sail := s1 } : SailJoltState)
+    (linkedCSRs_of_preservesSystemProjectRegs js s1 hlinked hpres)
+
+theorem systemProjectResult_liftSail_eq_of_preservesSystemProjectRegs
+    {m : SailM α}
+    {js : SailJoltState}
+    (hlinked : LinkedCSRs js)
+    (hpres : ResultPreservesSystemProjectRegs js.sail (m js.sail)) :
+    System.systemProjectResult ((liftSail m) js) = m js.sail := by
+  unfold ResultPreservesSystemProjectRegs at hpres
+  unfold liftSail System.systemProjectResult
+  cases hm : m js.sail with
+  | ok a s1 =>
+      simp only [hm] at hpres ⊢
+      rw [systemProject_eq_sail_of_preservesSystemProjectRegs
+        js s1 hlinked hpres]
+  | error e s1 =>
+      simp only [hm] at hpres ⊢
+      rw [systemProject_eq_sail_of_preservesSystemProjectRegs
+        js s1 hlinked hpres]
+
 /-- Projecting after an architectural x-register write is the same as writing
 that x-register after projecting. -/
 theorem systemProject_stateAfterWrite

@@ -20,28 +20,25 @@ def bltInstrEqSailStatement
   System.systemProjectResult
     ((JoltISA.execInstr (.BLT (.xreg rs1) (.xreg rs2) imm)).run js) =
     ((execute_BTYPE imm rs2 rs1 bop.BLT).run js.sail)
-  
-theorem systemProjectResult_pure_retire
-      (js : SailJoltState)
-      (hlinked : LinkedCSRs js) :
-      System.systemProjectResult
-        (((pure RETIRE_SUCCESS : JoltMonad ExecutionResult) js))
-      =
-      ((pure RETIRE_SUCCESS : SailM ExecutionResult) js.sail) := by
-    simp only [pure, EStateM.pure, System.systemProjectResult]
-    rw [Projection.systemProject_eq_sail_of_compatible js hlinked]
 
--- Given Sail Monad m, and continuation function f
--- running m via 
-theorem liftSail_bind
-    (m : SailM α)
-    (f : α → SailM β) :
-    liftSail (m >>= f) =
-      (liftSail m >>= fun x => liftSail (f x)) := by
-  unfold liftSail 
-  funext js 
-  simp only [bind, EStateM.bind]
-  cases hm: m js.sail <;> rfl
+abbrev branchJumpSailStep (imm : BitVec 13) : SailM ExecutionResult := do
+  let pc ← Sail.readReg Register.PC
+  jump_to (pc + sign_extend (m := 64) imm)
+
+/-- The branch jump block does not touch the six Sail registers used by
+`System.systemProject`: reading `PC` preserves them, and `jump_to` preserves
+them. -/
+theorem branchJump_preservesSystemProjectRegs
+    (imm : BitVec 13)
+    (js : SailJoltState) :
+    Projection.ResultPreservesSystemProjectRegs js.sail
+      ((branchJumpSailStep imm) js.sail) := by
+  unfold branchJumpSailStep
+  exact Projection.bind_preservesSystemProjectRegs
+    (Projection.readReg_preservesSystemProjectRegs Register.PC js.sail)
+    (fun pc s1 _hread =>
+      Projection.jump_to_preservesSystemProjectRegs
+        (pc + sign_extend (m := 64) imm) s1)
 
 theorem bltInstr_eq_sail
     (imm : BitVec 13)
@@ -62,18 +59,13 @@ theorem bltInstr_eq_sail
  cases h_taken : zopz0zI_s h.rs1_val h.rs2_val
  · -- not taken
    simp only [Bool.false_eq_true, if_false]
-   exact systemProjectResult_pure_retire js h.linkedCSRs 
+   exact Projection.systemProjectResult_pure_retire js h.linkedCSRs 
  · -- taken
    simp only [if_true]
-   rw [← liftSail_bind]
-   simp only [bind, EStateM.bind] 
-   unfold liftSail 
-   
-   sorry
-
-
-
-
+   rw [← Projection.liftSail_bind]
+   exact Projection.systemProjectResult_liftSail_eq_of_preservesSystemProjectRegs
+     h.linkedCSRs
+     (branchJump_preservesSystemProjectRegs imm js)
 
 end Natives
 
