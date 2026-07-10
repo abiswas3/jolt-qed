@@ -758,9 +758,7 @@ theorem equivalenceStatement_holds :
       AtomicFamily.amominudProgram_eq_sail rs2 rs1 rd js h
   | .AMOMAXU_D rd rs1 rs2 _aq _rl, js, h =>
       AtomicFamily.amomaxudProgram_eq_sail rs2 rs1 rd js h
-  | .CSRRW rd csr rs1, js, h =>
-      System.csrrwProgram_eq_sail js csr rs1 rd h
-  | .JAL rd imm, js, h =>
+    | .JAL rd imm, js, h =>
       Natives.jalInstr_eq_sail imm rd js h
   | .JALR rd rs1 imm, js, h =>
       Natives.jalrInstr_eq_sail imm rs1 rd js h
@@ -778,6 +776,9 @@ theorem equivalenceStatement_holds :
       Natives.bgeuInstr_eq_sail imm rs2 rs1 js h
   | .FENCE, js, h =>
       Natives.fenceInstr_eq_sail js h
+  -- TODO: Re-do the modelling of the jolt semantics
+  | .CSRRW rd csr rs1, js, h =>
+      System.csrrwProgram_eq_sail js csr rs1 rd h 
   | .ECALL, _js, _h => by
       sorry
   | .EBREAK, _js, _h => by
