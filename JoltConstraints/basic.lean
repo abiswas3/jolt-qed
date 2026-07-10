@@ -25,8 +25,7 @@ def IsPowerOfTwo (T : Nat) : Prop :=
   exists k : Nat, T = 2 ^ k
 
 /-- The register width for the RV64 Jolt model. -/
-abbrev Xlen : Nat :=
-  64
+abbrev Xlen : Nat := 64
 
 /-- The final Jolt instruction at each row. -/
 abbrev InstrTrace (T : Nat) : Type :=
