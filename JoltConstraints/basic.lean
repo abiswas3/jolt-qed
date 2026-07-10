@@ -24,9 +24,9 @@ abbrev Column (T : Nat) (alpha : Type u) : Type u :=
 def IsPowerOfTwo (T : Nat) : Prop :=
   exists k : Nat, T = 2 ^ k
 
-/-- RV64 register-width values. -/
-abbrev XLen : Type :=
-  BitVec 64
+/-- The register width for the RV64 Jolt model. -/
+abbrev Xlen : Nat :=
+  64
 
 /-- The final Jolt instruction at each row. -/
 abbrev InstrTrace (T : Nat) : Type :=
