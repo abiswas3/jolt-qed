@@ -22,7 +22,9 @@ theorem noopInstr_eq_sail
     (js : SailJoltState)
     (h : NoSourceReadWithLinkedCSRs js) :
     noopInstrEqSailStatement js h := by
-  sorry
+  unfold noopInstrEqSailStatement
+  simp only [JoltISA.execInstr]
+  exact Projection.systemProjectResult_pure_retire js h.linkedCSRs
 
 end Natives
 

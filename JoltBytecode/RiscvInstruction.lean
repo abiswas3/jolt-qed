@@ -782,6 +782,15 @@ theorem equivalenceStatement_holds :
       sorry
   | .EBREAK, _js, _h => by
       sorry
+  | .CSRRS _rd _csr _rs1, _js, _h => by
+      sorry
+  | .MRET, _js, _h => by
+      sorry
+
+   --- Cannot be proven :-( due to opaque axioms for 
+   -- load_reservation
+   -- cancel_resevation 
+   -- match_reservation 
   | .LR_W _rd _rs1 _aq _rl, _js, _h => by
       sorry
   | .SC_W _rd _rs1 _rs2 _aq _rl, _js, _h => by
@@ -790,9 +799,4 @@ theorem equivalenceStatement_holds :
       sorry
   | .SC_D _rd _rs1 _rs2 _aq _rl, _js, _h => by
       sorry
-  | .CSRRS _rd _csr _rs1, _js, _h => by
-      sorry
-  | .MRET, _js, _h => by
-      sorry
-
 end RiscvInstruction

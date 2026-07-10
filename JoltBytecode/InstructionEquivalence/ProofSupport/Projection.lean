@@ -225,11 +225,80 @@ theorem set_next_pc_preservesSystemProjectRegs
   change PreservesSystemProjectRegs s (System.setNextPCState s target)
   exact setNextPCState_preservesSystemProjectRegs s target
 
+private theorem currentlyEnabled_Ext_C_preservesSystemProjectRegs
+    (s : SailState) :
+    ResultPreservesSystemProjectRegs s ((currentlyEnabled extension.Ext_C) s) := by
+  simpa [currentlyEnabled, Functor.map, bind] using
+    bind_preservesSystemProjectRegs
+    (readReg_preservesSystemProjectRegs Register.misa s)
+    (fun _ s1 _ =>
+      pure_preservesSystemProjectRegs s1 _)
+
+private theorem currentlyEnabled_Ext_Zca_preservesSystemProjectRegs
+    (s : SailState) :
+    ResultPreservesSystemProjectRegs s ((currentlyEnabled extension.Ext_Zca) s) := by
+  simpa [currentlyEnabled, Functor.map, bind] using
+    bind_preservesSystemProjectRegs
+    (bind_preservesSystemProjectRegs
+      (readReg_preservesSystemProjectRegs Register.misa s)
+      (fun _ s1 _ =>
+        pure_preservesSystemProjectRegs s1 _))
+    (fun _ s1 _ =>
+      pure_preservesSystemProjectRegs s1 _)
+
 theorem jump_to_preservesSystemProjectRegs
     (target : BitVec 64)
     (s : SailState) :
     ResultPreservesSystemProjectRegs s ((jump_to target) s) := by
-  sorry
+  unfold jump_to ext_control_check_pc
+  unfold SailME.run PreSail.PreSailME.run
+  simp only [ExceptT.run, ExceptT.mk, ExceptT.bind, ExceptT.bindCont,
+    ExceptT.pure, bind, EStateM.bind, pure, EStateM.pure,
+    Sail.assert, PreSail.assert]
+  by_cases hbit0 : (BitVec.access target 0 == 0#1) = true
+  · cases hzca : (currentlyEnabled extension.Ext_Zca) s with
+    | error e s1 =>
+        have hpres := currentlyEnabled_Ext_Zca_preservesSystemProjectRegs s
+        unfold ResultPreservesSystemProjectRegs at hpres
+        rw [hzca] at hpres
+        simpa [hbit0, pure, EStateM.pure, bind, EStateM.bind,
+          ExceptT.bindCont, liftM, monadLift, MonadLift.monadLift,
+          ExceptT.lift, ExceptT.mk, EStateM.map, Functor.map, hzca,
+          ResultPreservesSystemProjectRegs] using hpres
+    | ok zca s1 =>
+        have hpres_zca := currentlyEnabled_Ext_Zca_preservesSystemProjectRegs s
+        have hzcapres : PreservesSystemProjectRegs s s1 := by
+          unfold ResultPreservesSystemProjectRegs at hpres_zca
+          rw [hzca] at hpres_zca
+          exact hpres_zca
+        by_cases halign :
+            bit_to_bool (BitVec.access target 1) = true ∧
+              LeanRV64D.Functions.not zca = true
+        · simpa [hbit0, pure, EStateM.pure, bind, EStateM.bind,
+            ExceptT.bindCont, hzca, halign, liftM, monadLift,
+            MonadLift.monadLift, ExceptT.lift, ExceptT.mk, EStateM.map,
+            Functor.map, ResultPreservesSystemProjectRegs] using hzcapres
+        ·
+          have hset := set_next_pc_preservesSystemProjectRegs target s1
+          unfold ResultPreservesSystemProjectRegs at hset
+          cases hsetpc : set_next_pc target s1 with
+          | error e s2 =>
+              rw [hsetpc] at hset
+              simpa [hbit0, pure, EStateM.pure, bind, EStateM.bind,
+                ExceptT.bindCont, hzca, halign, liftM, monadLift,
+                MonadLift.monadLift, ExceptT.lift, ExceptT.mk, EStateM.map,
+                Functor.map, hsetpc, ResultPreservesSystemProjectRegs] using
+                preservesSystemProjectRegs_trans hzcapres hset
+          | ok _ s2 =>
+              rw [hsetpc] at hset
+              simpa [hbit0, pure, EStateM.pure, bind, EStateM.bind,
+                ExceptT.bindCont, hzca, halign, liftM, monadLift,
+                MonadLift.monadLift, ExceptT.lift, ExceptT.mk, EStateM.map,
+                Functor.map, hsetpc, ResultPreservesSystemProjectRegs] using
+                preservesSystemProjectRegs_trans hzcapres hset
+  · simpa [hbit0, pure, EStateM.pure, bind, EStateM.bind, throw, throwThe,
+      MonadExceptOf.throw, EStateM.throw, ResultPreservesSystemProjectRegs] using
+      preservesSystemProjectRegs_refl s
 
 /- Projection bridge: preserving these six Sail registers is exactly what is
 needed to keep Jolt's linked CSR virtual registers linked after changing only
