@@ -393,7 +393,7 @@ theorem read_CSR_systemCSR_project_run
       EStateM.get]
 
 /-- Generated Sail CSR writes for Jolt's six supported SYSTEM CSRs.
-
+TODO: There are a few cases that still need work.
 The raw CSR write cases are proved here. The `mstatus`, `mtvec`, and `mepc`
 cases are intentionally left open because generated Sail writes them through
 CSR legalizers, while Jolt's CSRRW expansion writes the corresponding virtual
