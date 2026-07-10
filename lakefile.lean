@@ -21,6 +21,13 @@ lean_lib «JoltBytecode» where
     ⟨`relaxedAutoImplicit, false⟩
   ]
 
+lean_lib «JoltConstraints» where
+  srcDir := "."
+  leanOptions := #[
+    ⟨`autoImplicit, false⟩,
+    ⟨`relaxedAutoImplicit, false⟩
+  ]
+
 lean_lib «LeanRV64D» where
   srcDir := "."
   weakLeanOptions := #[
