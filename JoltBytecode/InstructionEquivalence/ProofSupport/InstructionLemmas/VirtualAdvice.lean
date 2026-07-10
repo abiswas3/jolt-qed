@@ -26,6 +26,18 @@ theorem virtual_advice_run (vd : VReg) (advice : BitVec 64) (js : SailJoltState)
   unfold execInstr
   exact writeVReg_retire_run_of_writable vd advice js hvd
 
+/-- `VirtualAdviceLoad` can also target a virtual register for side-effecting
+`rd = x0` source rewrites. -/
+theorem virtual_advice_load_run_vreg
+    (vd : VReg) (advice : BitVec 64) (js : SailJoltState)
+    (hvd : WritableVReg vd) :
+    (execInstr (.VirtualAdviceLoad (.vreg vd) advice)).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then advice else js.vregs r } := by
+  unfold execInstr
+  exact writeVReg_retire_run_of_writable vd advice js hvd
+
 /-- `VirtualAdviceLoad` writes the supplied advice value to an architectural
 destination register. -/
 theorem virtual_advice_load_run_xreg
