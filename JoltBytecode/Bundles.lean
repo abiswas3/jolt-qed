@@ -27,17 +27,13 @@ noncomputable section
 -- ============================================================================
 
 /-- Assumptions for an instruction that reads one architectural source register. -/
-structure UnarySourceReadAssumptions (rs1 : regidx) (js : SailJoltState) where
-  rs1_val : BitVec 64
-  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+abbrev UnarySourceReadAssumptions (rs1 : regidx) (js : SailJoltState) :=
+  Assumptions.UnarySourceReadAssumptions rs1 js.sail
 
 /-- Assumptions for an instruction that reads two architectural source registers. -/
-structure BinarySourceReadAssumptions
-    (rs2 rs1 : regidx) (js : SailJoltState) where
-  rs1_val : BitVec 64
-  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
-  rs2_val : BitVec 64
-  rs2_read : rX_bits rs2 js.sail = .ok rs2_val js.sail
+abbrev BinarySourceReadAssumptions
+    (rs2 rs1 : regidx) (js : SailJoltState) :=
+  Assumptions.BinarySourceReadAssumptions rs2 rs1 js.sail
 
 -- ============================================================================
 -- CSR-link bundles

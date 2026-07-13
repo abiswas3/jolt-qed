@@ -92,6 +92,19 @@ boundary.
 structure SailRegReadable (r : Register) (s : SailState) : Prop where
   exists_value : ∃ value : RegisterType r, s.regs.get? r = some value
 
+/-- Assumptions for an instruction that reads one architectural source register. -/
+structure UnarySourceReadAssumptions (rs1 : regidx) (s : SailState) where
+  rs1_val : BitVec 64
+  rs1_read : rX_bits rs1 s = .ok rs1_val s
+
+/-- Assumptions for an instruction that reads two architectural source registers. -/
+structure BinarySourceReadAssumptions
+    (rs2 rs1 : regidx) (s : SailState) where
+  rs1_val : BitVec 64
+  rs1_read : rX_bits rs1 s = .ok rs1_val s
+  rs2_val : BitVec 64
+  rs2_read : rX_bits rs2 s = .ok rs2_val s
+
 /-- The generated `misa` register is present and disables user mode.
 
 WARNING: (bug) Rust initializes `misa` to `0x800000008014312f` in
