@@ -28,46 +28,6 @@ noncomputable section
 namespace Assumptions
 
 -- ============================================================================
--- Execution assumptions
--- ============================================================================
-
-/-- The current generated-Sail privilege register is Machine mode.
-
-Rust source: `tracer/src/emulator/cpu.rs:329-353`
-```rust
-privilege_mode: PrivilegeMode::Machine,
-```
-
-This is justified by Jolt's M-mode-only execution envelope. If a theorem is
-about a path where Rust can leave Machine mode, this assumption is a bug.
--/
-structure CurPrivilegeMachine (s : SailState) : Prop where
-  value : s.regs.get? Register.cur_privilege =
-    some (Privilege.Machine : RegisterType Register.cur_privilege)
-
-/-- The Sail `mstatus` register is readable and has MPRV=0.
-
-Rust source: `tracer/src/emulator/mmu.rs:870-898`.
-
-Rust's address translation returns the address unchanged in Machine mode when
-`mstatus.MPRV = 0`. The memory-family proofs assume that envelope so Sail does
-not take an MPRV remapping path that Jolt's bytecode proof is not modeling.
--/
-structure MstatusMprvZero (s : SailState) : Prop where
-  value : ∃ mval : RegisterType Register.mstatus,
-    s.regs.get? Register.mstatus = some mval ∧
-    _get_Mstatus_MPRV mval = 0#1
-
-/-- The generated Sail Zicfilp landing-pad extension is disabled.
-
-Jolt does not model the generated Sail `elp` register or Zicfilp landing-pad
-state, so native control-flow proofs use the Jolt execution profile where
-`update_elp_state` is a no-op.
--/
-structure ZicfilpDisabled (s : SailState) : Prop where
-  value : currentlyEnabled extension.Ext_Zicfilp s = .ok false s
-
--- ============================================================================
 -- Register assumptions
 -- ============================================================================
 
@@ -98,162 +58,6 @@ structure BinarySourceReadAssumptions
   rs1_read : rX_bits rs1 s = .ok rs1_val s
   rs2_val : BitVec 64
   rs2_read : rX_bits rs2 s = .ok rs2_val s
-
-/-- The generated `misa` register is present and disables user mode.
-
-WARNING: (bug) Rust initializes `misa` to `0x800000008014312f` in
-`tracer/src/emulator/cpu.rs:352-353`; bit 20 is set there. This assumption is
-therefore not justified by the current Rust initialization unless another
-trusted setup path rewrites `misa` before the theorem.
--/
-structure MisaUserDisabled (s : SailState) : Prop where
-  exists_value : ∃ misa : BitVec 64,
-    s.regs.get? Register.misa = some (misa : RegisterType Register.misa) ∧
-    _get_Misa_U misa = 0#1
-
--- ============================================================================
--- System/CSR assumptions
--- ============================================================================
-
-/-- Sail `mstatus` agrees with Jolt's persistent `mstatus` virtual register.
-
-Rust source: `tracer/src/instruction/csrrw.rs:12`;
-`tracer/src/utils/virtual_registers.rs:105`, `:114`, `:122`.
--/
-structure MstatusVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mstatus =
-      some (js.vregs JoltISA.mstatusVReg)
-
-/-- Sail `mtvec` agrees with Jolt's persistent trap-handler virtual register.
-
-Rust source: `tracer/src/instruction/csrrw.rs:7`;
-`tracer/src/utils/virtual_registers.rs:80`, `:115`, `:123`.
--/
-structure MtvecVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mtvec =
-      some (js.vregs JoltISA.trapHandlerVReg)
-
-/-- Sail `mscratch` agrees with Jolt's persistent `mscratch` virtual register.
-
-Rust source: `tracer/src/instruction/csrrw.rs:8`;
-`tracer/src/utils/virtual_registers.rs:85`, `:116`, `:124`.
--/
-structure MscratchVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mscratch =
-      some (js.vregs JoltISA.mscratchVReg)
-
-/-- Sail `mepc` agrees with Jolt's persistent `mepc` virtual register.
-
-Rust source: `tracer/src/instruction/csrrw.rs:9`;
-`tracer/src/utils/virtual_registers.rs:90`, `:117`, `:125`.
--/
-structure MepcVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mepc =
-      some (js.vregs JoltISA.mepcVReg)
-
-/-- Sail `mcause` agrees with Jolt's persistent `mcause` virtual register.
-
-Rust source: `tracer/src/instruction/csrrw.rs:10`;
-`tracer/src/utils/virtual_registers.rs:95`, `:118`, `:126`.
--/
-structure McauseVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mcause =
-      some (js.vregs JoltISA.mcauseVReg)
-
-/-- Sail `mtval` agrees with Jolt's persistent `mtval` virtual register.
-
-Rust source: `tracer/src/instruction/csrrw.rs:11`;
-`tracer/src/utils/virtual_registers.rs:100`, `:119`, `:127`.
--/
-structure MtvalVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mtval =
-      some (js.vregs JoltISA.mtvalVReg)
-
-/-- Sail's machine-trap `mstatus` update maps `current` to `expected`.
-
-Rust source: `crates/jolt-program/src/expand/control_flow/ecall.rs:43-51`.
-
-Jolt ECALL writes `mstatus = 3 << 11`, i.e. `MPP=M-mode` with interrupt-enable
-bits cleared. This assumption is the proof boundary saying Sail's trap-entry
-update computes that same value for the current `mstatus`.
--/
-structure MachineTrapMstatusMatches
-    (current expected : BitVec 64) : Prop where
-  value_eq :
-    Sail.BitVec.updateSubrange
-      (Sail.BitVec.updateSubrange
-        (Sail.BitVec.updateSubrange current 7 7 (_get_Mstatus_MIE current))
-        3 3 0#1)
-      12 11 (privLevel_to_bits Privilege.Machine) = expected
-
-/-- Sail's trap-vector helper selects the same concrete control-flow target.
-
-Rust source: `crates/jolt-program/src/expand/control_flow/ecall.rs:54-62`.
-
-Jolt ECALL jumps with `JALR` through the reserved `mtvec` virtual register.
-This assumption states that Sail's `tvec_addr` calculation selects that same
-target for the ECALL cause. If `mtvec` mode semantics make Sail choose a
-different target, that is Rust/Lean drift.
--/
-structure TrapVectorTargetMatches
-    (mtvec cause target : BitVec 64) : Prop where
-  value_eq : tvec_addr mtvec cause = some target
-
-/-- The target satisfies Sail/Jolt's compressed-disabled fetch-alignment check.
-
-WARNING: (missing) This is currently a generated-Sail fetch side condition. I
-have not found a Rust source line that states the same `target[1] = 0` check for
-these system-control transfers.
--/
-structure FetchTargetAligned (target : BitVec 64) : Prop where
-  bit1_zero : BitVec.access target 1 = 0#1
-
-/-- MRET's `MIE := MPIE` write is idempotent for this `mstatus` value.
-
-Rust source: `crates/jolt-program/src/expand/control_flow/mret.rs:3-23`.
-
-Jolt lowers MRET to a `JALR` through `mepc`; it does not implement Sail's full
-architectural `mstatus` rewrite in the inline sequence. The ZeroOS envelope
-therefore must make this Sail field update state-neutral.
--/
-structure MstatusMieMatchesMpie (mstatus : BitVec 64) : Prop where
-  value_eq : _get_Mstatus_MIE mstatus = _get_Mstatus_MPIE mstatus
-
-/-- MRET's `MPIE := 1` write is idempotent for this `mstatus` value.
-
-Rust source: `crates/jolt-program/src/expand/control_flow/mret.rs:3-23`.
-
-Jolt's MRET expansion is only a jump through `mepc`; this assumption states the
-corresponding Sail `mstatus.MPIE := 1` step is already a no-op.
--/
-structure MstatusMpieOne (mstatus : BitVec 64) : Prop where
-  value_eq : _get_Mstatus_MPIE mstatus = 1#1
-
-/-- MRET's `MPP := least_privilege` write is idempotent in the Machine-only
-ZeroOS envelope.
-
-Rust source: `crates/jolt-program/src/expand/control_flow/mret.rs:3-23`.
-
-Jolt's MRET expansion does not change privilege. In the current proof envelope,
-Sail's MRET privilege restoration must therefore decode and preserve Machine
-mode.
--/
-structure MstatusMppMachine (mstatus : BitVec 64) : Prop where
-  value_eq : _get_Mstatus_MPP mstatus = privLevel_to_bits Privilege.Machine
-
-/-- Sail's generated Zicfilp MRET hook is idempotent for this `mstatus` value.
-
-WARNING: (missing) This is a generated-Sail Zicfilp side condition. I have not
-found a Rust/tracer source line that models `mstatus.MPELP` for MRET.
--/
-structure MstatusMpelpZero (mstatus : BitVec 64) : Prop where
-  value_eq : _get_Mstatus_MPELP mstatus = 0#1
 
 -- ============================================================================
 -- Memory assumptions
@@ -364,6 +168,209 @@ structure NotWritableMmioWindow
     ∀ offset accessWidth : Nat, offset + accessWidth ≤ width →
       NotWritableMmio (base + BitVec.ofNat 64 offset) accessWidth s
 
+-- ============================================================================
+-- System/CSR register assumptions
+-- ============================================================================
+
+/-- The current generated-Sail privilege register is Machine mode.
+
+Rust source: `tracer/src/emulator/cpu.rs:329-353`
+```rust
+privilege_mode: PrivilegeMode::Machine,
+```
+-/
+structure CurPrivilegeMachine (s : SailState) : Prop where
+  value : s.regs.get? Register.cur_privilege =
+    some (Privilege.Machine : RegisterType Register.cur_privilege)
+
+/-- The generated `misa` CSR is present and has the U extension bit set.
+
+Rust source:
+`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/emulator/cpu.rs:399`.
+Generated Sail source: `LeanRV64D/Types.lean:381-382`.
+
+Rust initializes `misa` to `0x800000008014312f`; generated Sail's
+`_get_Misa_U` reads bit 20, which is set in that value.
+-/
+structure MisaUserEnabled (s : SailState) : Prop where
+  exists_value : ∃ misa : BitVec 64,
+    s.regs.get? Register.misa = some (misa : RegisterType Register.misa) ∧
+    _get_Misa_U misa = 1#1
+
+/-- The Sail `mstatus` register is readable and has MPRV=0.
+
+Rust source: `tracer/src/emulator/mmu.rs:870-898`.
+
+Rust's address translation returns the address unchanged in Machine mode when
+`mstatus.MPRV = 0`. The memory-family proofs assume that envelope so Sail does
+not take an MPRV remapping path that Jolt's bytecode proof is not modeling.
+-/
+structure MstatusMprvZero (s : SailState) : Prop where
+  value : ∃ mval : RegisterType Register.mstatus,
+    s.regs.get? Register.mstatus = some mval ∧
+    _get_Mstatus_MPRV mval = 0#1
+
+/-- The generated Sail Zicfilp landing-pad extension is disabled.
+
+Jolt does not model the generated Sail `elp` register or Zicfilp landing-pad
+state.
+-/
+structure ZicfilpDisabled (s : SailState) : Prop where
+  value : currentlyEnabled extension.Ext_Zicfilp s = .ok false s
+
+-- vreg == sail.csr begins  here 
+
+/-- Sail `mstatus` agrees with Jolt's persistent `mstatus` virtual register. -/
+structure MstatusVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mstatus =
+      some (js.vregs JoltISA.mstatusVReg)
+
+/-- Sail `mtvec` agrees with Jolt's persistent trap-handler virtual register. -/
+structure MtvecVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mtvec =
+      some (js.vregs JoltISA.trapHandlerVReg)
+
+/-- A value written to `mtvec` uses Direct mode, so Sail's `legalize_tvec`
+accepts it unchanged.
+
+Jolt source:
+`/Users/ari.biswas/Work-with-A16z/jolt/jolt-sdk/src/runtime/boot.rs:21-28`.
+ZeroOS source:
+`https://github.com/LayerZero-Labs/ZeroOS/blob/main/platforms/spike-platform/src/boot.rs#L13-L19`;
+`https://github.com/LayerZero-Labs/ZeroOS/blob/main/crates/zeroos-arch-riscv/src/trap.rs#L308-L316`.
+Generated Sail source:
+`LeanRV64D/SysRegs.lean:1180-1181`, `LeanRV64D/SysRegs.lean:1210-1223`;
+`LeanRV64D/Types.lean:11089-11093`.
+
+The ZeroOS/Jolt boot path writes `_trap_handler` to `mtvec` with `csrw mtvec,
+t0`; ZeroOS defines `_trap_handler` under `.align 2`, which gives 4-byte
+alignment, so the lower two bits are `00`. In generated Sail, those two bits are
+the `mtvec.MODE` field; `00` is `TV_Direct`, and `legalize_tvec` returns Direct
+or Vector values unchanged. For CSRRW, this has to be an assumption on the
+source value being written, not on the old stored `mtvec`, because Sail
+legalizes the new `rs1` value.
+-/
+structure MtvecWriteDirectMode (value : BitVec 64) : Prop where
+  mode_eq : _get_Mtvec_Mode value = 0b00#2
+
+/-- Sail `mscratch` agrees with Jolt's persistent `mscratch` virtual register. -/
+structure MscratchVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mscratch =
+      some (js.vregs JoltISA.mscratchVReg)
+
+/-- Sail `mepc` agrees with Jolt's persistent `mepc` virtual register. -/
+structure MepcVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mepc =
+      some (js.vregs JoltISA.mepcVReg)
+
+/-- Sail `mcause` agrees with Jolt's persistent `mcause` virtual register. -/
+structure McauseVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mcause =
+      some (js.vregs JoltISA.mcauseVReg)
+
+/-- Sail `mtval` agrees with Jolt's persistent `mtval` virtual register. -/
+structure MtvalVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mtval =
+      some (js.vregs JoltISA.mtvalVReg)
+
+-- vreg == sail.csr ends here 
+
+/- /-- Sail's machine-trap update maps Jolt's fixed `mstatus` virtual register to
+the fixed ZeroOS machine-trap `mstatus` value.
+
+WARNING: (No rust) I found no Rust line proving the generated-Sail trap-entry
+update from the current projected `mstatus` computes this fixed value.
+-/
+structure MachineTrapMstatusMatches (js : SailJoltState) : Prop where
+  value_eq :
+    Sail.BitVec.updateSubrange
+      (Sail.BitVec.updateSubrange
+        (Sail.BitVec.updateSubrange (js.vregs JoltISA.mstatusVReg) 7 7
+          (_get_Mstatus_MIE (js.vregs JoltISA.mstatusVReg)))
+        3 3 0#1)
+      12 11 (privLevel_to_bits Privilege.Machine) = BitVec.ofNat 64 0x1800
+
+
+/-- Sail's trap-vector helper selects the ECALL target from Jolt's fixed
+trap-handler virtual register.
+
+WARNING: (No rust) I found no Rust line proving generated-Sail `tvec_addr`
+selects this target for the current `mtvec` mode and ECALL cause.
+-/
+structure TrapVectorTargetMatches (js : SailJoltState) : Prop where
+  value_eq :
+    tvec_addr (js.vregs JoltISA.trapHandlerVReg)
+        (zero_extend (m := 64)
+          (exceptionType_bits_forwards (ExceptionType.E_M_EnvCall ()))) =
+      some (BitVec.update (js.vregs JoltISA.trapHandlerVReg) 0 0#1)
+
+/-- The ECALL trap target from Jolt's fixed trap-handler virtual register passes
+the compressed-disabled fetch-alignment check.
+
+WARNING: (No rust) I found no Rust line enforcing target bit 1 is zero.
+-/
+structure EcallTrapTargetAligned (js : SailJoltState) : Prop where
+  bit1_zero :
+    BitVec.access (BitVec.update (js.vregs JoltISA.trapHandlerVReg) 0 0#1) 1 =
+      0#1
+
+/-- The MRET return target from Jolt's fixed `mepc` virtual register passes the
+compressed-disabled fetch-alignment check.
+
+WARNING: (No rust) I found no Rust line enforcing target bit 1 is zero.
+-/
+structure MretReturnTargetAligned (js : SailJoltState) : Prop where
+  bit1_zero :
+    BitVec.access (BitVec.update (js.vregs JoltISA.mepcVReg) 0 0#1) 1 = 0#1
+
+/-- Jolt's fixed `mstatus` virtual register has `MIE = MPIE`.
+
+WARNING: (No rust) I found no Rust line asserting this pre-MRET `MIE = MPIE`
+field condition.
+-/
+structure MstatusMieMatchesMpie (js : SailJoltState) : Prop where
+  value_eq :
+    _get_Mstatus_MIE (js.vregs JoltISA.mstatusVReg) =
+      _get_Mstatus_MPIE (js.vregs JoltISA.mstatusVReg)
+
+/-- Jolt's fixed `mstatus` virtual register has `MPIE = 1`.
+
+WARNING: (No rust) I found no Rust line asserting this pre-MRET `MPIE = 1`
+field condition.
+-/
+structure MstatusMpieOne (js : SailJoltState) : Prop where
+  value_eq :
+    _get_Mstatus_MPIE (js.vregs JoltISA.mstatusVReg) = 1#1
+-/
+
+/-- Jolt's fixed `mstatus` virtual register has `MPP = Machine`.
+
+Rust source:
+`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/mret.rs:7-18`;
+`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/ecall.rs:8-16`;
+`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/ecall.rs:43-51`.
+-/
+structure MstatusMppMachine (js : SailJoltState) : Prop where
+  value_eq :
+    _get_Mstatus_MPP (js.vregs JoltISA.mstatusVReg) =
+      privLevel_to_bits Privilege.Machine
+
+/- /-- Jolt's fixed `mstatus` virtual register has `MPELP = 0`.
+
+WARNING: (No rust) I found no Rust source for `mstatus.MPELP` or the generated
+Sail Zicfilp MRET landing-pad side effect.
+-/
+structure MstatusMpelpZero (js : SailJoltState) : Prop where
+  value_eq :
+    _get_Mstatus_MPELP (js.vregs JoltISA.mstatusVReg) = 0#1
+-/
+
 end Assumptions
 
 export Assumptions (
@@ -372,14 +379,16 @@ export Assumptions (
   ZicfilpDisabled
   XRegReadable
   SailRegReadable
-  MisaUserDisabled
-  MachineTrapMstatusMatches
-  TrapVectorTargetMatches
-  FetchTargetAligned
-  MstatusMieMatchesMpie
-  MstatusMpieOne
+  MisaUserEnabled
+  MtvecWriteDirectMode
+  -- MachineTrapMstatusMatches
+  -- TrapVectorTargetMatches
+  -- EcallTrapTargetAligned
+  -- MretReturnTargetAligned
+  -- MstatusMieMatchesMpie
+  -- MstatusMpieOne
   MstatusMppMachine
-  MstatusMpelpZero
+  -- MstatusMpelpZero
   DwordPresent
   LoadPmpOk
   LoadPmpOkWindow

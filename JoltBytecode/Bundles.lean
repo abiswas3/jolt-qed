@@ -268,6 +268,9 @@ structure CsrrwSystemAssumptions
     Type where
   rs1_val : BitVec 64
   source_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+  mtvec_write_direct :
+    csr = JoltISA.SystemCSR.mtvec →
+      Assumptions.MtvecWriteDirectMode rs1_val
   cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
   linked_csrs :
     Assumptions.MstatusVRegMatchesSail js ∧
