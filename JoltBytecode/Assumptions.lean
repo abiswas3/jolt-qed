@@ -112,6 +112,7 @@ structure MisaUserDisabled (s : SailState) : Prop where
 
 Rust source: `tracer/src/instruction/csrrw.rs:12`;
 `tracer/src/utils/virtual_registers.rs:105`, `:114`, `:122`.
+-- TODO: not sure if we need the Option 
 -/
 structure MstatusVRegMatchesSail (js : SailJoltState) : Prop where
   value_eq :
