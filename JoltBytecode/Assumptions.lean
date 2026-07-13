@@ -83,12 +83,6 @@ finite-map/readability side of the same pre-state.
 structure XRegReadable (r : regidx) (s : SailState) : Prop where
   exists_value : ∃ value : BitVec 64, rX_bits r s = .ok value s
 
-/-- Generated Sail register `r` is present, with some value.
-
-WARNING: (model state) Rust has concrete CPU fields and CSR storage; this
-predicate is about the generated-Sail register map being populated at the proof
-boundary.
--/
 structure SailRegReadable (r : Register) (s : SailState) : Prop where
   exists_value : ∃ value : RegisterType r, s.regs.get? r = some value
 
