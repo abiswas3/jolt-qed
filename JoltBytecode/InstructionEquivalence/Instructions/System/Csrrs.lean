@@ -435,32 +435,32 @@ private theorem csr_id_read_callback_systemCSR_run
       (fun name => pure (csr_full_read_callback name 0x300#12 value))) s =
       .ok () s
     unfold csr_full_read_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mtvec")
       (fun name => pure (csr_full_read_callback name 0x305#12 value))) s =
       .ok () s
     unfold csr_full_read_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mscratch")
       (fun name => pure (csr_full_read_callback name 0x340#12 value))) s =
       .ok () s
     unfold csr_full_read_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mepc")
       (fun name => pure (csr_full_read_callback name 0x341#12 value))) s =
       .ok () s
     unfold csr_full_read_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mcause")
       (fun name => pure (csr_full_read_callback name 0x342#12 value))) s =
       .ok () s
     unfold csr_full_read_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mtval")
       (fun name => pure (csr_full_read_callback name 0x343#12 value))) s =
       .ok () s
     unfold csr_full_read_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
 
 private theorem csr_id_write_callback_systemCSR_run
     (s : SailState) (csr : JoltISA.SystemCSR) (value : BitVec 64) :
@@ -470,32 +470,32 @@ private theorem csr_id_write_callback_systemCSR_run
       (fun name => pure (csr_full_write_callback name 0x300#12 value))) s =
       .ok () s
     unfold csr_full_write_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mtvec")
       (fun name => pure (csr_full_write_callback name 0x305#12 value))) s =
       .ok () s
     unfold csr_full_write_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mscratch")
       (fun name => pure (csr_full_write_callback name 0x340#12 value))) s =
       .ok () s
     unfold csr_full_write_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mepc")
       (fun name => pure (csr_full_write_callback name 0x341#12 value))) s =
       .ok () s
     unfold csr_full_write_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mcause")
       (fun name => pure (csr_full_write_callback name 0x342#12 value))) s =
       .ok () s
     unfold csr_full_write_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
   · change (EStateM.bind (pure "mtval")
       (fun name => pure (csr_full_write_callback name 0x343#12 value))) s =
       .ok () s
     unfold csr_full_write_callback
-    simp only [bind, EStateM.bind, pure, EStateM.pure]
+    simp only [EStateM.bind, pure, EStateM.pure]
 
 private theorem read_CSR_mtvec_run
     (js : SailJoltState) :

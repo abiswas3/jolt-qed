@@ -55,6 +55,9 @@ import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Amoxorw
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sb_main
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sh_main
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sw_main
+import JoltBytecode.InstructionEquivalence.Instructions.System.Ecall
+import JoltBytecode.InstructionEquivalence.Instructions.System.Ebreak
+import JoltBytecode.InstructionEquivalence.Instructions.System.Mret
 import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrw
 import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrs
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Add
@@ -498,9 +501,9 @@ def equivalenceStatement :
     | .FENCE =>
       Natives.fenceInstrEqSailStatement js _h
     | .ECALL =>
-      False -- WARNING: unwired instruction equivalence
+      System.ecallProgramEqSailStatement js _h
     | .EBREAK =>
-      False -- WARNING: unwired instruction equivalence
+      System.ebreakProgramEqSailStatement js _h
     | .LWU rd rs1 imm =>
       LWU_main.lwuProgramEqSailStatement imm rs1 rd js _h
     | .LD rd rs1 imm =>
@@ -606,7 +609,7 @@ def equivalenceStatement :
     | .CSRRS rd csr rs1 =>
       System.csrrsProgramEqSailStatement js csr rs1 rd _h
     | .MRET =>
-      False -- WARNING: unwired instruction equivalence
+      System.mretProgramEqSailStatement js _h
 
 /-- Proof selector for the equivalence statement.
 
@@ -779,18 +782,19 @@ theorem equivalenceStatement_holds :
       Natives.bgeuInstr_eq_sail imm rs2 rs1 js h
   | .FENCE, js, h =>
       Natives.fenceInstr_eq_sail js h
-  -- TODO: Re-do the modelling of the jolt semantics
+  -- NOTE: Re-do the modelling of the jolt semantics 
+  -- Mstatus is still sorried for CSRRW and CSRRS due to complicated legalise monad.
+  -- This will be proved shortly, once we confirm Jolt has the right set of assumptions.
   | .CSRRW rd csr rs1, js, h =>
       System.csrrwProgram_eq_sail_projected js csr rs1 rd h
-  | .ECALL, _js, _h => by
-      sorry
-  | .EBREAK, _js, _h => by
-      sorry
+  | .ECALL, js, h =>
+      System.ecallProgram_eq_sail_projected js h
+  | .EBREAK, js, h =>
+      System.ebreakProgram_eq_sail_projected js h
   | .CSRRS rd csr rs1, js, h =>
       System.csrrsProgram_eq_sail_projected js csr rs1 rd h
-  | .MRET, _js, _h => by
-      sorry
-
+  | .MRET, js, h =>
+      System.mretProgram_eq_sail_projected js h
    --- Cannot be proven :-( due to opaque axioms for 
    -- load_reservation
    -- cancel_resevation 
