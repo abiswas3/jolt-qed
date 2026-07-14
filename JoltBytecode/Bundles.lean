@@ -271,6 +271,12 @@ structure CsrrwSystemAssumptions
   mtvec_write_direct :
     csr = JoltISA.SystemCSR.mtvec →
       Assumptions.MtvecWriteDirectMode rs1_val
+  mepc_read_aligned :
+    csr = JoltISA.SystemCSR.mepc →
+      Assumptions.MepcReadAligned (js.vregs JoltISA.mepcVReg) js.sail
+  mepc_write_legalized :
+    csr = JoltISA.SystemCSR.mepc →
+      Assumptions.MepcWriteLegalized rs1_val
   cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
   linked_csrs :
     Assumptions.MstatusVRegMatchesSail js ∧
