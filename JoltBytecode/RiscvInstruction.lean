@@ -56,6 +56,7 @@ import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sb_main
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sh_main
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sw_main
 import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrw
+import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrs
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Add
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Addi
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.And
@@ -232,7 +233,7 @@ inductive RiscvInstruction where
   /- Jolt-supported Zicsr source instructions.
      Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html -/
   | CSRRW (rd : regidx) (csr : JoltISA.SystemCSR) (rs1 : regidx)
-  | CSRRS (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
+  | CSRRS (rd : regidx) (csr : JoltISA.SystemCSR) (rs1 : regidx)
 
   /- Jolt-supported RvPrivileged source instruction.
      Source: https://docs.riscv.org/reference/isa/v20260120/priv/priv-insns.html -/
@@ -412,6 +413,8 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       AmoDwordProgramEqSailAssumptions amoop.AMOMAXU rs2 rs1 rd js
   | .CSRRW rd csr rs1, js =>
       System.CsrrwSystemAssumptions js csr rs1 rd
+  | .CSRRS rd csr rs1, js =>
+      System.CsrrsSystemAssumptions js csr rs1 rd
   | _, _ => Unit
 /-- Equivalence proposition selected by the operand-bearing instruction.
 
@@ -600,8 +603,8 @@ def equivalenceStatement :
       AtomicFamily.amomaxudProgramEqSailStatement rs2 rs1 rd js _h
     | .CSRRW rd csr rs1 =>
       System.csrrwProgramEqSailStatement js csr rs1 rd _h
-    | .CSRRS _rd _csr _rs1 =>
-      False -- WARNING: unwired instruction equivalence
+    | .CSRRS rd csr rs1 =>
+      System.csrrsProgramEqSailStatement js csr rs1 rd _h
     | .MRET =>
       False -- WARNING: unwired instruction equivalence
 
@@ -778,13 +781,13 @@ theorem equivalenceStatement_holds :
       Natives.fenceInstr_eq_sail js h
   -- TODO: Re-do the modelling of the jolt semantics
   | .CSRRW rd csr rs1, js, h =>
-      System.csrrwProgram_eq_sail js csr rs1 rd h 
+      System.csrrwProgram_eq_sail_projected js csr rs1 rd h
   | .ECALL, _js, _h => by
       sorry
   | .EBREAK, _js, _h => by
       sorry
-  | .CSRRS _rd _csr _rs1, _js, _h => by
-      sorry
+  | .CSRRS rd csr rs1, js, h =>
+      System.csrrsProgram_eq_sail_projected js csr rs1 rd h
   | .MRET, _js, _h => by
       sorry
 

@@ -264,10 +264,8 @@ machine-mode execution envelope, and the decoded six-CSR whitelist carried by
 callback neutrality, and projected `rd` writeback are derived in the CSRRW proof
 file. -/
 structure CsrrwSystemAssumptions
-    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx) :
-    Type where
-  rs1_val : BitVec 64
-  source_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
+    extends Assumptions.UnarySourceReadAssumptions rs1 js.sail where
   mtvec_write_direct :
     csr = JoltISA.SystemCSR.mtvec →
       Assumptions.MtvecWriteDirectMode rs1_val
@@ -277,6 +275,37 @@ structure CsrrwSystemAssumptions
   mepc_write_legalized :
     csr = JoltISA.SystemCSR.mepc →
       Assumptions.MepcWriteLegalized rs1_val
+  cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
+  linked_csrs :
+    Assumptions.MstatusVRegMatchesSail js ∧
+    Assumptions.MtvecVRegMatchesSail js ∧
+    Assumptions.MscratchVRegMatchesSail js ∧
+    Assumptions.MepcVRegMatchesSail js ∧
+    Assumptions.McauseVRegMatchesSail js ∧
+    Assumptions.MtvalVRegMatchesSail js
+
+/-- Public assumptions for CSRRS equivalence over the supported System CSR
+whitelist.
+
+This has the same envelope as `CsrrwSystemAssumptions`, except CSRRS writes
+`old CSR | rs1` when `rs1 != x0`, so write-side legalization assumptions are
+stated over that read-set value. -/
+structure CsrrsSystemAssumptions
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
+    extends Assumptions.UnarySourceReadAssumptions rs1 js.sail where
+  mtvec_write_direct :
+    csr = JoltISA.SystemCSR.mtvec →
+      (rs1 == zreg) = false →
+        Assumptions.MtvecWriteDirectMode
+          (js.vregs (JoltISA.SystemCSR.vreg csr) ||| rs1_val)
+  mepc_read_aligned :
+    csr = JoltISA.SystemCSR.mepc →
+      Assumptions.MepcReadAligned (js.vregs JoltISA.mepcVReg) js.sail
+  mepc_write_legalized :
+    csr = JoltISA.SystemCSR.mepc →
+      (rs1 == zreg) = false →
+        Assumptions.MepcWriteLegalized
+          (js.vregs (JoltISA.SystemCSR.vreg csr) ||| rs1_val)
   cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
   linked_csrs :
     Assumptions.MstatusVRegMatchesSail js ∧

@@ -140,4 +140,4 @@ import JoltBytecode.InstructionEquivalence.Instructions.Natives.Sltu
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Sub
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Xor
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Xori
--- import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrs     -- TODO: CSR read-set
+import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrs

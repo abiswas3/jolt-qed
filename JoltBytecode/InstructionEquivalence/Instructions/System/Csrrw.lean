@@ -787,7 +787,7 @@ private theorem csrrw_mtvec_eq_sail_projected
       (execute_CSRReg JoltISA.SystemCSR.mtvec.address rs1 rd csrop.CSRRW).run
         (systemProject js) := by
   have hSourceSail : rX_bits rs1 (systemProject js) = .ok h_sys.rs1_val (systemProject js) := by
-    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.source_read
+    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.rs1_read
   have hCurPrivProject :
       (systemProject js).regs.get? Register.cur_privilege =
         some (Privilege.Machine : RegisterType Register.cur_privilege) := by
@@ -818,7 +818,7 @@ private theorem csrrw_mtvec_eq_sail_projected
   exact csrrw_eq_sail_projected_from_facts js JoltISA.SystemCSR.mtvec
     rs1 rd h_sys.rs1_val (js.vregs JoltISA.trapHandlerVReg) sAfterMtvecWrite
     hSourceSail hCurPrivProject
-    (csrrwProgram_mtvec_project_run js rs1 rd h_sys.rs1_val h_sys.source_read)
+    (csrrwProgram_mtvec_project_run js rs1 rd h_sys.rs1_val h_sys.rs1_read)
     hCheck hReadMtvec hWriteMtvec hWriteCallback
     (fun hRd => csrrwJoltFinal_mtvec_project_rd_nonzero js rs1 rd h_sys.rs1_val hRd)
     (fun hRd => csrrwJoltFinal_mtvec_project_rd_zero js rs1 rd h_sys.rs1_val hRd)
@@ -882,7 +882,7 @@ private theorem csrrw_mscratch_eq_sail_projected
       (execute_CSRReg JoltISA.SystemCSR.mscratch.address rs1 rd csrop.CSRRW).run
         (systemProject js) := by
   have hSourceSail : rX_bits rs1 (systemProject js) = .ok h_sys.rs1_val (systemProject js) := by
-    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.source_read
+    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.rs1_read
   have hCurPrivProject :
       (systemProject js).regs.get? Register.cur_privilege =
         some (Privilege.Machine : RegisterType Register.cur_privilege) := by
@@ -913,7 +913,7 @@ private theorem csrrw_mscratch_eq_sail_projected
   exact csrrw_eq_sail_projected_from_facts js JoltISA.SystemCSR.mscratch
     rs1 rd h_sys.rs1_val (js.vregs JoltISA.mscratchVReg) sAfterMscratchWrite
     hSourceSail hCurPrivProject
-    (csrrwProgram_mscratch_project_run js rs1 rd h_sys.rs1_val h_sys.source_read)
+    (csrrwProgram_mscratch_project_run js rs1 rd h_sys.rs1_val h_sys.rs1_read)
     hCheck hReadMscratch hWriteMscratch hWriteCallback
     (fun hRd => csrrwJoltFinal_mscratch_project_rd_nonzero js rs1 rd h_sys.rs1_val hRd)
     (fun hRd => csrrwJoltFinal_mscratch_project_rd_zero js rs1 rd h_sys.rs1_val hRd)
@@ -927,7 +927,7 @@ private theorem csrrw_mepc_eq_sail_projected
       (execute_CSRReg JoltISA.SystemCSR.mepc.address rs1 rd csrop.CSRRW).run
         (systemProject js) := by
   have hSourceSail : rX_bits rs1 (systemProject js) = .ok h_sys.rs1_val (systemProject js) := by
-    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.source_read
+    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.rs1_read
   have hCurPrivProject :
       (systemProject js).regs.get? Register.cur_privilege =
         some (Privilege.Machine : RegisterType Register.cur_privilege) := by
@@ -943,7 +943,7 @@ private theorem csrrw_mepc_eq_sail_projected
           (systemProject
             (csrrwJoltFinal js JoltISA.SystemCSR.mepc rs1 rd h_sys.rs1_val)) := by
     exact csrrwProgram_project_run js JoltISA.SystemCSR.mepc rs1 rd
-      h_sys.rs1_val h_sys.source_read
+      h_sys.rs1_val h_sys.rs1_read
   have hCheck : check_CSR JoltISA.SystemCSR.mepc.address Privilege.Machine
           (csr_access_type csrop.CSRRW (rd == zreg) (rs1 == zreg))
           (systemProject js) =
@@ -1007,7 +1007,7 @@ private theorem csrrw_mcause_eq_sail_projected
       (execute_CSRReg JoltISA.SystemCSR.mcause.address rs1 rd csrop.CSRRW).run
         (systemProject js) := by
   have hSourceSail : rX_bits rs1 (systemProject js) = .ok h_sys.rs1_val (systemProject js) := by
-    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.source_read
+    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.rs1_read
   have hCurPrivProject :
       (systemProject js).regs.get? Register.cur_privilege =
         some (Privilege.Machine : RegisterType Register.cur_privilege) := by
@@ -1023,7 +1023,7 @@ private theorem csrrw_mcause_eq_sail_projected
           (systemProject
             (csrrwJoltFinal js JoltISA.SystemCSR.mcause rs1 rd h_sys.rs1_val)) := by
     exact csrrwProgram_project_run js JoltISA.SystemCSR.mcause rs1 rd
-      h_sys.rs1_val h_sys.source_read
+      h_sys.rs1_val h_sys.rs1_read
   have hCheck : check_CSR JoltISA.SystemCSR.mcause.address Privilege.Machine
           (csr_access_type csrop.CSRRW (rd == zreg) (rs1 == zreg))
           (systemProject js) =
@@ -1085,7 +1085,7 @@ private theorem csrrw_mtval_eq_sail_projected
       (execute_CSRReg JoltISA.SystemCSR.mtval.address rs1 rd csrop.CSRRW).run
         (systemProject js) := by
   have hSourceSail : rX_bits rs1 (systemProject js) = .ok h_sys.rs1_val (systemProject js) := by
-    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.source_read
+    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.rs1_read
   have hCurPrivProject :
       (systemProject js).regs.get? Register.cur_privilege =
         some (Privilege.Machine : RegisterType Register.cur_privilege) := by
@@ -1101,7 +1101,7 @@ private theorem csrrw_mtval_eq_sail_projected
           (systemProject
             (csrrwJoltFinal js JoltISA.SystemCSR.mtval rs1 rd h_sys.rs1_val)) := by
     exact csrrwProgram_project_run js JoltISA.SystemCSR.mtval rs1 rd
-      h_sys.rs1_val h_sys.source_read
+      h_sys.rs1_val h_sys.rs1_read
   have hCheck : check_CSR JoltISA.SystemCSR.mtval.address Privilege.Machine
           (csr_access_type csrop.CSRRW (rd == zreg) (rs1 == zreg))
           (systemProject js) =
@@ -1156,13 +1156,19 @@ private theorem csrrw_mtval_eq_sail_projected
 
 /-! ## Main theorem -/
 
+def csrrwProgramEqSailStatement
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
+    (_h_sys : CsrrwSystemAssumptions js csr rs1 rd) : Prop :=
+  systemProjectResult
+      ((JoltISA.execProgram (JoltISA.csrrwProgram csr rs1 rd)).run js) =
+    (execute_CSRReg (JoltISA.SystemCSR.address csr) rs1 rd csrop.CSRRW).run
+      (systemProject js)
+
 theorem csrrwProgram_eq_sail_projected
     (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
     (h_sys : CsrrwSystemAssumptions js csr rs1 rd) :
-    systemProjectResult
-        ((JoltISA.execProgram (JoltISA.csrrwProgram csr rs1 rd)).run js) =
-      (execute_CSRReg (JoltISA.SystemCSR.address csr) rs1 rd csrop.CSRRW).run
-        (systemProject js) := by
+    csrrwProgramEqSailStatement js csr rs1 rd h_sys := by
+  unfold csrrwProgramEqSailStatement
   cases csr
   · -- `mstatus`
     sorry
