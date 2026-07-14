@@ -418,6 +418,8 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       System.CsrrwSystemAssumptions js csr rs1 rd
   | .CSRRS rd csr rs1, js =>
       System.CsrrsSystemAssumptions js csr rs1 rd
+  | .MRET, js =>
+      System.MretProgramEqSailAssumptions js
   | _, _ => Unit
 /-- Equivalence proposition selected by the operand-bearing instruction.
 

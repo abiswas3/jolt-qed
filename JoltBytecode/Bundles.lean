@@ -255,6 +255,18 @@ def AmoWordProgramEqSailAssumptions.rdReadable
 
 namespace System
 
+/-- Public assumptions for MRET equivalence while the proof shape is being
+validated.
+
+These are only register-readability facts for generated Sail register lookups;
+the semantic MRET assumptions will be added separately once confirmed. -/
+structure MretProgramEqSailAssumptions (js : SailJoltState) : Type where
+  nextPC_readable : Assumptions.SailRegReadable Register.nextPC js.sail
+  cur_privilege_readable :
+    Assumptions.SailRegReadable Register.cur_privilege js.sail
+  pc_readable : Assumptions.SailRegReadable Register.PC js.sail
+  misa_readable : Assumptions.SailRegReadable Register.misa js.sail
+
 /-- Public assumptions for CSRRW equivalence over the supported System CSR
 whitelist.
 
