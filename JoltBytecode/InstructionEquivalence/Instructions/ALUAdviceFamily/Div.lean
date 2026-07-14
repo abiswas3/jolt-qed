@@ -4,9 +4,9 @@ import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Primitives
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Div_math
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.DivProgramBlocks
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Primitives
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Div_math
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.DivProgramBlocks
 
 set_option linter.unusedVariables false
 set_option linter.unusedSimpArgs false

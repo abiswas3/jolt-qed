@@ -5,9 +5,9 @@ import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.InstructionEquivalence.ProofSupport.MonadReduction
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Primitives
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Rem_math
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.RemProgramBlocks
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Primitives
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Rem_math
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.RemProgramBlocks
 
 
 set_option linter.unusedVariables false

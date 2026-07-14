@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Divu_math
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Divu_math
 
 set_option linter.unusedVariables false
 set_option linter.unusedSimpArgs false

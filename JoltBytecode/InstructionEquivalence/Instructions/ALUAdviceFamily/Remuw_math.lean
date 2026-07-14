@@ -1,5 +1,5 @@
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Divuw_math
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Remu_math
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Divuw_math
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Remu_math
 
 set_option linter.unusedVariables false
 set_option linter.unusedSimpArgs false

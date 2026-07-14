@@ -1,4 +1,4 @@
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Primitives
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Primitives
 import Mathlib
 
 set_option linter.unusedVariables false

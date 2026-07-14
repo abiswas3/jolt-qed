@@ -1,5 +1,5 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Primitives
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Primitives
 import JoltBytecode.InstructionEquivalence.ProofSupport.ExpansionBlocks.ALU
 import JoltBytecode.InstructionEquivalence.ProofSupport.ProgramComposition
 

@@ -1,6 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Primitives
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.DivuwProgramBlocks
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Primitives
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.DivuwProgramBlocks
 import JoltBytecode.InstructionEquivalence.ProofSupport.ProgramComposition
 
 set_option linter.unusedVariables false
