@@ -3,3 +3,4 @@
 -- `JoltBytecode.RiscvInstruction`.
 
 import JoltBytecode.RiscvInstruction
+import JoltBytecode.JoltISA.automaticEquivHand
