@@ -1,4 +1,0 @@
-interface:
-  display_name: "Proving"
-  short_description: "Lean and mathlib proof guidance"
-  default_prompt: "Use this skill when advising on Lean proofs, especially mathlib-style tactic choices, simp/rw usage, proof cleanup, and theorem maintenance."

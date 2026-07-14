@@ -26,14 +26,14 @@ import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Itype.Srli
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Itype.Srliw
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Mult.Mulh
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Mult.Mulhsu
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Div
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Divu
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Divuw
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Divw
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Rem
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Remu
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Remuw
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamilyRW.Remw
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Div
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Divu
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Divuw
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Divw
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Rem
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Remu
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Remuw
+import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Remw
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Amoaddd
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Amoaddw
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Amoandd
@@ -55,7 +55,11 @@ import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Amoxorw
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sb_main
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sh_main
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sw_main
+import JoltBytecode.InstructionEquivalence.Instructions.System.Ecall
+import JoltBytecode.InstructionEquivalence.Instructions.System.Ebreak
+import JoltBytecode.InstructionEquivalence.Instructions.System.Mret
 import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrw
+import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrs
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Add
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Addi
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.And
@@ -232,7 +236,7 @@ inductive RiscvInstruction where
   /- Jolt-supported Zicsr source instructions.
      Source: https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html -/
   | CSRRW (rd : regidx) (csr : JoltISA.SystemCSR) (rs1 : regidx)
-  | CSRRS (rd : regidx) (csr : CsrAddr) (rs1 : regidx)
+  | CSRRS (rd : regidx) (csr : JoltISA.SystemCSR) (rs1 : regidx)
 
   /- Jolt-supported RvPrivileged source instruction.
      Source: https://docs.riscv.org/reference/isa/v20260120/priv/priv-insns.html -/
@@ -412,6 +416,10 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       AmoDwordProgramEqSailAssumptions amoop.AMOMAXU rs2 rs1 rd js
   | .CSRRW rd csr rs1, js =>
       System.CsrrwSystemAssumptions js csr rs1 rd
+  | .CSRRS rd csr rs1, js =>
+      System.CsrrsSystemAssumptions js csr rs1 rd
+  | .MRET, js =>
+      System.MretProgramEqSailAssumptions js
   | _, _ => Unit
 /-- Equivalence proposition selected by the operand-bearing instruction.
 
@@ -495,9 +503,9 @@ def equivalenceStatement :
     | .FENCE =>
       Natives.fenceInstrEqSailStatement js _h
     | .ECALL =>
-      False -- WARNING: unwired instruction equivalence
+      System.ecallProgramEqSailStatement js _h
     | .EBREAK =>
-      False -- WARNING: unwired instruction equivalence
+      System.ebreakProgramEqSailStatement js _h
     | .LWU rd rs1 imm =>
       LWU_main.lwuProgramEqSailStatement imm rs1 rd js _h
     | .LD rd rs1 imm =>
@@ -600,10 +608,10 @@ def equivalenceStatement :
       AtomicFamily.amomaxudProgramEqSailStatement rs2 rs1 rd js _h
     | .CSRRW rd csr rs1 =>
       System.csrrwProgramEqSailStatement js csr rs1 rd _h
-    | .CSRRS _rd _csr _rs1 =>
-      False -- WARNING: unwired instruction equivalence
+    | .CSRRS rd csr rs1 =>
+      System.csrrsProgramEqSailStatement js csr rs1 rd _h
     | .MRET =>
-      False -- WARNING: unwired instruction equivalence
+      System.mretProgramEqSailStatement js _h
 
 /-- Proof selector for the equivalence statement.
 
@@ -776,18 +784,19 @@ theorem equivalenceStatement_holds :
       Natives.bgeuInstr_eq_sail imm rs2 rs1 js h
   | .FENCE, js, h =>
       Natives.fenceInstr_eq_sail js h
-  -- TODO: Re-do the modelling of the jolt semantics
+  -- NOTE: Re-do the modelling of the jolt semantics 
+  -- Mstatus is still sorried for CSRRW and CSRRS due to complicated legalise monad.
+  -- This will be proved shortly, once we confirm Jolt has the right set of assumptions.
   | .CSRRW rd csr rs1, js, h =>
-      System.csrrwProgram_eq_sail js csr rs1 rd h 
-  | .ECALL, _js, _h => by
-      sorry
-  | .EBREAK, _js, _h => by
-      sorry
-  | .CSRRS _rd _csr _rs1, _js, _h => by
-      sorry
-  | .MRET, _js, _h => by
-      sorry
-
+      System.csrrwProgram_eq_sail_projected js csr rs1 rd h
+  | .ECALL, js, h =>
+      System.ecallProgram_eq_sail_projected js h
+  | .EBREAK, js, h =>
+      System.ebreakProgram_eq_sail_projected js h
+  | .CSRRS rd csr rs1, js, h =>
+      System.csrrsProgram_eq_sail_projected js csr rs1 rd h
+  | .MRET, js, h =>
+      System.mretProgram_eq_sail_projected js h
    --- Cannot be proven :-( due to opaque axioms for 
    -- load_reservation
    -- cancel_resevation 

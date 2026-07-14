@@ -138,9 +138,9 @@ def StoreProgramEqSailAssumptions.storeAccessFacts
         (offset := offset) (accessWidth := width) hfits'
     simpa [haddr] using hsub
 
-theorem readReg_eq_of_get? (r : Register) (s : SailState) (v : RegisterType r)
-    (h : s.regs.get? r = some v) :
-    (Sail.readReg r : SailM (RegisterType r)) s = .ok v s := by
+theorem readReg_eq_of_get? (r : Register) (s : SailState) (rval : RegisterType r)
+    (h : s.regs.get? r = some rval) :
+    (Sail.readReg r : SailM (RegisterType r)) s = .ok rval s := by
   unfold Sail.readReg PreSail.readReg
   simp only [bind, EStateM.bind, pure, EStateM.pure,
              MonadStateOf.get, EStateM.get, getThe, get, h]
