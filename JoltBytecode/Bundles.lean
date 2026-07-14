@@ -258,14 +258,26 @@ namespace System
 /-- Public assumptions for MRET equivalence while the proof shape is being
 validated.
 
-These are only register-readability facts for generated Sail register lookups;
-the semantic MRET assumptions will be added separately once confirmed. -/
+The bundle records the generated-Sail register lookups needed by MRET together
+with the machine-mode precondition required by Sail's `execute_MRET` path. -/
 structure MretProgramEqSailAssumptions (js : SailJoltState) : Type where
   nextPC_readable : Assumptions.SailRegReadable Register.nextPC js.sail
-  cur_privilege_readable :
-    Assumptions.SailRegReadable Register.cur_privilege js.sail
+  cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
   pc_readable : Assumptions.SailRegReadable Register.PC js.sail
   misa_readable : Assumptions.SailRegReadable Register.misa js.sail
+  mepc_read_aligned :
+    Assumptions.MepcReadAligned (js.vregs JoltISA.mepcVReg) js.sail
+  mret_handler_matches :
+    ∀ (pc : BitVec 64) (s : SailState),
+      s.regs.get? Register.mepc =
+        some (js.vregs JoltISA.mepcVReg : RegisterType Register.mepc) →
+      s.regs.get? Register.mstatus =
+        some (js.vregs JoltISA.mstatusVReg : RegisterType Register.mstatus) →
+      Assumptions.MretHandlerMatchesJolt pc
+        (BitVec.update
+          (js.vregs JoltISA.mepcVReg + sign_extend (m := 64) (0 : BitVec 12))
+          0 0#1)
+        s
 
 /-- Public assumptions for CSRRW equivalence over the supported System CSR
 whitelist.
@@ -287,6 +299,10 @@ structure CsrrwSystemAssumptions
   mepc_write_legalized :
     csr = JoltISA.SystemCSR.mepc →
       Assumptions.MepcWriteLegalized rs1_val
+  mstatus_write_legalized :
+    csr = JoltISA.SystemCSR.mstatus →
+      Assumptions.MstatusWriteLegalized
+        (js.vregs JoltISA.mstatusVReg) rs1_val js.sail
   cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
   linked_csrs :
     Assumptions.MstatusVRegMatchesSail js ∧
@@ -318,6 +334,13 @@ structure CsrrsSystemAssumptions
       (rs1 == zreg) = false →
         Assumptions.MepcWriteLegalized
           (js.vregs (JoltISA.SystemCSR.vreg csr) ||| rs1_val)
+  mstatus_write_legalized :
+    csr = JoltISA.SystemCSR.mstatus →
+      (rs1 == zreg) = false →
+        Assumptions.MstatusWriteLegalized
+          (js.vregs JoltISA.mstatusVReg)
+          (js.vregs (JoltISA.SystemCSR.vreg csr) ||| rs1_val)
+          js.sail
   cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
   linked_csrs :
     Assumptions.MstatusVRegMatchesSail js ∧

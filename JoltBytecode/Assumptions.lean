@@ -296,6 +296,26 @@ the old stored `mepc`.
 structure MepcWriteLegalized (value : BitVec 64) : Prop where
   value_eq : legalize_xepc value = value
 
+/-- A value written to `mstatus` is already legal in the current Sail state, so
+Sail's `legalize_mstatus` accepts it unchanged.
+
+Jolt CSRRW writes the source value directly into the proof-facing CSR virtual
+register, while CSRRS writes `old CSR | rs1` when `rs1 != x0`:
+`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrw.rs:17-25`;
+`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrw.rs:51-65`;
+`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrs.rs:26-35`;
+`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrs.rs:61-76`.
+Generated Sail instead writes architectural `mstatus` through
+`legalize_mstatus`:
+`LeanRV64D/ZicsrInsts.lean:11708-11714`;
+`LeanRV64D/SysRegs.lean:994-1070`.
+
+This assumption is the proof boundary that the ZeroOS/Jolt `mstatus` value is
+stable under that generated-Sail legalizer. -/
+structure MstatusWriteLegalized
+    (old value : BitVec 64) (s : SailState) : Prop where
+  value_eq : legalize_mstatus old value s = .ok value s
+
 /-- Sail `mcause` agrees with Jolt's persistent `mcause` virtual register. -/
 structure McauseVRegMatchesSail (js : SailJoltState) : Prop where
   value_eq :
@@ -388,6 +408,32 @@ structure MstatusMppMachine (js : SailJoltState) : Prop where
   value_eq :
     _get_Mstatus_MPP (js.vregs JoltISA.mstatusVReg) =
       privLevel_to_bits Privilege.Machine
+
+/-- In ZeroOS/Jolt's restricted MRET model, the generated Sail MRET handler
+matches Jolt's MRET behavior.
+
+Rust/Jolt source:
+`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/mret.rs:7-18`;
+`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/mret.rs:38-44`;
+`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/mret.rs:3-23`.
+
+The tracer module documents the ZeroOS/Jolt envelope: M-mode-only execution, no
+interrupt hardware, and MRET implemented as a jump to `mepc` rather than as the
+full architectural `mstatus` postlude. The implementation reads raw `mepc`,
+writes `cpu.pc`, and leaves `mstatus` unchanged. The program expansion follows
+the same model by lowering MRET to one JALR through the proof-facing `mepc`
+virtual register.
+
+This predicate records the bridge assumption needed when generated Sail's full
+MRET handler is compared with Jolt's restricted MRET: the handler succeeds,
+returns Jolt's already-computed MRET target, and leaves the pre-`set_next_pc`
+Sail state unchanged.
+-/
+structure MretHandlerMatchesJolt (pc target : BitVec 64) (s : SailState) :
+    Prop where
+  value_eq :
+    exception_handler Privilege.Machine (ctl_result.CTL_MRET ()) pc s =
+      .ok target s
 
 end Assumptions
 

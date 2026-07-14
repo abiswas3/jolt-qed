@@ -118,6 +118,23 @@ private theorem systemProject_csrrwAfterCsrWrite_mtvec
       JoltISA.mcauseVReg, JoltISA.mtvalVReg, JoltISA.riscvRegisterBase,
       JoltISA.riscvRegisterCount]
 
+private theorem systemProject_csrrwAfterCsrWrite_mstatus
+    (js : SailJoltState) (value : BitVec 64) :
+    systemProject (csrrwAfterCsrWrite js JoltISA.SystemCSR.mstatus value) =
+      { systemProject js with
+        regs := (systemProject js).regs.insert Register.mstatus value } := by
+  unfold csrrwAfterCsrWrite joltSetVReg systemProject JoltISA.SystemCSR.vreg
+    vregWrite
+  simp only
+  congr 1
+  apply Std.ExtDHashMap.ext_get?
+  intro reg
+  cases reg <;>
+    simp [Std.ExtDHashMap.get?_insert, JoltISA.mstatusVReg,
+      JoltISA.trapHandlerVReg, JoltISA.mscratchVReg, JoltISA.mepcVReg,
+      JoltISA.mcauseVReg, JoltISA.mtvalVReg, JoltISA.riscvRegisterBase,
+      JoltISA.riscvRegisterCount]
+
 private theorem systemProject_csrrwAfterCsrWrite_mscratch
     (js : SailJoltState) (value : BitVec 64) :
     systemProject (csrrwAfterCsrWrite js JoltISA.SystemCSR.mscratch value) =
@@ -198,6 +215,19 @@ private theorem systemProject_csrrwAfterReadWrite_mtvec
   simpa [csrrwAfterReadWrite, csrrwAfterCsrWrite, joltSetVReg] using
     systemProject_stateAfterWrite
       (csrrwAfterCsrWrite js JoltISA.SystemCSR.mtvec rs1Val) rd oldCsr
+
+private theorem systemProject_csrrwAfterReadWrite_mstatus
+    (js : SailJoltState) (rd : regidx) (oldCsr rs1Val : BitVec 64) :
+    systemProject
+        (csrrwAfterReadWrite js JoltISA.SystemCSR.mstatus rd oldCsr rs1Val) =
+      stateAfterWrite
+        { systemProject js with
+          regs := (systemProject js).regs.insert Register.mstatus rs1Val }
+        rd oldCsr := by
+  rw [← systemProject_csrrwAfterCsrWrite_mstatus js rs1Val]
+  simpa [csrrwAfterReadWrite, csrrwAfterCsrWrite, joltSetVReg] using
+    systemProject_stateAfterWrite
+      (csrrwAfterCsrWrite js JoltISA.SystemCSR.mstatus rs1Val) rd oldCsr
 
 private theorem systemProject_csrrwAfterReadWrite_mscratch
     (js : SailJoltState) (rd : regidx) (oldCsr rs1Val : BitVec 64) :
@@ -559,6 +589,14 @@ private theorem csr_id_write_callback_mtvec_run
   unfold csr_full_write_callback
   simp only [pure, EStateM.pure, EStateM.bind]
 
+private theorem csr_id_write_callback_mstatus_run
+    (s : SailState) (value : BitVec 64) :
+    csr_id_write_callback JoltISA.SystemCSR.mstatus.address value s =
+      .ok () s := by
+  change (long_csr_write_callback "mstatus" "mstatush" value) s =
+    .ok () s
+  exact long_csr_write_callback_mstatus_run s value
+
 private theorem csr_id_write_callback_mscratch_run
     (s : SailState) (value : BitVec 64) :
     csr_id_write_callback JoltISA.SystemCSR.mscratch.address value s =
@@ -608,6 +646,27 @@ private theorem read_CSR_mtvec_run
   unfold get_mtvec Sail.readReg PreSail.readReg
   simp only [systemProject_mtvec_read js, bind, EStateM.bind, pure,
     EStateM.pure, get, getThe, MonadStateOf.get, EStateM.get]
+
+private theorem extractLsb_xlen_full_width (value : BitVec 64) :
+    Sail.BitVec.extractLsb value (LeanRV64D.Functions.xlen -i 1) 0 = value := by
+  change BitVec.extractLsb 63 0 value = value
+  ext i
+  simp [← BitVec.getLsbD_eq_getElem]
+  omega
+
+private theorem read_CSR_mstatus_run
+    (js : SailJoltState) :
+    read_CSR JoltISA.SystemCSR.mstatus.address (systemProject js) =
+      .ok (js.vregs JoltISA.mstatusVReg) (systemProject js) := by
+  change (do
+      let value ← Sail.readReg Register.mstatus
+      pure (Sail.BitVec.extractLsb value (LeanRV64D.Functions.xlen -i 1) 0))
+      (systemProject js) =
+    .ok (js.vregs JoltISA.mstatusVReg) (systemProject js)
+  unfold Sail.readReg PreSail.readReg
+  simp only [systemProject_mstatus_read js, bind, EStateM.bind, pure,
+    EStateM.pure, get, getThe, MonadStateOf.get, EStateM.get]
+  rw [extractLsb_xlen_full_width]
 
 private theorem read_CSR_mscratch_run
     (js : SailJoltState) :
@@ -689,6 +748,34 @@ private theorem write_CSR_mepc_legalized_run
   rw [hLegal.value_eq]
   simp only [bind, EStateM.bind, pure, EStateM.pure, modify, modifyGet,
     MonadStateOf.modifyGet, EStateM.modifyGet]
+
+private theorem write_CSR_mstatus_legalized_run
+    (js : SailJoltState) (value : BitVec 64)
+    (hLinked : LinkedCSRs js)
+    (hLegal :
+      Assumptions.MstatusWriteLegalized
+        (js.vregs JoltISA.mstatusVReg) value js.sail) :
+    write_CSR JoltISA.SystemCSR.mstatus.address value (systemProject js) =
+      .ok (Ok value)
+        { systemProject js with
+          regs := (systemProject js).regs.insert Register.mstatus value } := by
+  have hProject : systemProject js = js.sail := by
+    simpa [project] using systemProject_eq_project_of_compatible js hLinked
+  rw [hProject]
+  change (do
+      Sail.writeReg Register.mstatus
+        (← legalize_mstatus (← Sail.readReg Register.mstatus) value)
+      pure (Ok (← Sail.readReg Register.mstatus))) js.sail =
+    .ok (Ok value)
+      { js.sail with
+        regs := js.sail.regs.insert Register.mstatus value }
+  unfold Sail.readReg PreSail.readReg Sail.writeReg PreSail.writeReg
+  simp only [bind, EStateM.bind, pure, EStateM.pure, get, getThe,
+    MonadStateOf.get, EStateM.get, hLinked.1.value_eq]
+  rw [hLegal.value_eq]
+  simp only [EStateM.pure, modify, modifyGet,
+    MonadStateOf.modifyGet, EStateM.modifyGet,
+    Std.ExtDHashMap.get?_insert_self]
 
 private theorem write_CSR_mcause_run
     (js : SailJoltState) (value : BitVec 64) :
@@ -777,6 +864,102 @@ private theorem csrrw_eq_sail_projected_from_facts
     rw [hJoltFinalZero hRd]
 
 /-! ## Specialized CSR theorems -/
+
+private theorem csrrwProgram_mstatus_project_run
+    (js : SailJoltState) (rs1 rd : regidx) (rs1Val : BitVec 64)
+    (hSource : rX_bits rs1 js.sail = .ok rs1Val js.sail) :
+    systemProjectResult
+        ((JoltISA.execProgram
+          (JoltISA.csrrwProgram JoltISA.SystemCSR.mstatus rs1 rd)).run js) =
+      .ok RETIRE_SUCCESS
+        (systemProject
+          (csrrwJoltFinal js JoltISA.SystemCSR.mstatus rs1 rd rs1Val)) := by
+  exact csrrwProgram_project_run js JoltISA.SystemCSR.mstatus rs1 rd
+    rs1Val hSource
+
+private theorem csrrwJoltFinal_mstatus_project_rd_nonzero
+    (js : SailJoltState) (rs1 rd : regidx) (rs1Val : BitVec 64)
+    (hRd : (rd == zreg) = false) :
+    systemProject (csrrwJoltFinal js JoltISA.SystemCSR.mstatus rs1 rd rs1Val) =
+      stateAfterWrite
+        { systemProject js with
+          regs := (systemProject js).regs.insert Register.mstatus rs1Val }
+        rd (js.vregs JoltISA.mstatusVReg) := by
+  unfold csrrwJoltFinal
+  rw [isX0_eq_false_of_beq_zreg_false hRd]
+  simp only [Bool.false_eq_true, if_false]
+  cases hSame : JoltISA.sameXReg rd rs1
+  · simp only [Bool.false_eq_true, if_false]
+    exact systemProject_csrrwAfterReadWrite_mstatus js rd
+      (js.vregs JoltISA.mstatusVReg) rs1Val
+  · simp only [if_true]
+    rw [systemProject_csrrwAfterSameReg_eq_readWrite]
+    exact systemProject_csrrwAfterReadWrite_mstatus js rd
+      (js.vregs JoltISA.mstatusVReg) rs1Val
+
+private theorem csrrwJoltFinal_mstatus_project_rd_zero
+    (js : SailJoltState) (rs1 rd : regidx) (rs1Val : BitVec 64)
+    (hRd : (rd == zreg) = true) :
+    systemProject (csrrwJoltFinal js JoltISA.SystemCSR.mstatus rs1 rd rs1Val) =
+      stateAfterWrite
+        { systemProject js with
+          regs := (systemProject js).regs.insert Register.mstatus rs1Val }
+        rd (zeros : BitVec 64) := by
+  unfold csrrwJoltFinal
+  rw [isX0_eq_true_of_beq_zreg_true hRd]
+  simp only [if_true]
+  rw [systemProject_csrrwAfterCsrWrite_mstatus]
+  rw [regidx_eq_zero_of_beq_zreg_true hRd]
+  exact stateAfterWrite_regidx_zero
+    { systemProject js with
+      regs := (systemProject js).regs.insert Register.mstatus rs1Val }
+    (zeros : BitVec 64)
+
+private theorem csrrw_mstatus_eq_sail_projected
+    (js : SailJoltState) (rs1 rd : regidx)
+    (h_sys : CsrrwSystemAssumptions js JoltISA.SystemCSR.mstatus rs1 rd) :
+    systemProjectResult
+        ((JoltISA.execProgram
+          (JoltISA.csrrwProgram JoltISA.SystemCSR.mstatus rs1 rd)).run js) =
+      (execute_CSRReg JoltISA.SystemCSR.mstatus.address rs1 rd csrop.CSRRW).run
+        (systemProject js) := by
+  have hSourceSail : rX_bits rs1 (systemProject js) = .ok h_sys.rs1_val (systemProject js) := by
+    exact systemProject_rX_bits js rs1 h_sys.rs1_val h_sys.rs1_read
+  have hCurPrivProject :
+      (systemProject js).regs.get? Register.cur_privilege =
+        some (Privilege.Machine : RegisterType Register.cur_privilege) := by
+    exact systemProject_cur_privilege_read js h_sys.cur_privilege_machine.value
+  let sAfterMstatusWrite : SailState :=
+    { systemProject js with
+      regs := (systemProject js).regs.insert Register.mstatus h_sys.rs1_val }
+  have hCheck : check_CSR JoltISA.SystemCSR.mstatus.address Privilege.Machine
+          (csr_access_type csrop.CSRRW (rd == zreg) (rs1 == zreg))
+          (systemProject js) =
+        .ok true (systemProject js) := by
+    exact check_CSR_systemCSR_machine_run js JoltISA.SystemCSR.mstatus
+      (csr_access_type csrop.CSRRW (rd == zreg) (rs1 == zreg))
+  have hReadMstatus :
+      read_CSR JoltISA.SystemCSR.mstatus.address (systemProject js) =
+        .ok (js.vregs JoltISA.mstatusVReg) (systemProject js) := by
+    exact read_CSR_mstatus_run js
+  have hWriteMstatus :
+      write_CSR JoltISA.SystemCSR.mstatus.address h_sys.rs1_val (systemProject js) =
+        .ok (Ok h_sys.rs1_val) sAfterMstatusWrite := by
+    exact write_CSR_mstatus_legalized_run js h_sys.rs1_val
+      h_sys.linked_csrs (h_sys.mstatus_write_legalized rfl)
+  have hWriteCallback :
+      csr_id_write_callback JoltISA.SystemCSR.mstatus.address h_sys.rs1_val
+          sAfterMstatusWrite =
+        .ok () sAfterMstatusWrite := by
+    exact csr_id_write_callback_mstatus_run sAfterMstatusWrite h_sys.rs1_val
+
+  exact csrrw_eq_sail_projected_from_facts js JoltISA.SystemCSR.mstatus
+    rs1 rd h_sys.rs1_val (js.vregs JoltISA.mstatusVReg) sAfterMstatusWrite
+    hSourceSail hCurPrivProject
+    (csrrwProgram_mstatus_project_run js rs1 rd h_sys.rs1_val h_sys.rs1_read)
+    hCheck hReadMstatus hWriteMstatus hWriteCallback
+    (fun hRd => csrrwJoltFinal_mstatus_project_rd_nonzero js rs1 rd h_sys.rs1_val hRd)
+    (fun hRd => csrrwJoltFinal_mstatus_project_rd_zero js rs1 rd h_sys.rs1_val hRd)
 
 private theorem csrrw_mtvec_eq_sail_projected
     (js : SailJoltState) (rs1 rd : regidx)
@@ -1171,7 +1354,7 @@ theorem csrrwProgram_eq_sail_projected
   unfold csrrwProgramEqSailStatement
   cases csr
   · -- `mstatus`
-    sorry
+    exact csrrw_mstatus_eq_sail_projected js rs1 rd h_sys
   · -- `mtvec`
     exact csrrw_mtvec_eq_sail_projected js rs1 rd h_sys
   · -- `mscratch`
