@@ -55,8 +55,6 @@ import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Amoxorw
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sb_main
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sh_main
 import JoltBytecode.InstructionEquivalence.Instructions.StoreFamily.Sw_main
-import JoltBytecode.InstructionEquivalence.Instructions.System.Ecall
-import JoltBytecode.InstructionEquivalence.Instructions.System.Ebreak
 import JoltBytecode.InstructionEquivalence.Instructions.System.Mret
 import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrw
 import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrs
@@ -503,9 +501,9 @@ def equivalenceStatement :
     | .FENCE =>
       Natives.fenceInstrEqSailStatement js _h
     | .ECALL =>
-      System.ecallProgramEqSailStatement js _h
+      False -- WARNING: unwired instruction equivalence
     | .EBREAK =>
-      System.ebreakProgramEqSailStatement js _h
+      False -- WARNING: unwired instruction equivalence
     | .LWU rd rs1 imm =>
       LWU_main.lwuProgramEqSailStatement imm rs1 rd js _h
     | .LD rd rs1 imm =>
@@ -789,14 +787,14 @@ theorem equivalenceStatement_holds :
   -- This will be proved shortly, once we confirm Jolt has the right set of assumptions.
   | .CSRRW rd csr rs1, js, h =>
       System.csrrwProgram_eq_sail_projected js csr rs1 rd h
-  | .ECALL, js, h =>
-      System.ecallProgram_eq_sail_projected js h
-  | .EBREAK, js, h =>
-      System.ebreakProgram_eq_sail_projected js h
   | .CSRRS rd csr rs1, js, h =>
       System.csrrsProgram_eq_sail_projected js csr rs1 rd h
   | .MRET, js, h =>
       System.mretProgram_eq_sail_projected js h
+  | .ECALL, _js, _h => by
+      sorry
+  | .EBREAK, _js, _h => by
+      sorry
    --- Cannot be proven :-( due to opaque axioms for 
    -- load_reservation
    -- cancel_resevation 
