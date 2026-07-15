@@ -1,5 +1,4 @@
 import JoltBytecode.JoltISA.VirtualRegisters
--- NOTE: Some of the assumptions (the OS ones are stale and need review)
 /-!
 # Jolt proof assumptions
 
@@ -232,6 +231,33 @@ structure MtvecVRegMatchesSail (js : SailJoltState) : Prop where
     js.sail.regs.get? Register.mtvec =
       some (js.vregs JoltISA.trapHandlerVReg)
 
+/-- Sail `mscratch` agrees with Jolt's persistent `mscratch` virtual register. -/
+structure MscratchVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mscratch =
+      some (js.vregs JoltISA.mscratchVReg)
+
+/-- Sail `mepc` agrees with Jolt's persistent `mepc` virtual register. -/
+structure MepcVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mepc =
+      some (js.vregs JoltISA.mepcVReg)
+
+/-- Sail `mcause` agrees with Jolt's persistent `mcause` virtual register. -/
+structure McauseVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mcause =
+      some (js.vregs JoltISA.mcauseVReg)
+
+/-- Sail `mtval` agrees with Jolt's persistent `mtval` virtual register. -/
+structure MtvalVRegMatchesSail (js : SailJoltState) : Prop where
+  value_eq :
+    js.sail.regs.get? Register.mtval =
+      some (js.vregs JoltISA.mtvalVReg)
+
+-- vreg == sail.csr ends here 
+
+
 /-- A value written to `mtvec` uses Direct mode, so Sail's `legalize_tvec`
 accepts it unchanged.
 
@@ -246,26 +272,11 @@ Generated Sail source:
 
 The ZeroOS/Jolt boot path writes `_trap_handler` to `mtvec` with `csrw mtvec,
 t0`; ZeroOS defines `_trap_handler` under `.align 2`, which gives 4-byte
-alignment, so the lower two bits are `00`. In generated Sail, those two bits are
-the `mtvec.MODE` field; `00` is `TV_Direct`, and `legalize_tvec` returns Direct
-or Vector values unchanged. For CSRRW, this has to be an assumption on the
-source value being written, not on the old stored `mtvec`, because Sail
-legalizes the new `rs1` value.
+alignment, so the lower two bits are `00`. 
 -/
 structure MtvecWriteDirectMode (value : BitVec 64) : Prop where
   mode_eq : _get_Mtvec_Mode value = 0b00#2
 
-/-- Sail `mscratch` agrees with Jolt's persistent `mscratch` virtual register. -/
-structure MscratchVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mscratch =
-      some (js.vregs JoltISA.mscratchVReg)
-
-/-- Sail `mepc` agrees with Jolt's persistent `mepc` virtual register. -/
-structure MepcVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mepc =
-      some (js.vregs JoltISA.mepcVReg)
 
 /-- A stored `mepc` value is already aligned for Sail's read-side `align_pc`.
 
@@ -315,20 +326,6 @@ stable under that generated-Sail legalizer. -/
 structure MstatusWriteLegalized
     (old value : BitVec 64) (s : SailState) : Prop where
   value_eq : legalize_mstatus old value s = .ok value s
-
-/-- Sail `mcause` agrees with Jolt's persistent `mcause` virtual register. -/
-structure McauseVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mcause =
-      some (js.vregs JoltISA.mcauseVReg)
-
-/-- Sail `mtval` agrees with Jolt's persistent `mtval` virtual register. -/
-structure MtvalVRegMatchesSail (js : SailJoltState) : Prop where
-  value_eq :
-    js.sail.regs.get? Register.mtval =
-      some (js.vregs JoltISA.mtvalVReg)
-
--- vreg == sail.csr ends here 
 
 /- /-- Sail's machine-trap update maps Jolt's fixed `mstatus` virtual register to
 the fixed ZeroOS machine-trap `mstatus` value.
