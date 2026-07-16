@@ -327,73 +327,6 @@ structure MstatusWriteLegalized
     (old value : BitVec 64) (s : SailState) : Prop where
   value_eq : legalize_mstatus old value s = .ok value s
 
-/- /-- Sail's machine-trap update maps Jolt's fixed `mstatus` virtual register to
-the fixed ZeroOS machine-trap `mstatus` value.
-
-WARNING: (No rust) I found no Rust line proving the generated-Sail trap-entry
-update from the current projected `mstatus` computes this fixed value.
--/
-structure MachineTrapMstatusMatches (js : SailJoltState) : Prop where
-  value_eq :
-    Sail.BitVec.updateSubrange
-      (Sail.BitVec.updateSubrange
-        (Sail.BitVec.updateSubrange (js.vregs JoltISA.mstatusVReg) 7 7
-          (_get_Mstatus_MIE (js.vregs JoltISA.mstatusVReg)))
-        3 3 0#1)
-      12 11 (privLevel_to_bits Privilege.Machine) = BitVec.ofNat 64 0x1800
-
-
-/-- Sail's trap-vector helper selects the ECALL target from Jolt's fixed
-trap-handler virtual register.
-
-WARNING: (No rust) I found no Rust line proving generated-Sail `tvec_addr`
-selects this target for the current `mtvec` mode and ECALL cause.
--/
-structure TrapVectorTargetMatches (js : SailJoltState) : Prop where
-  value_eq :
-    tvec_addr (js.vregs JoltISA.trapHandlerVReg)
-        (zero_extend (m := 64)
-          (exceptionType_bits_forwards (ExceptionType.E_M_EnvCall ()))) =
-      some (BitVec.update (js.vregs JoltISA.trapHandlerVReg) 0 0#1)
-
-/-- The ECALL trap target from Jolt's fixed trap-handler virtual register passes
-the compressed-disabled fetch-alignment check.
-
-WARNING: (No rust) I found no Rust line enforcing target bit 1 is zero.
--/
-structure EcallTrapTargetAligned (js : SailJoltState) : Prop where
-  bit1_zero :
-    BitVec.access (BitVec.update (js.vregs JoltISA.trapHandlerVReg) 0 0#1) 1 =
-      0#1
-
-/-- The MRET return target from Jolt's fixed `mepc` virtual register passes the
-compressed-disabled fetch-alignment check.
-
-WARNING: (No rust) I found no Rust line enforcing target bit 1 is zero.
--/
-structure MretReturnTargetAligned (js : SailJoltState) : Prop where
-  bit1_zero :
-    BitVec.access (BitVec.update (js.vregs JoltISA.mepcVReg) 0 0#1) 1 = 0#1
-
-/-- Jolt's fixed `mstatus` virtual register has `MIE = MPIE`.
-
-WARNING: (No rust) I found no Rust line asserting this pre-MRET `MIE = MPIE`
-field condition.
--/
-structure MstatusMieMatchesMpie (js : SailJoltState) : Prop where
-  value_eq :
-    _get_Mstatus_MIE (js.vregs JoltISA.mstatusVReg) =
-      _get_Mstatus_MPIE (js.vregs JoltISA.mstatusVReg)
-
-/-- Jolt's fixed `mstatus` virtual register has `MPIE = 1`.
-
-field condition.
--/
-structure MstatusMpieOne (js : SailJoltState) : Prop where
-  value_eq :
-    _get_Mstatus_MPIE (js.vregs JoltISA.mstatusVReg) = 1#1
--/
-
 /-- Jolt's fixed `mstatus` virtual register has `MPP = Machine`.
 
 Rust source:
@@ -405,32 +338,6 @@ structure MstatusMppMachine (js : SailJoltState) : Prop where
   value_eq :
     _get_Mstatus_MPP (js.vregs JoltISA.mstatusVReg) =
       privLevel_to_bits Privilege.Machine
-
-/-- In ZeroOS/Jolt's restricted MRET model, the generated Sail MRET handler
-matches Jolt's MRET behavior.
-
-Rust/Jolt source:
-`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/mret.rs:7-18`;
-`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/mret.rs:38-44`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/mret.rs:3-23`.
-
-The tracer module documents the ZeroOS/Jolt envelope: M-mode-only execution, no
-interrupt hardware, and MRET implemented as a jump to `mepc` rather than as the
-full architectural `mstatus` postlude. The implementation reads raw `mepc`,
-writes `cpu.pc`, and leaves `mstatus` unchanged. The program expansion follows
-the same model by lowering MRET to one JALR through the proof-facing `mepc`
-virtual register.
-
-This predicate records the bridge assumption needed when generated Sail's full
-MRET handler is compared with Jolt's restricted MRET: the handler succeeds,
-returns Jolt's already-computed MRET target, and leaves the pre-`set_next_pc`
-Sail state unchanged.
--/
-structure MretHandlerMatchesJolt (pc target : BitVec 64) (s : SailState) :
-    Prop where
-  value_eq :
-    exception_handler Privilege.Machine (ctl_result.CTL_MRET ()) pc s =
-      .ok target s
 
 end Assumptions
 

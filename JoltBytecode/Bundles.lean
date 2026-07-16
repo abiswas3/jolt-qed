@@ -265,19 +265,10 @@ structure MretProgramEqSailAssumptions (js : SailJoltState) : Type where
   cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
   pc_readable : Assumptions.SailRegReadable Register.PC js.sail
   misa_readable : Assumptions.SailRegReadable Register.misa js.sail
+  misa_user_enabled : Assumptions.MisaUserEnabled js.sail
+  mstatus_mpp_machine : Assumptions.MstatusMppMachine js
   mepc_read_aligned :
     Assumptions.MepcReadAligned (js.vregs JoltISA.mepcVReg) js.sail
-  mret_handler_matches :
-    ∀ (pc : BitVec 64) (s : SailState),
-      s.regs.get? Register.mepc =
-        some (js.vregs JoltISA.mepcVReg : RegisterType Register.mepc) →
-      s.regs.get? Register.mstatus =
-        some (js.vregs JoltISA.mstatusVReg : RegisterType Register.mstatus) →
-      Assumptions.MretHandlerMatchesJolt pc
-        (BitVec.update
-          (js.vregs JoltISA.mepcVReg + sign_extend (m := 64) (0 : BitVec 12))
-          0 0#1)
-        s
 
 /-- Public assumptions for CSRRW equivalence over the supported System CSR
 whitelist.
