@@ -3,16 +3,7 @@ import JoltBytecode.JoltISA.VirtualRegisters
 # Jolt proof assumptions
 
 This file is the top-level index of primitive assumptions used by the
-instruction-equivalence proofs. It is intentionally assumption-only:
-
-* every exported declaration below is a primitive proof assumption predicate;
-* no theorem declarations or derived facts live here;
-* no dword/window/range helper aliases live here;
-* composed proof-facing bundles live in family `Bundles` modules;
-* exact low-level memory access facts live in
-  `InstructionEquivalence.Memory.Basic`;
-* projections and derived consequences live in `Derived` or family utility
-  files.
+instruction-equivalence proofs. 
 -/
 
 set_option linter.unusedVariables false
@@ -261,15 +252,6 @@ structure MtvalVRegMatchesSail (js : SailJoltState) : Prop where
 /-- A value written to `mtvec` uses Direct mode, so Sail's `legalize_tvec`
 accepts it unchanged.
 
-Jolt source:
-`/Users/ari.biswas/Work-with-A16z/jolt/jolt-sdk/src/runtime/boot.rs:21-28`.
-ZeroOS source:
-`https://github.com/LayerZero-Labs/ZeroOS/blob/main/platforms/spike-platform/src/boot.rs#L13-L19`;
-`https://github.com/LayerZero-Labs/ZeroOS/blob/main/crates/zeroos-arch-riscv/src/trap.rs#L308-L316`.
-Generated Sail source:
-`LeanRV64D/SysRegs.lean:1180-1181`, `LeanRV64D/SysRegs.lean:1210-1223`;
-`LeanRV64D/Types.lean:11089-11093`.
-
 The ZeroOS/Jolt boot path writes `_trap_handler` to `mtvec` with `csrw mtvec,
 t0`; ZeroOS defines `_trap_handler` under `.align 2`, which gives 4-byte
 alignment, so the lower two bits are `00`. 
@@ -280,19 +262,8 @@ structure MtvecWriteDirectMode (value : BitVec 64) : Prop where
 
 /-- A stored `mepc` value is already aligned for Sail's read-side `align_pc`.
 
-ZeroOS/Jolt source:
-`https://github.com/LayerZero-Labs/ZeroOS/blob/main/crates/zeroos-build/src/spec/profiles.rs#L27-L30`;
-`https://github.com/LayerZero-Research/jolt/blob/main/book/src/how/appendix/risc-v.md#L5-L8`;
-`https://github.com/LayerZero-Labs/ZeroOS/blob/main/crates/zeroos-arch-riscv/src/trap.rs#L229-L259`;
-`https://github.com/LayerZero-Research/jolt/blob/main/jolt-sdk/src/runtime/trap.rs#L18-L34`;
-`https://github.com/LayerZero-Research/jolt/blob/main/jolt-sdk/src/runtime/trap.rs#L47-L55`.
-Generated Sail source:
-`LeanRV64D/SysExceptions.lean:224-231`;
-`LeanRV64D/SysRegs.lean:1266-1269`.
-
 Current ZeroOS/Jolt targets are compressed-capable (`+c` / RV64IMAC), so the
-relevant invariant is `mepc[0] = 0`. This predicate records the generated-Sail
-read-side consequence: `align_pc` leaves the stored `mepc` value unchanged.
+relevant invariant is `mepc[0] = 0`. 
 -/
 structure MepcReadAligned (value : BitVec 64) (s : SailState) : Prop where
   value_eq : align_pc value s = .ok value s
@@ -308,18 +279,6 @@ structure MepcWriteLegalized (value : BitVec 64) : Prop where
   value_eq : legalize_xepc value = value
 
 /-- A value written to `mstatus` is already legal in the current Sail state, so
-Sail's `legalize_mstatus` accepts it unchanged.
-
-Jolt CSRRW writes the source value directly into the proof-facing CSR virtual
-register, while CSRRS writes `old CSR | rs1` when `rs1 != x0`:
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrw.rs:17-25`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrw.rs:51-65`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrs.rs:26-35`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrs.rs:61-76`.
-Generated Sail instead writes architectural `mstatus` through
-`legalize_mstatus`:
-`LeanRV64D/ZicsrInsts.lean:11708-11714`;
-`LeanRV64D/SysRegs.lean:994-1070`.
 
 This assumption is the proof boundary that the ZeroOS/Jolt `mstatus` value is
 stable under that generated-Sail legalizer. -/
@@ -331,8 +290,6 @@ structure MstatusWriteLegalized
 
 Rust source:
 `/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/mret.rs:7-18`;
-`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/ecall.rs:8-16`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/ecall.rs:43-51`.
 -/
 structure MstatusMppMachine (js : SailJoltState) : Prop where
   value_eq :
