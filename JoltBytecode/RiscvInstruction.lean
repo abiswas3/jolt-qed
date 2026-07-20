@@ -158,7 +158,6 @@ inductive RiscvInstruction where
   | XORI (rd rs1 : regidx) (imm : BitVec 12)
   | ORI (rd rs1 : regidx) (imm : BitVec 12)
   | ANDI (rd rs1 : regidx) (imm : BitVec 12)
-  | ANDN (rd rs1 : regidx) (imm : BitVec 12)
   | SLLI (rd rs1 : regidx) (shamt : BitVec 6)
   | SRLI (rd rs1 : regidx) (shamt : BitVec 6)
   | SRAI (rd rs1 : regidx) (shamt : BitVec 6)
@@ -305,8 +304,6 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       UnarySourceReadWithLinkedCSRs rs1 js
   | .ANDI _rd rs1 _imm, js =>
       UnarySourceReadWithLinkedCSRs rs1 js
-  | .ANDN _rd rs1 _imm, js =>
-      UnarySourceReadWithLinkedCSRs rs1 js 
   | .ADD _rd rs1 rs2, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SUB _rd rs1 rs2, js =>
@@ -477,8 +474,6 @@ def equivalenceStatement :
       Natives.xoriInstrEqSailStatement imm rs1 rd js _h
     | .ORI rd rs1 imm =>
       Natives.oriInstrEqSailStatement imm rs1 rd js _h
-    | .ANDN rd rs1 imm =>
-      Natives.andnInstrEqSailStatement imm rs1 rd js _h
     | .ANDI rd rs1 imm =>
       Natives.andiInstrEqSailStatement imm rs1 rd js _h
     | .SLLI rd rs1 shamt =>
