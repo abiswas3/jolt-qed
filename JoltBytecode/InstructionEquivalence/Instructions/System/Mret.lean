@@ -195,21 +195,6 @@ private theorem mretProgram_jolt_run
         0 0#1)
   simp only [hWriteScratch, pure, EStateM.pure]
 
-/-- The MRET bundle's restricted-model assumption specializes to the projected
-Sail state used by the RHS generated-Sail handler. -/
-private theorem exception_handler_machine_mret_matches_projected_jolt
-    (js : SailJoltState) (h : MretProgramEqSailAssumptions js)
-    (pc : BitVec 64) :
-    exception_handler Privilege.Machine (ctl_result.CTL_MRET ()) pc
-        (systemProject js) =
-      .ok
-        (BitVec.update
-          (js.vregs JoltISA.mepcVReg + sign_extend (m := 64) (0 : BitVec 12))
-          0 0#1)
-        (systemProject js) := by
-  exact (h.mret_handler_matches pc (systemProject js)
-    (systemProject_mepc_read js) (systemProject_mstatus_read js)).value_eq
-
 /-- MRET's final local scratch write does not affect `systemProject`; only the
 embedded Sail `nextPC` write is projected. -/
 private theorem systemProject_mretJoltFinal
@@ -285,21 +270,11 @@ theorem mretProgram_eq_sail_projected
         some (pc : RegisterType Register.PC) := by
     exact systemProject_pc_read js pc hPCReadable
   simp only [readReg_eq_of_get? Register.PC (systemProject js) pc hPCProject]
-  rw [exception_handler_machine_mret_matches_projected_jolt js h pc]
-  simp only [pure, EStateM.pure]
-  unfold set_next_pc redirect_callback
-  unfold Sail.writeReg PreSail.writeReg
-  simp only [bind, EStateM.bind, pure, EStateM.pure,
-    modify, modifyGet, MonadStateOf.modifyGet, EStateM.modifyGet,
-    systemProjectResult]
-  rw [systemProject_mretJoltFinal js nextPC
-    (BitVec.update
-      (js.vregs JoltISA.mepcVReg + sign_extend (m := 64) (0 : BitVec 12))
-      0 0#1)]
-
-  
-
-
+  -- TODO: prove the real generated-Sail MRET postlude state, or weaken this
+  -- statement so it does not require Sail's architectural `mstatus` updates to
+  -- equal Jolt's restricted `pc := mepc` model.
+  unfold exception_handler
+  sorry 
 end System
 
 end

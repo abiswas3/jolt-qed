@@ -1,19 +1,9 @@
 import JoltBytecode.JoltISA.VirtualRegisters
--- NOTE: Some of the assumptions (the OS ones are stale and need review)
 /-!
 # Jolt proof assumptions
 
 This file is the top-level index of primitive assumptions used by the
-instruction-equivalence proofs. It is intentionally assumption-only:
-
-* every exported declaration below is a primitive proof assumption predicate;
-* no theorem declarations or derived facts live here;
-* no dword/window/range helper aliases live here;
-* composed proof-facing bundles live in family `Bundles` modules;
-* exact low-level memory access facts live in
-  `InstructionEquivalence.Memory.Basic`;
-* projections and derived consequences live in `Derived` or family utility
-  files.
+instruction-equivalence proofs. 
 -/
 
 set_option linter.unusedVariables false
@@ -232,29 +222,6 @@ structure MtvecVRegMatchesSail (js : SailJoltState) : Prop where
     js.sail.regs.get? Register.mtvec =
       some (js.vregs JoltISA.trapHandlerVReg)
 
-/-- A value written to `mtvec` uses Direct mode, so Sail's `legalize_tvec`
-accepts it unchanged.
-
-Jolt source:
-`/Users/ari.biswas/Work-with-A16z/jolt/jolt-sdk/src/runtime/boot.rs:21-28`.
-ZeroOS source:
-`https://github.com/LayerZero-Labs/ZeroOS/blob/main/platforms/spike-platform/src/boot.rs#L13-L19`;
-`https://github.com/LayerZero-Labs/ZeroOS/blob/main/crates/zeroos-arch-riscv/src/trap.rs#L308-L316`.
-Generated Sail source:
-`LeanRV64D/SysRegs.lean:1180-1181`, `LeanRV64D/SysRegs.lean:1210-1223`;
-`LeanRV64D/Types.lean:11089-11093`.
-
-The ZeroOS/Jolt boot path writes `_trap_handler` to `mtvec` with `csrw mtvec,
-t0`; ZeroOS defines `_trap_handler` under `.align 2`, which gives 4-byte
-alignment, so the lower two bits are `00`. In generated Sail, those two bits are
-the `mtvec.MODE` field; `00` is `TV_Direct`, and `legalize_tvec` returns Direct
-or Vector values unchanged. For CSRRW, this has to be an assumption on the
-source value being written, not on the old stored `mtvec`, because Sail
-legalizes the new `rs1` value.
--/
-structure MtvecWriteDirectMode (value : BitVec 64) : Prop where
-  mode_eq : _get_Mtvec_Mode value = 0b00#2
-
 /-- Sail `mscratch` agrees with Jolt's persistent `mscratch` virtual register. -/
 structure MscratchVRegMatchesSail (js : SailJoltState) : Prop where
   value_eq :
@@ -266,55 +233,6 @@ structure MepcVRegMatchesSail (js : SailJoltState) : Prop where
   value_eq :
     js.sail.regs.get? Register.mepc =
       some (js.vregs JoltISA.mepcVReg)
-
-/-- A stored `mepc` value is already aligned for Sail's read-side `align_pc`.
-
-ZeroOS/Jolt source:
-`https://github.com/LayerZero-Labs/ZeroOS/blob/main/crates/zeroos-build/src/spec/profiles.rs#L27-L30`;
-`https://github.com/LayerZero-Research/jolt/blob/main/book/src/how/appendix/risc-v.md#L5-L8`;
-`https://github.com/LayerZero-Labs/ZeroOS/blob/main/crates/zeroos-arch-riscv/src/trap.rs#L229-L259`;
-`https://github.com/LayerZero-Research/jolt/blob/main/jolt-sdk/src/runtime/trap.rs#L18-L34`;
-`https://github.com/LayerZero-Research/jolt/blob/main/jolt-sdk/src/runtime/trap.rs#L47-L55`.
-Generated Sail source:
-`LeanRV64D/SysExceptions.lean:224-231`;
-`LeanRV64D/SysRegs.lean:1266-1269`.
-
-Current ZeroOS/Jolt targets are compressed-capable (`+c` / RV64IMAC), so the
-relevant invariant is `mepc[0] = 0`. This predicate records the generated-Sail
-read-side consequence: `align_pc` leaves the stored `mepc` value unchanged.
--/
-structure MepcReadAligned (value : BitVec 64) (s : SailState) : Prop where
-  value_eq : align_pc value s = .ok value s
-
-/-- A value written to `mepc` is already legal, so Sail's `legalize_xepc`
-accepts it unchanged.
-
-This is the write-side counterpart of `MepcReadAligned`: CSRRW writes the new
-`rs1` value, so the assumption must be about that source value rather than only
-the old stored `mepc`.
--/
-structure MepcWriteLegalized (value : BitVec 64) : Prop where
-  value_eq : legalize_xepc value = value
-
-/-- A value written to `mstatus` is already legal in the current Sail state, so
-Sail's `legalize_mstatus` accepts it unchanged.
-
-Jolt CSRRW writes the source value directly into the proof-facing CSR virtual
-register, while CSRRS writes `old CSR | rs1` when `rs1 != x0`:
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrw.rs:17-25`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrw.rs:51-65`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrs.rs:26-35`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/csrrs.rs:61-76`.
-Generated Sail instead writes architectural `mstatus` through
-`legalize_mstatus`:
-`LeanRV64D/ZicsrInsts.lean:11708-11714`;
-`LeanRV64D/SysRegs.lean:994-1070`.
-
-This assumption is the proof boundary that the ZeroOS/Jolt `mstatus` value is
-stable under that generated-Sail legalizer. -/
-structure MstatusWriteLegalized
-    (old value : BitVec 64) (s : SailState) : Prop where
-  value_eq : legalize_mstatus old value s = .ok value s
 
 /-- Sail `mcause` agrees with Jolt's persistent `mcause` virtual register. -/
 structure McauseVRegMatchesSail (js : SailJoltState) : Prop where
@@ -330,110 +248,53 @@ structure MtvalVRegMatchesSail (js : SailJoltState) : Prop where
 
 -- vreg == sail.csr ends here 
 
-/- /-- Sail's machine-trap update maps Jolt's fixed `mstatus` virtual register to
-the fixed ZeroOS machine-trap `mstatus` value.
 
-WARNING: (No rust) I found no Rust line proving the generated-Sail trap-entry
-update from the current projected `mstatus` computes this fixed value.
+/-- A value written to `mtvec` uses Direct mode, so Sail's `legalize_tvec`
+accepts it unchanged.
+
+The ZeroOS/Jolt boot path writes `_trap_handler` to `mtvec` with `csrw mtvec,
+t0`; ZeroOS defines `_trap_handler` under `.align 2`, which gives 4-byte
+alignment, so the lower two bits are `00`. 
 -/
-structure MachineTrapMstatusMatches (js : SailJoltState) : Prop where
-  value_eq :
-    Sail.BitVec.updateSubrange
-      (Sail.BitVec.updateSubrange
-        (Sail.BitVec.updateSubrange (js.vregs JoltISA.mstatusVReg) 7 7
-          (_get_Mstatus_MIE (js.vregs JoltISA.mstatusVReg)))
-        3 3 0#1)
-      12 11 (privLevel_to_bits Privilege.Machine) = BitVec.ofNat 64 0x1800
+structure MtvecWriteDirectMode (value : BitVec 64) : Prop where
+  mode_eq : _get_Mtvec_Mode value = 0b00#2
 
 
-/-- Sail's trap-vector helper selects the ECALL target from Jolt's fixed
-trap-handler virtual register.
+/-- A stored `mepc` value is already aligned for Sail's read-side `align_pc`.
 
-WARNING: (No rust) I found no Rust line proving generated-Sail `tvec_addr`
-selects this target for the current `mtvec` mode and ECALL cause.
+Current ZeroOS/Jolt targets are compressed-capable (`+c` / RV64IMAC), so the
+relevant invariant is `mepc[0] = 0`. 
 -/
-structure TrapVectorTargetMatches (js : SailJoltState) : Prop where
-  value_eq :
-    tvec_addr (js.vregs JoltISA.trapHandlerVReg)
-        (zero_extend (m := 64)
-          (exceptionType_bits_forwards (ExceptionType.E_M_EnvCall ()))) =
-      some (BitVec.update (js.vregs JoltISA.trapHandlerVReg) 0 0#1)
+structure MepcReadAligned (value : BitVec 64) (s : SailState) : Prop where
+  value_eq : align_pc value s = .ok value s
 
-/-- The ECALL trap target from Jolt's fixed trap-handler virtual register passes
-the compressed-disabled fetch-alignment check.
+/-- A value written to `mepc` is already legal, so Sail's `legalize_xepc`
+accepts it unchanged.
 
-WARNING: (No rust) I found no Rust line enforcing target bit 1 is zero.
+This is the write-side counterpart of `MepcReadAligned`: CSRRW writes the new
+`rs1` value, so the assumption must be about that source value rather than only
+the old stored `mepc`.
 -/
-structure EcallTrapTargetAligned (js : SailJoltState) : Prop where
-  bit1_zero :
-    BitVec.access (BitVec.update (js.vregs JoltISA.trapHandlerVReg) 0 0#1) 1 =
-      0#1
+structure MepcWriteLegalized (value : BitVec 64) : Prop where
+  value_eq : legalize_xepc value = value
 
-/-- The MRET return target from Jolt's fixed `mepc` virtual register passes the
-compressed-disabled fetch-alignment check.
+/-- A value written to `mstatus` is already legal in the current Sail state, so
 
-WARNING: (No rust) I found no Rust line enforcing target bit 1 is zero.
--/
-structure MretReturnTargetAligned (js : SailJoltState) : Prop where
-  bit1_zero :
-    BitVec.access (BitVec.update (js.vregs JoltISA.mepcVReg) 0 0#1) 1 = 0#1
-
-/-- Jolt's fixed `mstatus` virtual register has `MIE = MPIE`.
-
-WARNING: (No rust) I found no Rust line asserting this pre-MRET `MIE = MPIE`
-field condition.
--/
-structure MstatusMieMatchesMpie (js : SailJoltState) : Prop where
-  value_eq :
-    _get_Mstatus_MIE (js.vregs JoltISA.mstatusVReg) =
-      _get_Mstatus_MPIE (js.vregs JoltISA.mstatusVReg)
-
-/-- Jolt's fixed `mstatus` virtual register has `MPIE = 1`.
-
-field condition.
--/
-structure MstatusMpieOne (js : SailJoltState) : Prop where
-  value_eq :
-    _get_Mstatus_MPIE (js.vregs JoltISA.mstatusVReg) = 1#1
--/
+This assumption is the proof boundary that the ZeroOS/Jolt `mstatus` value is
+stable under that generated-Sail legalizer. -/
+structure MstatusWriteLegalized
+    (old value : BitVec 64) (s : SailState) : Prop where
+  value_eq : legalize_mstatus old value s = .ok value s
 
 /-- Jolt's fixed `mstatus` virtual register has `MPP = Machine`.
 
 Rust source:
 `/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/mret.rs:7-18`;
-`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/ecall.rs:8-16`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/ecall.rs:43-51`.
 -/
 structure MstatusMppMachine (js : SailJoltState) : Prop where
   value_eq :
     _get_Mstatus_MPP (js.vregs JoltISA.mstatusVReg) =
       privLevel_to_bits Privilege.Machine
-
-/-- In ZeroOS/Jolt's restricted MRET model, the generated Sail MRET handler
-matches Jolt's MRET behavior.
-
-Rust/Jolt source:
-`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/mret.rs:7-18`;
-`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/mret.rs:38-44`;
-`/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/control_flow/mret.rs:3-23`.
-
-The tracer module documents the ZeroOS/Jolt envelope: M-mode-only execution, no
-interrupt hardware, and MRET implemented as a jump to `mepc` rather than as the
-full architectural `mstatus` postlude. The implementation reads raw `mepc`,
-writes `cpu.pc`, and leaves `mstatus` unchanged. The program expansion follows
-the same model by lowering MRET to one JALR through the proof-facing `mepc`
-virtual register.
-
-This predicate records the bridge assumption needed when generated Sail's full
-MRET handler is compared with Jolt's restricted MRET: the handler succeeds,
-returns Jolt's already-computed MRET target, and leaves the pre-`set_next_pc`
-Sail state unchanged.
--/
-structure MretHandlerMatchesJolt (pc target : BitVec 64) (s : SailState) :
-    Prop where
-  value_eq :
-    exception_handler Privilege.Machine (ctl_result.CTL_MRET ()) pc s =
-      .ok target s
 
 end Assumptions
 
