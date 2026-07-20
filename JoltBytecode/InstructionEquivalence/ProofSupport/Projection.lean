@@ -420,9 +420,9 @@ theorem systemProjectResult_pure_retire_after_xreg_write
     (value : BitVec 64)
     (hlinked : LinkedCSRs js)
     (hwrite : wX_bits rd value js.sail = .ok () s') :
-    System.systemProjectResult
-      (((pure RETIRE_SUCCESS : JoltMonad ExecutionResult)
-        ({ sail := s', vregs := js.vregs } : SailJoltState)))
+    System.systemProjectResult (
+     (pure RETIRE_SUCCESS : JoltMonad ExecutionResult) ({ sail := s', vregs := js.vregs } : SailJoltState)
+     ) 
     =
     ((pure RETIRE_SUCCESS : SailM ExecutionResult) s') := by
   have h_project_initial : System.systemProject js = js.sail :=
