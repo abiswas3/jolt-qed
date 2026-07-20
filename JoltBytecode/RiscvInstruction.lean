@@ -782,8 +782,6 @@ theorem equivalenceStatement_holds :
       Natives.bgeuInstr_eq_sail imm rs2 rs1 js h
   | .FENCE, js, h =>
       Natives.fenceInstr_eq_sail js h
-  -- NOTE: Re-do the modelling of the jolt semantics 
-  -- Mstatus is still sorried for CSRRW and CSRRS due to complicated legalise monad.
   -- This will be proved shortly, once we confirm Jolt has the right set of assumptions.
   | .CSRRW rd csr rs1, js, h =>
       System.csrrwProgram_eq_sail_projected js csr rs1 rd h
