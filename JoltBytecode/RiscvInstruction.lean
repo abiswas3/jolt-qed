@@ -61,6 +61,7 @@ import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrs
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Add
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Addi
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.And
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Andn
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Andi
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Auipc
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Beq
@@ -157,6 +158,7 @@ inductive RiscvInstruction where
   | XORI (rd rs1 : regidx) (imm : BitVec 12)
   | ORI (rd rs1 : regidx) (imm : BitVec 12)
   | ANDI (rd rs1 : regidx) (imm : BitVec 12)
+  | ANDN (rd rs1 : regidx) (imm : BitVec 12)
   | SLLI (rd rs1 : regidx) (shamt : BitVec 6)
   | SRLI (rd rs1 : regidx) (shamt : BitVec 6)
   | SRAI (rd rs1 : regidx) (shamt : BitVec 6)
@@ -170,6 +172,7 @@ inductive RiscvInstruction where
   | SRA (rd rs1 rs2 : regidx)
   | OR (rd rs1 rs2 : regidx)
   | AND (rd rs1 rs2 : regidx)
+  | ANDN (rd rs1 rs2 : regidx)
   | FENCE
   | ECALL
   | EBREAK
@@ -302,6 +305,8 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       UnarySourceReadWithLinkedCSRs rs1 js
   | .ANDI _rd rs1 _imm, js =>
       UnarySourceReadWithLinkedCSRs rs1 js
+  | .ANDN _rd rs1 _imm, js =>
+      UnarySourceReadWithLinkedCSRs rs1 js 
   | .ADD _rd rs1 rs2, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SUB _rd rs1 rs2, js =>
@@ -315,6 +320,8 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
   | .OR _rd rs1 rs2, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .AND _rd rs1 rs2, js =>
+      BinarySourceReadWithLinkedCSRs rs2 rs1 js
+  | .ANDN _rd rs1 rs2, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .SLL _rd rs1 rs2, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
@@ -470,6 +477,8 @@ def equivalenceStatement :
       Natives.xoriInstrEqSailStatement imm rs1 rd js _h
     | .ORI rd rs1 imm =>
       Natives.oriInstrEqSailStatement imm rs1 rd js _h
+    | .ANDN rd rs1 imm =>
+      Natives.andnInstrEqSailStatement imm rs1 rd js _h
     | .ANDI rd rs1 imm =>
       Natives.andiInstrEqSailStatement imm rs1 rd js _h
     | .SLLI rd rs1 shamt =>
@@ -498,6 +507,8 @@ def equivalenceStatement :
       Natives.orInstrEqSailStatement rs2 rs1 rd js _h
     | .AND rd rs1 rs2 =>
       Natives.andInstrEqSailStatement rs2 rs1 rd js _h
+    | .ANDN rd rs1 rs2 =>
+      Natives.andnInstrEqSailStatement rs2 rs1 rd js _h
     | .FENCE =>
       Natives.fenceInstrEqSailStatement js _h
     | .ECALL =>
@@ -690,6 +701,8 @@ theorem equivalenceStatement_holds :
       Natives.orInstr_eq_sail rs2 rs1 rd js h
   | .AND rd rs1 rs2, js, h =>
       Natives.andInstr_eq_sail rs2 rs1 rd js h
+  | .ANDN rd rs1 rs2, js, h =>
+      Natives.andnInstr_eq_sail rs2 rs1 rd js h
   | .LWU rd rs1 imm, js, h =>
       LWU_main.lwuProgram_eq_sail imm rs1 rd js h
   | .LD rd rs1 imm, js, h =>
@@ -787,8 +800,11 @@ theorem equivalenceStatement_holds :
       System.csrrwProgram_eq_sail_projected js csr rs1 rd h
   | .CSRRS rd csr rs1, js, h =>
       System.csrrsProgram_eq_sail_projected js csr rs1 rd h
+  -- Jolt does not support User mode even with user extension enabled.
+  -- See: https://randomwalks.xyz/blog/csrrw-bug/#mret-issue
   | .MRET, js, h =>
       System.mretProgram_eq_sail_projected js h
+  -- Sail side just returns Trap (cannot be proven)
   | .ECALL, _js, _h => by
       sorry
   | .EBREAK, _js, _h => by
