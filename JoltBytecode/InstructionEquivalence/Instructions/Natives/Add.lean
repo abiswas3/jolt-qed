@@ -52,9 +52,6 @@ theorem addInstr_eq_sail
    (op h.rs1_val h.rs2_val)
     h.linkedCSRs h_write
 
-
-
-
 end Natives
 
 end
