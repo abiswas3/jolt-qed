@@ -27,17 +27,13 @@ noncomputable section
 -- ============================================================================
 
 /-- Assumptions for an instruction that reads one architectural source register. -/
-structure UnarySourceReadAssumptions (rs1 : regidx) (js : SailJoltState) where
-  rs1_val : BitVec 64
-  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+abbrev UnarySourceReadAssumptions (rs1 : regidx) (js : SailJoltState) :=
+  Assumptions.UnarySourceReadAssumptions rs1 js.sail
 
 /-- Assumptions for an instruction that reads two architectural source registers. -/
-structure BinarySourceReadAssumptions
-    (rs2 rs1 : regidx) (js : SailJoltState) where
-  rs1_val : BitVec 64
-  rs1_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
-  rs2_val : BitVec 64
-  rs2_read : rX_bits rs2 js.sail = .ok rs2_val js.sail
+abbrev BinarySourceReadAssumptions
+    (rs2 rs1 : regidx) (js : SailJoltState) :=
+  Assumptions.BinarySourceReadAssumptions rs2 rs1 js.sail
 
 -- ============================================================================
 -- CSR-link bundles
@@ -259,6 +255,21 @@ def AmoWordProgramEqSailAssumptions.rdReadable
 
 namespace System
 
+/-- Public assumptions for MRET equivalence while the proof shape is being
+validated.
+
+The bundle records the generated-Sail register lookups needed by MRET together
+with the machine-mode precondition required by Sail's `execute_MRET` path. -/
+structure MretProgramEqSailAssumptions (js : SailJoltState) : Type where
+  nextPC_readable : Assumptions.SailRegReadable Register.nextPC js.sail
+  cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
+  pc_readable : Assumptions.SailRegReadable Register.PC js.sail
+  misa_readable : Assumptions.SailRegReadable Register.misa js.sail
+  misa_user_enabled : Assumptions.MisaUserEnabled js.sail
+  mstatus_mpp_machine : Assumptions.MstatusMppMachine js
+  mepc_read_aligned :
+    Assumptions.MepcReadAligned (js.vregs JoltISA.mepcVReg) js.sail
+
 /-- Public assumptions for CSRRW equivalence over the supported System CSR
 whitelist.
 
@@ -268,10 +279,59 @@ machine-mode execution envelope, and the decoded six-CSR whitelist carried by
 callback neutrality, and projected `rd` writeback are derived in the CSRRW proof
 file. -/
 structure CsrrwSystemAssumptions
-    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx) :
-    Type where
-  rs1_val : BitVec 64
-  source_read : rX_bits rs1 js.sail = .ok rs1_val js.sail
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
+    extends Assumptions.UnarySourceReadAssumptions rs1 js.sail where
+  mtvec_write_direct :
+    csr = JoltISA.SystemCSR.mtvec →
+      Assumptions.MtvecWriteDirectMode rs1_val
+  mepc_read_aligned :
+    csr = JoltISA.SystemCSR.mepc →
+      Assumptions.MepcReadAligned (js.vregs JoltISA.mepcVReg) js.sail
+  mepc_write_legalized :
+    csr = JoltISA.SystemCSR.mepc →
+      Assumptions.MepcWriteLegalized rs1_val
+  mstatus_write_legalized :
+    csr = JoltISA.SystemCSR.mstatus →
+      Assumptions.MstatusWriteLegalized
+        (js.vregs JoltISA.mstatusVReg) rs1_val js.sail
+  cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
+  linked_csrs :
+    Assumptions.MstatusVRegMatchesSail js ∧
+    Assumptions.MtvecVRegMatchesSail js ∧
+    Assumptions.MscratchVRegMatchesSail js ∧
+    Assumptions.MepcVRegMatchesSail js ∧
+    Assumptions.McauseVRegMatchesSail js ∧
+    Assumptions.MtvalVRegMatchesSail js
+
+/-- Public assumptions for CSRRS equivalence over the supported System CSR
+whitelist.
+
+This has the same envelope as `CsrrwSystemAssumptions`, except CSRRS writes
+`old CSR | rs1` when `rs1 != x0`, so write-side legalization assumptions are
+stated over that read-set value. -/
+structure CsrrsSystemAssumptions
+    (js : SailJoltState) (csr : JoltISA.SystemCSR) (rs1 rd : regidx)
+    extends Assumptions.UnarySourceReadAssumptions rs1 js.sail where
+  mtvec_write_direct :
+    csr = JoltISA.SystemCSR.mtvec →
+      (rs1 == zreg) = false →
+        Assumptions.MtvecWriteDirectMode
+          (js.vregs (JoltISA.SystemCSR.vreg csr) ||| rs1_val)
+  mepc_read_aligned :
+    csr = JoltISA.SystemCSR.mepc →
+      Assumptions.MepcReadAligned (js.vregs JoltISA.mepcVReg) js.sail
+  mepc_write_legalized :
+    csr = JoltISA.SystemCSR.mepc →
+      (rs1 == zreg) = false →
+        Assumptions.MepcWriteLegalized
+          (js.vregs (JoltISA.SystemCSR.vreg csr) ||| rs1_val)
+  mstatus_write_legalized :
+    csr = JoltISA.SystemCSR.mstatus →
+      (rs1 == zreg) = false →
+        Assumptions.MstatusWriteLegalized
+          (js.vregs JoltISA.mstatusVReg)
+          (js.vregs (JoltISA.SystemCSR.vreg csr) ||| rs1_val)
+          js.sail
   cur_privilege_machine : Assumptions.CurPrivilegeMachine js.sail
   linked_csrs :
     Assumptions.MstatusVRegMatchesSail js ∧

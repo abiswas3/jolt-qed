@@ -47,7 +47,7 @@ theorem addInstr_eq_sail
   -- cutting through the EstateM match madness
   rw [bind_after_success_of_readSrc_xreg rs1 js h.rs1_val h.rs1_read] -- read of rs1 succeeds 
   rw [bind_after_success_of_readSrc_xreg rs2 js h.rs2_val h.rs2_read] -- read of rs2 succeeds 
-  rw [bind_after_success_of_writeDst_xreg rd js _ s' h_write _] -- write succeeds and the value is interpreted. 
+  rw [bind_after_success_of_writeDst_xreg rd js (h.rs1_val + h.rs2_val) s' h_write _] -- write succeeds and the value is interpreted. 
   exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
    (op h.rs1_val h.rs2_val)
     h.linkedCSRs h_write
