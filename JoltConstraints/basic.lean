@@ -1,65 +1,74 @@
 import JoltBytecode.JoltISA.Semantics
 
-open Sail PreSail LeanRV64D.Functions
-
 /-!
-# Shared definitions for Jolt constraints
+# Jolt ISA execution traces
 
-Only definitions that are shared by more than one constraint belong here.
-The power-of-two trace domain and polynomial/sum-check layer will be added when
-they are actually used.
+This file contains only the semantic trace used by the constraint layer.
+Correct execution is defined exclusively by the existing `JoltISA.execInstr`.
 -/
+
+open Sail PreSail LeanRV64D.Functions
 
 namespace JoltConstraints
 
 universe u
 
-/-- A trace column with one value at each of `T` rows. -/
+/-- A column with one value at each of `T` trace rows. -/
 abbrev Column (T : Nat) (α : Type u) : Type u :=
   Fin T → α
 
-/-- Register width of the current Jolt ISA model. -/
+/-- Register width of the current Jolt ISA. -/
 abbrev Xlen : Nat := 64
 
-/-- The trace length assumption needed by the later sum-check layer. -/
-def IsPowerOfTwo (T : Nat) : Prop :=
-  ∃ n : Nat, T = 2 ^ n
-
-/-- State index at the beginning of execution row `i`. -/
+/-- Index of the machine state immediately before row `i`. -/
 def currentStateIndex {T : Nat} (i : Fin T) : Fin (T + 1) :=
   ⟨i, Nat.lt_trans i.isLt (Nat.lt_succ_self T)⟩
 
-/-- State index immediately after execution row `i`. -/
+/-- Index of the machine state immediately after row `i`. -/
 def nextStateIndex {T : Nat} (i : Fin T) : Fin (T + 1) :=
   ⟨i + 1, Nat.succ_lt_succ i.isLt⟩
 
+/-- A destination whose written value can be recovered from the post-state. -/
+def DestinationRecorded : JoltISA.Dst → Prop
+  | .vreg _ => True
+  | .xreg rd => rd ≠ regidx.Regidx 0
+
 /--
-A dynamic execution trace has `T` instructions and `T + 1` machine states.
+The final-trace row invariant currently needed by the constraint layer.
+
+The real tracer replaces a pure-writeback `AND` whose architectural
+destination is `x0` by its `ADDI x0, x0, 0` no-op row. As more instruction
+constraints are added, this predicate is where their corresponding final-row
+conditions belong.
 -/
-structure ExecutionTrace (T : Nat) where
+def FinalTraceRow : JoltISA.Instr → Prop
+  | .AND dst _ _ => DestinationRecorded dst
+  | _ => True
+
+/--
+An honest Jolt ISA trace.
+
+The trace stores `T` instructions and `T + 1` states. The `executes` field says
+that every adjacent pair of states is related by the existing Jolt ISA
+semantics. No instruction semantics are restated in the constraint layer.
+-/
+structure JoltISATrace (T : Nat) where
   instr : Column T JoltISA.Instr
   state : Column (T + 1) SailJoltState
+  executes : ∀ i : Fin T,
+    (JoltISA.execInstr (instr i)).run (state (currentStateIndex i)) =
+      .ok RETIRE_SUCCESS (state (nextStateIndex i))
+  /-- Every row satisfies the final-tracer facts currently modelled. -/
+  finalRow : ∀ i : Fin T, FinalTraceRow (instr i)
 
-def ExecutionTrace.preState {T : Nat}
-    (trace : ExecutionTrace T) (i : Fin T) : SailJoltState :=
+/-- State immediately before execution row `i`. -/
+def JoltISATrace.preState {T : Nat}
+    (trace : JoltISATrace T) (i : Fin T) : SailJoltState :=
   trace.state (currentStateIndex i)
 
-def ExecutionTrace.postState {T : Nat}
-    (trace : ExecutionTrace T) (i : Fin T) : SailJoltState :=
+/-- State immediately after execution row `i`. -/
+def JoltISATrace.postState {T : Nat}
+    (trace : JoltISATrace T) (i : Fin T) : SailJoltState :=
   trace.state (nextStateIndex i)
-
-/-- One successful step according to the existing JoltISA semantics. -/
-def InstructionStep
-    (instr : JoltISA.Instr) (preState postState : SailJoltState) : Prop :=
-  (JoltISA.execInstr instr).run preState =
-    .ok RETIRE_SUCCESS postState
-
-/-- Every row follows the existing `JoltISA.execInstr` semantics. -/
-def ExecutionTrace.Executes {T : Nat} (trace : ExecutionTrace T) : Prop :=
-  ∀ i : Fin T,
-    InstructionStep
-      (trace.instr i)
-      (trace.preState i)
-      (trace.postState i)
 
 end JoltConstraints
