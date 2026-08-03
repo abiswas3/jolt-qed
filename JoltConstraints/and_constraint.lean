@@ -1,93 +1,196 @@
 import JoltConstraints.basic
 
 /-!
-# AND Jolt constraint
+# The necessary AND constraint
 
-This file contains the algebraic Jolt constraint for the AND lookup only.
+The file has three parts:
 
-It does not say how the witness columns were produced from a CPU trace.  Those
-are tracing constraints and live in `JoltConstraints.and_tracing`.
+1. `JoltData` lists the initial subset of prover-supplied Jolt data structures;
+2. the tracer maps an execution trace to those data structures;
+3. `ANDConstraint` is the equation from `spec/jolt-constraints.md`;
+4. `ANDConstraint_isNecessary` states that correct AND execution implies that
+   the traced data satisfies the constraint.
+
+No sufficiency claim is made here.
 -/
 
 namespace JoltConstraints
 
 open scoped BigOperators
 
-/-! ## Witness Columns Used By The Jolt Constraint -/
+universe u
 
-/-- Number of rows in the AND lookup table: one row for each `rs1 || rs2`. -/
-abbrev AND_TableSize : Nat :=
-  2 ^ (2 * Xlen)
+/-! ## Initial subset of the Jolt data structures -/
 
-/-- One lookup-address row over the AND table. -/
-abbrev AND_LookupAddressRow (F : Type) : Type :=
-  Column AND_TableSize F
+/-- `K = 2^128`, the number of possible AND lookup keys. -/
+abbrev ANDTableSize : Nat := 2 ^ 128
 
-/-- The `T x K` lookup-address matrix, with `K = 2^(2 * Xlen)`. -/
-abbrev AND_RA_matrix (T : Nat) (F : Type) : Type :=
-  Column T (AND_LookupAddressRow F)
+/-- One lookup key is an index into the `2^128` table rows. -/
+abbrev ANDLookupKey : Type := Fin ANDTableSize
 
-/-- The algebraic AND lookup table used by the polynomial constraint. -/
-structure AND_LookupTable (F : Type) where
-  value : Column AND_TableSize F
+/-- A lookup vector indexed by all 128-bit keys. -/
+abbrev ANDLookupVector (F : Type u) : Type u :=
+  ANDLookupKey → F
 
-/--
-The algebraic witness columns that the AND Jolt constraint directly reads.
-
-These are field/ring-valued columns. BitVec source values and trace decoding are
-handled by the tracing layer, not by this structure.
--/
-structure AND_Witness (T : Nat) (F : Type) where
-  AND_FLAG : FlagColumn T F
-  RDVal : Column T F
-  RA_matrix : AND_RA_matrix T F
-
-/-! ## The Jolt Constraint -/
-
-/-- Actual dot product appearing in the lookup constraint: `sum_k ra[k] * T_AND[k]`. -/
-noncomputable def AND_TableDot
-    {F : Type} [Ring F]
-    (table : AND_LookupTable F) (addressRow : AND_LookupAddressRow F) : F :=
-  Finset.univ.sum (fun k : Fin AND_TableSize =>
-    addressRow k * table.value k)
+/-- The fixed field-valued lookup table `T_AND`. -/
+abbrev ANDTable (F : Type u) : Type u :=
+  ANDLookupVector F
 
 /--
-The AND Jolt constraint, literally:
+The initial subset of the prover-supplied Jolt data structures.
 
-`AND_FLAG[i] * (RDVal[i] - sum_k RA_matrix[i,k] * T_AND[k]) = 0`.
+These fields record claims; their types alone do not establish that the claims
+are true or that field-valued flags are Boolean. Later constraints will enforce
+those facts.
 -/
-def AND_JoltConstraint {T : Nat} {F : Type} [Ring F]
-    (w : AND_Witness T F) (table : AND_LookupTable F) : Prop :=
-  forall i : Fin T,
-    w.AND_FLAG i * (w.RDVal i - AND_TableDot table (w.RA_matrix i)) = 0
+structure JoltData (T : Nat) (F : Type u) where
+  /-- The instruction the prover claims was executed at row `i`. -/
+  trace : Column T JoltISA.Instr
+  /-- `AND_FLAG[i] = 1` means the prover claims `trace[i]` was an AND. -/
+  AND_FLAG : Column T F
+  /-- The encoded value the prover claims was written at row `i`. -/
+  RD_val : Column T F
+  /-- The prover's `T × 2^128` lookup-address matrix. -/
+  ra : Column T (ANDLookupVector F)
 
-/-- Named package for the AND Jolt constraint layer. -/
-structure AND_JoltConstraintsHold {T : Nat} {F : Type} [Ring F]
-    (w : AND_Witness T F) (table : AND_LookupTable F) : Prop where
-  dotProduct : AND_JoltConstraint w table
+/-- Whether an instruction is an AND instruction. -/
+def isAND : JoltISA.Instr → Bool
+  | .AND _ _ _ => true
+  | _ => false
+
+/-- The proposition asserted by setting `AND_FLAG[i]` to one. -/
+def JoltData.ClaimsAND {T : Nat} {F : Type u} [One F]
+    (data : JoltData T F) (i : Fin T) : Prop :=
+  data.AND_FLAG i = 1
+
+/-- The claimed AND flag is sound with respect to the claimed instruction trace. -/
+def ANDFlagSound {T : Nat} {F : Type u} [One F]
+    (data : JoltData T F) : Prop :=
+  ∀ i : Fin T,
+    data.ClaimsAND i → isAND (data.trace i) = true
+
+/-! ## The constraint, stated literally -/
 
 /--
-Immediate consequence of the Jolt constraint on an active row.
+The constraint from the specification:
 
-This is not a second constraint. It is just algebraic unpacking of
-`AND_FLAG[i] * (RDVal[i] - dot) = 0` under `AND_FLAG[i] = 1`.
+`AND_FLAG[i] * (RD_val[i] - ∑ k, ra[i,k] * T_AND[k]) = 0`.
 -/
-theorem AND_JoltConstraint.eq_of_flag_one
-    {T : Nat} {F : Type} [Ring F]
-    {w : AND_Witness T F} {table : AND_LookupTable F}
-    (hConstraint : AND_JoltConstraint w table)
-    {i : Fin T} (hFlag : w.AND_FLAG i = 1) :
-    w.RDVal i = AND_TableDot table (w.RA_matrix i) := by
-  have h := hConstraint i
-  rw [hFlag] at h
-  exact sub_eq_zero.mp (by simpa using h)
+def ANDConstraint {T : Nat} {F : Type u} [Field F]
+    (data : JoltData T F) (T_AND : ANDTable F) : Prop :=
+  ∀ i : Fin T,
+    data.AND_FLAG i *
+      (data.RD_val i -
+        ∑ k : ANDLookupKey, data.ra i k * T_AND k) = 0
 
-theorem AND_JoltConstraintsHold.eq_of_flag_one
-    {T : Nat} {F : Type} [Ring F]
-    {w : AND_Witness T F} {table : AND_LookupTable F}
-    (hConstraints : AND_JoltConstraintsHold w table)
-    {i : Fin T} (hFlag : w.AND_FLAG i = 1) :
-    w.RDVal i = AND_TableDot table (w.RA_matrix i) :=
-  hConstraints.dotProduct.eq_of_flag_one hFlag
+/-! ## Trace to AND data structures -/
+
+/-- The table key obtained by concatenating the two 64-bit operands. -/
+def andLookupKey (a b : BitVec Xlen) : ANDLookupKey :=
+  (a +++ b).toFin
+
+/-- A one-hot row at `idx`. -/
+def oneHot {ι : Type} {F : Type u} [DecidableEq ι] [Zero F] [One F]
+    (idx : ι) : ι → F :=
+  fun k => if k = idx then 1 else 0
+
+/--
+The operands observed by the AND tracer at row `i`.
+
+This is part of the tracer, not a second definition of instruction semantics.
+It performs the source reads used to fill the lookup-address row.
+-/
+def traceANDOperands {T : Nat}
+    (trace : ExecutionTrace T) (i : Fin T) : Option (BitVec Xlen × BitVec Xlen) :=
+  match trace.instr i with
+  | .AND _ rs1 rs2 =>
+      match (JoltISA.readSrc rs1).run (trace.preState i) with
+      | .ok rs1Val afterRs1 =>
+          match (JoltISA.readSrc rs2).run afterRs1 with
+          | .ok rs2Val _ => some (rs1Val, rs2Val)
+          | .error _ _ => none
+      | .error _ _ => none
+  | _ => none
+
+/--
+Stage 1: the AND part of the tracer.
+
+For an AND row it sets the flag, reads the two source values, encodes their
+bitwise AND, and places a one at the table row selected by those source values.
+For a non-AND row the flag and lookup-address row are zero. This is only the
+partial tracer for the data needed by the current constraint.
+-/
+def traceToJoltData {T : Nat} {F : Type u} [Zero F] [One F]
+    (encode : BitVec Xlen → F)
+    (trace : ExecutionTrace T) : JoltData T F where
+  trace := trace.instr
+  AND_FLAG i := if isAND (trace.instr i) = true then 1 else 0
+  RD_val i :=
+    match traceANDOperands trace i with
+    | some (rs1Val, rs2Val) => encode (rs1Val &&& rs2Val)
+    | none => 0
+  ra i :=
+    match traceANDOperands trace i with
+    | some (rs1Val, rs2Val) => oneHot (andLookupKey rs1Val rs2Val)
+    | none => fun _ => 0
+
+/-- The honest tracer's AND flag says exactly that its instruction is AND. -/
+theorem traceToJoltData_AND_FLAG_iff
+    {T : Nat} {F : Type u} [Field F]
+    (encode : BitVec Xlen → F)
+    (trace : ExecutionTrace T)
+    (i : Fin T) :
+    (traceToJoltData encode trace).ClaimsAND i ↔
+      isAND ((traceToJoltData encode trace).trace i) = true := by
+  sorry
+
+/-! ## The fixed AND lookup table and its values -/
+
+/-- The 128-bit bitstring represented by a lookup-table index. -/
+def ANDLookupKey.bits (key : ANDLookupKey) : BitVec 128 :=
+  BitVec.ofFin key
+
+/-- The left 64-bit operand contained in a 128-bit lookup key. -/
+def ANDLookupKey.left (key : ANDLookupKey) : BitVec Xlen :=
+  Sail.BitVec.extractLsb key.bits 127 64
+
+/-- The right 64-bit operand contained in a 128-bit lookup key. -/
+def ANDLookupKey.right (key : ANDLookupKey) : BitVec Xlen :=
+  Sail.BitVec.extractLsb key.bits 63 0
+
+/--
+The concrete value-level AND table:
+`T_AND_values[a || b] = a &&& b`.
+-/
+def ANDTableValues (key : ANDLookupKey) : BitVec Xlen :=
+  key.left &&& key.right
+
+/-- The value-level table encoded into the constraint field. -/
+def encodedANDTable {F : Type u}
+    (encode : BitVec Xlen → F) : ANDTable F :=
+  fun key => encode (ANDTableValues key)
+
+/-- Concatenating operands and looking them up returns their bitwise AND. -/
+theorem ANDTableValues_andLookupKey (a b : BitVec Xlen) :
+    ANDTableValues (andLookupKey a b) = a &&& b := by
+  sorry
+
+/-! ## Main theorem: necessity -/
+
+/--
+Correct execution of the AND rows implies that the data produced by the AND
+tracer satisfies the specified AND constraint.
+
+This is the necessary direction only.
+-/
+theorem ANDConstraint_isNecessary
+    {T : Nat} {F : Type u} [Field F]
+    (trace : ExecutionTrace T)
+    (hExecution : trace.Executes)
+    (encode : BitVec Xlen → F) :
+    ANDConstraint
+      (traceToJoltData encode trace)
+      (encodedANDTable encode) := by
+  sorry
 
 end JoltConstraints

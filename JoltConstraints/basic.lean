@@ -1,68 +1,65 @@
 import JoltBytecode.JoltISA.Semantics
 
-/-!
-# Core objects for constraint sketches
+open Sail PreSail LeanRV64D.Functions
 
-These are deliberately lightweight Lean models of the columns we eventually
-want to turn into polynomial witnesses.  Constraint-specific statements live in
-separate files.
+/-!
+# Shared definitions for Jolt constraints
+
+Only definitions that are shared by more than one constraint belong here.
+The power-of-two trace domain and polynomial/sum-check layer will be added when
+they are actually used.
 -/
 
 namespace JoltConstraints
 
 universe u
 
-/-- A trace column with one value per row. 
-Here 
-T: represents the time step 
-alpha: Is a type (Like ℝ, ℕ, or some inductive type JoltISA.instr
--/
-abbrev Column (T : Nat) (alpha : Type u) : Type u :=
-  Fin T -> alpha
+/-- A trace column with one value at each of `T` rows. -/
+abbrev Column (T : Nat) (α : Type u) : Type u :=
+  Fin T → α
 
-/-- We keep the power-of-two condition separate from the column definition. -/
-def IsPowerOfTwo (T : Nat) : Prop :=
-  exists k : Nat, T = 2 ^ k
-
-/-- The register width for the RV64 Jolt model. -/
+/-- Register width of the current Jolt ISA model. -/
 abbrev Xlen : Nat := 64
 
-/-- The final Jolt instruction at each row. -/
-abbrev InstrTrace (T : Nat) : Type :=
-  Column T JoltISA.Instr
+/-- The trace length assumption needed by the later sum-check layer. -/
+def IsPowerOfTwo (T : Nat) : Prop :=
+  ∃ n : Nat, T = 2 ^ n
 
-/-- A selector column over the algebraic domain used by the constraints. -/
-abbrev FlagColumn (T : Nat) (F : Type u) : Type u :=
-  Column T F
-
-/-- 
-  If there are T instruction steps, then there are:
-  state[i] = state after instruction [i-1]
-  state[0] = initial state.
-  T instructions:           instr[0], ..., instr[T-1]
-  T+1 states:      state[0], ...,  ...,    state[T]
-
-Each instruction consumes one state and produces the next:
-State index for the beginning of row `i`. 
--/
+/-- State index at the beginning of execution row `i`. -/
 def currentStateIndex {T : Nat} (i : Fin T) : Fin (T + 1) :=
-  ⟨i.val, Nat.lt_trans i.isLt (Nat.lt_succ_self T)⟩
+  ⟨i, Nat.lt_trans i.isLt (Nat.lt_succ_self T)⟩
 
-/-- State index for the end of row `i`, equivalently the start of row `i + 1`. -/
+/-- State index immediately after execution row `i`. -/
 def nextStateIndex {T : Nat} (i : Fin T) : Fin (T + 1) :=
-  ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩
+  ⟨i + 1, Nat.succ_lt_succ i.isLt⟩
 
-/-- The semantic trace columns that constraints should justify. -/
-structure CpuTrace (T : Nat) where
-  instr : InstrTrace T
+/--
+A dynamic execution trace has `T` instructions and `T + 1` machine states.
+-/
+structure ExecutionTrace (T : Nat) where
+  instr : Column T JoltISA.Instr
   state : Column (T + 1) SailJoltState
 
-/-- The pre-state for row `i`. -/
-def rowPreState {T : Nat} (trace : CpuTrace T) (i : Fin T) : SailJoltState :=
+def ExecutionTrace.preState {T : Nat}
+    (trace : ExecutionTrace T) (i : Fin T) : SailJoltState :=
   trace.state (currentStateIndex i)
 
-/-- The post-state slot for row `i`. -/
-def rowPostState {T : Nat} (trace : CpuTrace T) (i : Fin T) : SailJoltState :=
+def ExecutionTrace.postState {T : Nat}
+    (trace : ExecutionTrace T) (i : Fin T) : SailJoltState :=
   trace.state (nextStateIndex i)
+
+/-- One successful step according to the existing JoltISA semantics. -/
+def InstructionStep
+    (instr : JoltISA.Instr) (preState postState : SailJoltState) : Prop :=
+  (JoltISA.execInstr instr).run preState =
+    .ok RETIRE_SUCCESS postState
+
+/-- Every row follows the existing `JoltISA.execInstr` semantics. -/
+def ExecutionTrace.Executes {T : Nat} (trace : ExecutionTrace T) : Prop :=
+  ∀ i : Fin T,
+    InstructionStep
+      (trace.instr i)
+      (trace.preState i)
+      (trace.postState i)
 
 end JoltConstraints
