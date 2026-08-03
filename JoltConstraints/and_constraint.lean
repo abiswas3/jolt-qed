@@ -1,4 +1,4 @@
-import JoltConstraints.basic
+import JoltConstraints.polynomials
 import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 
 /-!
@@ -6,10 +6,10 @@ import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 
 This file contains only:
 
-1. the Jolt data needed for AND;
+1. the global Jolt polynomial data needed for AND;
 2. the fixed AND lookup table;
 3. the AND constraint;
-4. the projection from an honest `JoltISATrace` to `ANDData`;
+4. the AND projection from an honest `JoltISATrace` to `JoltData`;
 5. the theorem that the constraint is necessary for honest execution.
 
 No sufficiency claim is made here. Instruction/selector agreement will later be
@@ -23,33 +23,17 @@ open scoped BigOperators
 
 universe u
 
-/-! ## AND data -/
+/-! ## AND lookup domain -/
 
 /-- One 64-bit operand represented as a finite lookup-table index. -/
-abbrev ANDOperand : Type := Fin (2 ^ Xlen)
+abbrev ANDOperand : Type := InstructionLookupOperand
 
 /-- An AND lookup key contains the two 64-bit source operands. -/
-abbrev ANDLookupKey : Type := ANDOperand × ANDOperand
+abbrev ANDLookupKey : Type := InstructionLookupKey
 
 /-- A vector indexed by every possible pair of 64-bit operands. -/
 abbrev ANDLookupVector (F : Type u) : Type u :=
-  ANDLookupKey → F
-
-/--
-The prover-facing data used by the AND constraint.
-
-These fields are claims. Their agreement with bytecode and the remaining Jolt
-columns will be established by other constraints later.
--/
-structure ANDData (T : Nat) (F : Type u) where
-  /-- The instruction claimed at row `i`. -/
-  trace : Column T JoltISA.Instr
-  /-- `AND_FLAG[i] = 1` claims that row `i` is an AND instruction. -/
-  AND_FLAG : Column T F
-  /-- The encoded value claimed for the destination after row `i`. -/
-  RD_val : Column T F
-  /-- The `T × 2^128` lookup-address matrix for AND. -/
-  ra : Column T (ANDLookupVector F)
+  InstructionLookupVector F
 
 /-! ## AND table and constraint -/
 
@@ -72,7 +56,7 @@ The constraint from the specification:
 `AND_FLAG[i] * (RD_val[i] - ∑ k, ra[i,k] * T_AND[k]) = 0`.
 -/
 def ANDConstraint {T : Nat} {F : Type u} [Field F]
-    (data : ANDData T F) (T_AND : ANDTable F) : Prop :=
+    (data : JoltData T F) (T_AND : ANDTable F) : Prop :=
   ∀ i : Fin T,
     data.AND_FLAG i *
       (data.RD_val i -
@@ -241,7 +225,8 @@ private theorem AND_step_output
                 valueAtSource_eq_of_run hrhs]
 
 /--
-Project the AND data from an already-executed Jolt ISA trace.
+Project the polynomial data used by AND from an already-executed Jolt ISA
+trace.
 
 For an AND row, source values come from the pre-state and `RD_val` comes from
 the post-state. Correctness of that state transition is already carried by
@@ -250,20 +235,53 @@ the post-state. Correctness of that state transition is already carried by
 noncomputable def JoltISATrace.toANDData
     {T : Nat} {F : Type u} [Zero F] [One F]
     (trace : JoltISATrace T)
-    (encode : BitVec Xlen → F) : ANDData T F where
+    (encode : BitVec Xlen → F) : JoltData T F where
   trace := trace.instr
-  AND_FLAG i := if isAND (trace.instr i) then 1 else 0
-  RD_val i :=
-    match trace.instr i with
-    | .AND rd _ _ => encode (valueAtDestination (trace.postState i) rd)
-    | _ => 0
-  ra i :=
-    match trace.instr i with
-    | .AND _ rs1 rs2 =>
-        oneHot <| andLookupKey
-          (valueAtSource (trace.preState i) rs1)
-          (valueAtSource (trace.preState i) rs2)
-    | _ => fun _ => 0
+  polynomials :=
+    { evals := fun polynomial =>
+        match polynomial with
+        | JoltPolynomial.committed .instructionRa => fun i =>
+            match trace.instr i with
+            | .AND _ rs1 rs2 =>
+                oneHot <| andLookupKey
+                  (valueAtSource (trace.preState i) rs1)
+                  (valueAtSource (trace.preState i) rs2)
+            | _ => fun _ => 0
+        | JoltPolynomial.virtual .rdWriteValue => fun i =>
+            match trace.instr i with
+            | .AND rd _ _ =>
+                encode (valueAtDestination (trace.postState i) rd)
+            | _ => 0
+        | JoltPolynomial.virtual (.lookupTableFlag .AND) => fun i =>
+            if isAND (trace.instr i) then 1 else 0 }
+
+@[simp] theorem JoltISATrace.toANDData_AND_FLAG
+    {T : Nat} {F : Type u} [Zero F] [One F]
+    (trace : JoltISATrace T) (encode : BitVec Xlen → F) (i : Fin T) :
+    (trace.toANDData encode).AND_FLAG i =
+      if isAND (trace.instr i) then 1 else 0 := by
+  rfl
+
+@[simp] theorem JoltISATrace.toANDData_RD_val
+    {T : Nat} {F : Type u} [Zero F] [One F]
+    (trace : JoltISATrace T) (encode : BitVec Xlen → F) (i : Fin T) :
+    (trace.toANDData encode).RD_val i =
+      match trace.instr i with
+      | .AND rd _ _ => encode (valueAtDestination (trace.postState i) rd)
+      | _ => 0 := by
+  rfl
+
+@[simp] theorem JoltISATrace.toANDData_ra
+    {T : Nat} {F : Type u} [Zero F] [One F]
+    (trace : JoltISATrace T) (encode : BitVec Xlen → F) (i : Fin T) :
+    (trace.toANDData encode).ra i =
+      match trace.instr i with
+      | .AND _ rs1 rs2 =>
+          oneHot <| andLookupKey
+            (valueAtSource (trace.preState i) rs1)
+            (valueAtSource (trace.preState i) rs2)
+      | _ => fun _ => 0 := by
+  rfl
 
 /-! ## Main theorem: necessity -/
 
@@ -285,7 +303,7 @@ theorem ANDConstraint_isNecessary
   intro i
   generalize hInstr : trace.instr i = instr
   cases instr <;>
-    simp [JoltISATrace.toANDData, hInstr, isAND]
+    simp [hInstr, isAND]
   case AND dst lhs rhs =>
     have hrecorded : DestinationRecorded dst := by
       have hfinal := trace.finalRow i
