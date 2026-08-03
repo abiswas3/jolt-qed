@@ -28,9 +28,9 @@ abbrev Xlen : Nat := 64
 /-- The final Jolt instruction at each row. -/
 abbrev InstrTrace (T : Nat) : Type := Column T JoltISA.Instr
 
-/-- A Boolean selector column.  Later this can become a field-valued column. -/
-abbrev FlagColumn (T : Nat) : Type :=
-  Column T Bool
+/-- A selector column over the algebraic domain used by the constraints. -/
+abbrev FlagColumn (T : Nat) (F : Type u) : Type u :=
+  Column T F
 
 /-- 
 If there are T instruction steps, then:
