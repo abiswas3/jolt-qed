@@ -72,7 +72,8 @@ the complete collection of constraints.
 - `JoltConstraints/and_constraint.lean`
   - the AND table and constraint;
   - the AND-specific honest data projection;
-  - the proved necessity theorem.
+  - the proved necessity theorem;
+  - a conditional row-level soundness composition theorem.
 - `JoltConstraints.lean`
   - the root import.
 
@@ -272,7 +273,7 @@ claimed polynomial data.
 `JoltISATrace.toANDData` produces the currently modelled polynomial data from
 an honest semantic trace:
 
-- `trace` is copied from `JoltISATrace.instr`;
+- `trace` is copied from `JoltISATrace.instrList`;
 - on an AND row, `AND_FLAG` is one;
 - `RD_val` is encoded from the destination in the post-state;
 - the two source values are read from the pre-state using `JoltISA.readSrc`;
@@ -317,10 +318,41 @@ selected entry in `T_AND`.
 
 There are no `sorry` declarations or axioms in `JoltConstraints/`.
 
+## Conditional row-level soundness
+
+`ANDConstraint` alone is not sufficient to recover an AND execution. In
+particular, `AND_FLAG[i] = 0` makes the equation hold regardless of `RD_val` or
+`ra`.
+
+The proved theorem `ANDConstraint_isSoundAt` is therefore a composition lemma,
+not an end-to-end soundness result. In addition to `ANDConstraint`, it assumes
+for the selected row that:
+
+- the instruction metadata identifies an AND row;
+- `AND_FLAG` is one;
+- `ra` is one-hot at the two concrete source values;
+- `RD_val` is the encoding of a concrete claimed write value;
+- the encoding is injective;
+- both source reads return the claimed source values; and
+- writing the claimed destination value produces the claimed post-state.
+
+Under those assumptions it concludes the existing ISA execution relation:
+
+```lean
+(JoltISA.execInstr (data.trace i)).run before =
+  .ok RETIRE_SUCCESS after
+```
+
+The proof uses `ANDConstraint` to show that the claimed write value equals the
+bitwise AND of the claimed source values, then rewrites the source reads and
+writeback in `JoltISA.execInstr`. Future bytecode, lookup-address, register, and
+state-consistency constraints must discharge the additional hypotheses. The
+current model does not yet derive them.
+
 ### What is assumed about AND positions
 
 For this necessity theorem, the honest instruction trace is an input. If
-`trace.instr i` is `AND`, `trace.executes i` proves that it was executed
+`trace.instrList i` is `AND`, `trace.executes i` proves that it was executed
 correctly. `toANDData` derives `AND_FLAG[i] = 1` from that instruction.
 
 The current AND equation does **not** prove, for arbitrary prover data, that
