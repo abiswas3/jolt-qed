@@ -36,7 +36,7 @@ def DestinationRecorded : JoltISA.Dst → Prop
 /--
 The final-trace row invariant currently needed by the constraint layer.
 
-The real tracer replaces a pure-writeback `AND` whose architectural
+The real tracer replaces a pure-writeback `AND` or `ANDI` whose architectural
 destination is `x0` by its `ADDI x0, x0, 0` no-op row. As more instruction
 constraints are added, this predicate is where their corresponding final-row
 conditions belong.
@@ -44,6 +44,7 @@ TODO: (2026-08-03) this is incomplete as we have just modelled AND so far.
 We will have to likely change this to accomodate memory writes.
 -/
 def FinalTraceRow : JoltISA.Instr → Prop
+  | .ANDI dst _ _ => DestinationRecorded dst
   | .AND dst _ _ => DestinationRecorded dst
   | _ => True
 
