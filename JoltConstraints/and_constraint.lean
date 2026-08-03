@@ -247,7 +247,7 @@ noncomputable def JoltISATrace.toANDData
                 oneHot (andLookupKey
                   (valueAtSource (isaTrace.preState i) rs1)
                   (valueAtSource (isaTrace.preState i) rs2))
-            | _ => fun _ => 0
+            | _ => fun (_: InstructionLookupKey) => 0
         | JoltPolynomial.virtual .rdWriteValue => fun i =>
             match isaTrace.instrList i with
             | .AND rd _ _ =>

@@ -43,6 +43,8 @@ The constraint layer must consume the existing monadic `JoltISA` semantics.
 The Rust tracer can be consulted to understand Jolt data layout, but it does not
 need a second Lean model here. The Lean `JoltISA` layer is the proof boundary.
 
+The local upstream Jolt checkout is at `~/Work-With-A16z/jolt`.
+
 ## The three layers
 
 Keep these layers separate:
