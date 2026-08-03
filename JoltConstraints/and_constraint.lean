@@ -2,19 +2,19 @@ import JoltConstraints.polynomials
 import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 
 /-!
-# The necessary AND constraint
+# The AND-table witness and writeback constraint
 
 This file contains only:
 
 1. the global Jolt polynomial data needed for AND;
 2. the fixed AND lookup table;
-3. the AND constraint;
-4. the AND projection from an honest `JoltISATrace` to `JoltData`;
+3. the R1CS lookup-output writeback constraint;
+4. the AND-table projection from an honest `JoltISATrace` to `JoltData`;
 5. the theorem that the constraint is necessary for honest execution;
 6. the row-level interface for composing it into a soundness proof.
 
-The AND constraint alone is not sufficient for execution soundness. The
-soundness theorem below therefore makes the required selector, lookup-address,
+The writeback constraint alone is not sufficient for execution soundness. The
+soundness theorem below therefore makes the required selector, lookup-output,
 register, and encoding assumptions explicit.
 -/
 
@@ -45,28 +45,44 @@ abbrev ANDTable (F : Type u) : Type u := ANDLookupVector F
 def ANDTableValue (key : ANDLookupKey) : BitVec Xlen :=
   BitVec.ofFin key.1 &&& BitVec.ofFin key.2
 
+/-- Jolt's canonical `u64`-to-field witness encoding (`F::from_u64` in Rust). -/
+def fieldEncode {F : Type u} [NatCast F] (value : BitVec Xlen) : F :=
+  value.toNat
+
 /-- Encode the concrete AND lookup table into the constraint field. -/
-def encodedANDTable {F : Type u} 
-    (encode : BitVec Xlen → F) : ANDTable F :=
-  fun (key: InstructionLookupKey) => encode (ANDTableValue key)
+def encodedANDTable {F : Type u} [NatCast F] : ANDTable F :=
+  fun (key : InstructionLookupKey) => fieldEncode (ANDTableValue key)
 
 /--
-The constraint from the specification:
+R1CS constraint 12, `RdWriteEqLookupIfWriteLookupToRd`, from Jolt's generated
+RV64 constraint system:
 
-`AND_FLAG[i] * (RD_val[i] - ∑ k, ra[i,k] * T_AND[k]) = 0`.
+`WriteLookupOutputToRD[i] * (RdWriteValue[i] - LookupOutput[i]) = 0`.
+
+The instruction lookup argument separately relates `LookupOutput` to the
+selected table, lookup-table flag, and instruction read address.
 -/
 def ANDConstraint {T : Nat} {F : Type u} [Field F]
-    (data : JoltData T F) 
-    (T_AND : ANDTable F) : Prop :=
+    (data : JoltData T F) : Prop :=
   ∀ i : Fin T,
-    data.AND_FLAG i *
-      (data.RD_val i -
-        ∑ k : ANDLookupKey, data.ra i k * T_AND k) = 0
+    data.writeLookupOutputToRD i *
+      (data.rdWriteValue i - data.lookupOutput i) = 0
 
 /-! ## Honest trace to AND data -/
 
-/-- Whether a Jolt ISA instruction is AND. -/
+/-- Whether a Jolt ISA instruction is the register-register `AND` opcode. -/
 def isAND : JoltISA.Instr → Bool
+  | .AND _ _ _ => true
+  | _ => false
+
+/-- Whether a Jolt ISA instruction is the immediate `ANDI` opcode. -/
+def isANDI : JoltISA.Instr → Bool
+  | .ANDI _ _ _ => true
+  | _ => false
+
+/-- Whether a Jolt ISA instruction uses Jolt's shared `And` lookup table. -/
+def usesANDTable : JoltISA.Instr → Bool
+  | .ANDI _ _ _ => true
   | .AND _ _ _ => true
   | _ => false
 
@@ -74,6 +90,16 @@ def isAND : JoltISA.Instr → Bool
 def destinationAsSource : JoltISA.Dst → JoltISA.Src
   | .vreg vr => .vreg vr
   | .xreg rd => .xreg rd
+
+/-- Convert a source operand to Jolt's absolute 7-bit register address. -/
+def sourceRegisterAddress : JoltISA.Src → RegisterAddress
+  | .vreg vr => vr
+  | .xreg (regidx.Regidx bits) => BitVec.ofNat 7 bits.toNat
+
+/-- Convert a destination operand to Jolt's absolute 7-bit register address. -/
+def destinationRegisterAddress : JoltISA.Dst → RegisterAddress
+  | .vreg vr => vr
+  | .xreg (regidx.Regidx bits) => BitVec.ofNat 7 bits.toNat
 
 /-- Extract a register value from a traced machine state. -/
 noncomputable def valueAtSource
@@ -95,6 +121,37 @@ def andLookupKey (rs1Val rs2Val : BitVec Xlen) : ANDLookupKey :=
 def oneHot {F : Type u} [Zero F] [One F]
     (key : ANDLookupKey) : ANDLookupVector F :=
   fun k => if k = key then 1 else 0
+
+/-- A one-hot register-address row selecting `address`. -/
+def registerOneHot {F : Type u} [Zero F] [One F]
+    (address : RegisterAddress) : RegisterAddressVector F :=
+  fun candidate => if candidate = address then 1 else 0
+
+/-- The destination of an instruction using the shared AND lookup table. -/
+def andTableDestination : JoltISA.Instr → Option JoltISA.Dst
+  | .ANDI dst _ _ => some dst
+  | .AND dst _ _ => some dst
+  | _ => none
+
+/-- The first register source of an instruction using the AND table. -/
+def andTableRs1 : JoltISA.Instr → Option JoltISA.Src
+  | .ANDI _ src _ => some src
+  | .AND _ lhs _ => some lhs
+  | _ => none
+
+/-- The optional second register source of an instruction using the AND table. -/
+def andTableRs2 : JoltISA.Instr → Option JoltISA.Src
+  | .AND _ _ rhs => some rhs
+  | _ => none
+
+/-- The two concrete operands sent to the shared AND lookup table. -/
+noncomputable def andTableOperands
+    (state : SailJoltState) : JoltISA.Instr → Option (BitVec Xlen × BitVec Xlen)
+  | .ANDI _ src imm =>
+      some (valueAtSource state src, sign_extend (m := Xlen) imm)
+  | .AND _ lhs rhs =>
+      some (valueAtSource state lhs, valueAtSource state rhs)
+  | _ => none
 
 @[simp] theorem ANDTableValue_andLookupKey
     (rs1Val rs2Val : BitVec Xlen) :
@@ -225,86 +282,205 @@ private theorem AND_step_output
                 valueAtSource_eq_of_run hlhs,
                 valueAtSource_eq_of_run hrhs]
 
-/--
-Project the polynomial data used by AND from an already-executed Jolt ISA
-trace.
+private theorem ANDI_step_output
+    {before after : SailJoltState}
+    (dst : JoltISA.Dst) (src : JoltISA.Src) (imm : BitVec 12)
+    (hrecorded : DestinationRecorded dst)
+    (hstep : (JoltISA.execInstr (.ANDI dst src imm)).run before =
+      .ok RETIRE_SUCCESS after) :
+    valueAtDestination after dst =
+      valueAtSource before src &&& sign_extend (m := Xlen) imm := by
+  simp only [JoltISA.execInstr, bind, EStateM.bind, EStateM.run] at hstep
+  cases hsrc : JoltISA.readSrc src before with
+  | error e stateAfterSrc =>
+      rw [hsrc] at hstep
+      cases hstep
+  | ok srcValue stateAfterSrc =>
+      rw [hsrc] at hstep
+      simp only at hstep
+      have hsrcState : stateAfterSrc = before := readSrc_run_state_eq hsrc
+      subst stateAfterSrc
+      cases hwrite : JoltISA.writeDst dst
+          (srcValue &&& sign_extend (m := Xlen) imm) before with
+      | error e stateAfterWrite =>
+          rw [hwrite] at hstep
+          cases hstep
+      | ok result stateAfterWrite =>
+          rw [hwrite] at hstep
+          simp only [pure, EStateM.pure] at hstep
+          cases hstep
+          rw [valueAtDestination_eq_of_write hrecorded hwrite,
+            valueAtSource_eq_of_run hsrc]
 
-For an AND row, source values come from the pre-state and `RD_val` comes from
-the post-state. Correctness of that state transition is already carried by
-`isaTrace.executes`, whose definition uses `JoltISA.execInstr`.
+/--
+Project the witness columns contributed by instructions using Jolt's shared
+AND lookup table from an already-executed Jolt ISA trace.
+
+This is a sparse AND-table projection: `AND` and `ANDI` rows carry their real
+values and all other rows are zero. Source values come from the pre-state and
+destination write values come from the post-state. Correctness of each state
+transition is already carried by `isaTrace.executes`.
 -/
 noncomputable def JoltISATrace.toANDData
-    {T : Nat} {F : Type u} [Zero F] [One F]
-    (isaTrace : JoltISATrace T)
-    (encode : BitVec Xlen → F) : JoltData T F where
+    {T : Nat} {F : Type u} [Field F]
+    (isaTrace : JoltISATrace T) : JoltData T F where
   trace := isaTrace.instrList
   polynomials :=
     { evals := fun polynomial =>
         match polynomial with
+        | JoltPolynomial.committed .rdInc => fun i =>
+            match andTableDestination (isaTrace.instrList i) with
+            | some dst =>
+                fieldEncode (valueAtDestination (isaTrace.postState i) dst) -
+                  fieldEncode (valueAtDestination (isaTrace.preState i) dst)
+            | none => 0
         | JoltPolynomial.committed .instructionRa => fun i =>
-            match isaTrace.instrList i with
-            | .AND _ rs1 rs2 =>
-                oneHot (andLookupKey
-                  (valueAtSource (isaTrace.preState i) rs1)
-                  (valueAtSource (isaTrace.preState i) rs2))
-            | _ => fun (_: InstructionLookupKey) => 0
+            match andTableOperands (isaTrace.preState i) (isaTrace.instrList i) with
+            | some (lhs, rhs) => oneHot (andLookupKey lhs rhs)
+            | none => fun (_ : InstructionLookupKey) => 0
+        | JoltPolynomial.virtual .leftLookupOperand => fun i =>
+            match andTableOperands (isaTrace.preState i) (isaTrace.instrList i) with
+            | some (lhs, _) => fieldEncode lhs
+            | none => 0
+        | JoltPolynomial.virtual .rightLookupOperand => fun i =>
+            match andTableOperands (isaTrace.preState i) (isaTrace.instrList i) with
+            | some (_, rhs) => fieldEncode rhs
+            | none => 0
+        | JoltPolynomial.virtual .leftInstructionInput => fun i =>
+            match andTableOperands (isaTrace.preState i) (isaTrace.instrList i) with
+            | some (lhs, _) => fieldEncode lhs
+            | none => 0
+        | JoltPolynomial.virtual .rightInstructionInput => fun i =>
+            match andTableOperands (isaTrace.preState i) (isaTrace.instrList i) with
+            | some (_, rhs) => fieldEncode rhs
+            | none => 0
+        | JoltPolynomial.virtual .rs1Value => fun i =>
+            match andTableRs1 (isaTrace.instrList i) with
+            | some rs1 => fieldEncode (valueAtSource (isaTrace.preState i) rs1)
+            | none => 0
+        | JoltPolynomial.virtual .rs2Value => fun i =>
+            match andTableRs2 (isaTrace.instrList i) with
+            | some rs2 => fieldEncode (valueAtSource (isaTrace.preState i) rs2)
+            | none => 0
         | JoltPolynomial.virtual .rdWriteValue => fun i =>
-            match isaTrace.instrList i with
-            | .AND rd _ _ =>
-                encode (valueAtDestination (isaTrace.postState i) rd)
-            | _ => 0
+            match andTableDestination (isaTrace.instrList i) with
+            | some rd => fieldEncode (valueAtDestination (isaTrace.postState i) rd)
+            | none => 0
+        | JoltPolynomial.virtual .rs1Ra => fun i =>
+            match andTableRs1 (isaTrace.instrList i) with
+            | some rs1 => registerOneHot (sourceRegisterAddress rs1)
+            | none => fun (_ : RegisterAddress) => 0
+        | JoltPolynomial.virtual .rs2Ra => fun i =>
+            match andTableRs2 (isaTrace.instrList i) with
+            | some rs2 => registerOneHot (sourceRegisterAddress rs2)
+            | none => fun (_ : RegisterAddress) => 0
+        | JoltPolynomial.virtual .rdWa => fun i =>
+            match andTableDestination (isaTrace.instrList i) with
+            | some rd => registerOneHot (destinationRegisterAddress rd)
+            | none => fun (_ : RegisterAddress) => 0
+        | JoltPolynomial.virtual .lookupOutput => fun i =>
+            match andTableOperands (isaTrace.preState i) (isaTrace.instrList i) with
+            | some (lhs, rhs) => fieldEncode (lhs &&& rhs)
+            | none => 0
+        | JoltPolynomial.virtual .instructionRafFlag => fun _ => 0
+        | JoltPolynomial.virtual (.opFlag .writeLookupOutputToRD) => fun i =>
+            if usesANDTable (isaTrace.instrList i) then 1 else 0
+        | JoltPolynomial.virtual
+            (.instructionFlag .leftOperandIsRs1Value) => fun i =>
+            if usesANDTable (isaTrace.instrList i) then 1 else 0
+        | JoltPolynomial.virtual
+            (.instructionFlag .rightOperandIsRs2Value) => fun i =>
+            if isAND (isaTrace.instrList i) then 1 else 0
+        | JoltPolynomial.virtual
+            (.instructionFlag .rightOperandIsImm) => fun i =>
+            if isANDI (isaTrace.instrList i) then 1 else 0
         | JoltPolynomial.virtual (.lookupTableFlag .AND) => fun i =>
-            if isAND (isaTrace.instrList i) then 1 else 0 }
+            if usesANDTable (isaTrace.instrList i) then 1 else 0 }
 
 @[simp] theorem JoltISATrace.toANDData_AND_FLAG
-    {T : Nat} {F : Type u} [Zero F] [One F]
-    (isaTrace : JoltISATrace T) (encode : BitVec Xlen → F) (i : Fin T) :
-    (isaTrace.toANDData encode).AND_FLAG i =
-      if isAND (isaTrace.instrList i) then 1 else 0 := by
+    {T : Nat} {F : Type u} [Field F]
+    (isaTrace : JoltISATrace T) (i : Fin T) :
+    (isaTrace.toANDData (F := F)).AND_FLAG i =
+      if usesANDTable (isaTrace.instrList i) then 1 else 0 := by
   rfl
 
 @[simp] theorem JoltISATrace.toANDData_RD_val
-    {T : Nat} {F : Type u} [Zero F] [One F]
-    (isaTrace : JoltISATrace T) (encode : BitVec Xlen → F) (i : Fin T) :
-    (isaTrace.toANDData encode).RD_val i =
-      match isaTrace.instrList i with
-      | .AND rd _ _ => encode (valueAtDestination (isaTrace.postState i) rd)
-      | _ => 0 := by
+    {T : Nat} {F : Type u} [Field F]
+    (isaTrace : JoltISATrace T) (i : Fin T) :
+    (isaTrace.toANDData (F := F)).RD_val i =
+      match andTableDestination (isaTrace.instrList i) with
+      | some rd => fieldEncode (valueAtDestination (isaTrace.postState i) rd)
+      | none => 0 := by
+  rfl
+
+@[simp] theorem JoltISATrace.toANDData_rdWriteValue
+    {T : Nat} {F : Type u} [Field F]
+    (isaTrace : JoltISATrace T) (i : Fin T) :
+    (isaTrace.toANDData (F := F)).rdWriteValue i =
+      match andTableDestination (isaTrace.instrList i) with
+      | some rd => fieldEncode (valueAtDestination (isaTrace.postState i) rd)
+      | none => 0 := by
   rfl
 
 @[simp] theorem JoltISATrace.toANDData_ra
-    {T : Nat} {F : Type u} [Zero F] [One F]
-    (isaTrace : JoltISATrace T) (encode : BitVec Xlen → F) (i : Fin T) :
-    (isaTrace.toANDData encode).ra i =
-      match isaTrace.instrList i with
-      | .AND _ rs1 rs2 =>
-          oneHot (andLookupKey
-            (valueAtSource (isaTrace.preState i) rs1)
-            (valueAtSource (isaTrace.preState i) rs2))
-      | _ => fun _ => 0 := by
+    {T : Nat} {F : Type u} [Field F]
+    (isaTrace : JoltISATrace T) (i : Fin T) :
+    (isaTrace.toANDData (F := F)).ra i =
+      match andTableOperands (isaTrace.preState i) (isaTrace.instrList i) with
+      | some (lhs, rhs) => oneHot (andLookupKey lhs rhs)
+      | none => fun _ => 0 := by
+  rfl
+
+@[simp] theorem JoltISATrace.toANDData_writeLookupOutputToRD
+    {T : Nat} {F : Type u} [Field F]
+    (isaTrace : JoltISATrace T) (i : Fin T) :
+    (isaTrace.toANDData (F := F)).writeLookupOutputToRD i =
+      if usesANDTable (isaTrace.instrList i) then 1 else 0 := by
+  rfl
+
+@[simp] theorem JoltISATrace.toANDData_lookupOutput
+    {T : Nat} {F : Type u} [Field F]
+    (isaTrace : JoltISATrace T) (i : Fin T) :
+    (isaTrace.toANDData (F := F)).lookupOutput i =
+      match andTableOperands (isaTrace.preState i) (isaTrace.instrList i) with
+      | some (lhs, rhs) => fieldEncode (lhs &&& rhs)
+      | none => 0 := by
   rfl
 
 /-! ## Main theorem: necessity -/
 
 /--
-The AND constraint is necessary for honest Jolt ISA execution.
+The R1CS lookup-output writeback constraint is necessary for honest `AND` and
+`ANDI` execution.
 
 An honest trace already carries a proof that every row was stepped by
-`JoltISA.execInstr`. Therefore the AND data projected from that trace satisfies
-the specified lookup constraint.
+`JoltISA.execInstr`. Therefore its sparse AND-table projection has equal
+`RdWriteValue` and `LookupOutput` values whenever
+`WriteLookupOutputToRD` is active.
 -/
 theorem ANDConstraint_isNecessary
     {T : Nat} {F : Type u} [Field F]
-    (isaTrace : JoltISATrace T)
-    (encode : BitVec Xlen → F) :
-    ANDConstraint
-      (isaTrace.toANDData encode)
-      (encodedANDTable encode) := by
+    (isaTrace : JoltISATrace T) :
+    ANDConstraint (isaTrace.toANDData (F := F)) := by
   unfold ANDConstraint
   intro i
   generalize hInstr : isaTrace.instrList i = instr
   cases instr <;>
-    simp [hInstr, isAND]
+    simp [hInstr, usesANDTable, andTableDestination, andTableOperands]
+  case ANDI dst src imm =>
+    have hrecorded : DestinationRecorded dst := by
+      have hfinal := isaTrace.finalRow i
+      rw [hInstr] at hfinal
+      exact hfinal
+    have houtput :
+        valueAtDestination (isaTrace.postState i) dst =
+          valueAtSource (isaTrace.preState i) src &&&
+            sign_extend (m := Xlen) imm := by
+      apply ANDI_step_output dst src imm hrecorded
+      have hstep := isaTrace.executes i
+      rw [hInstr] at hstep
+      simpa only [JoltISATrace.preState, JoltISATrace.postState] using hstep
+    simp [houtput]
   case AND dst lhs rhs =>
     have hrecorded : DestinationRecorded dst := by
       have hfinal := isaTrace.finalRow i
@@ -318,46 +494,45 @@ theorem ANDConstraint_isNecessary
       have hstep := isaTrace.executes i
       rw [hInstr] at hstep
       simpa only [JoltISATrace.preState, JoltISATrace.postState] using hstep
-    simp [encodedANDTable, houtput]
+    simp [houtput]
 
 /-! ## Soundness composition -/
 
 /--
-The AND lookup equation is sound for one selected row when the surrounding
-constraint system supplies all of its consistency facts.
+The lookup-output writeback equation contributes to soundness for one selected
+AND row when the surrounding constraint system supplies all consistency facts.
 
-The hypotheses correspond to constraints outside `ANDConstraint`: the AND
-selector is active, `ra` is one-hot at the source values, `RD_val` encodes the
-claimed write value, the encoding is injective, and register reads/writeback
-connect those values to the machine states. The conclusion deliberately uses
-the existing `JoltISA.execInstr` semantics.
+The hypotheses correspond to constraints outside `ANDConstraint`: the
+write-lookup-output selector is active, `LookupOutput` is the AND of the source
+values, `RdWriteValue` is the claimed write value, the canonical field encoding
+is injective on 64-bit values, and register reads/writeback connect those values
+to the machine states. The conclusion deliberately uses the existing
+`JoltISA.execInstr` semantics.
 
 Without these additional hypotheses, `ANDConstraint` is not sufficient: for
-example, setting `AND_FLAG` to zero makes its equation hold independently of
-the row data.
+example, setting `WriteLookupOutputToRD` to zero makes its equation hold
+independently of the row data.
 -/
 theorem ANDConstraint_isSoundAt
     {T : Nat} {F : Type u} [Field F]
     (data : JoltData T F)
-    (encode : BitVec Xlen → F)
     (i : Fin T)
     (before after : SailJoltState)
     (dst : JoltISA.Dst) (lhs rhs : JoltISA.Src)
     (lhsValue rhsValue rdValue : BitVec Xlen)
     (hinstr : data.trace i = .AND dst lhs rhs)
-    (hconstraint : ANDConstraint data (encodedANDTable encode))
-    (hflag : data.AND_FLAG i = 1)
-    (hra : data.ra i = oneHot (andLookupKey lhsValue rhsValue))
-    (hrd : data.RD_val i = encode rdValue)
-    (hencode : Function.Injective encode)
+    (hconstraint : ANDConstraint data)
+    (hflag : data.writeLookupOutputToRD i = 1)
+    (hrd : data.rdWriteValue i = fieldEncode rdValue)
+    (hlookup : data.lookupOutput i = fieldEncode (lhsValue &&& rhsValue))
+    (hencode : Function.Injective (fieldEncode (F := F)))
     (hlhs : JoltISA.readSrc lhs before = .ok lhsValue before)
     (hrhs : JoltISA.readSrc rhs before = .ok rhsValue before)
     (hwrite : JoltISA.writeDst dst rdValue before = .ok () after) :
     (JoltISA.execInstr (data.trace i)).run before =
       .ok RETIRE_SUCCESS after := by
   have hrow := hconstraint i
-  rw [hflag, one_mul, hrd, hra, sum_oneHot_mul] at hrow
-  simp only [encodedANDTable, ANDTableValue_andLookupKey] at hrow
+  rw [hflag, one_mul, hrd, hlookup] at hrow
   have hvalue : rdValue = lhsValue &&& rhsValue := by
     apply hencode
     exact sub_eq_zero.mp hrow
