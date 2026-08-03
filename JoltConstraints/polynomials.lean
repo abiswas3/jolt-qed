@@ -62,37 +62,24 @@ inductive JoltPolynomial where
 /-! Canonical polynomial names.  These expose stable, concise identifiers
 without repeating the committed/virtual classification at every use site. -/
 
-/-- The committed instruction lookup-address polynomial. -/
-def JoltPolynomial.instructionRa : JoltPolynomial :=
-  .committed .instructionRa
-
-/-- The virtual destination-write-value polynomial. -/
-def JoltPolynomial.rdWriteValue : JoltPolynomial :=
-  .virtual .rdWriteValue
-
-/-- The virtual selector polynomial for the AND lookup table. -/
-def JoltPolynomial.andFlag : JoltPolynomial :=
-  .virtual (.lookupTableFlag .AND)
+def JoltPolynomial.instructionRa : JoltPolynomial := .committed .instructionRa
+def JoltPolynomial.rdWriteValue : JoltPolynomial := .virtual .rdWriteValue
+def JoltPolynomial.andFlag : JoltPolynomial := .virtual (.lookupTableFlag .AND)
 
 /-! ## Evaluation storage -/
 
 /--
 The type of the hypercube evaluation array belonging to a polynomial.
-
-Most current polynomials have one evaluation per trace row.  `instructionRa`
-has one lookup-address vector per trace row, equivalently a `T × 2^128`
-array.
 -/
-def JoltPolynomial.Evaluations
-    (polynomial : JoltPolynomial) (T : Nat) (F : Type u) : Type u :=
+def JoltPolynomial.EvaluationsType (polynomial : JoltPolynomial) (T : Nat) (F : Type u) : Type u :=
   match polynomial with
-  | JoltPolynomial.committed .instructionRa =>
-      Column T (InstructionLookupVector F)
+  | JoltPolynomial.committed .instructionRa => Column T (InstructionLookupVector F)
   | JoltPolynomial.virtual _ => Column T F
 
 /-- All currently modelled Jolt polynomial evaluation arrays. -/
 structure JoltPolynomialData (T : Nat) (F : Type u) where
-  evals : (polynomial : JoltPolynomial) → polynomial.Evaluations T F
+  -- each polynomial has a different return type. 
+  evals : (polynomial : JoltPolynomial) → polynomial.EvaluationsType T F
 
 /--
 The prover-facing Jolt data.

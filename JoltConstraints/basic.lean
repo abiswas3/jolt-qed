@@ -40,6 +40,8 @@ The real tracer replaces a pure-writeback `AND` whose architectural
 destination is `x0` by its `ADDI x0, x0, 0` no-op row. As more instruction
 constraints are added, this predicate is where their corresponding final-row
 conditions belong.
+TODO: (2026-08-03) this is incomplete as we have just modelled AND so far.
+We will have to likely change this to accomodate memory writes.
 -/
 def FinalTraceRow : JoltISA.Instr → Prop
   | .AND dst _ _ => DestinationRecorded dst
@@ -53,13 +55,13 @@ that every adjacent pair of states is related by the existing Jolt ISA
 semantics. No instruction semantics are restated in the constraint layer.
 -/
 structure JoltISATrace (T : Nat) where
-  instr : Column T JoltISA.Instr
+  instrList : Column T JoltISA.Instr
   state : Column (T + 1) SailJoltState
   executes : ∀ i : Fin T,
-    (JoltISA.execInstr (instr i)).run (state (currentStateIndex i)) =
+    (JoltISA.execInstr (instrList i)).run (state (currentStateIndex i)) =
       .ok RETIRE_SUCCESS (state (nextStateIndex i))
   /-- Every row satisfies the final-tracer facts currently modelled. -/
-  finalRow : ∀ i : Fin T, FinalTraceRow (instr i)
+  finalRow : ∀ i : Fin T, FinalTraceRow (instrList i)
 
 /-- State immediately before execution row `i`. -/
 def JoltISATrace.preState {T : Nat}
