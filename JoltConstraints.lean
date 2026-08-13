@@ -1,1 +1,2 @@
-import JoltConstraints.and_constraint
+import JoltConstraints.trace
+import JoltConstraints.and_constraints

@@ -55,7 +55,7 @@ The trace stores `T` instructions and `T + 1` states. The `executes` field says
 that every adjacent pair of states is related by the existing Jolt ISA
 semantics. No instruction semantics are restated in the constraint layer.
 -/
-structure JoltISATrace (T : Nat) where
+structure HonestTrace (T : Nat) where
   instrList : Column T JoltISA.Instr
   state : Column (T + 1) SailJoltState
   executes : ∀ i : Fin T,
@@ -65,13 +65,13 @@ structure JoltISATrace (T : Nat) where
   finalRow : ∀ i : Fin T, FinalTraceRow (instrList i)
 
 /-- State immediately before execution row `i`. -/
-def JoltISATrace.preState {T : Nat}
-    (trace : JoltISATrace T) (i : Fin T) : SailJoltState :=
+def HonestTrace.preState {T : Nat}
+    (trace : HonestTrace T) (i : Fin T) : SailJoltState :=
   trace.state (currentStateIndex i)
 
 /-- State immediately after execution row `i`. -/
-def JoltISATrace.postState {T : Nat}
-    (trace : JoltISATrace T) (i : Fin T) : SailJoltState :=
+def HonestTrace.postState {T : Nat}
+    (trace : HonestTrace T) (i : Fin T) : SailJoltState :=
   trace.state (nextStateIndex i)
 
 end JoltConstraints
