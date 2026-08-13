@@ -28,26 +28,6 @@ def currentStateIndex {T : Nat} (i : Fin T) : Fin (T + 1) :=
 def nextStateIndex {T : Nat} (i : Fin T) : Fin (T + 1) :=
   ⟨i + 1, Nat.succ_lt_succ i.isLt⟩
 
-/-- A destination whose written value can be recovered from the post-state. -/
-def DestinationRecorded : JoltISA.Dst → Prop
-  | .vreg _ => True
-  | .xreg rd => rd ≠ regidx.Regidx 0
-
-/--
-The final-trace row invariant currently needed by the constraint layer.
-
-The real tracer replaces a pure-writeback `AND` or `ANDI` whose architectural
-destination is `x0` by its `ADDI x0, x0, 0` no-op row. As more instruction
-constraints are added, this predicate is where their corresponding final-row
-conditions belong.
-TODO: (2026-08-03) this is incomplete as we have just modelled AND so far.
-We will have to likely change this to accomodate memory writes.
--/
-def FinalTraceRow : JoltISA.Instr → Prop
-  | .ANDI dst _ _ => DestinationRecorded dst
-  | .AND dst _ _ => DestinationRecorded dst
-  | _ => True
-
 /--
 An honest Jolt ISA trace.
 
@@ -59,10 +39,8 @@ structure HonestTrace (T : Nat) where
   instrList : Column T JoltISA.Instr
   state : Column (T + 1) SailJoltState
   executes : ∀ i : Fin T,
-    (JoltISA.execInstr (instrList i)).run (state (currentStateIndex i)) =
-      .ok RETIRE_SUCCESS (state (nextStateIndex i))
-  /-- Every row satisfies the final-tracer facts currently modelled. -/
-  finalRow : ∀ i : Fin T, FinalTraceRow (instrList i)
+    (JoltISA.execInstr (instrList i)).run (state (currentStateIndex i)) = .ok RETIRE_SUCCESS (state (nextStateIndex i))
+
 
 /-- State immediately before execution row `i`. -/
 def HonestTrace.preState {T : Nat}
