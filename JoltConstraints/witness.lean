@@ -77,6 +77,7 @@ Rust commits one unchunked polynomial.
 inductive JoltCommittedPolynomial where
   | rdInc
   -- WARNING: In the real code base this is chunked.
+  -- so this will eventually have a chunking parameter d=2 or something like that
   | instructionRa
   deriving DecidableEq, Repr
 
@@ -101,7 +102,7 @@ inductive JoltVirtualPolynomial where
 
 /-! ## Evaluation shapes -/
 
-/-- The evaluation-array type belonging to a committed polynomial. -/
+/-- The type of the evaluations belonging to a committed polynomial. -/
 def JoltCommittedPolynomial.EvaluationsType
     (polynomial : JoltCommittedPolynomial)
     (T : Nat) (F : Type u) : Type u :=
@@ -109,7 +110,7 @@ def JoltCommittedPolynomial.EvaluationsType
   | .rdInc => Column T F
   | .instructionRa => InstructionLookupColumns T F
 
-/-- The evaluation-array type belonging to a virtual polynomial. -/
+/-- The evaluation type belonging to a virtual polynomial. -/
 def JoltVirtualPolynomial.EvaluationsType
     (polynomial : JoltVirtualPolynomial)
     (T : Nat) (F : Type u) : Type u :=
