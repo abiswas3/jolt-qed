@@ -443,6 +443,7 @@ noncomputable def honest_witness {T : Nat} {F : Type u} [Field F]
         fieldBool (address ==
           (lookupIndex
             (trace.instrList i) (trace.preState i) (trace.postState i)).toFin)
+
   virtual := fun polynomial =>
     match polynomial with
     | .leftLookupOperand => fun i =>
@@ -482,8 +483,13 @@ noncomputable def honest_witness {T : Nat} {F : Type u} [Field F]
         registerIndicator (secondSource (trace.instrList i)) address
     | .rdWa => fun address i =>
         destinationIndicator (destination (trace.instrList i)) address
-    | .opFlag .writeLookupOutputToRD => fun i =>
-        fieldBool (writesLookupOutput (trace.instrList i))
+    | .opFlag flag => fun i =>
+        fieldBool <| match flag with
+        | .addOperands => addOperands (trace.instrList i)
+        | .subtractOperands => subtractOperands (trace.instrList i)
+        | .multiplyOperands => multiplyOperands (trace.instrList i)
+        | .advice => adviceOperands (trace.instrList i)
+        | .writeLookupOutputToRD => writesLookupOutput (trace.instrList i)
     | .instructionFlag .leftOperandIsRs1Value => fun i =>
         fieldBool (lookupFirstSource (trace.instrList i)).isSome
     | .instructionFlag .rightOperandIsRs2Value => fun i =>

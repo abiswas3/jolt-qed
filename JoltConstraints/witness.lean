@@ -53,6 +53,10 @@ inductive JoltLookupTable where
 
 /-- Circuit flags currently needed by the AND development. -/
 inductive JoltCircuitFlag where
+  | addOperands
+  | subtractOperands
+  | multiplyOperands
+  | advice
   | writeLookupOutputToRD
   deriving DecidableEq, Repr
 
