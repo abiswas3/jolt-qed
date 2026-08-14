@@ -9,20 +9,20 @@ universe u
 Given witness we prove that this specific JoltConstraint is satisfied.
 -/ 
 def and_constraint
-    {T : Nat} {F : Type u} [Field F]
-    (witness : JoltWitness T F) : Prop :=
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
   JoltConstraint.Satisfied .rdWriteEqLookupIfWriteLookupToRD witness
 
 /-
 The completeness theorem says when the wintess:= honest_witness constructed from an honest trace
 -/ 
 theorem and_completeness
-    {T : Nat} {F : Type u} [Field F]
-    (trace : HonestTrace T) :
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (trace : HonestTrace params) :
     and_constraint (honest_witness (F := F) trace) := by
   -- Let `witness` denote the witness obtained by filling every column from the
   -- honest execution trace.
-  let witness : JoltWitness T F := honest_witness (F := F) trace
+  let witness : JoltWitness params F := honest_witness (F := F) trace
   change and_constraint witness
 
   -- The constraint is row-wise, so fix an arbitrary trace row.
@@ -30,6 +30,7 @@ theorem and_completeness
   unfold JoltConstraint.Satisfied
   intro i
   let instruction := trace.instrList i
+  let metadata := trace.metadata.row i
   let before := trace.preState i
   let after := trace.postState i
 
@@ -53,7 +54,7 @@ theorem and_completeness
   have lookupOutput_from_trace :
       witness.lookupOutput i =
         HonestWitness.fieldFromU64
-          (HonestWitness.lookupOutput instruction before after) := by
+          (HonestWitness.lookupOutput instruction metadata before after) := by
     rfl
 
   -- Substitute those three honest column values into the constraint equation.
