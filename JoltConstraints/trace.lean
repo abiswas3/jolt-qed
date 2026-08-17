@@ -677,9 +677,12 @@ noncomputable def ramReadValue
 noncomputable def ramWriteValue
     (instruction : JoltISA.Instr)
     (before after : SailJoltState) : U64 :=
-  match ramAccessAddress instruction before with
-  | some address => memoryWord after address.toNat
-  | none => 0
+  if isLoad instruction then
+    ramReadValue instruction before
+  else
+    match ramAccessAddress instruction before with
+    | some address => memoryWord after address.toNat
+    | none => 0
 
 noncomputable def ramIncrement
     (instruction : JoltISA.Instr)
@@ -700,9 +703,9 @@ def oneHot {F : Type u} [Field F] (actual expected : Nat) : F :=
 noncomputable def productValue
     (instruction : JoltISA.Instr)
     (metadata : JoltTraceRowMetadata)
-    (before : SailJoltState) : U128 :=
+    (before : SailJoltState) : Int :=
   let inputs := instructionInputs instruction metadata before
-  BitVec.ofInt InstructionLookupAddressBits (inputs.1.toInt * inputs.2.toInt)
+  (inputs.1.toNat : Int) * inputs.2.toInt
 
 noncomputable def honest_witness
     {params : JoltWitnessParams} {F : Type u} [Field F]
@@ -764,7 +767,7 @@ noncomputable def honest_witness
     | .nextIsNoop => fun i =>
         fieldBool <| match nextInstruction trace i with
         | some instruction => isNoop instruction
-        | none => true
+        | none => false
     | .nextIsVirtual => fun i =>
         fieldBool <| match nextMetadata trace i with
         | some metadata => isVirtual metadata
@@ -796,7 +799,7 @@ noncomputable def honest_witness
           (instructionInputs
             (trace.instrList i) (trace.metadata.row i) (trace.preState i)).2
     | .product => fun i =>
-        fieldFromI128
+        fieldFromInt
           (productValue
             (trace.instrList i) (trace.metadata.row i) (trace.preState i))
     | .shouldJump => fun i =>
