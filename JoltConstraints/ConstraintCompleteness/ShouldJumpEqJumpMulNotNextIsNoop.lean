@@ -18,7 +18,7 @@ theorem shouldJumpEqJumpMulNotNextIsNoop
   let jump := HonestWitness.isJump (trace.instrList i)
   let nextIsNoop := match HonestWitness.nextInstruction trace i with
     | some instruction => HonestWitness.isNoop instruction
-    | none => false
+    | none => true
 
   have jump_from_trace :
       witness.opFlag .jump i = HonestWitness.fieldBool jump := by
@@ -29,8 +29,17 @@ theorem shouldJumpEqJumpMulNotNextIsNoop
   have shouldJump_from_trace :
       witness.virtual .shouldJump i =
         HonestWitness.fieldBool (jump && !nextIsNoop) := by
-    cases hnext : HonestWitness.nextInstruction trace i <;>
-      simp [witness, honest_witness, jump, nextIsNoop, hnext]
+    cases hnext : HonestWitness.nextTraceIndex i with
+    | none =>
+        have current_is_noop : trace.rows i = JoltTraceRow.noOp :=
+          trace.finalRow i hnext
+        simp [witness, honest_witness, jump, nextIsNoop,
+          HonestWitness.nextInstruction, hnext, current_is_noop,
+          HonestTrace.instrList, ExecutionTrace.instrList,
+          JoltTraceRow.noOp, HonestWitness.isJump]
+    | some j =>
+        simp [witness, honest_witness, jump, nextIsNoop,
+          HonestWitness.nextInstruction, hnext]
 
   rw [jump_from_trace, nextIsNoop_from_trace, shouldJump_from_trace]
   cases jump <;> cases nextIsNoop <;> simp [HonestWitness.fieldBool]

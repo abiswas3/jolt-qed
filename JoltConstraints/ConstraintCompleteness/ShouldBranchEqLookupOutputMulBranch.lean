@@ -14,32 +14,29 @@ theorem shouldBranchEqLookupOutputMulBranch
 
   unfold JoltConstraint.Satisfied
   intro i
-  let instruction := trace.instrList i
-  let metadata := trace.metadata.row i
-  let before := trace.preState i
-  let after := trace.postState i
-  let output := HonestWitness.lookupOutput instruction metadata before after
+  let row := trace.rows i
+  let output := HonestWitness.lookupOutput row
 
   have lookupOutput_from_trace :
       witness.lookupOutput i = HonestWitness.fieldFromU64 output := by
     rfl
   have branchFlag_from_trace :
       witness.instructionFlag .branch i =
-        HonestWitness.fieldBool (HonestWitness.isBranch instruction) := by
+        HonestWitness.fieldBool (HonestWitness.isBranch row.instruction) := by
     rfl
   have shouldBranch_from_trace :
       witness.virtual .shouldBranch i =
         HonestWitness.fieldBool
-          (HonestWitness.isBranch instruction && output == 1) := by
+          (HonestWitness.isBranch row.instruction && output == 1) := by
     rfl
 
   rw [lookupOutput_from_trace, branchFlag_from_trace,
     shouldBranch_from_trace]
-  cases hbranch : HonestWitness.isBranch instruction
+  cases hbranch : HonestWitness.isBranch row.instruction
   · simp [HonestWitness.fieldBool]
   · obtain ⟨value, output_eq⟩ :=
       lookupOutput_eq_boolU64_of_isBranch
-        instruction metadata before after hbranch
+        row hbranch
     change output = HonestWitness.boolU64 value at output_eq
     rw [output_eq]
     cases value <;>

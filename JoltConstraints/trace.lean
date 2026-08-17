@@ -344,20 +344,18 @@ noncomputable def destinationRegisterValue
   | some destination => destinationValue state destination
   | none => 0
 
-noncomputable def instructionInputs
-    (instruction : JoltISA.Instr)
-    (metadata : JoltTraceRowMetadata)
-    (before : SailJoltState) : U64 × U128 :=
+def instructionInputs (row : JoltTraceRow) : U64 × U128 :=
+  let instruction := row.instruction
   let left :=
     if leftIsPC instruction then
-      metadata.unexpandedPC
+      row.metadata.unexpandedPC
     else
-      registerValue before (lookupFirstSource instruction)
+      if (lookupFirstSource instruction).isSome then row.rs1Value else 0
   let right :=
-    match lookupSecondSource instruction with
-    | some source =>
-        BitVec.ofNat InstructionLookupAddressBits (sourceValue before source).toNat
-    | none => (lowImmediate instruction).getD 0
+    if (lookupSecondSource instruction).isSome then
+      BitVec.ofNat InstructionLookupAddressBits row.rs2Value.toNat
+    else
+      (lowImmediate instruction).getD 0
   (left, right)
 
 def low64 (value : U128) : U64 :=
@@ -373,14 +371,12 @@ def interleaveAux (left right : U64) : Nat → Nat
 def interleave (left right : U64) : U128 :=
   BitVec.ofNat InstructionLookupAddressBits (interleaveAux left right Xlen)
 
-noncomputable def lookupOperands
-    (instruction : JoltISA.Instr)
-    (metadata : JoltTraceRowMetadata)
-    (before after : SailJoltState) : U64 × U128 :=
-  let inputs := instructionInputs instruction metadata before
+def lookupOperands (row : JoltTraceRow) : U64 × U128 :=
+  let instruction := row.instruction
+  let inputs := instructionInputs row
   if adviceOperands instruction then
     (0, BitVec.ofNat InstructionLookupAddressBits
-      (destinationRegisterValue after instruction).toNat)
+      row.rdWriteValue.toNat)
   else if subtractOperands instruction then
     (0, BitVec.ofNat InstructionLookupAddressBits
       (inputs.1.toNat + 2 ^ Xlen - (low64 inputs.2).toNat))
@@ -388,23 +384,18 @@ noncomputable def lookupOperands
     (0, BitVec.ofNat InstructionLookupAddressBits
       (inputs.1.toNat * (low64 inputs.2).toNat))
   else if addOperands instruction then
-    match instruction with
-    | .AUIPC _ _
-    | .VirtualAssertHalfwordAlignment _ _ _
-    | .VirtualAssertWordAlignment _ _ _ =>
-        (0, BitVec.ofInt InstructionLookupAddressBits
-          ((inputs.1.toNat : Int) + inputs.2.toInt))
-    | _ =>
-        (0, BitVec.ofNat InstructionLookupAddressBits
-          (inputs.1.toNat + (low64 inputs.2).toNat))
+    if signedInstructionImmediate instruction then
+      (0, BitVec.ofInt InstructionLookupAddressBits
+        ((inputs.1.toNat : Int) + inputs.2.toInt))
+    else
+      (0, BitVec.ofNat InstructionLookupAddressBits
+        (inputs.1.toNat + (low64 inputs.2).toNat))
   else
     (inputs.1, BitVec.ofNat InstructionLookupAddressBits (low64 inputs.2).toNat)
 
-noncomputable def lookupIndex
-    (instruction : JoltISA.Instr)
-    (metadata : JoltTraceRowMetadata)
-    (before after : SailJoltState) : U128 :=
-  let operands := lookupOperands instruction metadata before after
+def lookupIndex (row : JoltTraceRow) : U128 :=
+  let instruction := row.instruction
+  let operands := lookupOperands row
   if addOperands instruction || subtractOperands instruction ||
       multiplyOperands instruction || adviceOperands instruction then
     operands.2
@@ -414,14 +405,12 @@ noncomputable def lookupIndex
 def boolU64 (value : Bool) : U64 :=
   if value then 1 else 0
 
-noncomputable def lookupOutput
-    (instruction : JoltISA.Instr)
-    (metadata : JoltTraceRowMetadata)
-    (before after : SailJoltState) : U64 :=
+def lookupOutput (row : JoltTraceRow) : U64 :=
+  let instruction := row.instruction
   if writesLookupOutput instruction then
-    destinationRegisterValue after instruction
+    row.rdWriteValue
   else
-    let inputs := instructionInputs instruction metadata before
+    let inputs := instructionInputs row
     let left := inputs.1
     let right := low64 inputs.2
     match instruction with
@@ -445,9 +434,9 @@ noncomputable def lookupOutput
         boolU64 (left.toNat * right.toNat ≤ 2 ^ Xlen - 1)
     | .VirtualAssertLTE _ _ => boolU64 (left.toNat ≤ right.toNat)
     | .VirtualAssertHalfwordAlignment _ _ _ =>
-        boolU64 ((lookupOperands instruction metadata before after).2.toNat % 2 == 0)
+        boolU64 ((lookupOperands row).2.toNat % 2 == 0)
     | .VirtualAssertWordAlignment _ _ _ =>
-        boolU64 ((lookupOperands instruction metadata before after).2.toNat % 4 == 0)
+        boolU64 ((lookupOperands row).2.toNat % 4 == 0)
     | _ => 0
 
 def fieldBool {F : Type u} [Field F] (value : Bool) : F :=
@@ -465,14 +454,11 @@ def destinationIndicator {F : Type u} [Field F]
   | some destination => fieldBool (destinationAddress destination == address)
   | none => 0
 
-noncomputable def rdIncrement
-    (instruction : JoltISA.Instr)
-    (before after : SailJoltState) : U128 :=
-  match destination instruction with
-  | some destination =>
+def rdIncrement (row : JoltTraceRow) : U128 :=
+  match destination row.instruction with
+  | some _ =>
       BitVec.ofInt InstructionLookupAddressBits
-        (((destinationValue after destination).toNat : Int) -
-          (destinationValue before destination).toNat)
+        (((row.rdWriteValue.toNat : Int) - row.rdPreValue.toNat))
   | none => 0
 
 def isNoop : JoltISA.Instr → Bool
@@ -610,10 +596,135 @@ def lookupTable : JoltISA.Instr → Option JoltLookupTable
 def nextTraceIndex {T : Nat} (i : Fin T) : Option (Fin T) :=
   if h : i.val + 1 < T then some ⟨i.val + 1, h⟩ else none
 
+end HonestWitness
+
+/-- Rust's canonical default row, used to pad the proof trace to `2 ^ logT`. -/
+def JoltTraceRow.noOp : JoltTraceRow where
+  instruction := .NoOp
+  metadata := {
+    pc := 0
+    unexpandedPC := 0
+    virtualSequenceRemaining := none
+    isFirstInSequence := false
+    isCompressed := false
+  }
+  capturedState := .nonMemory {
+    rs1Value := 0
+    rs2Value := 0
+    rdPreValue := 0
+    rdWriteValue := 0
+  }
+
+/-- Native contracts established when Rust converts an executed cycle into a
+proof-facing `JoltTraceRow`.  These facts are stated before embedding values in
+the proof field. -/
+structure JoltTraceRow.Valid
+    (row : JoltTraceRow) (before after : SailJoltState) : Prop where
+  rs1Value_eq :
+    row.rs1Value = HonestWitness.registerValue before
+      (HonestWitness.firstSource row.instruction)
+  rs2Value_eq :
+    row.rs2Value = HonestWitness.registerValue before
+      (HonestWitness.secondSource row.instruction)
+  rdPreValue_eq :
+    row.rdPreValue = HonestWitness.destinationRegisterValue before row.instruction
+  rdWriteValue_eq :
+    row.rdWriteValue = HonestWitness.destinationRegisterValue after row.instruction
+  effectiveAddress :
+    (HonestWitness.isLoad row.instruction ||
+      HonestWitness.isStore row.instruction) = true →
+      (row.ramAddress.toNat : Int) =
+        (row.rs1Value.toNat : Int) +
+          HonestWitness.instructionImmediate row.instruction
+  addInput_nonnegative :
+    HonestWitness.addOperands row.instruction = true →
+      0 ≤ ((HonestWitness.instructionInputs row).1.toNat : Int) +
+        (HonestWitness.instructionInputs row).2.toInt
+  assertionAccepted :
+    HonestWitness.isAssert row.instruction = true →
+      HonestWitness.lookupOutput row = 1
+  firstInSequence_isVirtual :
+    row.metadata.isFirstInSequence = true →
+      HonestWitness.isVirtual row.metadata = true
+  jumpLink :
+    HonestWitness.isJump row.instruction = true →
+      (row.rdWriteValue.toNat : Int) =
+        (row.metadata.unexpandedPC.toNat : Int) + 4 -
+          (if row.metadata.isCompressed then 2 else 0)
+
+/-- The native branch decision materialized by Rust for a row. -/
+def JoltTraceRow.shouldBranch (row : JoltTraceRow) : Bool :=
+  HonestWitness.isBranch row.instruction &&
+    HonestWitness.lookupOutput row == 1
+
+/-- The native jump decision for a row with an actual successor. -/
+def JoltTracePair.shouldJump (current next : JoltTraceRow) : Bool :=
+  HonestWitness.isJump current.instruction &&
+    !(HonestWitness.isNoop next.instruction)
+
+/-- Native ordering contracts for adjacent materialized Rust trace rows. -/
+structure JoltTracePair.Valid (current next : JoltTraceRow) : Prop where
+  jumpTarget :
+    JoltTracePair.shouldJump current next = true →
+      next.metadata.unexpandedPC = HonestWitness.lookupOutput current
+  branchTarget :
+    current.shouldBranch = true →
+      (next.metadata.unexpandedPC.toNat : Int) =
+        (current.metadata.unexpandedPC.toNat : Int) +
+          HonestWitness.instructionImmediate current.instruction
+  ordinaryTarget :
+    current.shouldBranch = false →
+    HonestWitness.isJump current.instruction = false →
+      (next.metadata.unexpandedPC.toNat : Int) =
+        (current.metadata.unexpandedPC.toNat : Int) + 4 -
+          (if HonestWitness.doNotUpdateUnexpandedPC
+              current.instruction current.metadata then 4 else 0) -
+          (if current.metadata.isCompressed then 2 else 0)
+  inlinePC :
+    HonestWitness.isVirtual current.metadata = true →
+    HonestWitness.isLastInSequence current.metadata = false →
+      next.metadata.pc = current.metadata.pc + 1
+  sequenceStart :
+    HonestWitness.isVirtual next.metadata = true →
+    next.metadata.isFirstInSequence = false →
+      HonestWitness.doNotUpdateUnexpandedPC
+        current.instruction current.metadata = true
+
+/-- An executed trace together with the native materialization and ordering
+facts guaranteed by Rust's tracer, bytecode preprocessing, and padding. -/
+structure HonestTrace (params : JoltWitnessParams)
+    extends ExecutionTrace params where
+  rowValid : ∀ i : Fin params.traceLength,
+    JoltTraceRow.Valid (rows i)
+      (state (currentStateIndex i)) (state (nextStateIndex i))
+  pairValid : ∀ (i j : Fin params.traceLength),
+    HonestWitness.nextTraceIndex i = some j →
+      JoltTracePair.Valid (rows i) (rows j)
+  finalRow : ∀ i : Fin params.traceLength,
+    HonestWitness.nextTraceIndex i = none → rows i = JoltTraceRow.noOp
+
+def HonestTrace.instrList {params : JoltWitnessParams}
+    (trace : HonestTrace params) : Column params.traceLength JoltISA.Instr :=
+  trace.toExecutionTrace.instrList
+
+def HonestTrace.rowMetadata {params : JoltWitnessParams}
+    (trace : HonestTrace params) : Column params.traceLength JoltTraceRowMetadata :=
+  trace.toExecutionTrace.rowMetadata
+
+def HonestTrace.preState {params : JoltWitnessParams}
+    (trace : HonestTrace params) (i : Fin params.traceLength) : SailJoltState :=
+  trace.toExecutionTrace.preState i
+
+def HonestTrace.postState {params : JoltWitnessParams}
+    (trace : HonestTrace params) (i : Fin params.traceLength) : SailJoltState :=
+  trace.toExecutionTrace.postState i
+
+namespace HonestWitness
+
 def nextMetadata {params : JoltWitnessParams}
     (trace : HonestTrace params)
     (i : Fin params.traceLength) : Option JoltTraceRowMetadata :=
-  (nextTraceIndex i).map trace.metadata.row
+  (nextTraceIndex i).map trace.rowMetadata
 
 def nextInstruction {params : JoltWitnessParams}
     (trace : HonestTrace params)
@@ -645,21 +756,16 @@ noncomputable def registerAtAddress
   else
     sourceValue state (.vreg (BitVec.ofNat RegisterAddressBits address.val))
 
-noncomputable def ramAccessAddress
-    (instruction : JoltISA.Instr) (before : SailJoltState) : Option U64 :=
-  match instruction with
-  | .LD _ _ base immediate =>
-      some (sourceValue before base + sign_extend (m := Xlen) immediate)
-  | .SD base _ immediate =>
-      some (sourceValue before base + sign_extend (m := Xlen) immediate)
+def ramAccessAddress (row : JoltTraceRow) : Option U64 :=
+  match row.instruction with
+  | .LD .. | .SD .. => some row.ramAddress
   | _ => none
 
-noncomputable def remappedRamAddress
+def remappedRamAddress
     {params : JoltWitnessParams}
     (trace : HonestTrace params)
-    (instruction : JoltISA.Instr)
-    (before : SailJoltState) : Option Nat :=
-  match ramAccessAddress instruction before with
+    (row : JoltTraceRow) : Option Nat :=
+  match ramAccessAddress row with
   | some address =>
       if address == 0 || address.toNat < trace.metadata.lowestMemoryAddress.toNat then
         none
@@ -667,30 +773,16 @@ noncomputable def remappedRamAddress
         some ((address.toNat - trace.metadata.lowestMemoryAddress.toNat) / 8)
   | none => none
 
-noncomputable def ramReadValue
-    (instruction : JoltISA.Instr)
-    (before : SailJoltState) : U64 :=
-  match ramAccessAddress instruction before with
-  | some address => memoryWord before address.toNat
-  | none => 0
+def ramReadValue (row : JoltTraceRow) : U64 :=
+  row.ramReadValue
 
-noncomputable def ramWriteValue
-    (instruction : JoltISA.Instr)
-    (before after : SailJoltState) : U64 :=
-  if isLoad instruction then
-    ramReadValue instruction before
-  else
-    match ramAccessAddress instruction before with
-    | some address => memoryWord after address.toNat
-    | none => 0
+def ramWriteValue (row : JoltTraceRow) : U64 :=
+  row.ramWriteValue
 
-noncomputable def ramIncrement
-    (instruction : JoltISA.Instr)
-    (before after : SailJoltState) : U128 :=
-  if isStore instruction then
+def ramIncrement (row : JoltTraceRow) : U128 :=
+  if isStore row.instruction then
     BitVec.ofInt InstructionLookupAddressBits
-      (((ramWriteValue instruction before after).toNat : Int) -
-        (ramReadValue instruction before).toNat)
+      (((row.ramWriteValue.toNat : Int) - row.ramReadValue.toNat))
   else
     0
 
@@ -700,11 +792,8 @@ def raChunk (value index chunks chunkBits : Nat) : Nat :=
 def oneHot {F : Type u} [Field F] (actual expected : Nat) : F :=
   fieldBool (actual == expected)
 
-noncomputable def productValue
-    (instruction : JoltISA.Instr)
-    (metadata : JoltTraceRowMetadata)
-    (before : SailJoltState) : Int :=
-  let inputs := instructionInputs instruction metadata before
+def productValue (row : JoltTraceRow) : Int :=
+  let inputs := instructionInputs row
   (inputs.1.toNat : Int) * inputs.2.toInt
 
 noncomputable def honest_witness
@@ -713,31 +802,25 @@ noncomputable def honest_witness
   committed := fun polynomial =>
     match polynomial with
     | .rdInc => fun i =>
-        fieldFromI128
-          (rdIncrement (trace.instrList i) (trace.preState i) (trace.postState i))
+        fieldFromI128 (rdIncrement (trace.rows i))
     | .ramInc => fun i =>
-        fieldFromI128
-          (ramIncrement (trace.instrList i) (trace.preState i) (trace.postState i))
+        fieldFromI128 (ramIncrement (trace.rows i))
     | .instructionRa chunk => fun address i =>
         oneHot address.val
           (raChunk
-            (lookupIndex
-              (trace.instrList i)
-              (trace.metadata.row i)
-              (trace.preState i)
-              (trace.postState i)).toNat
+            (lookupIndex (trace.rows i)).toNat
             chunk.val
             params.instructionCommittedRaCount
             params.committedChunkBits)
     | .bytecodeRa chunk => fun address i =>
         oneHot address.val
           (raChunk
-            (trace.metadata.row i).pc
+            (trace.rowMetadata i).pc
             chunk.val
             params.bytecodeCommittedRaCount
             params.committedChunkBits)
     | .ramRa chunk => fun address i =>
-        match remappedRamAddress trace (trace.instrList i) (trace.preState i) with
+        match remappedRamAddress trace (trace.rows i) with
         | some ramAddress =>
             oneHot address.val
               (raChunk
@@ -753,9 +836,9 @@ noncomputable def honest_witness
 
   virtual := fun polynomial =>
     match polynomial with
-    | .pc => fun i => ((trace.metadata.row i).pc : F)
+    | .pc => fun i => ((trace.rowMetadata i).pc : F)
     | .unexpandedPC => fun i =>
-        fieldFromU64 (trace.metadata.row i).unexpandedPC
+        fieldFromU64 (trace.rowMetadata i).unexpandedPC
     | .nextPC => fun i =>
         match nextMetadata trace i with
         | some metadata => (metadata.pc : F)
@@ -765,9 +848,9 @@ noncomputable def honest_witness
         | some metadata => fieldFromU64 metadata.unexpandedPC
         | none => 0
     | .nextIsNoop => fun i =>
-        fieldBool <| match nextInstruction trace i with
-        | some instruction => isNoop instruction
-        | none => false
+      fieldBool <| match nextInstruction trace i with
+      | some instruction => isNoop instruction
+      | none => true
     | .nextIsVirtual => fun i =>
         fieldBool <| match nextMetadata trace i with
         | some metadata => isVirtual metadata
@@ -777,31 +860,15 @@ noncomputable def honest_witness
         | some metadata => metadata.isFirstInSequence
         | none => false
     | .leftLookupOperand => fun i =>
-        fieldFromU64
-          (lookupOperands
-            (trace.instrList i)
-            (trace.metadata.row i)
-            (trace.preState i)
-            (trace.postState i)).1
+        fieldFromU64 (lookupOperands (trace.rows i)).1
     | .rightLookupOperand => fun i =>
-        fieldFromU128
-          (lookupOperands
-            (trace.instrList i)
-            (trace.metadata.row i)
-            (trace.preState i)
-            (trace.postState i)).2
+        fieldFromU128 (lookupOperands (trace.rows i)).2
     | .leftInstructionInput => fun i =>
-        fieldFromU64
-          (instructionInputs
-            (trace.instrList i) (trace.metadata.row i) (trace.preState i)).1
+        fieldFromU64 (instructionInputs (trace.rows i)).1
     | .rightInstructionInput => fun i =>
-        fieldFromI128
-          (instructionInputs
-            (trace.instrList i) (trace.metadata.row i) (trace.preState i)).2
+        fieldFromI128 (instructionInputs (trace.rows i)).2
     | .product => fun i =>
-        fieldFromInt
-          (productValue
-            (trace.instrList i) (trace.metadata.row i) (trace.preState i))
+        fieldFromInt (productValue (trace.rows i))
     | .shouldJump => fun i =>
         fieldBool <| isJump (trace.instrList i) &&
           match nextInstruction trace i with
@@ -809,29 +876,17 @@ noncomputable def honest_witness
           | none => true
     | .shouldBranch => fun i =>
         fieldBool <| isBranch (trace.instrList i) &&
-          lookupOutput
-            (trace.instrList i)
-            (trace.metadata.row i)
-            (trace.preState i)
-            (trace.postState i) == 1
+          lookupOutput (trace.rows i) == 1
     | .imm => fun i =>
         fieldFromInt (instructionImmediate (trace.instrList i))
     | .rs1Value => fun i =>
-        fieldFromU64
-          (registerValue (trace.preState i) (firstSource (trace.instrList i)))
+        fieldFromU64 (trace.rows i).rs1Value
     | .rs2Value => fun i =>
-        fieldFromU64
-          (registerValue (trace.preState i) (secondSource (trace.instrList i)))
+        fieldFromU64 (trace.rows i).rs2Value
     | .rdWriteValue => fun i =>
-        fieldFromU64
-          (destinationRegisterValue (trace.postState i) (trace.instrList i))
+        fieldFromU64 (trace.rows i).rdWriteValue
     | .lookupOutput => fun i =>
-        fieldFromU64
-          (lookupOutput
-            (trace.instrList i)
-            (trace.metadata.row i)
-            (trace.preState i)
-            (trace.postState i))
+        fieldFromU64 (lookupOutput (trace.rows i))
     | .instructionRafFlag => fun i =>
         fieldBool (addOperands (trace.instrList i) ||
           subtractOperands (trace.instrList i) ||
@@ -846,29 +901,22 @@ noncomputable def honest_witness
     | .instructionRa chunk => fun address i =>
         oneHot address.val
           (raChunk
-            (lookupIndex
-              (trace.instrList i)
-              (trace.metadata.row i)
-              (trace.preState i)
-              (trace.postState i)).toNat
+            (lookupIndex (trace.rows i)).toNat
             chunk.val
             params.instructionVirtualRaCount
             params.lookupVirtualChunkBits)
     | .registersVal => fun address i =>
         fieldFromU64 (registerAtAddress (trace.preState i) address)
     | .ramAddress => fun i =>
-        fieldFromU64
-          ((ramAccessAddress (trace.instrList i) (trace.preState i)).getD 0)
+        fieldFromU64 (trace.rows i).ramAddress
     | .ramRa => fun address i =>
-        match remappedRamAddress trace (trace.instrList i) (trace.preState i) with
+        match remappedRamAddress trace (trace.rows i) with
         | some ramAddress => oneHot address.val ramAddress
         | none => 0
     | .ramReadValue => fun i =>
-        fieldFromU64 (ramReadValue (trace.instrList i) (trace.preState i))
+        fieldFromU64 (trace.rows i).ramReadValue
     | .ramWriteValue => fun i =>
-        fieldFromU64
-          (ramWriteValue
-            (trace.instrList i) (trace.preState i) (trace.postState i))
+        fieldFromU64 (trace.rows i).ramWriteValue
     | .ramVal => fun address i =>
         fieldFromU64
           (memoryWord
@@ -880,12 +928,12 @@ noncomputable def honest_witness
             (finalState trace)
             (trace.metadata.lowestMemoryAddress.toNat + 8 * address.val))
     | .ramHammingWeight => fun i =>
-        fieldBool <| match ramAccessAddress (trace.instrList i) (trace.preState i) with
+        fieldBool <| match ramAccessAddress (trace.rows i) with
         | some address => address != 0
         | none => false
     | .opFlag flag => fun i =>
         fieldBool
-          (circuitFlagValue flag (trace.instrList i) (trace.metadata.row i))
+          (circuitFlagValue flag (trace.instrList i) (trace.rowMetadata i))
     | .instructionFlag flag => fun i =>
         fieldBool (instructionFlagValue flag (trace.instrList i))
     | .lookupTableFlag table => fun i =>

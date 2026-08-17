@@ -10,11 +10,27 @@ theorem rs2EqRamWriteIfStore
     (trace : HonestTrace params) :
     JoltConstraint.Satisfied .rs2EqRamWriteIfStore
       (honest_witness (F := F) trace) := by
+  let witness : JoltWitness params F := honest_witness (F := F) trace
+  change JoltConstraint.Satisfied .rs2EqRamWriteIfStore witness
   unfold JoltConstraint.Satisfied
   intro i
-  -- TODO: connect successful Sail stores to the RAM-access value recorded by
-  -- the Jolt trace. Reconstructing it from post-state memory also needs the
-  -- ordinary-memory (not MMIO) access assumptions.
-  sorry
+  have storeFlag_from_trace :
+      witness.opFlag .store i =
+        HonestWitness.fieldBool (HonestWitness.isStore (trace.rows i).instruction) := by
+    rfl
+  have rs2_from_trace :
+      witness.rs2Value i =
+        HonestWitness.fieldFromU64 (trace.rows i).rs2Value := by
+    rfl
+  have ramWrite_from_trace :
+      witness.virtual .ramWriteValue i =
+        HonestWitness.fieldFromU64 (trace.rows i).ramWriteValue := by
+    rfl
+  rw [storeFlag_from_trace, rs2_from_trace, ramWrite_from_trace]
+  rcases hrow : trace.rows i with ⟨instruction, metadata, captured⟩
+  cases instruction <;> cases captured <;>
+    simp [HonestWitness.fieldBool, HonestWitness.isStore,
+      JoltTraceRow.rs2Value, JoltTraceRow.ramWriteValue,
+      CapturedState.rs2Value, CapturedState.ramWriteValue]
 
 end JoltConstraints.JoltConstraint.Completeness

@@ -14,41 +14,37 @@ theorem rightLookupEqRightInputOtherwise
 
   unfold JoltConstraint.Satisfied
   intro i
-  let instruction := trace.instrList i
-  let metadata := trace.metadata.row i
-  let before := trace.preState i
-  let after := trace.postState i
+  let row := trace.rows i
 
   have addFlag_from_trace :
       witness.opFlag .addOperands i =
-        HonestWitness.fieldBool (HonestWitness.addOperands instruction) := by
+        HonestWitness.fieldBool (HonestWitness.addOperands row.instruction) := by
     rfl
   have subFlag_from_trace :
       witness.opFlag .subtractOperands i =
-        HonestWitness.fieldBool (HonestWitness.subtractOperands instruction) := by
+        HonestWitness.fieldBool (HonestWitness.subtractOperands row.instruction) := by
     rfl
   have mulFlag_from_trace :
       witness.opFlag .multiplyOperands i =
-        HonestWitness.fieldBool (HonestWitness.multiplyOperands instruction) := by
+        HonestWitness.fieldBool (HonestWitness.multiplyOperands row.instruction) := by
     rfl
   have adviceFlag_from_trace :
       witness.opFlag .advice i =
-        HonestWitness.fieldBool (HonestWitness.adviceOperands instruction) := by
+        HonestWitness.fieldBool (HonestWitness.adviceOperands row.instruction) := by
     rfl
   have rightLookup_from_trace :
       witness.rightLookupOperand i =
-        HonestWitness.fieldFromU128
-          (HonestWitness.lookupOperands instruction metadata before after).2 := by
+        HonestWitness.fieldFromU128 (HonestWitness.lookupOperands row).2 := by
     rfl
   have rightInput_from_trace :
       witness.rightInstructionInput i =
-        HonestWitness.fieldFromI128
-          (HonestWitness.instructionInputs instruction metadata before).2 := by
+        HonestWitness.fieldFromI128 (HonestWitness.instructionInputs row).2 := by
     rfl
 
   rw [addFlag_from_trace, subFlag_from_trace, mulFlag_from_trace,
     adviceFlag_from_trace, rightLookup_from_trace, rightInput_from_trace]
-  cases instruction <;>
+  rcases row with ⟨instruction, metadata, captured⟩
+  cases instruction <;> cases captured <;>
     simp [HonestWitness.fieldBool, HonestWitness.addOperands,
       HonestWitness.subtractOperands, HonestWitness.multiplyOperands,
       HonestWitness.adviceOperands, HonestWitness.lookupOperands,

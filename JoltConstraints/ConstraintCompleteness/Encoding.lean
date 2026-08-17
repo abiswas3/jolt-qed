@@ -5,6 +5,25 @@ namespace JoltConstraints.JoltConstraint.Completeness
 
 universe u
 
+theorem fieldFromU64_eq_add_fieldFromInt
+    {F : Type u} [Field F]
+    (result left : HonestWitness.U64) (right : Int)
+    (h : (result.toNat : Int) = (left.toNat : Int) + right) :
+    HonestWitness.fieldFromU64 (F := F) result =
+      HonestWitness.fieldFromU64 (F := F) left +
+        HonestWitness.fieldFromInt (F := F) right := by
+  have cast_h := congrArg (fun value : Int => (value : F)) h
+  simpa [HonestWitness.fieldFromU64, HonestWitness.fieldFromInt] using cast_h
+
+theorem fieldFromU64_eq_fieldFromInt
+    {F : Type u} [Field F]
+    (result : HonestWitness.U64) (value : Int)
+    (h : (result.toNat : Int) = value) :
+    HonestWitness.fieldFromU64 (F := F) result =
+      HonestWitness.fieldFromInt (F := F) value := by
+  have cast_h := congrArg (fun integer : Int => (integer : F)) h
+  simpa [HonestWitness.fieldFromU64, HonestWitness.fieldFromInt] using cast_h
+
 theorem zeroExtendedU64_msb_false (value : HonestWitness.U64) :
     (BitVec.ofNat InstructionLookupAddressBits value.toNat).msb =
       false := by

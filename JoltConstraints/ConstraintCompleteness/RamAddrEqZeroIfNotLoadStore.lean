@@ -15,26 +15,25 @@ theorem ramAddrEqZeroIfNotLoadStore
 
   unfold JoltConstraint.Satisfied
   intro i
-  let instruction := trace.instrList i
-  let before := trace.preState i
-
   have loadFlag_from_trace :
       witness.opFlag .load i =
-        HonestWitness.fieldBool (HonestWitness.isLoad instruction) := by
+        HonestWitness.fieldBool
+          (HonestWitness.isLoad (trace.rows i).instruction) := by
     rfl
   have storeFlag_from_trace :
       witness.opFlag .store i =
-        HonestWitness.fieldBool (HonestWitness.isStore instruction) := by
+        HonestWitness.fieldBool
+          (HonestWitness.isStore (trace.rows i).instruction) := by
     rfl
   have ramAddress_from_trace :
       witness.virtual .ramAddress i =
-        HonestWitness.fieldFromU64
-          ((HonestWitness.ramAccessAddress instruction before).getD 0) := by
+        HonestWitness.fieldFromU64 (trace.rows i).ramAddress := by
     rfl
-
   rw [loadFlag_from_trace, storeFlag_from_trace, ramAddress_from_trace]
-  cases instruction <;>
-    simp [HonestWitness.fieldBool, HonestWitness.isLoad, HonestWitness.isStore,
-      HonestWitness.ramAccessAddress, HonestWitness.fieldFromU64]
+  rcases hrow : trace.rows i with ⟨instruction, metadata, captured⟩
+  cases instruction <;> cases captured <;>
+    simp [HonestWitness.fieldBool, HonestWitness.isLoad,
+      HonestWitness.isStore, JoltTraceRow.ramAddress,
+      CapturedState.ramAddress, HonestWitness.fieldFromU64]
 
 end JoltConstraints.JoltConstraint.Completeness

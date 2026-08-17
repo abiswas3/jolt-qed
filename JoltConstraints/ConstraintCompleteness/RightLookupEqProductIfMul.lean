@@ -14,28 +14,24 @@ theorem rightLookupEqProductIfMul
 
   unfold JoltConstraint.Satisfied
   intro i
-  let instruction := trace.instrList i
-  let metadata := trace.metadata.row i
-  let before := trace.preState i
-  let after := trace.postState i
+  let row := trace.rows i
 
   have mulFlag_from_trace :
       witness.opFlag .multiplyOperands i =
-        HonestWitness.fieldBool (HonestWitness.multiplyOperands instruction) := by
+        HonestWitness.fieldBool (HonestWitness.multiplyOperands row.instruction) := by
     rfl
   have rightLookup_from_trace :
       witness.rightLookupOperand i =
-        HonestWitness.fieldFromU128
-          (HonestWitness.lookupOperands instruction metadata before after).2 := by
+        HonestWitness.fieldFromU128 (HonestWitness.lookupOperands row).2 := by
     rfl
   have product_from_trace :
       witness.virtual .product i =
-        HonestWitness.fieldFromInt
-          (HonestWitness.productValue instruction metadata before) := by
+        HonestWitness.fieldFromInt (HonestWitness.productValue row) := by
     rfl
 
   rw [mulFlag_from_trace, rightLookup_from_trace, product_from_trace]
-  cases instruction <;>
+  rcases row with ⟨instruction, metadata, captured⟩
+  cases instruction <;> cases captured <;>
     simp [HonestWitness.fieldBool, HonestWitness.multiplyOperands,
       HonestWitness.subtractOperands, HonestWitness.addOperands,
       HonestWitness.adviceOperands, HonestWitness.lookupOperands,
