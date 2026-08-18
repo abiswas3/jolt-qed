@@ -8,10 +8,10 @@ universe u
 theorem assertLookupOne
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .assertLookupOne
+    JoltConstraint.Satisfied .assertLookupOne trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .assertLookupOne witness
+  change JoltConstraint.Satisfied .assertLookupOne trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   let row := trace.rows i

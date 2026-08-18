@@ -8,10 +8,10 @@ universe u
 theorem shouldJumpEqJumpMulNotNextIsNoop
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .shouldJumpEqJumpMulNotNextIsNoop
+    JoltConstraint.Satisfied .shouldJumpEqJumpMulNotNextIsNoop trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .shouldJumpEqJumpMulNotNextIsNoop witness
+  change JoltConstraint.Satisfied .shouldJumpEqJumpMulNotNextIsNoop trace.metadata.toJoltPublicInputs witness
 
   unfold JoltConstraint.Satisfied
   intro i

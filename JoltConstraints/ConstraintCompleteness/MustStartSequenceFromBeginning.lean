@@ -8,10 +8,10 @@ universe u
 theorem mustStartSequenceFromBeginning
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .mustStartSequenceFromBeginning
+    JoltConstraint.Satisfied .mustStartSequenceFromBeginning trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .mustStartSequenceFromBeginning witness
+  change JoltConstraint.Satisfied .mustStartSequenceFromBeginning trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   let current := trace.rows i

@@ -7,10 +7,10 @@ universe u
 theorem rightLookupEqProductIfMul
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .rightLookupEqProductIfMul
+    JoltConstraint.Satisfied .rightLookupEqProductIfMul trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .rightLookupEqProductIfMul witness
+  change JoltConstraint.Satisfied .rightLookupEqProductIfMul trace.metadata.toJoltPublicInputs witness
 
   unfold JoltConstraint.Satisfied
   intro i
@@ -28,11 +28,14 @@ theorem rightLookupEqProductIfMul
       witness.virtual .product i =
         HonestWitness.fieldFromInt (HonestWitness.productValue row) := by
     rfl
+  have immediate_matches :
+      HonestWitness.instructionImmediateMatches row := by
+    exact (trace.rowValid i).instructionImmediate_eq
 
   rw [mulFlag_from_trace, rightLookup_from_trace, product_from_trace]
-  rcases row with ⟨instruction, metadata, captured⟩
+  rcases row with ⟨instruction, instructionRow, metadata, captured⟩
   cases instruction <;> cases captured <;>
-    simp [HonestWitness.fieldBool, HonestWitness.multiplyOperands,
+    simp_all [HonestWitness.fieldBool, HonestWitness.multiplyOperands,
       HonestWitness.subtractOperands, HonestWitness.addOperands,
       HonestWitness.adviceOperands, HonestWitness.lookupOperands,
       HonestWitness.productValue, HonestWitness.instructionInputs,
@@ -40,6 +43,7 @@ theorem rightLookupEqProductIfMul
       HonestWitness.firstSource, HonestWitness.secondSource,
       HonestWitness.lowImmediate, HonestWitness.rightOperandIsImmediate,
       HonestWitness.signedInstructionImmediate,
+      HonestWitness.instructionImmediateMatches,
       HonestWitness.instructionImmediate, HonestWitness.fieldFromInt,
       HonestWitness.fieldFromU64]
 

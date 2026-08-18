@@ -8,10 +8,10 @@ universe u
 theorem ramReadEqRdWriteIfLoad
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .ramReadEqRdWriteIfLoad
+    JoltConstraint.Satisfied .ramReadEqRdWriteIfLoad trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .ramReadEqRdWriteIfLoad witness
+  change JoltConstraint.Satisfied .ramReadEqRdWriteIfLoad trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   have loadFlag_from_trace :
@@ -27,7 +27,8 @@ theorem ramReadEqRdWriteIfLoad
         HonestWitness.fieldFromU64 (trace.rows i).rdWriteValue := by
     rfl
   rw [loadFlag_from_trace, ramRead_from_trace, rdWrite_from_trace]
-  rcases hrow : trace.rows i with ⟨instruction, metadata, captured⟩
+  rcases hrow : trace.rows i with
+    ⟨instruction, instructionRow, metadata, captured⟩
   cases instruction <;> cases captured <;>
     simp [HonestWitness.fieldBool, HonestWitness.isLoad,
       JoltTraceRow.ramReadValue, JoltTraceRow.rdWriteValue,

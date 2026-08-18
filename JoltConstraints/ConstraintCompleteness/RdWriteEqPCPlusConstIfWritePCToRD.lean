@@ -7,10 +7,10 @@ universe u
 theorem rdWriteEqPCPlusConstIfWritePCToRD
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .rdWriteEqPCPlusConstIfWritePCToRD
+    JoltConstraint.Satisfied .rdWriteEqPCPlusConstIfWritePCToRD trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .rdWriteEqPCPlusConstIfWritePCToRD witness
+  change JoltConstraint.Satisfied .rdWriteEqPCPlusConstIfWritePCToRD trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   let row := trace.rows i

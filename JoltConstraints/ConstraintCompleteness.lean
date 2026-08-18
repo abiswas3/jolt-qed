@@ -20,6 +20,10 @@ import JoltConstraints.ConstraintCompleteness.MustStartSequenceFromBeginning
 import JoltConstraints.ConstraintCompleteness.ProductEqLeftInputMulRightInput
 import JoltConstraints.ConstraintCompleteness.ShouldBranchEqLookupOutputMulBranch
 import JoltConstraints.ConstraintCompleteness.ShouldJumpEqJumpMulNotNextIsNoop
+import JoltConstraints.ConstraintCompleteness.RamReadValueEqSelectedRamValue
+import JoltConstraints.ConstraintCompleteness.RamWriteValueEqSelectedRamValuePlusIncrement
+import JoltConstraints.ConstraintCompleteness.RamAddressEqSelectedRamAddress
+import JoltConstraints.ConstraintCompleteness.RamFinalValueEqPublicIo
 
 namespace JoltConstraints.JoltConstraint.Completeness
 
@@ -34,7 +38,8 @@ case split: it contains no additional constraint reasoning.
 theorem honest_witness_satisfies
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) (constraint : JoltConstraint) :
-    constraint.Satisfied (honest_witness (F := F) trace) := by
+    constraint.Satisfied trace.metadata.toJoltPublicInputs
+      (honest_witness (F := F) trace) := by
   cases constraint with
   | ramAddrEqRs1PlusImmIfLoadStore =>
       exact ramAddrEqRs1PlusImmIfLoadStore trace
@@ -68,5 +73,12 @@ theorem honest_witness_satisfies
       exact shouldBranchEqLookupOutputMulBranch trace
   | shouldJumpEqJumpMulNotNextIsNoop =>
       exact shouldJumpEqJumpMulNotNextIsNoop trace
+  | ramReadValueEqSelectedRamValue =>
+      exact ramReadValueEqSelectedRamValue trace
+  | ramWriteValueEqSelectedRamValuePlusIncrement =>
+      exact ramWriteValueEqSelectedRamValuePlusIncrement trace
+  | ramAddressEqSelectedRamAddress =>
+      exact ramAddressEqSelectedRamAddress trace
+  | ramFinalValueEqPublicIo => exact ramFinalValueEqPublicIo trace
 
 end JoltConstraints.JoltConstraint.Completeness

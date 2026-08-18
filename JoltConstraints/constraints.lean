@@ -4,15 +4,20 @@ namespace JoltConstraints
 
 universe u
 
+open scoped BigOperators
+
 -- NOTE: We are assuming that the bytecode is fixed and public for now.
 -- Constraints for Jolt's committed-program mode are not modelled here.
 
 /-!
-# Jolt RV64 R1CS constraints
+# Jolt witness constraints
 
-Each constructor names one of the 22 constraints in Jolt's full RV64 trace
-R1CS. The first 19 are conditional equalities of the form
-`guard * (left - right) = 0`; the final three define product columns.
+Each constructor names one unbatched identity tested by a Jolt sumcheck. The
+first 19 constructors are the equality-conditional RV64 constraints tested by
+Stage 1's `SpartanOuter`. The next three are the product constraints tested by
+Stage 2's `SpartanProductVirtualization`, and the final four are the RAM witness
+relations tested in Stage 2. Claim reductions and sumcheck round-splitting
+machinery are intentionally not included.
 -/
 
 inductive JoltConstraint where
@@ -35,9 +40,16 @@ inductive JoltConstraint where
   | nextUnexpandedPCUpdateOtherwise
   | nextPCEqPCPlusOneIfInline
   | mustStartSequenceFromBeginning
+  -- Stage 2: the three identities batched by Spartan product virtualization.
   | productEqLeftInputMulRightInput
   | shouldBranchEqLookupOutputMulBranch
   | shouldJumpEqJumpMulNotNextIsNoop
+  -- Stage 2: three RAM sumchecks, with the gamma-batched read/write relation
+  -- split into its two underlying identities.
+  | ramReadValueEqSelectedRamValue
+  | ramWriteValueEqSelectedRamValuePlusIncrement
+  | ramAddressEqSelectedRamAddress
+  | ramFinalValueEqPublicIo
   deriving DecidableEq, Repr
 
 private def ramAddrEqRs1PlusImmIfLoadStore_satisfied
@@ -207,9 +219,47 @@ private def shouldJumpEqJumpMulNotNextIsNoop_satisfied
     witness.opFlag .jump i * (1 - witness.virtual .nextIsNoop i) -
         witness.virtual .shouldJump i = 0
 
+private def ramReadValueEqSelectedRamValue_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.ramReadValue i -
+        ∑ address : Fin params.ramK,
+          witness.ramRa address i * witness.ramVal address i = 0
+
+private def ramWriteValueEqSelectedRamValuePlusIncrement_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.ramWriteValue i -
+        ∑ address : Fin params.ramK,
+          witness.ramRa address i *
+            (witness.ramVal address i + witness.ramInc i) = 0
+
+private def ramAddressEqSelectedRamAddress_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.ramAddress i -
+        ∑ address : Fin params.ramK,
+          witness.ramRa address i *
+            ((publicInputs.lowestMemoryAddress.toNat + 8 * address.val : Nat) : F) = 0
+
+private def ramFinalValueEqPublicIo_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ address : Fin params.ramK,
+    (if publicInputs.ramOutputMask address then (1 : F) else 0) *
+        (witness.ramValFinal address -
+          (publicInputs.ramOutputValue address).toNat) = 0
+
 def JoltConstraint.Satisfied
     {params : JoltWitnessParams} {F : Type u} [Field F]
-    (constraint : JoltConstraint) (witness : JoltWitness params F) : Prop :=
+    (constraint : JoltConstraint)
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
   match constraint with
   | .ramAddrEqRs1PlusImmIfLoadStore =>
       ramAddrEqRs1PlusImmIfLoadStore_satisfied witness
@@ -243,5 +293,13 @@ def JoltConstraint.Satisfied
       shouldBranchEqLookupOutputMulBranch_satisfied witness
   | .shouldJumpEqJumpMulNotNextIsNoop =>
       shouldJumpEqJumpMulNotNextIsNoop_satisfied witness
+  | .ramReadValueEqSelectedRamValue =>
+      ramReadValueEqSelectedRamValue_satisfied witness
+  | .ramWriteValueEqSelectedRamValuePlusIncrement =>
+      ramWriteValueEqSelectedRamValuePlusIncrement_satisfied witness
+  | .ramAddressEqSelectedRamAddress =>
+      ramAddressEqSelectedRamAddress_satisfied publicInputs witness
+  | .ramFinalValueEqPublicIo =>
+      ramFinalValueEqPublicIo_satisfied publicInputs witness
 
 end JoltConstraints

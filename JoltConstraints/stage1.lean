@@ -4,8 +4,9 @@ namespace JoltConstraints
 
 /-!
 `stage1` is only a classifier on the global `JoltConstraint` type. It carries
-no sumcheck, batching, or prover-stage semantics. For the current model, all
-22 constraints of the full RV64 trace R1CS belong to this set.
+no sumcheck, batching, or prover-stage semantics. It selects the 19
+equality-conditional RV64 constraints tested by Rust's `SpartanOuter`
+sumcheck. Rust tests the three product constraints in Stage 2.
 -/
 
 def stage1 : JoltConstraint → Bool
@@ -28,8 +29,12 @@ def stage1 : JoltConstraint → Bool
   | .nextUnexpandedPCUpdateOtherwise => true
   | .nextPCEqPCPlusOneIfInline => true
   | .mustStartSequenceFromBeginning => true
-  | .productEqLeftInputMulRightInput => true
-  | .shouldBranchEqLookupOutputMulBranch => true
-  | .shouldJumpEqJumpMulNotNextIsNoop => true
+  | .productEqLeftInputMulRightInput => false
+  | .shouldBranchEqLookupOutputMulBranch => false
+  | .shouldJumpEqJumpMulNotNextIsNoop => false
+  | .ramReadValueEqSelectedRamValue => false
+  | .ramWriteValueEqSelectedRamValuePlusIncrement => false
+  | .ramAddressEqSelectedRamAddress => false
+  | .ramFinalValueEqPublicIo => false
 
 end JoltConstraints

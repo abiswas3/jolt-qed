@@ -7,10 +7,10 @@ universe u
 theorem ramAddrEqRs1PlusImmIfLoadStore
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .ramAddrEqRs1PlusImmIfLoadStore
+    JoltConstraint.Satisfied .ramAddrEqRs1PlusImmIfLoadStore trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .ramAddrEqRs1PlusImmIfLoadStore witness
+  change JoltConstraint.Satisfied .ramAddrEqRs1PlusImmIfLoadStore trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   let row := trace.rows i
@@ -31,8 +31,7 @@ theorem ramAddrEqRs1PlusImmIfLoadStore
     rfl
   have immediate_from_trace :
       witness.virtual .imm i =
-        HonestWitness.fieldFromInt
-          (HonestWitness.instructionImmediate row.instruction) := by
+        HonestWitness.fieldFromInt row.instructionRow.operands.imm := by
     rfl
   rw [loadFlag_from_trace, storeFlag_from_trace, ramAddress_from_trace,
     rs1_from_trace, immediate_from_trace]
@@ -47,11 +46,11 @@ theorem ramAddrEqRs1PlusImmIfLoadStore
     have address_eq :
         (row.ramAddress.toNat : Int) =
           (row.rs1Value.toNat : Int) +
-            HonestWitness.instructionImmediate row.instruction := by
+            row.instructionRow.operands.imm := by
       simpa [row] using (trace.rowValid i).effectiveAddress memory_row
     rw [fieldFromU64_eq_add_fieldFromInt
       row.ramAddress row.rs1Value
-      (HonestWitness.instructionImmediate row.instruction) address_eq]
+      row.instructionRow.operands.imm address_eq]
     ring
 
 end JoltConstraints.JoltConstraint.Completeness

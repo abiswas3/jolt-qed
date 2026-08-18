@@ -7,11 +7,12 @@ universe u
 theorem nextUnexpandedPCEqPCPlusImmIfShouldBranch
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .nextUnexpandedPCEqPCPlusImmIfShouldBranch
+    JoltConstraint.Satisfied .nextUnexpandedPCEqPCPlusImmIfShouldBranch trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
   change JoltConstraint.Satisfied
-    .nextUnexpandedPCEqPCPlusImmIfShouldBranch witness
+    .nextUnexpandedPCEqPCPlusImmIfShouldBranch
+      trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   let current := trace.rows i
@@ -31,8 +32,7 @@ theorem nextUnexpandedPCEqPCPlusImmIfShouldBranch
     rfl
   have immediate_from_trace :
       witness.virtual .imm i =
-        HonestWitness.fieldFromInt
-          (HonestWitness.instructionImmediate current.instruction) := by
+        HonestWitness.fieldFromInt current.instructionRow.operands.imm := by
     rfl
   rw [shouldBranch_from_trace, nextPC_from_trace, pc_from_trace,
     immediate_from_trace]
@@ -56,13 +56,13 @@ theorem nextUnexpandedPCEqPCPlusImmIfShouldBranch
         (HonestWitness.fieldFromU64 next.metadata.unexpandedPC -
           HonestWitness.fieldFromU64 current.metadata.unexpandedPC -
           HonestWitness.fieldFromInt
-            (HonestWitness.instructionImmediate current.instruction)) = 0
+            current.instructionRow.operands.imm) = 0
       cases shouldBranch : current.shouldBranch
       · simp [HonestWitness.fieldBool]
       · have target_eq := pair_valid.branchTarget shouldBranch
         rw [fieldFromU64_eq_add_fieldFromInt
           next.metadata.unexpandedPC current.metadata.unexpandedPC
-          (HonestWitness.instructionImmediate current.instruction) target_eq]
+          current.instructionRow.operands.imm target_eq]
         simp [HonestWitness.fieldBool]
 
 end JoltConstraints.JoltConstraint.Completeness

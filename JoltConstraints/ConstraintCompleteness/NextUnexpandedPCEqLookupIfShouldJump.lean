@@ -8,10 +8,10 @@ universe u
 theorem nextUnexpandedPCEqLookupIfShouldJump
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .nextUnexpandedPCEqLookupIfShouldJump
+    JoltConstraint.Satisfied .nextUnexpandedPCEqLookupIfShouldJump trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .nextUnexpandedPCEqLookupIfShouldJump witness
+  change JoltConstraint.Satisfied .nextUnexpandedPCEqLookupIfShouldJump trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   let current := trace.rows i

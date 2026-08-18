@@ -12,13 +12,15 @@ constraint.
 
 def and_constraint
     {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
     (witness : JoltWitness params F) : Prop :=
-  JoltConstraint.Satisfied .rdWriteEqLookupIfWriteLookupToRD witness
+  JoltConstraint.Satisfied .rdWriteEqLookupIfWriteLookupToRD publicInputs witness
 
 theorem and_completeness
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    and_constraint (honest_witness (F := F) trace) := by
+    and_constraint trace.metadata.toJoltPublicInputs
+      (honest_witness (F := F) trace) := by
   exact JoltConstraint.Completeness.rdWriteEqLookupIfWriteLookupToRD trace
 
 end JoltConstraints

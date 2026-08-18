@@ -9,7 +9,7 @@ theorem lookupOutput_eq_boolU64_of_isBranch
     ∃ value : Bool,
       HonestWitness.lookupOutput row =
         HonestWitness.boolU64 value := by
-  rcases row with ⟨instruction, metadata, captured⟩
+  rcases row with ⟨instruction, instructionRow, metadata, captured⟩
   cases instruction <;> cases captured <;>
     simp_all [HonestWitness.isBranch, HonestWitness.lookupOutput,
       HonestWitness.writesLookupOutput, HonestWitness.destination,

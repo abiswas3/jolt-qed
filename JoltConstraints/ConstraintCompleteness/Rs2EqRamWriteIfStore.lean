@@ -8,10 +8,10 @@ universe u
 theorem rs2EqRamWriteIfStore
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .rs2EqRamWriteIfStore
+    JoltConstraint.Satisfied .rs2EqRamWriteIfStore trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .rs2EqRamWriteIfStore witness
+  change JoltConstraint.Satisfied .rs2EqRamWriteIfStore trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   have storeFlag_from_trace :
@@ -27,7 +27,8 @@ theorem rs2EqRamWriteIfStore
         HonestWitness.fieldFromU64 (trace.rows i).ramWriteValue := by
     rfl
   rw [storeFlag_from_trace, rs2_from_trace, ramWrite_from_trace]
-  rcases hrow : trace.rows i with ⟨instruction, metadata, captured⟩
+  rcases hrow : trace.rows i with
+    ⟨instruction, instructionRow, metadata, captured⟩
   cases instruction <;> cases captured <;>
     simp [HonestWitness.fieldBool, HonestWitness.isStore,
       JoltTraceRow.rs2Value, JoltTraceRow.ramWriteValue,

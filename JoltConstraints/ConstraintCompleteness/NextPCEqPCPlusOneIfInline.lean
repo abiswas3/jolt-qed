@@ -8,10 +8,10 @@ universe u
 theorem nextPCEqPCPlusOneIfInline
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .nextPCEqPCPlusOneIfInline
+    JoltConstraint.Satisfied .nextPCEqPCPlusOneIfInline trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .nextPCEqPCPlusOneIfInline witness
+  change JoltConstraint.Satisfied .nextPCEqPCPlusOneIfInline trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   let current := trace.rows i

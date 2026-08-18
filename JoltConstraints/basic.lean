@@ -1,10 +1,13 @@
 import JoltBytecode.JoltISA.Semantics
 
 /-!
-# Jolt ISA execution traces
+# Foundational Jolt witness and execution-trace types
 
-This file contains only the semantic trace used by the constraint layer.
-Correct execution is defined exclusively by the existing `JoltISA.execInstr`.
+This file fixes the proof dimensions, exact proof-facing instruction/bytecode
+rows, public RAM metadata, and the semantic execution trace used by the
+constraint layer. Correct execution is defined exclusively by the existing
+`JoltISA.execInstr`; the proof-facing row is data linked to that interpreter,
+not a second instruction semantics.
 -/
 
 open Sail PreSail LeanRV64D.Functions
@@ -20,6 +23,19 @@ abbrev Column (T : Nat) (α : Type u) : Type u :=
 /-- Register width of the current Jolt ISA. -/
 abbrev Xlen : Nat := 64
 
+/-- Number of bits in Jolt's combined two-operand lookup address. -/
+abbrev InstructionLookupAddressBits : Nat := 2 * Xlen
+
+/-- Rust's unified architectural/virtual register-address domain. -/
+abbrev RegisterAddressBits : Nat := 7
+
+abbrev RegisterAddressCount : Nat := 2 ^ RegisterAddressBits
+
+abbrev RegisterAddress : Type := Fin RegisterAddressCount
+
+/-- Rust switches from `(4, 16)` to `(8, 32)` one-hot chunks at this `logT`. -/
+abbrev OneHotChunkThresholdLogT : Nat := 25
+
 structure JoltWitnessParams where
   logT : Nat
   ramK : Nat
@@ -32,10 +48,64 @@ structure JoltWitnessParams where
   maxUntrustedAdviceSize : Nat
   deriving DecidableEq, Repr
 
+/-- The three committed read-address chunk counts (`D`) in Rust's canonical
+instruction, bytecode, RAM order. -/
+structure JoltRaPolynomialLayout where
+  instructionD : Nat
+  bytecodeD : Nat
+  ramD : Nat
+  deriving DecidableEq, Repr
+
+namespace JoltRaPolynomialLayout
+
+def total (layout : JoltRaPolynomialLayout) : Nat :=
+  layout.instructionD + layout.bytecodeD + layout.ramD
+
+end JoltRaPolynomialLayout
+
+/-- Rust's `RaChunkSelector`, with the range check on `index` represented by
+the type.  Chunk zero is the most-significant chunk. -/
+structure JoltRaChunkSelector (chunks chunkBits : Nat) where
+  index : Fin chunks
+
+namespace JoltRaChunkSelector
+
+/-- Number of low bits skipped before selecting this MSB-first chunk. -/
+def shift {chunks chunkBits : Nat}
+    (selector : JoltRaChunkSelector chunks chunkBits) : Nat :=
+  (chunks - (selector.index.val + 1)) * chunkBits
+
+/-- Rust's `(value >> shift) & (2^chunkBits - 1)`, expressed using natural
+division and remainder. -/
+def chunkNat {chunks chunkBits : Nat}
+    (selector : JoltRaChunkSelector chunks chunkBits) (value : Nat) : Nat :=
+  (value / 2 ^ selector.shift) % 2 ^ chunkBits
+
+/-- The selected value, typed in the one-hot address domain. -/
+def chunk {chunks chunkBits : Nat}
+    (selector : JoltRaChunkSelector chunks chunkBits) (value : Nat) :
+    Fin (2 ^ chunkBits) :=
+  ⟨selector.chunkNat value, Nat.mod_lt _ (by positivity)⟩
+
+end JoltRaChunkSelector
+
 namespace JoltWitnessParams
+
+/-- The arithmetic notion used by Rust's `usize::is_power_of_two` checks.
+Unlike `Nat.nextPowerOfTwo`, this predicate excludes zero. -/
+def IsPowerOfTwo (value : Nat) : Prop :=
+  ∃ logValue : Nat, value = 2 ^ logValue
 
 def traceLength (params : JoltWitnessParams) : Nat :=
   2 ^ params.logT
+
+/-- `ProverConfig::derive` pads an unpadded Rust trace past its last real row,
+with a production minimum of 256 cycles. -/
+def paddedTraceLength (unpaddedLength : Nat) : Nat :=
+  if unpaddedLength < 256 then
+    256
+  else
+    Nat.nextPowerOfTwo (unpaddedLength + 1)
 
 def ceilDiv (n d : Nat) : Nat :=
   (n + d - 1) / d
@@ -46,17 +116,58 @@ def committedChunkSize (params : JoltWitnessParams) : Nat :=
 def lookupVirtualChunkSize (params : JoltWitnessParams) : Nat :=
   2 ^ params.lookupVirtualChunkBits
 
+def productionCommittedChunkBits (logT : Nat) : Nat :=
+  if logT < OneHotChunkThresholdLogT then 4 else 8
+
+def productionLookupVirtualChunkBits (logT : Nat) : Nat :=
+  if logT < OneHotChunkThresholdLogT then 16 else 32
+
+/-- Address-bit width of the padded public bytecode table. -/
+def bytecodeAddressBits (params : JoltWitnessParams) : Nat :=
+  Nat.clog 2 params.bytecodeK
+
+/-- Address-bit width of the remapped RAM table. -/
+def ramAddressBits (params : JoltWitnessParams) : Nat :=
+  Nat.clog 2 params.ramK
+
+/-- Rust's committed RA polynomial layout.  Committed chunks use ceiling
+division because the most-significant chunk may be left-zero-padded. -/
+def raPolynomialLayout (params : JoltWitnessParams) : JoltRaPolynomialLayout where
+  instructionD := ceilDiv InstructionLookupAddressBits params.committedChunkBits
+  bytecodeD := ceilDiv params.bytecodeAddressBits params.committedChunkBits
+  ramD := ceilDiv params.ramAddressBits params.committedChunkBits
+
 def instructionCommittedRaCount (params : JoltWitnessParams) : Nat :=
-  ceilDiv (2 * Xlen) params.committedChunkBits
+  params.raPolynomialLayout.instructionD
 
 def bytecodeCommittedRaCount (params : JoltWitnessParams) : Nat :=
-  ceilDiv (Nat.clog 2 params.bytecodeK) params.committedChunkBits
+  params.raPolynomialLayout.bytecodeD
 
 def ramCommittedRaCount (params : JoltWitnessParams) : Nat :=
-  ceilDiv (Nat.clog 2 params.ramK) params.committedChunkBits
+  params.raPolynomialLayout.ramD
 
+/-- Number of virtual instruction-RA polynomials.  Valid dimensions make this
+an exact quotient whose chunks tile all 128 lookup-address bits. -/
 def instructionVirtualRaCount (params : JoltWitnessParams) : Nat :=
-  (2 * Xlen) / params.lookupVirtualChunkBits
+  InstructionLookupAddressBits / params.lookupVirtualChunkBits
+
+/-- Number of committed instruction-RA chunks represented by one virtual
+instruction-RA chunk. -/
+def instructionCommittedRaPerVirtual (params : JoltWitnessParams) : Nat :=
+  params.lookupVirtualChunkBits / params.committedChunkBits
+
+/-- Leading zero bits in a ceiling-divided committed address layout. -/
+def committedAddressPadding (addressBits chunkBits : Nat) : Nat :=
+  ceilDiv addressBits chunkBits * chunkBits - addressBits
+
+def instructionCommittedAddressPadding (params : JoltWitnessParams) : Nat :=
+  committedAddressPadding InstructionLookupAddressBits params.committedChunkBits
+
+def bytecodeCommittedAddressPadding (params : JoltWitnessParams) : Nat :=
+  committedAddressPadding params.bytecodeAddressBits params.committedChunkBits
+
+def ramCommittedAddressPadding (params : JoltWitnessParams) : Nat :=
+  committedAddressPadding params.ramAddressBits params.committedChunkBits
 
 def adviceLength (maxSizeBytes : Nat) : Nat :=
   max 1 (Nat.nextPowerOfTwo (maxSizeBytes / 8))
@@ -67,6 +178,103 @@ def trustedAdviceLength (params : JoltWitnessParams) : Nat :=
 def untrustedAdviceLength (params : JoltWitnessParams) : Nat :=
   adviceLength params.maxUntrustedAdviceSize
 
+/-- Number of words occupied by the trusted-advice region in Rust memory.
+Unlike the commitment length, this is zero when the configured byte capacity
+is zero. -/
+def trustedAdviceWords (params : JoltWitnessParams) : Nat :=
+  params.maxTrustedAdviceSize / 8
+
+/-- Number of words occupied by the untrusted-advice region in Rust memory. -/
+def untrustedAdviceWords (params : JoltWitnessParams) : Nat :=
+  params.maxUntrustedAdviceSize / 8
+
+def instructionCommittedSelector (params : JoltWitnessParams)
+    (chunk : Fin params.instructionCommittedRaCount) :
+    JoltRaChunkSelector params.instructionCommittedRaCount
+      params.committedChunkBits :=
+  ⟨chunk⟩
+
+def bytecodeCommittedSelector (params : JoltWitnessParams)
+    (chunk : Fin params.bytecodeCommittedRaCount) :
+    JoltRaChunkSelector params.bytecodeCommittedRaCount
+      params.committedChunkBits :=
+  ⟨chunk⟩
+
+def ramCommittedSelector (params : JoltWitnessParams)
+    (chunk : Fin params.ramCommittedRaCount) :
+    JoltRaChunkSelector params.ramCommittedRaCount params.committedChunkBits :=
+  ⟨chunk⟩
+
+def instructionVirtualSelector (params : JoltWitnessParams)
+    (chunk : Fin params.instructionVirtualRaCount) :
+    JoltRaChunkSelector params.instructionVirtualRaCount
+      params.lookupVirtualChunkBits :=
+  ⟨chunk⟩
+
+/-- Rust-valid proof dimensions and advice capacities.
+
+This is the proposition-level counterpart of the checks performed by
+`JoltFormulaDimensions::try_from`, `BytecodePreprocessing::preprocess`,
+`ProverConfig::derive`, and `MemoryLayout::new`.  Raw parameters remain data so
+arbitrary witness arrays can still be discussed; an honest Rust-aligned trace
+will carry a proof of this predicate. -/
+structure Valid (params : JoltWitnessParams) : Prop where
+  /-- Production Rust traces are padded to at least `2^8 = 256` cycles. -/
+  logTAtLeastEight : 8 ≤ params.logT
+  /-- `checked_pow2` rejects a shift by `usize::BITS`; the supported Rust
+  prover targets are 64-bit. -/
+  logTLessThanRustUsizeBits : params.logT < 64
+  /-- Rust inserts a no-op bytecode row and pads the table to a power of two. -/
+  bytecodeKAtLeastTwo : 2 ≤ params.bytecodeK
+  bytecodeKPowerOfTwo : IsPowerOfTwo params.bytecodeK
+  /-- Proof-facing rows store the bytecode index in a `u32`. -/
+  bytecodeKFitsU32 : params.bytecodeK ≤ 2 ^ 32
+  /-- The verifier accepts only a nonempty power-of-two RAM domain. -/
+  ramKPositive : 0 < params.ramK
+  ramKPowerOfTwo : IsPowerOfTwo params.ramK
+  committedChunkBitsPositive : 0 < params.committedChunkBits
+  lookupVirtualChunkBitsPositive : 0 < params.lookupVirtualChunkBits
+  /-- This check is explicit in `JoltFormulaDimensions::try_from`. -/
+  committedChunkBitsLeLookupVirtualChunkBits :
+    params.committedChunkBits ≤ params.lookupVirtualChunkBits
+  /-- A virtual lookup chunk is made from whole committed chunks. -/
+  committedChunkBitsDvdLookupVirtualChunkBits :
+    params.committedChunkBits ∣ params.lookupVirtualChunkBits
+  /-- Virtual chunks tile the complete `2 * XLEN` instruction address. -/
+  lookupVirtualChunkBitsDvdInstructionAddress :
+    params.lookupVirtualChunkBits ∣ InstructionLookupAddressBits
+  /-- `ProverConfig::derive` has exactly these two production policies. -/
+  productionChunkPolicy :
+    params.committedChunkBits = productionCommittedChunkBits params.logT ∧
+      params.lookupVirtualChunkBits =
+        productionLookupVirtualChunkBits params.logT
+  /-- `MemoryLayout::new` stores already-aligned advice capacities. -/
+  trustedAdviceSizeAligned : params.maxTrustedAdviceSize % 8 = 0
+  untrustedAdviceSizeAligned : params.maxUntrustedAdviceSize % 8 = 0
+  trustedAdviceSizePowerOfTwoOrZero :
+    params.maxTrustedAdviceSize = 0 ∨
+      IsPowerOfTwo params.maxTrustedAdviceSize
+  untrustedAdviceSizePowerOfTwoOrZero :
+    params.maxUntrustedAdviceSize = 0 ∨
+      IsPowerOfTwo params.maxUntrustedAdviceSize
+  /-- A present advice commitment must have a nonempty configured region. -/
+  trustedAdvicePresentOnlyIfNonempty :
+    params.includeTrustedAdvice = true → 0 < params.maxTrustedAdviceSize
+  untrustedAdvicePresentOnlyIfNonempty :
+    params.includeUntrustedAdvice = true → 0 < params.maxUntrustedAdviceSize
+
+theorem Valid.instructionVirtualChunksTile
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    params.instructionVirtualRaCount * params.lookupVirtualChunkBits =
+      InstructionLookupAddressBits := by
+  exact Nat.div_mul_cancel valid.lookupVirtualChunkBitsDvdInstructionAddress
+
+theorem Valid.committedChunksTileVirtualChunk
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    params.instructionCommittedRaPerVirtual * params.committedChunkBits =
+      params.lookupVirtualChunkBits := by
+  exact Nat.div_mul_cancel valid.committedChunkBitsDvdLookupVirtualChunkBits
+
 end JoltWitnessParams
 
 structure JoltTraceRowMetadata where
@@ -75,6 +283,173 @@ structure JoltTraceRowMetadata where
   virtualSequenceRemaining : Option Nat
   isFirstInSequence : Bool
   isCompressed : Bool
+
+/-- Stable identity of every final instruction in Rust's base Jolt profile.
+Unlike `JoltISA.Instr`, this deliberately contains no execution-time values. -/
+inductive JoltInstructionKind where
+  | NoOp
+  | ADDI | ANDI | ORI | XORI | SLTI | SLTIU | LUI | AUIPC | JAL | JALR
+  | BEQ | BNE | BLT | BGE | BLTU | BGEU | FENCE
+  | ADD | SUB | MUL | MULHU | ANDN | VirtualMULI
+  | VirtualPow2 | VirtualPow2W | VirtualPow2I | VirtualPow2IW
+  | VirtualShiftRightBitmask | VirtualShiftRightBitmaskI
+  | VirtualSRLI | VirtualSRAI | VirtualSRL | VirtualSRA
+  | VirtualROTRI | VirtualROTRIW | VirtualRev8W
+  | VirtualXORROT32 | VirtualXORROT24 | VirtualXORROT16 | VirtualXORROT63
+  | VirtualXORROTW16 | VirtualXORROTW12 | VirtualXORROTW8 | VirtualXORROTW7
+  | OR | XOR | AND | SLT | SLTU
+  | VirtualSignExtendWord | VirtualZeroExtendWord | VirtualMovsign
+  | VirtualAssertHalfwordAlignment | VirtualAssertWordAlignment
+  | LD | SD
+  | VirtualAdvice | VirtualAdviceLoad | VirtualAdviceLen | VirtualHostIO
+  | VirtualAssertEQ | VirtualAssertValidDiv0
+  | VirtualChangeDivisor | VirtualChangeDivisorW
+  | VirtualAssertValidUnsignedRemainder | VirtualAssertMulUNoOverflow
+  | VirtualAssertLTE
+  deriving DecidableEq, Repr
+
+namespace JoltInstructionKind
+
+/-- Erase execution operands while retaining Rust's final instruction kind.
+This exhaustive match is the central compile-time guard against ISA drift. -/
+def ofInstr : JoltISA.Instr → JoltInstructionKind
+  | .NoOp => .NoOp
+  | .ADDI .. => .ADDI
+  | .ANDI .. => .ANDI
+  | .ORI .. => .ORI
+  | .XORI .. => .XORI
+  | .SLTI .. => .SLTI
+  | .SLTIU .. => .SLTIU
+  | .LUI .. => .LUI
+  | .AUIPC .. => .AUIPC
+  | .JAL .. => .JAL
+  | .JALR .. => .JALR
+  | .BEQ .. => .BEQ
+  | .BNE .. => .BNE
+  | .BLT .. => .BLT
+  | .BGE .. => .BGE
+  | .BLTU .. => .BLTU
+  | .BGEU .. => .BGEU
+  | .FENCE => .FENCE
+  | .ADD .. => .ADD
+  | .SUB .. => .SUB
+  | .MUL .. => .MUL
+  | .MULHU .. => .MULHU
+  | .ANDN .. => .ANDN
+  | .VirtualMULI .. => .VirtualMULI
+  | .VirtualPow2 .. => .VirtualPow2
+  | .VirtualPow2W .. => .VirtualPow2W
+  | .VirtualPow2I .. => .VirtualPow2I
+  | .VirtualPow2IW .. => .VirtualPow2IW
+  | .VirtualShiftRightBitmask .. => .VirtualShiftRightBitmask
+  | .VirtualShiftRightBitmaskI .. => .VirtualShiftRightBitmaskI
+  | .VirtualSRLI .. => .VirtualSRLI
+  | .VirtualSRAI .. => .VirtualSRAI
+  | .VirtualSRL .. => .VirtualSRL
+  | .VirtualSRA .. => .VirtualSRA
+  | .VirtualROTRI .. => .VirtualROTRI
+  | .VirtualROTRIW .. => .VirtualROTRIW
+  | .VirtualRev8W .. => .VirtualRev8W
+  | .VirtualXORROT32 .. => .VirtualXORROT32
+  | .VirtualXORROT24 .. => .VirtualXORROT24
+  | .VirtualXORROT16 .. => .VirtualXORROT16
+  | .VirtualXORROT63 .. => .VirtualXORROT63
+  | .VirtualXORROTW16 .. => .VirtualXORROTW16
+  | .VirtualXORROTW12 .. => .VirtualXORROTW12
+  | .VirtualXORROTW8 .. => .VirtualXORROTW8
+  | .VirtualXORROTW7 .. => .VirtualXORROTW7
+  | .OR .. => .OR
+  | .XOR .. => .XOR
+  | .AND .. => .AND
+  | .SLT .. => .SLT
+  | .SLTU .. => .SLTU
+  | .VirtualSignExtendWord .. => .VirtualSignExtendWord
+  | .VirtualZeroExtendWord .. => .VirtualZeroExtendWord
+  | .VirtualMovsign .. => .VirtualMovsign
+  | .VirtualAssertHalfwordAlignment .. => .VirtualAssertHalfwordAlignment
+  | .VirtualAssertWordAlignment .. => .VirtualAssertWordAlignment
+  | .LD .. => .LD
+  | .SD .. => .SD
+  | .VirtualAdvice .. => .VirtualAdvice
+  | .VirtualAdviceLoad .. => .VirtualAdviceLoad
+  | .VirtualAdviceLen .. => .VirtualAdviceLen
+  | .VirtualHostIO => .VirtualHostIO
+  | .VirtualAssertEQ .. => .VirtualAssertEQ
+  | .VirtualAssertValidDiv0 .. => .VirtualAssertValidDiv0
+  | .VirtualChangeDivisor .. => .VirtualChangeDivisor
+  | .VirtualChangeDivisorW .. => .VirtualChangeDivisorW
+  | .VirtualAssertValidUnsignedRemainder .. =>
+      .VirtualAssertValidUnsignedRemainder
+  | .VirtualAssertMulUNoOverflow .. => .VirtualAssertMulUNoOverflow
+  | .VirtualAssertLTE .. => .VirtualAssertLTE
+
+end JoltInstructionKind
+
+/-- Rust's normalized proof-facing operands.  Register IDs are typed directly
+in the 128-address read/write domain; `imm` is the exact normalized `i128`
+value, which is intentionally distinct from an execution-time advice value. -/
+structure JoltInstructionOperands where
+  rs1 : Option RegisterAddress
+  rs2 : Option RegisterAddress
+  rd : Option RegisterAddress
+  imm : Int
+  deriving DecidableEq, Repr
+
+namespace JoltInstructionOperands
+
+/-- Storage condition enforced by `JoltTraceRow::from_components`: the signed
+magnitude of an `i128` immediate must fit in its packed `u64` slot.  Register
+IDs need no separate predicate because `RegisterAddress = Fin 128`. -/
+def Packable (operands : JoltInstructionOperands) : Prop :=
+  operands.imm.natAbs < 2 ^ Xlen
+
+end JoltInstructionOperands
+
+/-- Static identity-and-operands component of Rust's `JoltInstructionRow`.
+Lean keeps its address and virtual-sequence metadata in `JoltBytecodeRow` so
+the same fields remain available through the pre-existing row accessors. -/
+structure JoltInstructionRow where
+  kind : JoltInstructionKind
+  operands : JoltInstructionOperands
+  deriving DecidableEq, Repr
+
+namespace JoltInstructionRow
+
+def noOp : JoltInstructionRow where
+  kind := .NoOp
+  operands := { rs1 := none, rs2 := none, rd := none, imm := 0 }
+
+end JoltInstructionRow
+
+/-- One row of Rust's padded, fixed/public `BytecodePreprocessing.bytecode`
+table.  The compact bytecode index is the array address and is therefore not
+duplicated inside the row. -/
+structure JoltBytecodeRow where
+  instruction : JoltInstructionRow
+  unexpandedPC : BitVec Xlen
+  virtualSequenceRemaining : Option Nat
+  isFirstInSequence : Bool
+  isCompressed : Bool
+  deriving Repr
+
+namespace JoltBytecodeRow
+
+/-- Rust inserts this row at bytecode index zero and uses it for padding. -/
+def noOp : JoltBytecodeRow where
+  instruction := JoltInstructionRow.noOp
+  unexpandedPC := 0
+  virtualSequenceRemaining := none
+  isFirstInSequence := false
+  isCompressed := false
+
+/-- Conditions needed to materialize this logical bytecode entry in Rust's
+compact proof-facing row. -/
+def Packable (row : JoltBytecodeRow) : Prop :=
+  row.instruction.operands.Packable ∧
+    ∀ remaining,
+      row.virtualSequenceRemaining = some remaining → remaining < 2 ^ 16
+
+end JoltBytecodeRow
 
 /-- The three mutually exclusive row classes used by Rust's proof-facing
 `JoltTraceRow`. -/
@@ -87,9 +462,13 @@ inductive JoltTraceRowClass where
 /-- Classify a final Jolt instruction exactly as Rust classifies its captured
 state before constructing a proof-facing trace row. -/
 def JoltTraceRowClass.ofInstr : JoltISA.Instr → JoltTraceRowClass
-  | .LD .. => .load
-  | .SD .. => .store
-  | _ => .nonMemory
+  | instruction =>
+      match JoltInstructionKind.ofInstr instruction with
+      | .LD => .load
+      | .SD => .store
+      | _ => .nonMemory
+
+attribute [simp] JoltInstructionKind.ofInstr JoltTraceRowClass.ofInstr
 
 /-- Independent witness values stored for a non-memory row. -/
 structure NonMemoryState where
@@ -129,6 +508,8 @@ inductive CapturedState : JoltTraceRowClass → Type where
 bytes; Lean keeps the semantic components explicit. -/
 structure JoltTraceRow where
   instruction : JoltISA.Instr
+  /-- Exact proof-facing identity and normalized operands carried by Rust. -/
+  instructionRow : JoltInstructionRow
   metadata : JoltTraceRowMetadata
   capturedState : CapturedState (JoltTraceRowClass.ofInstr instruction)
 
@@ -173,6 +554,15 @@ end CapturedState
 
 namespace JoltTraceRow
 
+/-- Forget dynamic captured values and the bytecode index itself, retaining
+the fixed/public bytecode row selected by that index. -/
+def bytecodeRow (row : JoltTraceRow) : JoltBytecodeRow where
+  instruction := row.instructionRow
+  unexpandedPC := row.metadata.unexpandedPC
+  virtualSequenceRemaining := row.metadata.virtualSequenceRemaining
+  isFirstInSequence := row.metadata.isFirstInSequence
+  isCompressed := row.metadata.isCompressed
+
 def rs1Value (row : JoltTraceRow) : BitVec Xlen :=
   row.capturedState.rs1Value
 
@@ -196,10 +586,201 @@ def ramWriteValue (row : JoltTraceRow) : BitVec Xlen :=
 
 end JoltTraceRow
 
-structure JoltTraceMetadata (params : JoltWitnessParams) where
+/-! Public values used by constraints but not committed as witness columns. -/
+
+/-- A contiguous word region inside the remapped RAM domain.
+
+Rust's `MemoryLayout` stores byte addresses.  Stage-4 RAM relations use the
+corresponding word indices relative to `get_lowest_address`; this bounded form
+makes it impossible for an advice contribution to extend past `ramK`. -/
+structure JoltRamRegion (ramK length : Nat) where
+  start : Nat
+  endLe : start + length ≤ ramK
+
+namespace JoltRamRegion
+
+/-- The RAM address at one in-region offset. -/
+def address {ramK length : Nat}
+    (region : JoltRamRegion ramK length) (offset : Fin length) : Fin ramK :=
+  ⟨region.start + offset.val,
+    lt_of_lt_of_le (Nat.add_lt_add_left offset.isLt region.start) region.endLe⟩
+
+/-- Recover the region-relative word index of a RAM address, when present. -/
+def index? {ramK length : Nat}
+    (region : JoltRamRegion ramK length) (address : Fin ramK) : Option (Fin length) :=
+  if lower : region.start ≤ address.val then
+    if upper : address.val < region.start + length then
+      some ⟨address.val - region.start, by omega⟩
+    else
+      none
+  else
+    none
+
+/-- Two bounded word regions do not overlap. -/
+def Disjoint {ramK leftLength rightLength : Nat}
+    (left : JoltRamRegion ramK leftLength)
+    (right : JoltRamRegion ramK rightLength) : Prop :=
+  left.start + leftLength ≤ right.start ∨
+    right.start + rightLength ≤ left.start
+
+end JoltRamRegion
+
+/-- Verifier-known data used by witness constraints.
+
+`publicInitialRam` is the dense semantic form of Rust's `PublicInitialRam`: in
+the current fixed-program scope it contains the program image and public input
+words, but deliberately excludes trusted and untrusted advice.  The two advice
+regions locate the separately committed advice columns in the same remapped
+RAM domain. -/
+structure JoltPublicInputs (params : JoltWitnessParams) where
   lowestMemoryAddress : BitVec Xlen
+  /-- The padded fixed/public bytecode table. -/
+  bytecode : Column params.bytecodeK JoltBytecodeRow
+  /-- Number of rows after inserting index-zero no-op and before padding. -/
+  bytecodeActiveLength : Nat
+  /-- Compact bytecode index of the ELF entry instruction. -/
+  entryBytecodeIndex : Fin params.bytecodeK
+  publicInitialRam : Column params.ramK (BitVec Xlen)
+  trustedAdviceRegion :
+    JoltRamRegion params.ramK params.trustedAdviceWords
+  untrustedAdviceRegion :
+    JoltRamRegion params.ramK params.untrustedAdviceWords
+  ramOutputMask : Column params.ramK Bool
+  ramOutputValue : Column params.ramK (BitVec Xlen)
+
+namespace JoltPublicInputs
+
+/-- Native memory-layout facts checked before Rust constructs the witness. -/
+structure Valid {params : JoltWitnessParams}
+    (publicInputs : JoltPublicInputs params) : Prop where
+  bytecodeActiveLengthPositive : 0 < publicInputs.bytecodeActiveLength
+  /-- Exact `BytecodePreprocessing::preprocess` padding policy. -/
+  bytecodeK_eq :
+    params.bytecodeK =
+      max 2 (Nat.nextPowerOfTwo publicInputs.bytecodeActiveLength)
+  bytecodeActiveLengthBound :
+    publicInputs.bytecodeActiveLength ≤ params.bytecodeK
+  entryBytecodeIndexActive :
+    publicInputs.entryBytecodeIndex.val < publicInputs.bytecodeActiveLength
+  /-- `BytecodePreprocessing::preprocess` reserves index zero for no-op. -/
+  bytecodeZeroIsNoOp : ∀ index : Fin params.bytecodeK,
+    index.val = 0 → publicInputs.bytecode index = JoltBytecodeRow.noOp
+  /-- `BytecodePreprocessing::preprocess` pads unused table rows with no-op. -/
+  bytecodePaddingIsNoOp : ∀ index : Fin params.bytecodeK,
+    publicInputs.bytecodeActiveLength ≤ index.val →
+      publicInputs.bytecode index = JoltBytecodeRow.noOp
+  bytecodeRowsPackable : ∀ index : Fin params.bytecodeK,
+    (publicInputs.bytecode index).Packable
+  lowestMemoryAddressAligned :
+    publicInputs.lowestMemoryAddress.toNat % 8 = 0
+  /-- Every remapped word address fits in one RV64 address. -/
+  ramAddressSpaceBound :
+    publicInputs.lowestMemoryAddress.toNat + 8 * params.ramK ≤ 2 ^ Xlen
+  /-- `MemoryLayout::new` places the larger advice block first and defines the
+  remapping origin as the lower of the two starts. -/
+  adviceRegionPlacement :
+    if params.trustedAdviceWords ≥ params.untrustedAdviceWords then
+      publicInputs.trustedAdviceRegion.start = 0 ∧
+        publicInputs.untrustedAdviceRegion.start = params.trustedAdviceWords
+    else
+      publicInputs.untrustedAdviceRegion.start = 0 ∧
+        publicInputs.trustedAdviceRegion.start = params.untrustedAdviceWords
+  adviceRegionsDisjoint :
+    JoltRamRegion.Disjoint publicInputs.trustedAdviceRegion
+      publicInputs.untrustedAdviceRegion
+  /-- `PublicInitialRam` omits committed advice contributions. -/
+  publicInitialRamZeroOnTrustedAdvice :
+    ∀ offset : Fin params.trustedAdviceWords,
+      publicInputs.publicInitialRam
+        (publicInputs.trustedAdviceRegion.address offset) = 0
+  publicInitialRamZeroOnUntrustedAdvice :
+    ∀ offset : Fin params.untrustedAdviceWords,
+      publicInputs.publicInitialRam
+        (publicInputs.untrustedAdviceRegion.address offset) = 0
+
+end JoltPublicInputs
+
+structure JoltTraceMetadata (params : JoltWitnessParams)
+    extends JoltPublicInputs params where
   trustedAdvice : Column params.trustedAdviceLength (BitVec Xlen)
   untrustedAdvice : Column params.untrustedAdviceLength (BitVec Xlen)
+
+namespace JoltTraceMetadata
+
+/-- Read the padded trusted-advice commitment by a natural word index. -/
+def trustedAdviceWord
+    {params : JoltWitnessParams} (metadata : JoltTraceMetadata params)
+    (index : Nat) : BitVec Xlen :=
+  if inBounds : index < params.trustedAdviceLength then
+    metadata.trustedAdvice ⟨index, inBounds⟩
+  else
+    0
+
+/-- Read the padded untrusted-advice commitment by a natural word index. -/
+def untrustedAdviceWord
+    {params : JoltWitnessParams} (metadata : JoltTraceMetadata params)
+    (index : Nat) : BitVec Xlen :=
+  if inBounds : index < params.untrustedAdviceLength then
+    metadata.untrustedAdvice ⟨index, inBounds⟩
+  else
+    0
+
+/-- The trusted-advice word occupying `address`, if that committed stream is
+present and the address lies in its Rust memory-layout region. -/
+def trustedAdviceAt?
+    {params : JoltWitnessParams} (metadata : JoltTraceMetadata params)
+    (address : Fin params.ramK) : Option (BitVec Xlen) :=
+  if params.includeTrustedAdvice then
+    (metadata.trustedAdviceRegion.index? address).map
+      (fun index => metadata.trustedAdviceWord index.val)
+  else
+    none
+
+/-- The untrusted-advice analogue of `trustedAdviceAt?`. -/
+def untrustedAdviceAt?
+    {params : JoltWitnessParams} (metadata : JoltTraceMetadata params)
+    (address : Fin params.ramK) : Option (BitVec Xlen) :=
+  if params.includeUntrustedAdvice then
+    (metadata.untrustedAdviceRegion.index? address).map
+      (fun index => metadata.untrustedAdviceWord index.val)
+  else
+    none
+
+/-- Rust's full initial RAM word in fixed/public-program mode: public program
+and input memory, overlaid by the separately committed advice blocks.  Valid
+Rust layouts make all three regions disjoint. -/
+def initialRamValue
+    {params : JoltWitnessParams} (metadata : JoltTraceMetadata params)
+    (address : Fin params.ramK) : BitVec Xlen :=
+  match metadata.untrustedAdviceAt? address with
+  | some value => value
+  | none =>
+      match metadata.trustedAdviceAt? address with
+      | some value => value
+      | none => metadata.publicInitialRam address
+
+/-- Rust-valid metadata.  Advice arrays remain total padded columns, while an
+absent commitment denotes an empty byte stream and therefore must be zero. -/
+structure Valid {params : JoltWitnessParams}
+    (metadata : JoltTraceMetadata params) : Prop where
+  paramsValid : params.Valid
+  publicInputsValid : metadata.toJoltPublicInputs.Valid
+  trustedAdviceRegionCovered :
+    params.trustedAdviceWords ≤ params.trustedAdviceLength
+  untrustedAdviceRegionCovered :
+    params.untrustedAdviceWords ≤ params.untrustedAdviceLength
+  trustedAdviceZeroPastCapacity : ∀ index : Fin params.trustedAdviceLength,
+    params.trustedAdviceWords ≤ index.val → metadata.trustedAdvice index = 0
+  untrustedAdviceZeroPastCapacity : ∀ index : Fin params.untrustedAdviceLength,
+    params.untrustedAdviceWords ≤ index.val → metadata.untrustedAdvice index = 0
+  trustedAdviceZeroIfAbsent :
+    params.includeTrustedAdvice = false →
+      ∀ index, metadata.trustedAdvice index = 0
+  untrustedAdviceZeroIfAbsent :
+    params.includeUntrustedAdvice = false →
+      ∀ index, metadata.untrustedAdvice index = 0
+
+end JoltTraceMetadata
 
 /-- Index of the machine state immediately before row `i`. -/
 def currentStateIndex {T : Nat} (i : Fin T) : Fin (T + 1) :=

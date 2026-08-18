@@ -8,10 +8,10 @@ universe u
 theorem rdWriteEqLookupIfWriteLookupToRD
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .rdWriteEqLookupIfWriteLookupToRD
+    JoltConstraint.Satisfied .rdWriteEqLookupIfWriteLookupToRD trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .rdWriteEqLookupIfWriteLookupToRD witness
+  change JoltConstraint.Satisfied .rdWriteEqLookupIfWriteLookupToRD trace.metadata.toJoltPublicInputs witness
 
   unfold JoltConstraint.Satisfied
   intro i

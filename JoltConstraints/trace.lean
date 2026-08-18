@@ -33,8 +33,17 @@ def sourceAddress : JoltISA.Src → RegisterAddress
   | .xreg (regidx.Regidx register) =>
       (BitVec.ofNat RegisterAddressBits register.toNat).toFin
 
+/-- Rust assigns architectural registers to `0..31` and permits virtual
+register operands only in the remaining part of the seven-bit domain. -/
+def sourceAddressValid : JoltISA.Src → Prop
+  | .xreg _ => True
+  | .vreg register => 32 ≤ register.toNat
+
 def destinationAddress (destination : JoltISA.Dst) : RegisterAddress :=
   sourceAddress (destinationSource destination)
+
+def destinationAddressValid (destination : JoltISA.Dst) : Prop :=
+  sourceAddressValid (destinationSource destination)
 
 noncomputable def sourceValue
     (state : SailJoltState) (source : JoltISA.Src) : BitVec Xlen :=
@@ -98,7 +107,23 @@ def destination : JoltISA.Instr → Option JoltISA.Dst
   | .VirtualAdviceLen dst _
   | .VirtualChangeDivisor dst _ _
   | .VirtualChangeDivisorW dst _ _ => some dst
-  | _ => none
+  | .NoOp
+  | .BEQ ..
+  | .BNE ..
+  | .BLT ..
+  | .BGE ..
+  | .BLTU ..
+  | .BGEU ..
+  | .FENCE
+  | .SD ..
+  | .VirtualAssertHalfwordAlignment ..
+  | .VirtualAssertWordAlignment ..
+  | .VirtualHostIO
+  | .VirtualAssertEQ ..
+  | .VirtualAssertValidDiv0 ..
+  | .VirtualAssertValidUnsignedRemainder ..
+  | .VirtualAssertMulUNoOverflow ..
+  | .VirtualAssertLTE .. => none
 
 def firstSource : JoltISA.Instr → Option JoltISA.Src
   | .ADDI _ source _
@@ -159,7 +184,18 @@ def firstSource : JoltISA.Instr → Option JoltISA.Src
 
   | .VirtualAssertHalfwordAlignment base _ _
   | .VirtualAssertWordAlignment base _ _ => some (.xreg base)
-  | _ => none
+  | .NoOp
+  | .LUI ..
+  | .AUIPC ..
+  | .JAL ..
+  | .FENCE
+  | .VirtualPow2I ..
+  | .VirtualPow2IW ..
+  | .VirtualShiftRightBitmaskI ..
+  | .VirtualAdvice ..
+  | .VirtualAdviceLoad ..
+  | .VirtualAdviceLen ..
+  | .VirtualHostIO => none
 
 def secondSource : JoltISA.Instr → Option JoltISA.Src
   | .BEQ _ rhs _
@@ -197,7 +233,40 @@ def secondSource : JoltISA.Instr → Option JoltISA.Src
   | .VirtualAssertMulUNoOverflow _ rhs
   | .VirtualAssertLTE _ rhs =>
       some rhs
-  | _ => none
+  | .NoOp
+  | .ADDI ..
+  | .ANDI ..
+  | .ORI ..
+  | .XORI ..
+  | .SLTI ..
+  | .SLTIU ..
+  | .LUI ..
+  | .AUIPC ..
+  | .JAL ..
+  | .JALR ..
+  | .FENCE
+  | .VirtualMULI ..
+  | .VirtualPow2 ..
+  | .VirtualPow2W ..
+  | .VirtualPow2I ..
+  | .VirtualPow2IW ..
+  | .VirtualShiftRightBitmask ..
+  | .VirtualShiftRightBitmaskI ..
+  | .VirtualSRLI ..
+  | .VirtualSRAI ..
+  | .VirtualROTRI ..
+  | .VirtualROTRIW ..
+  | .VirtualRev8W ..
+  | .VirtualSignExtendWord ..
+  | .VirtualZeroExtendWord ..
+  | .VirtualMovsign ..
+  | .VirtualAssertHalfwordAlignment ..
+  | .VirtualAssertWordAlignment ..
+  | .LD ..
+  | .VirtualAdvice ..
+  | .VirtualAdviceLoad ..
+  | .VirtualAdviceLen ..
+  | .VirtualHostIO => none
 
 def lookupFirstSource (instruction : JoltISA.Instr) : Option JoltISA.Src :=
   match instruction with
@@ -209,6 +278,14 @@ def lookupSecondSource (instruction : JoltISA.Instr) : Option JoltISA.Src :=
   | .SD _ _ _ => none
   | _ => secondSource instruction
 
+/-- Reconstruct the Rust-normalized static immediate when the executable Lean
+instruction still contains that information.  This is not a uniform signed
+offset: ordinary I/U/J formats normalize through `u64`, whereas load, store,
+branch, and alignment formats retain a signed value.
+
+The three advice instructions are exceptional.  Their executable Lean
+constructors carry a runtime result where Rust's proof-facing row retains the
+static `imm`; `JoltTraceRow.Valid` therefore does not identify those values. -/
 def instructionImmediate : JoltISA.Instr → Int
   | .ADDI _ _ immediate
   | .ANDI _ _ immediate
@@ -216,14 +293,17 @@ def instructionImmediate : JoltISA.Instr → Int
   | .XORI _ _ immediate
   | .SLTI _ _ immediate
   | .SLTIU _ _ immediate
-  | .JALR _ _ immediate
+  | .JALR _ _ immediate =>
+      ((sign_extend (m := Xlen) immediate).toNat : Int)
   | .LD _ _ _ immediate
   | .SD _ _ immediate =>
       (sign_extend (m := Xlen) immediate).toInt
-  | .LUI _ immediate => immediate.toInt
+  | .LUI _ immediate => (immediate.toNat : Int)
   | .AUIPC _ immediate =>
-      (sign_extend (m := Xlen) (immediate +++ (0 : BitVec 12))).toInt
-  | .JAL _ immediate => (sign_extend (m := Xlen) immediate).toInt
+      ((sign_extend (m := Xlen)
+        (immediate +++ (0 : BitVec 12))).toNat : Int)
+  | .JAL _ immediate =>
+      ((sign_extend (m := Xlen) immediate).toNat : Int)
   | .BEQ _ _ immediate
   | .BNE _ _ immediate
   | .BLT _ _ immediate
@@ -244,7 +324,72 @@ def instructionImmediate : JoltISA.Instr → Int
   | .VirtualAssertHalfwordAlignment _ immediate _
   | .VirtualAssertWordAlignment _ immediate _ =>
       immediate.toInt
-  | _ => 0
+  | .NoOp
+  | .FENCE
+  | .ADD ..
+  | .SUB ..
+  | .MUL ..
+  | .MULHU ..
+  | .ANDN ..
+  | .VirtualPow2 ..
+  | .VirtualPow2W ..
+  | .VirtualShiftRightBitmask ..
+  | .VirtualSRL ..
+  | .VirtualSRA ..
+  | .VirtualRev8W ..
+  | .VirtualXORROT32 ..
+  | .VirtualXORROT24 ..
+  | .VirtualXORROT16 ..
+  | .VirtualXORROT63 ..
+  | .VirtualXORROTW16 ..
+  | .VirtualXORROTW12 ..
+  | .VirtualXORROTW8 ..
+  | .VirtualXORROTW7 ..
+  | .OR ..
+  | .XOR ..
+  | .AND ..
+  | .SLT ..
+  | .SLTU ..
+  | .VirtualSignExtendWord ..
+  | .VirtualZeroExtendWord ..
+  | .VirtualAdvice ..
+  | .VirtualAdviceLoad ..
+  | .VirtualAdviceLen ..
+  | .VirtualHostIO
+  | .VirtualAssertValidDiv0 ..
+  | .VirtualChangeDivisor ..
+  | .VirtualChangeDivisorW ..
+  | .VirtualAssertValidUnsignedRemainder ..
+  | .VirtualAssertMulUNoOverflow ..
+  | .VirtualAssertLTE .. => 0
+
+/-- The static immediate agrees with what can be reconstructed from execution
+semantics.  Advice rows deliberately form the exception: their Lean execution
+operand is a runtime advice result, while the proof row stores static bytecode
+data (for example the byte width of `VirtualAdviceLoad`). -/
+def instructionImmediateMatches (row : JoltTraceRow) : Prop :=
+  match row.instruction with
+  | .VirtualAdvice ..
+  | .VirtualAdviceLoad ..
+  | .VirtualAdviceLen .. => True
+  | instruction =>
+      row.instructionRow.operands.imm = instructionImmediate instruction
+
+/-- Exact correspondence between Rust's normalized register operands and the
+execution instruction.  `VirtualAdviceLen` is the sole final instruction whose
+Rust `FormatI` row contains an `rs1` lane that the executable Lean constructor
+does not retain; its presence is still recorded explicitly. -/
+def instructionRegisterOperandsMatch (row : JoltTraceRow) : Prop :=
+  let operands := row.instructionRow.operands
+  match row.instruction with
+  | .VirtualAdviceLen destination _ =>
+      operands.rs1.isSome = true ∧
+        operands.rs2 = none ∧
+        operands.rd = some (destinationAddress destination)
+  | instruction =>
+      operands.rs1 = (firstSource instruction).map sourceAddress ∧
+        operands.rs2 = (secondSource instruction).map sourceAddress ∧
+        operands.rd = (destination instruction).map destinationAddress
 
 def rightOperandIsImmediate : JoltISA.Instr → Bool
   | .ADDI _ _ _
@@ -276,14 +421,15 @@ def signedInstructionImmediate : JoltISA.Instr → Bool
   | .VirtualAssertWordAlignment _ _ _ => true
   | _ => false
 
-def lowImmediate (instruction : JoltISA.Instr) : Option U128 :=
+def lowImmediate (row : JoltTraceRow) : Option U128 :=
+  let instruction := row.instruction
   if rightOperandIsImmediate instruction then
     if signedInstructionImmediate instruction then
       some (BitVec.ofInt InstructionLookupAddressBits
-        (instructionImmediate instruction))
+        row.instructionRow.operands.imm)
     else
       some (BitVec.ofNat InstructionLookupAddressBits
-        (BitVec.ofInt Xlen (instructionImmediate instruction)).toNat)
+        (BitVec.ofInt Xlen row.instructionRow.operands.imm).toNat)
   else
     none
 
@@ -355,7 +501,7 @@ def instructionInputs (row : JoltTraceRow) : U64 × U128 :=
     if (lookupSecondSource instruction).isSome then
       BitVec.ofNat InstructionLookupAddressBits row.rs2Value.toNat
     else
-      (lowImmediate instruction).getD 0
+      (lowImmediate row).getD 0
   (left, right)
 
 def low64 (value : U128) : U64 :=
@@ -454,8 +600,15 @@ def destinationIndicator {F : Type u} [Field F]
   | some destination => fieldBool (destinationAddress destination == address)
   | none => 0
 
+/-- One-hot register selector from the exact proof-facing normalized operand. -/
+def registerAddressIndicator {F : Type u} [Field F]
+    (register : Option RegisterAddress) (address : RegisterAddress) : F :=
+  match register with
+  | some register => fieldBool (register == address)
+  | none => 0
+
 def rdIncrement (row : JoltTraceRow) : U128 :=
-  match destination row.instruction with
+  match row.instructionRow.operands.rd with
   | some _ =>
       BitVec.ofInt InstructionLookupAddressBits
         (((row.rdWriteValue.toNat : Int) - row.rdPreValue.toNat))
@@ -601,6 +754,7 @@ end HonestWitness
 /-- Rust's canonical default row, used to pad the proof trace to `2 ^ logT`. -/
 def JoltTraceRow.noOp : JoltTraceRow where
   instruction := .NoOp
+  instructionRow := JoltInstructionRow.noOp
   metadata := {
     pc := 0
     unexpandedPC := 0
@@ -615,27 +769,119 @@ def JoltTraceRow.noOp : JoltTraceRow where
     rdWriteValue := 0
   }
 
-/-- Native contracts established when Rust converts an executed cycle into a
-proof-facing `JoltTraceRow`.  These facts are stated before embedding values in
-the proof field. -/
+namespace HonestWitness
+
+def memoryByte (state : SailJoltState) (address : Nat) : BitVec 8 :=
+  (state.sail.mem.get? address).getD 0
+
+def memoryWord (state : SailJoltState) (address : Nat) : U64 :=
+  BitVec.ofNat Xlen
+    ((memoryByte state address).toNat +
+      (memoryByte state (address + 1)).toNat * 2 ^ 8 +
+      (memoryByte state (address + 2)).toNat * 2 ^ 16 +
+      (memoryByte state (address + 3)).toNat * 2 ^ 24 +
+      (memoryByte state (address + 4)).toNat * 2 ^ 32 +
+      (memoryByte state (address + 5)).toNat * 2 ^ 40 +
+      (memoryByte state (address + 6)).toNat * 2 ^ 48 +
+      (memoryByte state (address + 7)).toNat * 2 ^ 56)
+
+/-- Rust's fixed seven-bit register domain: architectural registers occupy
+addresses `0..31`, followed by virtual registers. -/
+noncomputable def registerAtAddress
+    (state : SailJoltState) (address : RegisterAddress) : U64 :=
+  if address.val < 32 then
+    sourceValue state (.xreg (.Regidx (BitVec.ofNat 5 address.val)))
+  else
+    sourceValue state (.vreg (BitVec.ofNat RegisterAddressBits address.val))
+
+/-- Value of an optional normalized register operand in a Sail state. -/
+noncomputable def registerAtOptionalAddress
+    (state : SailJoltState) (address : Option RegisterAddress) : U64 :=
+  match address with
+  | some address => registerAtAddress state address
+  | none => 0
+
+def ramAccessAddress (row : JoltTraceRow) : Option U64 :=
+  match JoltTraceRowClass.ofInstr row.instruction with
+  | .load | .store => some row.ramAddress
+  | .nonMemory => none
+
+/-- The optional address used by Rust's RAM witness.  Rust returns `none` only
+for address zero and rejects a nonzero address below `lowestMemoryAddress`;
+this total Lean helper maps both cases to `none`.  The `ramAddress_eq_zero`
+field of `JoltTraceRow.Valid` rules out the rejected nonzero case, while
+`ramAddressBound` records the subsequent `address < ram_k` check. -/
+def remappedRamAddressFromPublic
+    {params : JoltWitnessParams}
+    (publicInputs : JoltPublicInputs params)
+    (row : JoltTraceRow) : Option Nat :=
+  match ramAccessAddress row with
+  | some address =>
+      if address == 0 ||
+          address.toNat < publicInputs.lowestMemoryAddress.toNat then
+        none
+      else
+        some ((address.toNat - publicInputs.lowestMemoryAddress.toNat) / 8)
+  | none => none
+
+end HonestWitness
+
+/-- Native producer contracts supplied with a proof-facing `JoltTraceRow`.
+They combine tracer conversion facts with the memory-layout checks needed by
+witness generation, and are stated before embedding values in the proof field. -/
 structure JoltTraceRow.Valid
+    {params : JoltWitnessParams}
+    (publicInputs : JoltPublicInputs params)
     (row : JoltTraceRow) (before after : SailJoltState) : Prop where
+  /-- The executable instruction and the fixed proof row name the same final
+  Rust instruction. -/
+  instructionKind_eq :
+    row.instructionRow.kind = JoltInstructionKind.ofInstr row.instruction
+  /-- Register selectors are the exact normalized Rust operands. -/
+  instructionRegisterOperands_eq :
+    HonestWitness.instructionRegisterOperandsMatch row
+  /-- Static immediates agree whenever the executable instruction retains
+  them; advice rows keep their distinct proof-facing immediate. -/
+  instructionImmediate_eq : HonestWitness.instructionImmediateMatches row
+  /-- `BytecodePCMapper::get_pc` always returns a table index. -/
+  pcBound : row.metadata.pc < params.bytecodeK
+  /-- The logical row is exactly the fixed bytecode entry selected by `pc`. -/
+  bytecodeRow_eq : ∀ inBounds : row.metadata.pc < params.bytecodeK,
+    publicInputs.bytecode ⟨row.metadata.pc, inBounds⟩ = row.bytecodeRow
+  /-- Rust reserves bytecode index zero for the canonical no-op row. -/
+  noOpPC : HonestWitness.isNoop row.instruction = true → row.metadata.pc = 0
+  nonNoOpPCActive : HonestWitness.isNoop row.instruction = false →
+    row.metadata.pc < publicInputs.bytecodeActiveLength
+  /-- Rust stores this sequence counter as an `Option<u16>`. -/
+  virtualSequenceRemainingBound : ∀ remaining,
+    row.metadata.virtualSequenceRemaining = some remaining → remaining < 2 ^ 16
+  firstSourceAddressValid : ∀ source,
+    HonestWitness.firstSource row.instruction = some source →
+      HonestWitness.sourceAddressValid source
+  secondSourceAddressValid : ∀ source,
+    HonestWitness.secondSource row.instruction = some source →
+      HonestWitness.sourceAddressValid source
+  destinationAddressValid : ∀ destination,
+    HonestWitness.destination row.instruction = some destination →
+      HonestWitness.destinationAddressValid destination
   rs1Value_eq :
-    row.rs1Value = HonestWitness.registerValue before
-      (HonestWitness.firstSource row.instruction)
+    row.rs1Value = HonestWitness.registerAtOptionalAddress before
+      row.instructionRow.operands.rs1
   rs2Value_eq :
-    row.rs2Value = HonestWitness.registerValue before
-      (HonestWitness.secondSource row.instruction)
+    row.rs2Value = HonestWitness.registerAtOptionalAddress before
+      row.instructionRow.operands.rs2
   rdPreValue_eq :
-    row.rdPreValue = HonestWitness.destinationRegisterValue before row.instruction
+    row.rdPreValue = HonestWitness.registerAtOptionalAddress before
+      row.instructionRow.operands.rd
   rdWriteValue_eq :
-    row.rdWriteValue = HonestWitness.destinationRegisterValue after row.instruction
+    row.rdWriteValue = HonestWitness.registerAtOptionalAddress after
+      row.instructionRow.operands.rd
   effectiveAddress :
     (HonestWitness.isLoad row.instruction ||
       HonestWitness.isStore row.instruction) = true →
       (row.ramAddress.toNat : Int) =
         (row.rs1Value.toNat : Int) +
-          HonestWitness.instructionImmediate row.instruction
+          row.instructionRow.operands.imm
   addInput_nonnegative :
     HonestWitness.addOperands row.instruction = true →
       0 ≤ ((HonestWitness.instructionInputs row).1.toNat : Int) +
@@ -651,6 +897,30 @@ structure JoltTraceRow.Valid
       (row.rdWriteValue.toNat : Int) =
         (row.metadata.unexpandedPC.toNat : Int) + 4 -
           (if row.metadata.isCompressed then 2 else 0)
+  ramAddressBound :
+    ∀ address,
+      HonestWitness.remappedRamAddressFromPublic publicInputs row = some address →
+        address < params.ramK
+  ramAddress_eq :
+    ∀ address,
+      HonestWitness.remappedRamAddressFromPublic publicInputs row = some address →
+        row.ramAddress.toNat =
+          publicInputs.lowestMemoryAddress.toNat + 8 * address
+  ramAddress_eq_zero :
+    HonestWitness.remappedRamAddressFromPublic publicInputs row = none →
+      row.ramAddress = 0
+  ramReadValue_eq :
+    ∀ address,
+      HonestWitness.remappedRamAddressFromPublic publicInputs row = some address →
+        row.ramReadValue =
+          HonestWitness.memoryWord before
+            (publicInputs.lowestMemoryAddress.toNat + 8 * address)
+  ramReadValue_eq_zero :
+    HonestWitness.remappedRamAddressFromPublic publicInputs row = none →
+      row.ramReadValue = 0
+  ramWriteValue_eq_zero :
+    HonestWitness.remappedRamAddressFromPublic publicInputs row = none →
+      row.ramWriteValue = 0
 
 /-- The native branch decision materialized by Rust for a row. -/
 def JoltTraceRow.shouldBranch (row : JoltTraceRow) : Bool :=
@@ -671,7 +941,7 @@ structure JoltTracePair.Valid (current next : JoltTraceRow) : Prop where
     current.shouldBranch = true →
       (next.metadata.unexpandedPC.toNat : Int) =
         (current.metadata.unexpandedPC.toNat : Int) +
-          HonestWitness.instructionImmediate current.instruction
+          current.instructionRow.operands.imm
   ordinaryTarget :
     current.shouldBranch = false →
     HonestWitness.isJump current.instruction = false →
@@ -694,14 +964,68 @@ structure JoltTracePair.Valid (current next : JoltTraceRow) : Prop where
 facts guaranteed by Rust's tracer, bytecode preprocessing, and padding. -/
 structure HonestTrace (params : JoltWitnessParams)
     extends ExecutionTrace params where
+  metadataValid : metadata.Valid
+  /-- Number of real tracer rows before the witness provider supplies default
+  no-op rows. -/
+  unpaddedLength : Nat
+  /-- Exact `ProverConfig::derive` trace-padding policy. -/
+  traceLengthFromUnpadded :
+    params.traceLength = JoltWitnessParams.paddedTraceLength unpaddedLength
+  unpaddedLengthBound : unpaddedLength ≤ params.traceLength
+  /-- `TraceSource::next_row = none` is materialized as `TraceRow::default`. -/
+  paddingRows : ∀ i : Fin params.traceLength,
+    unpaddedLength ≤ i.val → rows i = JoltTraceRow.noOp
   rowValid : ∀ i : Fin params.traceLength,
-    JoltTraceRow.Valid (rows i)
+    JoltTraceRow.Valid metadata.toJoltPublicInputs (rows i)
       (state (currentStateIndex i)) (state (nextStateIndex i))
   pairValid : ∀ (i j : Fin params.traceLength),
     HonestWitness.nextTraceIndex i = some j →
       JoltTracePair.Valid (rows i) (rows j)
   finalRow : ∀ i : Fin params.traceLength,
     HonestWitness.nextTraceIndex i = none → rows i = JoltTraceRow.noOp
+  /-- Rust reconstructs `RegistersVal` from an all-zero register table. -/
+  initialRegistersZero : ∀ address : RegisterAddress,
+    HonestWitness.registerAtAddress
+        (state ⟨0, Nat.zero_lt_succ params.traceLength⟩) address = 0
+  /-- One proof row changes only its optional destination register. -/
+  registerStateTransition : ∀ (i : Fin params.traceLength)
+      (address : RegisterAddress),
+    HonestWitness.registerAtAddress (state (nextStateIndex i)) address =
+      match (rows i).instructionRow.operands.rd with
+      | some destination =>
+          if destination = address then
+            (rows i).rdWriteValue
+          else
+            HonestWitness.registerAtAddress (state (currentStateIndex i)) address
+      | none =>
+          HonestWitness.registerAtAddress (state (currentStateIndex i)) address
+  /-- Rust's dense initial RAM state is public program/input memory overlaid by
+  the optional trusted and untrusted advice commitments. -/
+  initialRamState : ∀ address : Fin params.ramK,
+    HonestWitness.memoryWord
+        (state ⟨0, Nat.zero_lt_succ params.traceLength⟩)
+        (metadata.lowestMemoryAddress.toNat + 8 * address.val) =
+      metadata.initialRamValue address
+  /-- One row changes only its remapped RAM address, and the post-row value is
+  exactly Rust's aliased `ram_write_value`. -/
+  ramStateTransition : ∀ (i : Fin params.traceLength)
+      (address : Fin params.ramK),
+    HonestWitness.memoryWord
+        (state (nextStateIndex i))
+        (metadata.lowestMemoryAddress.toNat + 8 * address.val) =
+      if HonestWitness.remappedRamAddressFromPublic
+          metadata.toJoltPublicInputs (rows i) = some address.val then
+        (rows i).ramWriteValue
+      else
+        HonestWitness.memoryWord
+          (state (currentStateIndex i))
+          (metadata.lowestMemoryAddress.toNat + 8 * address.val)
+  ramOutputValid : ∀ address : Fin params.ramK,
+    metadata.toJoltPublicInputs.ramOutputMask address = true →
+      HonestWitness.memoryWord
+          (state ⟨params.traceLength, Nat.lt_succ_self params.traceLength⟩)
+          (metadata.lowestMemoryAddress.toNat + 8 * address.val) =
+        metadata.toJoltPublicInputs.ramOutputValue address
 
 def HonestTrace.instrList {params : JoltWitnessParams}
     (trace : HonestTrace params) : Column params.traceLength JoltISA.Instr :=
@@ -735,43 +1059,11 @@ def finalState {params : JoltWitnessParams}
     (trace : HonestTrace params) : SailJoltState :=
   trace.state ⟨params.traceLength, Nat.lt_succ_self params.traceLength⟩
 
-def memoryByte (state : SailJoltState) (address : Nat) : BitVec 8 :=
-  (state.sail.mem.get? address).getD 0
-
-def memoryWord (state : SailJoltState) (address : Nat) : U64 :=
-  BitVec.ofNat Xlen
-    ((memoryByte state address).toNat +
-      (memoryByte state (address + 1)).toNat * 2 ^ 8 +
-      (memoryByte state (address + 2)).toNat * 2 ^ 16 +
-      (memoryByte state (address + 3)).toNat * 2 ^ 24 +
-      (memoryByte state (address + 4)).toNat * 2 ^ 32 +
-      (memoryByte state (address + 5)).toNat * 2 ^ 40 +
-      (memoryByte state (address + 6)).toNat * 2 ^ 48 +
-      (memoryByte state (address + 7)).toNat * 2 ^ 56)
-
-noncomputable def registerAtAddress
-    (state : SailJoltState) (address : RegisterAddress) : U64 :=
-  if address.val < 32 then
-    sourceValue state (.xreg (.Regidx (BitVec.ofNat 5 address.val)))
-  else
-    sourceValue state (.vreg (BitVec.ofNat RegisterAddressBits address.val))
-
-def ramAccessAddress (row : JoltTraceRow) : Option U64 :=
-  match row.instruction with
-  | .LD .. | .SD .. => some row.ramAddress
-  | _ => none
-
 def remappedRamAddress
     {params : JoltWitnessParams}
     (trace : HonestTrace params)
     (row : JoltTraceRow) : Option Nat :=
-  match ramAccessAddress row with
-  | some address =>
-      if address == 0 || address.toNat < trace.metadata.lowestMemoryAddress.toNat then
-        none
-      else
-        some ((address.toNat - trace.metadata.lowestMemoryAddress.toNat) / 8)
-  | none => none
+  remappedRamAddressFromPublic trace.metadata.toJoltPublicInputs row
 
 def ramReadValue (row : JoltTraceRow) : U64 :=
   row.ramReadValue
@@ -785,9 +1077,6 @@ def ramIncrement (row : JoltTraceRow) : U128 :=
       (((row.ramWriteValue.toNat : Int) - row.ramReadValue.toNat))
   else
     0
-
-def raChunk (value index chunks chunkBits : Nat) : Nat :=
-  (value / 2 ^ ((chunks - (index + 1)) * chunkBits)) % 2 ^ chunkBits
 
 def oneHot {F : Type u} [Field F] (actual expected : Nat) : F :=
   fieldBool (actual == expected)
@@ -807,27 +1096,17 @@ noncomputable def honest_witness
         fieldFromI128 (ramIncrement (trace.rows i))
     | .instructionRa chunk => fun address i =>
         oneHot address.val
-          (raChunk
-            (lookupIndex (trace.rows i)).toNat
-            chunk.val
-            params.instructionCommittedRaCount
-            params.committedChunkBits)
+          ((params.instructionCommittedSelector chunk).chunk
+            (lookupIndex (trace.rows i)).toNat).val
     | .bytecodeRa chunk => fun address i =>
         oneHot address.val
-          (raChunk
-            (trace.rowMetadata i).pc
-            chunk.val
-            params.bytecodeCommittedRaCount
-            params.committedChunkBits)
+          ((params.bytecodeCommittedSelector chunk).chunk
+            (trace.rowMetadata i).pc).val
     | .ramRa chunk => fun address i =>
         match remappedRamAddress trace (trace.rows i) with
         | some ramAddress =>
             oneHot address.val
-              (raChunk
-                ramAddress
-                chunk.val
-                params.ramCommittedRaCount
-                params.committedChunkBits)
+              ((params.ramCommittedSelector chunk).chunk ramAddress).val
         | none => 0
     | .trustedAdvice _ => fun i =>
         fieldFromU64 (trace.metadata.trustedAdvice i)
@@ -878,7 +1157,7 @@ noncomputable def honest_witness
         fieldBool <| isBranch (trace.instrList i) &&
           lookupOutput (trace.rows i) == 1
     | .imm => fun i =>
-        fieldFromInt (instructionImmediate (trace.instrList i))
+        fieldFromInt (trace.rows i).instructionRow.operands.imm
     | .rs1Value => fun i =>
         fieldFromU64 (trace.rows i).rs1Value
     | .rs2Value => fun i =>
@@ -893,18 +1172,18 @@ noncomputable def honest_witness
           multiplyOperands (trace.instrList i) ||
           adviceOperands (trace.instrList i))
     | .rs1Ra => fun address i =>
-        registerIndicator (firstSource (trace.instrList i)) address
+        registerAddressIndicator
+          (trace.rows i).instructionRow.operands.rs1 address
     | .rs2Ra => fun address i =>
-        registerIndicator (secondSource (trace.instrList i)) address
+        registerAddressIndicator
+          (trace.rows i).instructionRow.operands.rs2 address
     | .rdWa => fun address i =>
-        destinationIndicator (destination (trace.instrList i)) address
+        registerAddressIndicator
+          (trace.rows i).instructionRow.operands.rd address
     | .instructionRa chunk => fun address i =>
         oneHot address.val
-          (raChunk
-            (lookupIndex (trace.rows i)).toNat
-            chunk.val
-            params.instructionVirtualRaCount
-            params.lookupVirtualChunkBits)
+          ((params.instructionVirtualSelector chunk).chunk
+            (lookupIndex (trace.rows i)).toNat).val
     | .registersVal => fun address i =>
         fieldFromU64 (registerAtAddress (trace.preState i) address)
     | .ramAddress => fun i =>

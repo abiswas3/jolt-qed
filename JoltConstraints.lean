@@ -1,4 +1,5 @@
 import JoltConstraints.trace
 import JoltConstraints.stage1
+import JoltConstraints.stage2
 import JoltConstraints.and_constraints
 import JoltConstraints.ConstraintCompleteness

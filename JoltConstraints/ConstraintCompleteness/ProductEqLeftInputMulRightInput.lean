@@ -8,7 +8,7 @@ universe u
 theorem productEqLeftInputMulRightInput
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .productEqLeftInputMulRightInput
+    JoltConstraint.Satisfied .productEqLeftInputMulRightInput trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   unfold JoltConstraint.Satisfied
   intro i

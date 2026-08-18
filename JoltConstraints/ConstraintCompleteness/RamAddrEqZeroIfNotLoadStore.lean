@@ -8,10 +8,10 @@ universe u
 theorem ramAddrEqZeroIfNotLoadStore
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .ramAddrEqZeroIfNotLoadStore
+    JoltConstraint.Satisfied .ramAddrEqZeroIfNotLoadStore trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .ramAddrEqZeroIfNotLoadStore witness
+  change JoltConstraint.Satisfied .ramAddrEqZeroIfNotLoadStore trace.metadata.toJoltPublicInputs witness
 
   unfold JoltConstraint.Satisfied
   intro i
@@ -30,7 +30,8 @@ theorem ramAddrEqZeroIfNotLoadStore
         HonestWitness.fieldFromU64 (trace.rows i).ramAddress := by
     rfl
   rw [loadFlag_from_trace, storeFlag_from_trace, ramAddress_from_trace]
-  rcases hrow : trace.rows i with ⟨instruction, metadata, captured⟩
+  rcases hrow : trace.rows i with
+    ⟨instruction, instructionRow, metadata, captured⟩
   cases instruction <;> cases captured <;>
     simp [HonestWitness.fieldBool, HonestWitness.isLoad,
       HonestWitness.isStore, JoltTraceRow.ramAddress,

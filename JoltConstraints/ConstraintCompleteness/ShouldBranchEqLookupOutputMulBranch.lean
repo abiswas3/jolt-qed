@@ -7,10 +7,10 @@ universe u
 theorem shouldBranchEqLookupOutputMulBranch
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .shouldBranchEqLookupOutputMulBranch
+    JoltConstraint.Satisfied .shouldBranchEqLookupOutputMulBranch trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .shouldBranchEqLookupOutputMulBranch witness
+  change JoltConstraint.Satisfied .shouldBranchEqLookupOutputMulBranch trace.metadata.toJoltPublicInputs witness
 
   unfold JoltConstraint.Satisfied
   intro i

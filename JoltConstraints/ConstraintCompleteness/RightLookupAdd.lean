@@ -7,10 +7,10 @@ universe u
 theorem rightLookupAdd
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .rightLookupAdd
+    JoltConstraint.Satisfied .rightLookupAdd trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .rightLookupAdd witness
+  change JoltConstraint.Satisfied .rightLookupAdd trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   let row := trace.rows i

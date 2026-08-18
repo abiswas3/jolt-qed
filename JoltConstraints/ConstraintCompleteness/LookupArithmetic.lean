@@ -82,6 +82,20 @@ theorem zeroExtended_mod_xlen_lt (value : Nat) :
   · exact lt_trans (Nat.mod_lt _ (by positivity)) (by
       norm_num [Xlen, InstructionLookupAddressBits])
 
+/-- The form produced by simplifying `BitVec.ofInt Xlen` before its value is
+zero-extended into the 128-bit lookup input. -/
+theorem zeroExtended_int_mod_xlen_lt (value : Int) :
+    (value % (2 ^ Xlen : Int)).toNat %
+        2 ^ InstructionLookupAddressBits < 2 ^ Xlen := by
+  have reduced_lt :
+      (value % (2 ^ Xlen : Int)).toNat < 2 ^ Xlen := by
+    rw [Int.toNat_lt' (by positivity)]
+    exact Int.emod_lt_of_pos _ (by positivity)
+  rw [Nat.mod_eq_of_lt]
+  · exact reduced_lt
+  · exact lt_trans reduced_lt (by
+      norm_num [Xlen, InstructionLookupAddressBits])
+
 theorem addInput_right_lt_of_unsigned
     (row : JoltTraceRow)
     (isAdd : HonestWitness.addOperands row.instruction = true)
@@ -93,13 +107,12 @@ theorem addInput_right_lt_of_unsigned
       HonestWitness.instructionInputs, HonestWitness.leftIsPC,
       HonestWitness.lookupFirstSource, HonestWitness.lookupSecondSource,
       HonestWitness.firstSource, HonestWitness.secondSource,
-      HonestWitness.lowImmediate, HonestWitness.rightOperandIsImmediate,
-      HonestWitness.instructionImmediate] <;>
+      HonestWitness.lowImmediate, HonestWitness.rightOperandIsImmediate] <;>
     first
     | exact (row.rs2Value).isLt
     | exact (row.rs1Value).isLt
     | exact BitVec.isLt _
-    | exact zeroExtended_mod_xlen_lt _
+    | exact zeroExtended_int_mod_xlen_lt _
 
 theorem fieldFrom_addLookup
     {F : Type u} [Field F]

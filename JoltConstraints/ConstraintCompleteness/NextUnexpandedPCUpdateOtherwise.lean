@@ -7,10 +7,10 @@ universe u
 theorem nextUnexpandedPCUpdateOtherwise
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .nextUnexpandedPCUpdateOtherwise
+    JoltConstraint.Satisfied .nextUnexpandedPCUpdateOtherwise trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .nextUnexpandedPCUpdateOtherwise witness
+  change JoltConstraint.Satisfied .nextUnexpandedPCUpdateOtherwise trace.metadata.toJoltPublicInputs witness
   unfold JoltConstraint.Satisfied
   intro i
   let current := trace.rows i

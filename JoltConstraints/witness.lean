@@ -4,14 +4,6 @@ namespace JoltConstraints
 
 universe u
 
-abbrev RegisterAddressBits : Nat := 7
-
-abbrev RegisterAddressCount : Nat := 2 ^ RegisterAddressBits
-
-abbrev RegisterAddress : Type := Fin RegisterAddressCount
-
-abbrev InstructionLookupAddressBits : Nat := 2 * Xlen
-
 abbrev InstructionLookupAddressCount : Nat :=
   2 ^ InstructionLookupAddressBits
 
@@ -115,6 +107,10 @@ inductive JoltCommittedPolynomial (params : JoltWitnessParams) where
   | untrustedAdvice (included : params.includeUntrustedAdvice = true)
   deriving DecidableEq, Repr
 
+/-! These are exactly the base-mode polynomial families materialized by
+Rust's `TraceBackedJoltVmWitness`.  Rust enum variants used only for derived
+claims, committed-program mode, or lattice mode intentionally do not appear. -/
+
 inductive JoltVirtualPolynomial (params : JoltWitnessParams) where
   | pc
   | unexpandedPC
@@ -179,7 +175,33 @@ def JoltVirtualPolynomial.EvaluationsType
   | .ramVal => RamReadWriteColumns params F
   | .ramValFinal => RamFinalColumn params F
   | .instructionRa _ => InstructionVirtualRaColumns params F
-  | _ => TraceColumn params F
+  | .pc
+  | .unexpandedPC
+  | .nextPC
+  | .nextUnexpandedPC
+  | .nextIsNoop
+  | .nextIsVirtual
+  | .nextIsFirstInSequence
+  | .leftLookupOperand
+  | .rightLookupOperand
+  | .leftInstructionInput
+  | .rightInstructionInput
+  | .product
+  | .shouldJump
+  | .shouldBranch
+  | .imm
+  | .rs1Value
+  | .rs2Value
+  | .rdWriteValue
+  | .lookupOutput
+  | .instructionRafFlag
+  | .ramAddress
+  | .ramReadValue
+  | .ramWriteValue
+  | .ramHammingWeight
+  | .opFlag _
+  | .instructionFlag _
+  | .lookupTableFlag _ => TraceColumn params F
 
 structure JoltWitness (params : JoltWitnessParams) (F : Type u) where
   committed : (polynomial : JoltCommittedPolynomial params) →
@@ -191,11 +213,39 @@ def JoltWitness.rdInc {params : JoltWitnessParams} {F : Type u}
     (witness : JoltWitness params F) : TraceColumn params F :=
   witness.committed .rdInc
 
+def JoltWitness.ramInc {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F) : TraceColumn params F :=
+  witness.committed .ramInc
+
 def JoltWitness.instructionRa {params : JoltWitnessParams} {F : Type u}
     (witness : JoltWitness params F)
     (chunk : Fin params.instructionCommittedRaCount) :
     CommittedRaColumns params F :=
   witness.committed (.instructionRa chunk)
+
+def JoltWitness.bytecodeRa {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F)
+    (chunk : Fin params.bytecodeCommittedRaCount) :
+    CommittedRaColumns params F :=
+  witness.committed (.bytecodeRa chunk)
+
+def JoltWitness.ramCommittedRa {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F)
+    (chunk : Fin params.ramCommittedRaCount) :
+    CommittedRaColumns params F :=
+  witness.committed (.ramRa chunk)
+
+def JoltWitness.trustedAdvice {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F)
+    (included : params.includeTrustedAdvice = true) :
+    Column params.trustedAdviceLength F :=
+  witness.committed (.trustedAdvice included)
+
+def JoltWitness.untrustedAdvice {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F)
+    (included : params.includeUntrustedAdvice = true) :
+    Column params.untrustedAdviceLength F :=
+  witness.committed (.untrustedAdvice included)
 
 def JoltWitness.leftLookupOperand {params : JoltWitnessParams} {F : Type u}
     (witness : JoltWitness params F) : TraceColumn params F :=
@@ -224,6 +274,46 @@ def JoltWitness.rs2Value {params : JoltWitnessParams} {F : Type u}
 def JoltWitness.rdWriteValue {params : JoltWitnessParams} {F : Type u}
     (witness : JoltWitness params F) : TraceColumn params F :=
   witness.virtual .rdWriteValue
+
+def JoltWitness.instructionVirtualRa
+    {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F)
+    (chunk : Fin params.instructionVirtualRaCount) :
+    InstructionVirtualRaColumns params F :=
+  witness.virtual (.instructionRa chunk)
+
+def JoltWitness.registersVal {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F) : RegisterColumns params F :=
+  witness.virtual .registersVal
+
+def JoltWitness.ramRa {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F) : RamReadWriteColumns params F :=
+  witness.virtual .ramRa
+
+def JoltWitness.ramVal {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F) : RamReadWriteColumns params F :=
+  witness.virtual .ramVal
+
+def JoltWitness.ramValFinal {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F) : RamFinalColumn params F :=
+  witness.virtual .ramValFinal
+
+def JoltWitness.ramAddress {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F) : TraceColumn params F :=
+  witness.virtual .ramAddress
+
+def JoltWitness.ramReadValue {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F) : TraceColumn params F :=
+  witness.virtual .ramReadValue
+
+def JoltWitness.ramWriteValue {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F) : TraceColumn params F :=
+  witness.virtual .ramWriteValue
+
+def JoltWitness.ramHammingWeight
+    {params : JoltWitnessParams} {F : Type u}
+    (witness : JoltWitness params F) : TraceColumn params F :=
+  witness.virtual .ramHammingWeight
 
 def JoltWitness.lookupOutput {params : JoltWitnessParams} {F : Type u}
     (witness : JoltWitness params F) : TraceColumn params F :=

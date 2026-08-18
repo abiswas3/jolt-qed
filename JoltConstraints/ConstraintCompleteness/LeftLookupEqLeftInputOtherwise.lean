@@ -8,10 +8,10 @@ universe u
 theorem leftLookupEqLeftInputOtherwise
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (trace : HonestTrace params) :
-    JoltConstraint.Satisfied .leftLookupEqLeftInputOtherwise
+    JoltConstraint.Satisfied .leftLookupEqLeftInputOtherwise trace.metadata.toJoltPublicInputs
       (honest_witness (F := F) trace) := by
   let witness : JoltWitness params F := honest_witness (F := F) trace
-  change JoltConstraint.Satisfied .leftLookupEqLeftInputOtherwise witness
+  change JoltConstraint.Satisfied .leftLookupEqLeftInputOtherwise trace.metadata.toJoltPublicInputs witness
 
   unfold JoltConstraint.Satisfied
   intro i
@@ -40,7 +40,7 @@ theorem leftLookupEqLeftInputOtherwise
 
   rw [addFlag_from_trace, subFlag_from_trace, mulFlag_from_trace,
     leftLookup_from_trace, leftInput_from_trace]
-  rcases row with ⟨instruction, metadata, captured⟩
+  rcases row with ⟨instruction, instructionRow, metadata, captured⟩
   cases instruction <;> cases captured <;>
     simp [HonestWitness.fieldBool, HonestWitness.addOperands,
       HonestWitness.subtractOperands, HonestWitness.multiplyOperands,
