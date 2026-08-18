@@ -172,4 +172,40 @@ theorem fieldFromU64_low64_eq_fieldFromI128_of_lt
     _ = HonestWitness.fieldFromI128 (F := F) value :=
       fieldFromU128_setWidthLow64_eq_fieldFromI128_of_lt value value_lt
 
+theorem fieldFromI128_ofInt_eq_fieldFromInt
+    {F : Type u} [Field F] (value : Int)
+    (lower : -(2 : Int) ^ (InstructionLookupAddressBits - 1) ≤ value)
+    (upper : value < (2 : Int) ^ (InstructionLookupAddressBits - 1)) :
+    HonestWitness.fieldFromI128 (F := F)
+        (BitVec.ofInt InstructionLookupAddressBits value) =
+      HonestWitness.fieldFromInt (F := F) value := by
+  unfold HonestWitness.fieldFromI128 HonestWitness.fieldFromInt
+  rw [BitVec.toInt_ofInt_eq_self
+    (by norm_num [InstructionLookupAddressBits]) lower upper]
+
+@[simp] theorem fieldFromI128_zero
+    {F : Type u} [Field F] :
+    HonestWitness.fieldFromI128 (F := F)
+        (0 : BitVec InstructionLookupAddressBits) = 0 := by
+  unfold HonestWitness.fieldFromI128
+  simp
+
+theorem fieldFromI128_zeroExtendedInt_eq_fieldFromInt
+    {F : Type u} [Field F] (value : Int)
+    (nonnegative : 0 ≤ value) (upper : value < (2 : Int) ^ Xlen) :
+    HonestWitness.fieldFromI128 (F := F)
+        (BitVec.ofNat InstructionLookupAddressBits
+          (BitVec.ofInt Xlen value).toNat) =
+      HonestWitness.fieldFromInt (F := F) value := by
+  rw [fieldFromI128_zeroExtendedU64_eq_fieldFromU64]
+  unfold HonestWitness.fieldFromU64 HonestWitness.fieldFromInt
+  rw [BitVec.toNat_ofInt]
+  rw [Int.emod_eq_of_lt]
+  · calc
+      (value.toNat : F) = ((value.toNat : Int) : F) :=
+        (Int.cast_natCast value.toNat).symm
+      _ = (value : F) := by rw [Int.toNat_of_nonneg nonnegative]
+  · exact nonnegative
+  · simpa using upper
+
 end JoltConstraints.JoltConstraint.Completeness
