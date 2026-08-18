@@ -29,12 +29,6 @@ def stage1 : JoltConstraint → Bool
   | .nextUnexpandedPCUpdateOtherwise => true
   | .nextPCEqPCPlusOneIfInline => true
   | .mustStartSequenceFromBeginning => true
-  | .productEqLeftInputMulRightInput => false
-  | .shouldBranchEqLookupOutputMulBranch => false
-  | .shouldJumpEqJumpMulNotNextIsNoop => false
-  | .ramReadValueEqSelectedRamValue => false
-  | .ramWriteValueEqSelectedRamValuePlusIncrement => false
-  | .ramAddressEqSelectedRamAddress => false
-  | .ramFinalValueEqPublicIo => false
+  | _ => false
 
 end JoltConstraints

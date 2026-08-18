@@ -24,6 +24,28 @@ import JoltConstraints.ConstraintCompleteness.RamReadValueEqSelectedRamValue
 import JoltConstraints.ConstraintCompleteness.RamWriteValueEqSelectedRamValuePlusIncrement
 import JoltConstraints.ConstraintCompleteness.RamAddressEqSelectedRamAddress
 import JoltConstraints.ConstraintCompleteness.RamFinalValueEqPublicIo
+import JoltConstraints.ConstraintCompleteness.NextUnexpandedPCEqShiftedUnexpandedPC
+import JoltConstraints.ConstraintCompleteness.NextPCEqShiftedPC
+import JoltConstraints.ConstraintCompleteness.NextIsVirtualEqShiftedVirtualInstruction
+import JoltConstraints.ConstraintCompleteness.NextIsFirstInSequenceEqShiftedFirstInSequence
+import JoltConstraints.ConstraintCompleteness.NextIsNoopEqShiftedNoop
+import JoltConstraints.ConstraintCompleteness.LeftInstructionInputEqSelectedOperands
+import JoltConstraints.ConstraintCompleteness.RightInstructionInputEqSelectedOperands
+import JoltConstraints.ConstraintCompleteness.Rs1ValueEqSelectedRegistersVal
+import JoltConstraints.ConstraintCompleteness.Rs2ValueEqSelectedRegistersVal
+import JoltConstraints.ConstraintCompleteness.RdWriteValueEqSelectedRegistersValPlusIncrement
+import JoltConstraints.ConstraintCompleteness.RamValEqInitialValuePlusPriorIncrements
+import JoltConstraints.ConstraintCompleteness.RamValFinalEqInitialValuePlusAllIncrements
+import JoltConstraints.ConstraintCompleteness.LookupOutputEqInstructionReadRaf
+import JoltConstraints.ConstraintCompleteness.LeftLookupOperandEqInstructionReadRaf
+import JoltConstraints.ConstraintCompleteness.RightLookupOperandEqInstructionReadRaf
+import JoltConstraints.ConstraintCompleteness.RegistersValEqPriorWrites
+import JoltConstraints.ConstraintCompleteness.InstructionRaBooleanity
+import JoltConstraints.ConstraintCompleteness.BytecodeRaBooleanity
+import JoltConstraints.ConstraintCompleteness.RamRaBooleanity
+import JoltConstraints.ConstraintCompleteness.InstructionRaVirtualization
+import JoltConstraints.ConstraintCompleteness.RamRaVirtualization
+import JoltConstraints.ConstraintCompleteness.RamHammingWeightBooleanity
 
 namespace JoltConstraints.JoltConstraint.Completeness
 
@@ -80,5 +102,40 @@ theorem honest_witness_satisfies
   | ramAddressEqSelectedRamAddress =>
       exact ramAddressEqSelectedRamAddress trace
   | ramFinalValueEqPublicIo => exact ramFinalValueEqPublicIo trace
+  | nextUnexpandedPCEqShiftedUnexpandedPC =>
+      exact nextUnexpandedPCEqShiftedUnexpandedPC trace
+  | nextPCEqShiftedPC => exact nextPCEqShiftedPC trace
+  | nextIsVirtualEqShiftedVirtualInstruction =>
+      exact nextIsVirtualEqShiftedVirtualInstruction trace
+  | nextIsFirstInSequenceEqShiftedFirstInSequence =>
+      exact nextIsFirstInSequenceEqShiftedFirstInSequence trace
+  | nextIsNoopEqShiftedNoop => exact nextIsNoopEqShiftedNoop trace
+  | leftInstructionInputEqSelectedOperands =>
+      exact leftInstructionInputEqSelectedOperands trace
+  | rightInstructionInputEqSelectedOperands =>
+      exact rightInstructionInputEqSelectedOperands trace
+  | rs1ValueEqSelectedRegistersVal =>
+      exact rs1ValueEqSelectedRegistersVal trace
+  | rs2ValueEqSelectedRegistersVal =>
+      exact rs2ValueEqSelectedRegistersVal trace
+  | rdWriteValueEqSelectedRegistersValPlusIncrement =>
+      exact rdWriteValueEqSelectedRegistersValPlusIncrement trace
+  | ramValEqInitialValuePlusPriorIncrements =>
+      exact ramValEqInitialValuePlusPriorIncrements trace
+  | ramValFinalEqInitialValuePlusAllIncrements =>
+      exact ramValFinalEqInitialValuePlusAllIncrements trace
+  | lookupOutputEqInstructionReadRaf =>
+      exact lookupOutputEqInstructionReadRaf trace
+  | leftLookupOperandEqInstructionReadRaf =>
+      exact leftLookupOperandEqInstructionReadRaf trace
+  | rightLookupOperandEqInstructionReadRaf =>
+      exact rightLookupOperandEqInstructionReadRaf trace
+  | registersValEqPriorWrites => exact registersValEqPriorWrites trace
+  | instructionRaBooleanity => exact instructionRaBooleanity trace
+  | bytecodeRaBooleanity => exact bytecodeRaBooleanity trace
+  | ramRaBooleanity => exact ramRaBooleanity trace
+  | instructionRaVirtualization => exact instructionRaVirtualization trace
+  | ramRaVirtualization => exact ramRaVirtualization trace
+  | ramHammingWeightBooleanity => exact ramHammingWeightBooleanity trace
 
 end JoltConstraints.JoltConstraint.Completeness

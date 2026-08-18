@@ -1,4 +1,4 @@
-import JoltConstraints.witness
+import JoltConstraints.trace
 
 namespace JoltConstraints
 
@@ -13,10 +13,10 @@ open scoped BigOperators
 # Jolt witness constraints
 
 Each constructor names one unbatched identity tested by a Jolt sumcheck. The
-first 19 constructors are the equality-conditional RV64 constraints tested by
-Stage 1's `SpartanOuter`. The next three are the product constraints tested by
-Stage 2's `SpartanProductVirtualization`, and the final four are the RAM witness
-relations tested in Stage 2. Claim reductions and sumcheck round-splitting
+48 constructors are grouped by Rust proving stage as 19 in Stage 1, seven in
+Stage 2, seven in Stage 3, five in Stage 4, four in Stage 5, and three currently
+modelled booleanity components plus instruction-RA virtualization in Stage 6.
+Claim reductions, batching, and sumcheck round-splitting
 machinery are intentionally not included.
 -/
 
@@ -50,6 +50,38 @@ inductive JoltConstraint where
   | ramWriteValueEqSelectedRamValuePlusIncrement
   | ramAddressEqSelectedRamAddress
   | ramFinalValueEqPublicIo
+  -- Stage 3: the five components batched by Spartan shift.
+  | nextUnexpandedPCEqShiftedUnexpandedPC
+  | nextPCEqShiftedPC
+  | nextIsVirtualEqShiftedVirtualInstruction
+  | nextIsFirstInSequenceEqShiftedFirstInSequence
+  | nextIsNoopEqShiftedNoop
+  -- Stage 3: the two components batched by instruction-input virtualization.
+  | leftInstructionInputEqSelectedOperands
+  | rightInstructionInputEqSelectedOperands
+  -- Stage 4: the three components batched by register read/write checking.
+  | rs1ValueEqSelectedRegistersVal
+  | rs2ValueEqSelectedRegistersVal
+  | rdWriteValueEqSelectedRegistersValPlusIncrement
+  -- Stage 4: the two components batched by RAM value checking.
+  | ramValEqInitialValuePlusPriorIncrements
+  | ramValFinalEqInitialValuePlusAllIncrements
+  -- Stage 5: the three gamma components of instruction read-RAF.
+  | lookupOutputEqInstructionReadRaf
+  | leftLookupOperandEqInstructionReadRaf
+  | rightLookupOperandEqInstructionReadRaf
+  -- Stage 5: register-state evaluation from prior destination increments.
+  | registersValEqPriorWrites
+  -- Stage 6: the three RA-family components of Rust's one booleanity
+  -- sumcheck. These are witness identities, not three separate sumchecks.
+  | instructionRaBooleanity
+  | bytecodeRaBooleanity
+  | ramRaBooleanity
+  -- Stage 6: virtual instruction-RA chunks are products of their contiguous
+  -- committed subchunks.
+  | instructionRaVirtualization
+  | ramRaVirtualization
+  | ramHammingWeightBooleanity
   deriving DecidableEq, Repr
 
 private def ramAddrEqRs1PlusImmIfLoadStore_satisfied
@@ -255,6 +287,205 @@ private def ramFinalValueEqPublicIo_satisfied
         (witness.ramValFinal address -
           (publicInputs.ramOutputValue address).toNat) = 0
 
+private def nextUnexpandedPCEqShiftedUnexpandedPC_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.virtual .nextUnexpandedPC i -
+        HonestWitness.shiftedColumn 0 (witness.virtual .unexpandedPC) i = 0
+
+private def nextPCEqShiftedPC_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.virtual .nextPC i -
+        HonestWitness.shiftedColumn 0 (witness.virtual .pc) i = 0
+
+private def nextIsVirtualEqShiftedVirtualInstruction_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.virtual .nextIsVirtual i -
+        HonestWitness.shiftedColumn 0
+          (witness.opFlag .virtualInstruction) i = 0
+
+private def nextIsFirstInSequenceEqShiftedFirstInSequence_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.virtual .nextIsFirstInSequence i -
+        HonestWitness.shiftedColumn 0
+          (witness.opFlag .isFirstInSequence) i = 0
+
+private def nextIsNoopEqShiftedNoop_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.virtual .nextIsNoop i -
+        HonestWitness.shiftedColumn 1
+          (witness.instructionFlag .isNoop) i = 0
+
+private def leftInstructionInputEqSelectedOperands_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.leftInstructionInput i -
+        (witness.instructionFlag .leftOperandIsRs1Value i *
+            witness.rs1Value i +
+          witness.instructionFlag .leftOperandIsPC i *
+            witness.virtual .unexpandedPC i) = 0
+
+private def rightInstructionInputEqSelectedOperands_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.rightInstructionInput i -
+        (witness.instructionFlag .rightOperandIsRs2Value i *
+            witness.rs2Value i +
+          witness.instructionFlag .rightOperandIsImm i *
+            witness.virtual .imm i) = 0
+
+private def rs1ValueEqSelectedRegistersVal_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.rs1Value i -
+        ∑ address : RegisterAddress,
+          witness.rs1Ra address i * witness.registersVal address i = 0
+
+private def rs2ValueEqSelectedRegistersVal_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.rs2Value i -
+        ∑ address : RegisterAddress,
+          witness.rs2Ra address i * witness.registersVal address i = 0
+
+private def rdWriteValueEqSelectedRegistersValPlusIncrement_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.rdWriteValue i -
+        ∑ address : RegisterAddress,
+          witness.rdWa address i *
+            (witness.registersVal address i + witness.rdInc i) = 0
+
+private def ramValEqInitialValuePlusPriorIncrements_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (address : Fin params.ramK) (i : Fin params.traceLength),
+    witness.ramVal address i -
+        (witness.initialRamValue publicInputs address +
+          HonestWitness.strictPrefixSum
+            (fun j => witness.ramRa address j * witness.ramInc j) i) = 0
+
+private def ramValFinalEqInitialValuePlusAllIncrements_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ address : Fin params.ramK,
+    witness.ramValFinal address -
+        (witness.initialRamValue publicInputs address +
+          ∑ i : Fin params.traceLength,
+            witness.ramRa address i * witness.ramInc i) = 0
+
+private def lookupOutputEqInstructionReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.lookupOutput i -
+        ∑ address : InstructionLookupAddress,
+          witness.instructionRaProduct address i *
+            ∑ table : JoltLookupTable,
+              HonestWitness.fieldFromU64 (F := F)
+                  (JoltLookupTable.materializeEntry table address) *
+                witness.lookupTableFlag table i = 0
+
+private def leftLookupOperandEqInstructionReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.leftLookupOperand i -
+        ∑ address : InstructionLookupAddress,
+          witness.instructionRaProduct address i *
+            ((HonestWitness.fieldFromU64 (F := F) address.leftOperand) *
+              (1 - witness.instructionRafFlag i)) = 0
+
+private def rightLookupOperandEqInstructionReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.rightLookupOperand i -
+        ∑ address : InstructionLookupAddress,
+          witness.instructionRaProduct address i *
+            (HonestWitness.fieldFromU64 (F := F) address.rightOperand +
+              witness.instructionRafFlag i *
+                ((address.val : F) -
+                  HonestWitness.fieldFromU64 (F := F)
+                    address.rightOperand)) = 0
+
+private def registersValEqPriorWrites_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (address : RegisterAddress) (i : Fin params.traceLength),
+    witness.registersVal address i -
+        HonestWitness.strictPrefixSum
+          (fun j => witness.rdWa address j * witness.rdInc j) i = 0
+
+private def instructionRaBooleanity_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (chunk : Fin params.instructionCommittedRaCount)
+      (address : Fin params.committedChunkSize)
+      (i : Fin params.traceLength),
+    witness.instructionRa chunk address i *
+          witness.instructionRa chunk address i -
+        witness.instructionRa chunk address i = 0
+
+private def bytecodeRaBooleanity_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (chunk : Fin params.bytecodeCommittedRaCount)
+      (address : Fin params.committedChunkSize)
+      (i : Fin params.traceLength),
+    witness.bytecodeRa chunk address i *
+          witness.bytecodeRa chunk address i -
+        witness.bytecodeRa chunk address i = 0
+
+private def ramRaBooleanity_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (chunk : Fin params.ramCommittedRaCount)
+      (address : Fin params.committedChunkSize)
+      (i : Fin params.traceLength),
+    witness.ramCommittedRa chunk address i *
+          witness.ramCommittedRa chunk address i -
+        witness.ramCommittedRa chunk address i = 0
+
+private def instructionRaVirtualization_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (virtualChunk : Fin params.instructionVirtualRaCount)
+      (address : Fin params.lookupVirtualChunkSize)
+      (i : Fin params.traceLength),
+    witness.instructionVirtualRa virtualChunk address i -
+        witness.instructionCommittedRaProduct virtualChunk address i = 0
+
+private def ramRaVirtualization_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (address : Fin params.ramK) (i : Fin params.traceLength),
+    witness.ramRa address i -
+        witness.ramCommittedRaProduct address i = 0
+
+private def ramHammingWeightBooleanity_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.ramHammingWeight i * witness.ramHammingWeight i -
+        witness.ramHammingWeight i = 0
+
 def JoltConstraint.Satisfied
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (constraint : JoltConstraint)
@@ -301,5 +532,47 @@ def JoltConstraint.Satisfied
       ramAddressEqSelectedRamAddress_satisfied publicInputs witness
   | .ramFinalValueEqPublicIo =>
       ramFinalValueEqPublicIo_satisfied publicInputs witness
+  | .nextUnexpandedPCEqShiftedUnexpandedPC =>
+      nextUnexpandedPCEqShiftedUnexpandedPC_satisfied witness
+  | .nextPCEqShiftedPC => nextPCEqShiftedPC_satisfied witness
+  | .nextIsVirtualEqShiftedVirtualInstruction =>
+      nextIsVirtualEqShiftedVirtualInstruction_satisfied witness
+  | .nextIsFirstInSequenceEqShiftedFirstInSequence =>
+      nextIsFirstInSequenceEqShiftedFirstInSequence_satisfied witness
+  | .nextIsNoopEqShiftedNoop => nextIsNoopEqShiftedNoop_satisfied witness
+  | .leftInstructionInputEqSelectedOperands =>
+      leftInstructionInputEqSelectedOperands_satisfied witness
+  | .rightInstructionInputEqSelectedOperands =>
+      rightInstructionInputEqSelectedOperands_satisfied witness
+  | .rs1ValueEqSelectedRegistersVal =>
+      rs1ValueEqSelectedRegistersVal_satisfied witness
+  | .rs2ValueEqSelectedRegistersVal =>
+      rs2ValueEqSelectedRegistersVal_satisfied witness
+  | .rdWriteValueEqSelectedRegistersValPlusIncrement =>
+      rdWriteValueEqSelectedRegistersValPlusIncrement_satisfied witness
+  | .ramValEqInitialValuePlusPriorIncrements =>
+      ramValEqInitialValuePlusPriorIncrements_satisfied publicInputs witness
+  | .ramValFinalEqInitialValuePlusAllIncrements =>
+      ramValFinalEqInitialValuePlusAllIncrements_satisfied publicInputs witness
+  | .lookupOutputEqInstructionReadRaf =>
+      lookupOutputEqInstructionReadRaf_satisfied witness
+  | .leftLookupOperandEqInstructionReadRaf =>
+      leftLookupOperandEqInstructionReadRaf_satisfied witness
+  | .rightLookupOperandEqInstructionReadRaf =>
+      rightLookupOperandEqInstructionReadRaf_satisfied witness
+  | .registersValEqPriorWrites =>
+      registersValEqPriorWrites_satisfied witness
+  | .instructionRaBooleanity =>
+      instructionRaBooleanity_satisfied witness
+  | .bytecodeRaBooleanity =>
+      bytecodeRaBooleanity_satisfied witness
+  | .ramRaBooleanity =>
+      ramRaBooleanity_satisfied witness
+  | .instructionRaVirtualization =>
+      instructionRaVirtualization_satisfied witness
+  | .ramRaVirtualization =>
+      ramRaVirtualization_satisfied witness
+  | .ramHammingWeightBooleanity =>
+      ramHammingWeightBooleanity_satisfied witness
 
 end JoltConstraints

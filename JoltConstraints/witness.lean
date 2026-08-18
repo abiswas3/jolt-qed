@@ -4,6 +4,8 @@ namespace JoltConstraints
 
 universe u
 
+open scoped BigOperators
+
 abbrev InstructionLookupAddressCount : Nat :=
   2 ^ InstructionLookupAddressBits
 
@@ -27,6 +29,29 @@ abbrev CommittedRaColumns (params : JoltWitnessParams) (F : Type u) : Type u :=
 abbrev InstructionVirtualRaColumns
     (params : JoltWitnessParams) (F : Type u) : Type u :=
   Column params.lookupVirtualChunkSize (TraceColumn params F)
+
+namespace HonestWitness
+
+/-- Index of the next trace row, with no wrap at the final row. -/
+def nextTraceIndex {T : Nat} (i : Fin T) : Option (Fin T) :=
+  if hasNext : i.val + 1 < T then some ⟨i.val + 1, hasNext⟩ else none
+
+/-- One-step, non-wrapping shift of a finite trace column.  This is the
+Boolean-hypercube meaning of Rust's `EqPlusOnePolynomial`. -/
+def shiftedColumn {T : Nat} {α : Type u}
+    (terminal : α) (column : Column T α) (i : Fin T) : α :=
+  match nextTraceIndex i with
+  | some next => column next
+  | none => terminal
+
+/-- Sum of the entries strictly before row `i`.  This is the finite-array
+counterpart of Rust's `LtPolynomial` evaluation on a Boolean cycle. -/
+def strictPrefixSum {T : Nat} {α : Type u} [AddCommMonoid α]
+    (column : Column T α) (i : Fin T) : α :=
+  ∑ j : Fin i.val,
+    column ⟨j.val, Nat.lt_trans j.isLt i.isLt⟩
+
+end HonestWitness
 
 inductive JoltLookupTable where
   | RangeCheck
@@ -69,7 +94,7 @@ inductive JoltLookupTable where
   | VirtualXORROTW12
   | VirtualXORROTW8
   | VirtualXORROTW7
-  deriving DecidableEq, Repr
+  deriving DecidableEq, Fintype, Repr
 
 inductive JoltCircuitFlag where
   | addOperands
@@ -235,6 +260,36 @@ def JoltWitness.ramCommittedRa {params : JoltWitnessParams} {F : Type u}
     CommittedRaColumns params F :=
   witness.committed (.ramRa chunk)
 
+/-- Product of every committed bytecode-RA digit at one complete bytecode
+address. This is shared infrastructure; it does not itself impose a public
+bytecode-table constraint. -/
+def JoltWitness.bytecodeRaProduct
+    {params : JoltWitnessParams} {F : Type u} [CommMonoid F]
+    (witness : JoltWitness params F)
+    (address : Fin params.bytecodeK) (i : Fin params.traceLength) : F :=
+  ∏ chunk : Fin params.bytecodeCommittedRaCount,
+    witness.bytecodeRa chunk
+      ((params.bytecodeCommittedSelector chunk).chunk address.val) i
+
+/-- Read one public bytecode table column with the full address selector
+reconstructed from Rust's committed `D` read-address digits. -/
+def JoltWitness.bytecodeRead
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) (values : Column params.bytecodeK F)
+    (i : Fin params.traceLength) : F :=
+  ∑ address : Fin params.bytecodeK,
+    witness.bytecodeRaProduct address i * values address
+
+/-- Product of every committed RAM-RA digit at one complete remapped RAM
+address. -/
+def JoltWitness.ramCommittedRaProduct
+    {params : JoltWitnessParams} {F : Type u} [CommMonoid F]
+    (witness : JoltWitness params F)
+    (address : Fin params.ramK) (i : Fin params.traceLength) : F :=
+  ∏ chunk : Fin params.ramCommittedRaCount,
+    witness.ramCommittedRa chunk
+      ((params.ramCommittedSelector chunk).chunk address.val) i
+
 def JoltWitness.trustedAdvice {params : JoltWitnessParams} {F : Type u}
     (witness : JoltWitness params F)
     (included : params.includeTrustedAdvice = true) :
@@ -246,6 +301,65 @@ def JoltWitness.untrustedAdvice {params : JoltWitnessParams} {F : Type u}
     (included : params.includeUntrustedAdvice = true) :
     Column params.untrustedAdviceLength F :=
   witness.committed (.untrustedAdvice included)
+
+/-- Total field-valued read from the optional trusted-advice commitment. -/
+def JoltWitness.trustedAdviceWord
+    {params : JoltWitnessParams} {F : Type u} [Zero F]
+    (witness : JoltWitness params F) (index : Nat) : F :=
+  if included : params.includeTrustedAdvice = true then
+    if inBounds : index < params.trustedAdviceLength then
+      witness.trustedAdvice included ⟨index, inBounds⟩
+    else
+      0
+  else
+    0
+
+/-- Total field-valued read from the optional untrusted-advice commitment. -/
+def JoltWitness.untrustedAdviceWord
+    {params : JoltWitnessParams} {F : Type u} [Zero F]
+    (witness : JoltWitness params F) (index : Nat) : F :=
+  if included : params.includeUntrustedAdvice = true then
+    if inBounds : index < params.untrustedAdviceLength then
+      witness.untrustedAdvice included ⟨index, inBounds⟩
+    else
+      0
+  else
+    0
+
+/-- Trusted-advice contribution at one remapped RAM address. -/
+def JoltWitness.trustedAdviceAt?
+    {params : JoltWitnessParams} {F : Type u} [Zero F]
+    (publicInputs : JoltPublicInputs params) (witness : JoltWitness params F)
+    (address : Fin params.ramK) : Option F :=
+  if params.includeTrustedAdvice then
+    (publicInputs.trustedAdviceRegion.index? address).map
+      (fun index => witness.trustedAdviceWord index.val)
+  else
+    none
+
+/-- Untrusted-advice contribution at one remapped RAM address. -/
+def JoltWitness.untrustedAdviceAt?
+    {params : JoltWitnessParams} {F : Type u} [Zero F]
+    (publicInputs : JoltPublicInputs params) (witness : JoltWitness params F)
+    (address : Fin params.ramK) : Option F :=
+  if params.includeUntrustedAdvice then
+    (publicInputs.untrustedAdviceRegion.index? address).map
+      (fun index => witness.untrustedAdviceWord index.val)
+  else
+    none
+
+/-- Full initial RAM value reconstructed from public memory and the two
+optional committed advice streams, in Rust's overlay order. -/
+def JoltWitness.initialRamValue
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params) (witness : JoltWitness params F)
+    (address : Fin params.ramK) : F :=
+  match witness.untrustedAdviceAt? publicInputs address with
+  | some value => value
+  | none =>
+      match witness.trustedAdviceAt? publicInputs address with
+      | some value => value
+      | none => ((publicInputs.publicInitialRam address).toNat : F)
 
 def JoltWitness.leftLookupOperand {params : JoltWitnessParams} {F : Type u}
     (witness : JoltWitness params F) : TraceColumn params F :=
@@ -281,6 +395,33 @@ def JoltWitness.instructionVirtualRa
     (chunk : Fin params.instructionVirtualRaCount) :
     InstructionVirtualRaColumns params F :=
   witness.virtual (.instructionRa chunk)
+
+/-- Product of the contiguous committed instruction-RA chunks represented by
+one virtual instruction-RA chunk. The checked chunk map can fail only for raw,
+invalid parameters; production-valid dimensions prove every factor present. -/
+def JoltWitness.instructionCommittedRaProduct
+    {params : JoltWitnessParams} {F : Type u} [CommMonoidWithZero F]
+    (witness : JoltWitness params F)
+    (virtualChunk : Fin params.instructionVirtualRaCount)
+    (address : Fin params.lookupVirtualChunkSize)
+    (i : Fin params.traceLength) : F :=
+  ∏ localChunk : Fin params.instructionCommittedRaPerVirtual,
+    match params.instructionCommittedChunk? virtualChunk localChunk with
+    | some committedChunk =>
+        witness.instructionRa committedChunk
+          ((params.instructionCommittedLocalSelector localChunk).chunk
+            address.val) i
+    | none => 0
+
+/-- Product of the virtual instruction read-address chunks at one complete
+128-bit lookup address and trace row. -/
+def JoltWitness.instructionRaProduct
+    {params : JoltWitnessParams} {F : Type u} [CommMonoid F]
+    (witness : JoltWitness params F)
+    (address : InstructionLookupAddress) (i : Fin params.traceLength) : F :=
+  ∏ chunk : Fin params.instructionVirtualRaCount,
+    witness.instructionVirtualRa chunk
+      ((params.instructionVirtualSelector chunk).chunk address.val) i
 
 def JoltWitness.registersVal {params : JoltWitnessParams} {F : Type u}
     (witness : JoltWitness params F) : RegisterColumns params F :=

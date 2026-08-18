@@ -110,6 +110,14 @@ def paddedTraceLength (unpaddedLength : Nat) : Nat :=
 def ceilDiv (n d : Nat) : Nat :=
   (n + d - 1) / d
 
+theorem le_ceilDiv_mul (n d : Nat) (dPositive : 0 < d) :
+    n ≤ ceilDiv n d * d := by
+  have remainder_lt : (n + d - 1) % d < d :=
+    Nat.mod_lt _ dPositive
+  have decomposition := Nat.mod_add_div' (n + d - 1) d
+  unfold ceilDiv
+  omega
+
 def committedChunkSize (params : JoltWitnessParams) : Nat :=
   2 ^ params.committedChunkBits
 
@@ -211,6 +219,33 @@ def instructionVirtualSelector (params : JoltWitnessParams)
       params.lookupVirtualChunkBits :=
   ⟨chunk⟩
 
+/-- Rust groups the committed instruction-RA chunks contiguously underneath
+each virtual instruction-RA chunk. -/
+def instructionCommittedChunkIndex (params : JoltWitnessParams)
+    (virtualChunk : Fin params.instructionVirtualRaCount)
+    (localChunk : Fin params.instructionCommittedRaPerVirtual) : Nat :=
+  virtualChunk.val * params.instructionCommittedRaPerVirtual + localChunk.val
+
+/-- Checked form of Rust's contiguous committed-chunk index. Arbitrary raw
+parameters may be invalid, so the foundational map is total via `Option`;
+`JoltWitnessParams.Valid` proves that production dimensions always succeed. -/
+def instructionCommittedChunk? (params : JoltWitnessParams)
+    (virtualChunk : Fin params.instructionVirtualRaCount)
+    (localChunk : Fin params.instructionCommittedRaPerVirtual) :
+    Option (Fin params.instructionCommittedRaCount) :=
+  let index := params.instructionCommittedChunkIndex virtualChunk localChunk
+  if inBounds : index < params.instructionCommittedRaCount then
+    some ⟨index, inBounds⟩
+  else
+    none
+
+/-- Selector for one committed subchunk inside a virtual instruction chunk. -/
+def instructionCommittedLocalSelector (params : JoltWitnessParams)
+    (localChunk : Fin params.instructionCommittedRaPerVirtual) :
+    JoltRaChunkSelector params.instructionCommittedRaPerVirtual
+      params.committedChunkBits :=
+  ⟨localChunk⟩
+
 /-- Rust-valid proof dimensions and advice capacities.
 
 This is the proposition-level counterpart of the checks performed by
@@ -229,8 +264,10 @@ structure Valid (params : JoltWitnessParams) : Prop where
   bytecodeKPowerOfTwo : IsPowerOfTwo params.bytecodeK
   /-- Proof-facing rows store the bytecode index in a `u32`. -/
   bytecodeKFitsU32 : params.bytecodeK ≤ 2 ^ 32
-  /-- The verifier accepts only a nonempty power-of-two RAM domain. -/
-  ramKPositive : 0 < params.ramK
+  /-- Production `MemoryLayout` always reserves the panic and termination
+  words. Rust's generic formula dimensions accept `ram_k = 1`, but the
+  prover/verifier-derived RAM domain therefore starts at two words. -/
+  ramKAtLeastTwo : 2 ≤ params.ramK
   ramKPowerOfTwo : IsPowerOfTwo params.ramK
   committedChunkBitsPositive : 0 < params.committedChunkBits
   lookupVirtualChunkBitsPositive : 0 < params.lookupVirtualChunkBits
@@ -269,11 +306,130 @@ theorem Valid.instructionVirtualChunksTile
       InstructionLookupAddressBits := by
   exact Nat.div_mul_cancel valid.lookupVirtualChunkBitsDvdInstructionAddress
 
+theorem Valid.ramKPositive
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    0 < params.ramK :=
+  lt_of_lt_of_le (by omega) valid.ramKAtLeastTwo
+
+theorem Valid.ramAddressBitsPositive
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    0 < params.ramAddressBits := by
+  exact Nat.clog_pos (by omega) valid.ramKAtLeastTwo
+
+theorem Valid.ramK_eq_two_pow_addressBits
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    params.ramK = 2 ^ params.ramAddressBits := by
+  rcases valid.ramKPowerOfTwo with ⟨logRamK, ramK_eq⟩
+  simp [ramAddressBits, ramK_eq, Nat.clog_pow, show 1 < 2 by omega]
+
+theorem Valid.ramAddressBits_le_committedChunks
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    params.ramAddressBits ≤
+      params.ramCommittedRaCount * params.committedChunkBits := by
+  exact le_ceilDiv_mul params.ramAddressBits params.committedChunkBits
+    valid.committedChunkBitsPositive
+
+theorem Valid.ramCommittedRaCountPositive
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    0 < params.ramCommittedRaCount := by
+  unfold ramCommittedRaCount raPolynomialLayout ceilDiv
+  apply Nat.div_pos
+  · have addressBitsPositive := valid.ramAddressBitsPositive
+    omega
+  · exact valid.committedChunkBitsPositive
+
+theorem Valid.bytecodeKPositive
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    0 < params.bytecodeK :=
+  lt_of_lt_of_le (by omega) valid.bytecodeKAtLeastTwo
+
+theorem Valid.bytecodeAddressBitsPositive
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    0 < params.bytecodeAddressBits := by
+  exact Nat.clog_pos (by omega) valid.bytecodeKAtLeastTwo
+
+theorem Valid.bytecodeK_eq_two_pow_addressBits
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    params.bytecodeK = 2 ^ params.bytecodeAddressBits := by
+  rcases valid.bytecodeKPowerOfTwo with ⟨logBytecodeK, bytecodeK_eq⟩
+  simp [bytecodeAddressBits, bytecodeK_eq, Nat.clog_pow,
+    show 1 < 2 by omega]
+
+theorem Valid.bytecodeAddressBits_le_committedChunks
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    params.bytecodeAddressBits ≤
+      params.bytecodeCommittedRaCount * params.committedChunkBits := by
+  exact le_ceilDiv_mul params.bytecodeAddressBits params.committedChunkBits
+    valid.committedChunkBitsPositive
+
+theorem Valid.bytecodeCommittedRaCountPositive
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    0 < params.bytecodeCommittedRaCount := by
+  unfold bytecodeCommittedRaCount raPolynomialLayout ceilDiv
+  apply Nat.div_pos
+  · have addressBitsPositive := valid.bytecodeAddressBitsPositive
+    omega
+  · exact valid.committedChunkBitsPositive
+
 theorem Valid.committedChunksTileVirtualChunk
     {params : JoltWitnessParams} (valid : params.Valid) :
     params.instructionCommittedRaPerVirtual * params.committedChunkBits =
       params.lookupVirtualChunkBits := by
   exact Nat.div_mul_cancel valid.committedChunkBitsDvdLookupVirtualChunkBits
+
+/-- The production chunk policy makes the committed instruction chunks an
+exact contiguous partition of the virtual instruction chunks. -/
+theorem Valid.instructionCommittedRaCount_eq
+    {params : JoltWitnessParams} (valid : params.Valid) :
+    params.instructionCommittedRaCount =
+      params.instructionVirtualRaCount *
+        params.instructionCommittedRaPerVirtual := by
+  simp only [instructionCommittedRaCount, instructionVirtualRaCount,
+    instructionCommittedRaPerVirtual, raPolynomialLayout]
+  rw [valid.productionChunkPolicy.1, valid.productionChunkPolicy.2]
+  by_cases small : params.logT < OneHotChunkThresholdLogT
+  · norm_num [ceilDiv, productionCommittedChunkBits,
+      productionLookupVirtualChunkBits, small, InstructionLookupAddressBits,
+      Xlen]
+  · norm_num [ceilDiv, productionCommittedChunkBits,
+      productionLookupVirtualChunkBits, small, InstructionLookupAddressBits,
+      Xlen]
+
+/-- Proof-indexed form of `instructionCommittedChunk?`, useful after the
+production dimension checks have been established. -/
+def Valid.instructionCommittedChunk
+    {params : JoltWitnessParams} (valid : params.Valid)
+    (virtualChunk : Fin params.instructionVirtualRaCount)
+    (localChunk : Fin params.instructionCommittedRaPerVirtual) :
+    Fin params.instructionCommittedRaCount :=
+  ⟨params.instructionCommittedChunkIndex virtualChunk localChunk, by
+    rw [valid.instructionCommittedRaCount_eq]
+    calc
+      virtualChunk.val * params.instructionCommittedRaPerVirtual +
+            localChunk.val <
+          virtualChunk.val * params.instructionCommittedRaPerVirtual +
+            params.instructionCommittedRaPerVirtual :=
+        Nat.add_lt_add_left localChunk.isLt _
+      _ = (virtualChunk.val + 1) *
+            params.instructionCommittedRaPerVirtual := by
+        simp [Nat.add_mul]
+      _ ≤ params.instructionVirtualRaCount *
+            params.instructionCommittedRaPerVirtual :=
+        Nat.mul_le_mul_right _ (Nat.succ_le_iff.mpr virtualChunk.isLt)⟩
+
+theorem Valid.instructionCommittedChunk?_eq_some
+    {params : JoltWitnessParams} (valid : params.Valid)
+    (virtualChunk : Fin params.instructionVirtualRaCount)
+    (localChunk : Fin params.instructionCommittedRaPerVirtual) :
+    params.instructionCommittedChunk? virtualChunk localChunk =
+      some (valid.instructionCommittedChunk virtualChunk localChunk) := by
+  have inBounds :=
+    (valid.instructionCommittedChunk virtualChunk localChunk).isLt
+  change params.instructionCommittedChunkIndex virtualChunk localChunk <
+    params.instructionCommittedRaCount at inBounds
+  unfold instructionCommittedChunk?
+  rw [dif_pos inBounds]
+  congr
 
 end JoltWitnessParams
 

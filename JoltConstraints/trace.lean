@@ -1,4 +1,4 @@
-import JoltConstraints.witness
+import JoltConstraints.lookup_table
 
 namespace JoltConstraints
 
@@ -507,15 +507,8 @@ def instructionInputs (row : JoltTraceRow) : U64 × U128 :=
 def low64 (value : U128) : U64 :=
   BitVec.ofNat Xlen value.toNat
 
-def interleaveAux (left right : U64) : Nat → Nat
-  | 0 => 0
-  | bit + 1 =>
-      interleaveAux left right bit +
-        (if left.toNat.testBit bit then 2 ^ (2 * bit + 1) else 0) +
-        (if right.toNat.testBit bit then 2 ^ (2 * bit) else 0)
-
 def interleave (left right : U64) : U128 :=
-  BitVec.ofNat InstructionLookupAddressBits (interleaveAux left right Xlen)
+  InstructionLookupAddress.interleaveBits left right
 
 def lookupOperands (row : JoltTraceRow) : U64 × U128 :=
   let instruction := row.instruction
@@ -682,6 +675,12 @@ def circuitFlagValue
   | .isFirstInSequence => metadata.isFirstInSequence
   | .isLastInSequence => isLastInSequence metadata
 
+/-- Rust's read-RAF flag: combined-address ADD/SUB/MUL/advice lookups use the
+full lookup address, while ordinary two-input tables use interleaved operands. -/
+def instructionRafFlagValue (instruction : JoltISA.Instr) : Bool :=
+  addOperands instruction || subtractOperands instruction ||
+    multiplyOperands instruction || adviceOperands instruction
+
 def instructionFlagValue
     (flag : JoltInstructionFlag) (instruction : JoltISA.Instr) : Bool :=
   match flag with
@@ -746,8 +745,413 @@ def lookupTable : JoltISA.Instr → Option JoltLookupTable
   | .VirtualXORROTW7 _ _ _ => some .VirtualXORROTW7
   | _ => none
 
-def nextTraceIndex {T : Nat} (i : Fin T) : Option (Fin T) :=
-  if h : i.val + 1 < T then some ⟨i.val + 1, h⟩ else none
+end HonestWitness
+
+/-! ## Static bytecode-row interpretation
+
+Rust derives the bytecode read-RAF table values from the final instruction
+kind stored in each public `JoltInstructionRow`.  The executable Lean
+instruction is deliberately absent from `JoltPublicInputs.bytecode`, so these
+kind-level classifiers are the public-table counterparts of the extraction
+classifiers above.  The exhaustive correspondence lemmas below keep the two
+views synchronized and make ISA drift fail at compile time. -/
+
+namespace JoltInstructionKind
+
+def addOperands : JoltInstructionKind → Bool
+  | .ADDI | .LUI | .AUIPC | .JAL | .JALR | .ADD
+  | .VirtualPow2 | .VirtualPow2W | .VirtualPow2I | .VirtualPow2IW
+  | .VirtualShiftRightBitmask | .VirtualShiftRightBitmaskI
+  | .VirtualRev8W | .VirtualSignExtendWord | .VirtualZeroExtendWord
+  | .VirtualAssertHalfwordAlignment | .VirtualAssertWordAlignment => true
+  | _ => false
+
+def subtractOperands : JoltInstructionKind → Bool
+  | .SUB => true
+  | _ => false
+
+def multiplyOperands : JoltInstructionKind → Bool
+  | .MUL | .MULHU | .VirtualMULI | .VirtualAssertMulUNoOverflow => true
+  | _ => false
+
+def isLoad : JoltInstructionKind → Bool
+  | .LD => true
+  | _ => false
+
+def isStore : JoltInstructionKind → Bool
+  | .SD => true
+  | _ => false
+
+def isJump : JoltInstructionKind → Bool
+  | .JAL | .JALR => true
+  | _ => false
+
+def writesLookupOutput : JoltInstructionKind → Bool
+  | .ADDI | .ANDI | .ORI | .XORI | .SLTI | .SLTIU | .LUI | .AUIPC
+  | .ADD | .SUB | .MUL | .MULHU | .ANDN | .VirtualMULI
+  | .VirtualPow2 | .VirtualPow2W | .VirtualPow2I | .VirtualPow2IW
+  | .VirtualShiftRightBitmask | .VirtualShiftRightBitmaskI
+  | .VirtualSRLI | .VirtualSRAI | .VirtualSRL | .VirtualSRA
+  | .VirtualROTRI | .VirtualROTRIW | .VirtualRev8W
+  | .VirtualXORROT32 | .VirtualXORROT24 | .VirtualXORROT16
+  | .VirtualXORROT63 | .VirtualXORROTW16 | .VirtualXORROTW12
+  | .VirtualXORROTW8 | .VirtualXORROTW7
+  | .OR | .XOR | .AND | .SLT | .SLTU
+  | .VirtualSignExtendWord | .VirtualZeroExtendWord | .VirtualMovsign
+  | .VirtualAdvice | .VirtualAdviceLoad | .VirtualAdviceLen
+  | .VirtualChangeDivisor | .VirtualChangeDivisorW => true
+  | _ => false
+
+def isAssert : JoltInstructionKind → Bool
+  | .VirtualAssertEQ | .VirtualAssertValidDiv0
+  | .VirtualAssertValidUnsignedRemainder | .VirtualAssertMulUNoOverflow
+  | .VirtualAssertLTE | .VirtualAssertHalfwordAlignment
+  | .VirtualAssertWordAlignment => true
+  | _ => false
+
+def adviceOperands : JoltInstructionKind → Bool
+  | .VirtualAdvice | .VirtualAdviceLoad | .VirtualAdviceLen => true
+  | _ => false
+
+def leftIsPC : JoltInstructionKind → Bool
+  | .AUIPC | .JAL => true
+  | _ => false
+
+def rightOperandIsImmediate : JoltInstructionKind → Bool
+  | .ADDI | .ANDI | .ORI | .XORI | .SLTI | .SLTIU | .LUI | .AUIPC
+  | .JAL | .JALR | .VirtualMULI | .VirtualPow2I | .VirtualPow2IW
+  | .VirtualShiftRightBitmaskI | .VirtualSRLI | .VirtualSRAI
+  | .VirtualROTRI | .VirtualROTRIW | .VirtualMovsign
+  | .VirtualAssertHalfwordAlignment | .VirtualAssertWordAlignment => true
+  | _ => false
+
+def lookupFirstSourceIsSome : JoltInstructionKind → Bool
+  | .ADDI | .ANDI | .ORI | .XORI | .SLTI | .SLTIU | .JALR
+  | .VirtualMULI | .VirtualPow2 | .VirtualPow2W
+  | .VirtualShiftRightBitmask | .VirtualSRLI | .VirtualSRAI
+  | .VirtualROTRI | .VirtualROTRIW | .VirtualRev8W
+  | .BEQ | .BNE | .BLT | .BGE | .BLTU | .BGEU
+  | .ADD | .SUB | .MUL | .MULHU | .ANDN | .VirtualSRL | .VirtualSRA
+  | .VirtualXORROT32 | .VirtualXORROT24 | .VirtualXORROT16
+  | .VirtualXORROT63 | .VirtualXORROTW16 | .VirtualXORROTW12
+  | .VirtualXORROTW8 | .VirtualXORROTW7
+  | .OR | .XOR | .AND | .SLT | .SLTU
+  | .VirtualSignExtendWord | .VirtualZeroExtendWord | .VirtualMovsign
+  | .VirtualAssertEQ | .VirtualAssertValidDiv0
+  | .VirtualChangeDivisor | .VirtualChangeDivisorW
+  | .VirtualAssertValidUnsignedRemainder | .VirtualAssertMulUNoOverflow
+  | .VirtualAssertLTE | .VirtualAssertHalfwordAlignment
+  | .VirtualAssertWordAlignment => true
+  | _ => false
+
+def lookupSecondSourceIsSome : JoltInstructionKind → Bool
+  | .BEQ | .BNE | .BLT | .BGE | .BLTU | .BGEU
+  | .ADD | .SUB | .MUL | .MULHU | .ANDN | .VirtualSRL | .VirtualSRA
+  | .VirtualXORROT32 | .VirtualXORROT24 | .VirtualXORROT16
+  | .VirtualXORROT63 | .VirtualXORROTW16 | .VirtualXORROTW12
+  | .VirtualXORROTW8 | .VirtualXORROTW7
+  | .OR | .XOR | .AND | .SLT | .SLTU
+  | .VirtualAssertEQ | .VirtualAssertValidDiv0
+  | .VirtualChangeDivisor | .VirtualChangeDivisorW
+  | .VirtualAssertValidUnsignedRemainder | .VirtualAssertMulUNoOverflow
+  | .VirtualAssertLTE => true
+  | _ => false
+
+def isBranch : JoltInstructionKind → Bool
+  | .BEQ | .BNE | .BLT | .BGE | .BLTU | .BGEU => true
+  | _ => false
+
+def isNoop : JoltInstructionKind → Bool
+  | .NoOp => true
+  | _ => false
+
+def lookupTable : JoltInstructionKind → Option JoltLookupTable
+  | .ADDI | .LUI | .AUIPC | .JAL | .ADD | .SUB | .MUL | .VirtualMULI
+  | .VirtualAdvice | .VirtualAdviceLoad | .VirtualAdviceLen =>
+      some .RangeCheck
+  | .JALR => some .RangeCheckAligned
+  | .ANDI | .AND => some .AND
+  | .ANDN => some .ANDN
+  | .ORI | .OR => some .OR
+  | .XORI | .XOR => some .XOR
+  | .BEQ | .VirtualAssertEQ => some .Equal
+  | .BGE => some .SignedGreaterThanEqual
+  | .BGEU => some .UnsignedGreaterThanEqual
+  | .BNE => some .NotEqual
+  | .SLTI | .BLT | .SLT => some .SignedLessThan
+  | .SLTIU | .BLTU | .SLTU => some .UnsignedLessThan
+  | .VirtualMovsign => some .SignMask
+  | .MULHU => some .UpperWord
+  | .VirtualAssertLTE => some .UnsignedLessThanEqual
+  | .VirtualAssertValidUnsignedRemainder => some .ValidUnsignedRemainder
+  | .VirtualAssertValidDiv0 => some .ValidDiv0
+  | .VirtualAssertHalfwordAlignment => some .HalfwordAlignment
+  | .VirtualAssertWordAlignment => some .WordAlignment
+  | .VirtualZeroExtendWord => some .LowerHalfWord
+  | .VirtualSignExtendWord => some .SignExtendHalfWord
+  | .VirtualPow2 | .VirtualPow2I => some .Pow2
+  | .VirtualPow2W | .VirtualPow2IW => some .Pow2W
+  | .VirtualShiftRightBitmask | .VirtualShiftRightBitmaskI =>
+      some .ShiftRightBitmask
+  | .VirtualRev8W => some .VirtualRev8W
+  | .VirtualSRL | .VirtualSRLI => some .VirtualSRL
+  | .VirtualSRA | .VirtualSRAI => some .VirtualSRA
+  | .VirtualROTRI => some .VirtualROTR
+  | .VirtualROTRIW => some .VirtualROTRW
+  | .VirtualChangeDivisor => some .VirtualChangeDivisor
+  | .VirtualChangeDivisorW => some .VirtualChangeDivisorW
+  | .VirtualAssertMulUNoOverflow => some .MulUNoOverflow
+  | .VirtualXORROT32 => some .VirtualXORROT32
+  | .VirtualXORROT24 => some .VirtualXORROT24
+  | .VirtualXORROT16 => some .VirtualXORROT16
+  | .VirtualXORROT63 => some .VirtualXORROT63
+  | .VirtualXORROTW16 => some .VirtualXORROTW16
+  | .VirtualXORROTW12 => some .VirtualXORROTW12
+  | .VirtualXORROTW8 => some .VirtualXORROTW8
+  | .VirtualXORROTW7 => some .VirtualXORROTW7
+  | _ => none
+
+end JoltInstructionKind
+
+namespace JoltBytecodeRow
+
+/-- One public circuit-flag table column in Rust's bytecode read-RAF. -/
+def circuitFlagValue (row : JoltBytecodeRow) (flag : JoltCircuitFlag) : Bool :=
+  match flag with
+  | .addOperands => row.instruction.kind.addOperands
+  | .subtractOperands => row.instruction.kind.subtractOperands
+  | .multiplyOperands => row.instruction.kind.multiplyOperands
+  | .load => row.instruction.kind.isLoad
+  | .store => row.instruction.kind.isStore
+  | .jump => row.instruction.kind.isJump
+  | .writeLookupOutputToRD => row.instruction.kind.writesLookupOutput
+  | .virtualInstruction => row.virtualSequenceRemaining.isSome
+  | .assert => row.instruction.kind.isAssert
+  | .doNotUpdateUnexpandedPC =>
+      row.instruction.kind.isNoop ||
+        match row.virtualSequenceRemaining with
+        | some (_ + 1) => true
+        | _ => false
+  | .advice => row.instruction.kind.adviceOperands
+  | .isCompressed => row.isCompressed
+  | .isFirstInSequence => row.isFirstInSequence
+  | .isLastInSequence => row.virtualSequenceRemaining == some 0
+
+/-- One public instruction-routing-flag table column. -/
+def instructionFlagValue
+    (row : JoltBytecodeRow) (flag : JoltInstructionFlag) : Bool :=
+  match flag with
+  | .leftOperandIsPC => row.instruction.kind.leftIsPC
+  | .rightOperandIsImm => row.instruction.kind.rightOperandIsImmediate
+  | .leftOperandIsRs1Value => row.instruction.kind.lookupFirstSourceIsSome
+  | .rightOperandIsRs2Value => row.instruction.kind.lookupSecondSourceIsSome
+  | .branch => row.instruction.kind.isBranch
+  | .isNoop => row.instruction.kind.isNoop
+
+/-- Public selector for Rust's combined-address instruction read-RAF mode. -/
+def instructionRafFlagValue (row : JoltBytecodeRow) : Bool :=
+  row.instruction.kind.addOperands ||
+    row.instruction.kind.subtractOperands ||
+    row.instruction.kind.multiplyOperands ||
+    row.instruction.kind.adviceOperands
+
+/-- Public lookup-table selection derived from the final instruction kind. -/
+def lookupTable (row : JoltBytecodeRow) : Option JoltLookupTable :=
+  row.instruction.kind.lookupTable
+
+end JoltBytecodeRow
+
+namespace HonestWitness
+
+@[simp] theorem JoltInstructionKind.addOperands_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).addOperands =
+      addOperands instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.subtractOperands_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).subtractOperands =
+      subtractOperands instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.multiplyOperands_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).multiplyOperands =
+      multiplyOperands instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.isLoad_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).isLoad =
+      isLoad instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.isStore_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).isStore =
+      isStore instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.isJump_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).isJump =
+      isJump instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.writesLookupOutput_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).writesLookupOutput =
+      writesLookupOutput instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.isAssert_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).isAssert =
+      isAssert instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.adviceOperands_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).adviceOperands =
+      adviceOperands instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.leftIsPC_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).leftIsPC =
+      leftIsPC instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.rightOperandIsImmediate_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).rightOperandIsImmediate =
+      rightOperandIsImmediate instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.lookupFirstSourceIsSome_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).lookupFirstSourceIsSome =
+      (lookupFirstSource instruction).isSome := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.lookupSecondSourceIsSome_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).lookupSecondSourceIsSome =
+      (lookupSecondSource instruction).isSome := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.isBranch_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).isBranch =
+      isBranch instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.isNoop_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).isNoop =
+      isNoop instruction := by cases instruction <;> rfl
+
+@[simp] theorem JoltInstructionKind.lookupTable_ofInstr
+    (instruction : JoltISA.Instr) :
+    (JoltInstructionKind.ofInstr instruction).lookupTable =
+      lookupTable instruction := by cases instruction <;> rfl
+
+theorem circuitFlagValue_eq_bytecodeRow
+    (row : JoltTraceRow) (flag : JoltCircuitFlag)
+    (kindEq : row.instructionRow.kind =
+      JoltInstructionKind.ofInstr row.instruction) :
+    circuitFlagValue flag row.instruction row.metadata =
+      row.bytecodeRow.circuitFlagValue flag := by
+  cases flag with
+  | addOperands =>
+      change addOperands row.instruction = row.instructionRow.kind.addOperands
+      rw [kindEq, JoltInstructionKind.addOperands_ofInstr]
+  | subtractOperands =>
+      change subtractOperands row.instruction =
+        row.instructionRow.kind.subtractOperands
+      rw [kindEq, JoltInstructionKind.subtractOperands_ofInstr]
+  | multiplyOperands =>
+      change multiplyOperands row.instruction =
+        row.instructionRow.kind.multiplyOperands
+      rw [kindEq, JoltInstructionKind.multiplyOperands_ofInstr]
+  | load =>
+      change isLoad row.instruction = row.instructionRow.kind.isLoad
+      rw [kindEq, JoltInstructionKind.isLoad_ofInstr]
+  | store =>
+      change isStore row.instruction = row.instructionRow.kind.isStore
+      rw [kindEq, JoltInstructionKind.isStore_ofInstr]
+  | jump =>
+      change isJump row.instruction = row.instructionRow.kind.isJump
+      rw [kindEq, JoltInstructionKind.isJump_ofInstr]
+  | writeLookupOutputToRD =>
+      change writesLookupOutput row.instruction =
+        row.instructionRow.kind.writesLookupOutput
+      rw [kindEq, JoltInstructionKind.writesLookupOutput_ofInstr]
+  | virtualInstruction =>
+      rfl
+  | assert =>
+      change isAssert row.instruction = row.instructionRow.kind.isAssert
+      rw [kindEq, JoltInstructionKind.isAssert_ofInstr]
+  | doNotUpdateUnexpandedPC =>
+      change doNotUpdateUnexpandedPC row.instruction row.metadata =
+        (row.instructionRow.kind.isNoop ||
+            match row.metadata.virtualSequenceRemaining with
+            | some (_ + 1) => true
+            | _ => false)
+      unfold doNotUpdateUnexpandedPC
+      rw [kindEq, JoltInstructionKind.isNoop_ofInstr]
+  | advice =>
+      change adviceOperands row.instruction =
+        row.instructionRow.kind.adviceOperands
+      rw [kindEq, JoltInstructionKind.adviceOperands_ofInstr]
+  | isCompressed =>
+      rfl
+  | isFirstInSequence =>
+      rfl
+  | isLastInSequence =>
+      rfl
+
+theorem instructionFlagValue_eq_bytecodeRow
+    (row : JoltTraceRow) (flag : JoltInstructionFlag)
+    (kindEq : row.instructionRow.kind =
+      JoltInstructionKind.ofInstr row.instruction) :
+    instructionFlagValue flag row.instruction =
+      row.bytecodeRow.instructionFlagValue flag := by
+  cases flag with
+  | leftOperandIsPC =>
+      change leftIsPC row.instruction = row.instructionRow.kind.leftIsPC
+      rw [kindEq, JoltInstructionKind.leftIsPC_ofInstr]
+  | rightOperandIsImm =>
+      change rightOperandIsImmediate row.instruction =
+        row.instructionRow.kind.rightOperandIsImmediate
+      rw [kindEq, JoltInstructionKind.rightOperandIsImmediate_ofInstr]
+  | leftOperandIsRs1Value =>
+      change (lookupFirstSource row.instruction).isSome =
+        row.instructionRow.kind.lookupFirstSourceIsSome
+      rw [kindEq, JoltInstructionKind.lookupFirstSourceIsSome_ofInstr]
+  | rightOperandIsRs2Value =>
+      change (lookupSecondSource row.instruction).isSome =
+        row.instructionRow.kind.lookupSecondSourceIsSome
+      rw [kindEq, JoltInstructionKind.lookupSecondSourceIsSome_ofInstr]
+  | branch =>
+      change isBranch row.instruction = row.instructionRow.kind.isBranch
+      rw [kindEq, JoltInstructionKind.isBranch_ofInstr]
+  | isNoop =>
+      change isNoop row.instruction = row.instructionRow.kind.isNoop
+      rw [kindEq, JoltInstructionKind.isNoop_ofInstr]
+
+theorem instructionRafFlagValue_eq_bytecodeRow
+    (row : JoltTraceRow)
+    (kindEq : row.instructionRow.kind =
+      JoltInstructionKind.ofInstr row.instruction) :
+    instructionRafFlagValue row.instruction =
+      row.bytecodeRow.instructionRafFlagValue := by
+  change
+    instructionRafFlagValue row.instruction =
+      (row.instructionRow.kind.addOperands ||
+          row.instructionRow.kind.subtractOperands ||
+          row.instructionRow.kind.multiplyOperands ||
+          row.instructionRow.kind.adviceOperands)
+  unfold instructionRafFlagValue
+  rw [kindEq, JoltInstructionKind.addOperands_ofInstr,
+    JoltInstructionKind.subtractOperands_ofInstr,
+    JoltInstructionKind.multiplyOperands_ofInstr,
+    JoltInstructionKind.adviceOperands_ofInstr]
+
+theorem lookupTable_eq_bytecodeRow
+    (row : JoltTraceRow)
+    (kindEq : row.instructionRow.kind =
+      JoltInstructionKind.ofInstr row.instruction) :
+    lookupTable row.instruction = row.bytecodeRow.lookupTable := by
+  change lookupTable row.instruction = row.instructionRow.kind.lookupTable
+  rw [kindEq, JoltInstructionKind.lookupTable_ofInstr]
 
 end HonestWitness
 
@@ -889,6 +1293,25 @@ structure JoltTraceRow.Valid
   assertionAccepted :
     HonestWitness.isAssert row.instruction = true →
       HonestWitness.lookupOutput row = 1
+  /-- The native lookup query output is the selected table entry at the
+  materialized 128-bit lookup address. -/
+  lookupOutput_eq_table : ∀ table,
+    HonestWitness.lookupTable row.instruction = some table →
+      HonestWitness.lookupOutput row =
+        JoltLookupTable.materializeEntry table
+          (InstructionLookupAddress.ofBits
+            (HonestWitness.lookupIndex row))
+  /-- The native lookup index carries either one combined address or the two
+  ordinary interleaved operands, according to `InstructionRafFlag`. -/
+  lookupAddressOperands :
+    let address := InstructionLookupAddress.ofBits
+      (HonestWitness.lookupIndex row)
+    let operands := HonestWitness.lookupOperands row
+    if HonestWitness.instructionRafFlagValue row.instruction then
+      operands.1 = 0 ∧ operands.2.toNat = address.val
+    else
+      operands.1 = address.leftOperand ∧
+        operands.2.toNat = address.rightOperand.toNat
   firstInSequence_isVirtual :
     row.metadata.isFirstInSequence = true →
       HonestWitness.isVirtual row.metadata = true
@@ -983,6 +1406,11 @@ structure HonestTrace (params : JoltWitnessParams)
       JoltTracePair.Valid (rows i) (rows j)
   finalRow : ∀ i : Fin params.traceLength,
     HonestWitness.nextTraceIndex i = none → rows i = JoltTraceRow.noOp
+  /-- Rust's bytecode entry boundary: cycle zero reads the compact public
+  bytecode row derived from the ELF entry address. -/
+  initialBytecodeIndex :
+    (rows ⟨0, by simp [JoltWitnessParams.traceLength]⟩).metadata.pc =
+      metadata.entryBytecodeIndex.val
   /-- Rust reconstructs `RegistersVal` from an all-zero register table. -/
   initialRegistersZero : ∀ address : RegisterAddress,
     HonestWitness.registerAtAddress
@@ -1167,10 +1595,7 @@ noncomputable def honest_witness
     | .lookupOutput => fun i =>
         fieldFromU64 (lookupOutput (trace.rows i))
     | .instructionRafFlag => fun i =>
-        fieldBool (addOperands (trace.instrList i) ||
-          subtractOperands (trace.instrList i) ||
-          multiplyOperands (trace.instrList i) ||
-          adviceOperands (trace.instrList i))
+        fieldBool (instructionRafFlagValue (trace.instrList i))
     | .rs1Ra => fun address i =>
         registerAddressIndicator
           (trace.rows i).instructionRow.operands.rs1 address
