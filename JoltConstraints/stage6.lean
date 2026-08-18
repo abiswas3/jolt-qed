@@ -3,15 +3,13 @@ import JoltConstraints.constraints
 namespace JoltConstraints
 
 /-!
-`stage6` currently classifies the three coefficient-level witness identities
-inside Rust's single `Booleanity` sumcheck and the instruction-RA
-virtualization identity. Rust gamma-batches the instruction, bytecode, and RAM
-committed-RA booleanity families; splitting them here does not introduce three
-sumchecks.
+`stage6` classifies the coefficient-level witness identities inside Rust's
+booleanity, instruction/RAM virtualization, RAM hamming-booleanity, and
+fixed/public bytecode read-RAF relations. Rust gamma-batches families and
+splits the bytecode relation over address and cycle rounds; this classifier
+does not turn those components into separate sumchecks.
 
-The remaining Stage 6 witness relations are added only with their corresponding
-honest-witness completeness proofs. Claim reductions and the fixed/public
-bytecode read-RAF are intentionally outside this partial classifier for now.
+Claim reductions remain outside this witness-constraint classifier.
 -/
 
 def stage6 : JoltConstraint → Bool
@@ -20,7 +18,18 @@ def stage6 : JoltConstraint → Bool
   | .ramRaBooleanity
   | .instructionRaVirtualization
   | .ramRaVirtualization
-  | .ramHammingWeightBooleanity => true
+  | .ramHammingWeightBooleanity
+  | .unexpandedPCEqBytecodeReadRaf
+  | .immEqBytecodeReadRaf
+  | .circuitFlagsEqBytecodeReadRaf
+  | .pcEqBytecodeReadRafAddress
+  | .instructionFlagsEqBytecodeReadRaf
+  | .rs1RaEqBytecodeReadRaf
+  | .rs2RaEqBytecodeReadRaf
+  | .rdWaEqBytecodeReadRaf
+  | .instructionRafFlagEqBytecodeReadRaf
+  | .lookupTableFlagsEqBytecodeReadRaf
+  | .initialBytecodeRaEqEntry => true
   | _ => false
 
 end JoltConstraints

@@ -46,6 +46,17 @@ import JoltConstraints.ConstraintCompleteness.RamRaBooleanity
 import JoltConstraints.ConstraintCompleteness.InstructionRaVirtualization
 import JoltConstraints.ConstraintCompleteness.RamRaVirtualization
 import JoltConstraints.ConstraintCompleteness.RamHammingWeightBooleanity
+import JoltConstraints.ConstraintCompleteness.UnexpandedPCEqBytecodeReadRaf
+import JoltConstraints.ConstraintCompleteness.ImmEqBytecodeReadRaf
+import JoltConstraints.ConstraintCompleteness.CircuitFlagsEqBytecodeReadRaf
+import JoltConstraints.ConstraintCompleteness.PCEqBytecodeReadRafAddress
+import JoltConstraints.ConstraintCompleteness.InstructionFlagsEqBytecodeReadRaf
+import JoltConstraints.ConstraintCompleteness.Rs1RaEqBytecodeReadRaf
+import JoltConstraints.ConstraintCompleteness.Rs2RaEqBytecodeReadRaf
+import JoltConstraints.ConstraintCompleteness.RdWaEqBytecodeReadRaf
+import JoltConstraints.ConstraintCompleteness.InstructionRafFlagEqBytecodeReadRaf
+import JoltConstraints.ConstraintCompleteness.LookupTableFlagsEqBytecodeReadRaf
+import JoltConstraints.ConstraintCompleteness.InitialBytecodeRaEqEntry
 
 namespace JoltConstraints.JoltConstraint.Completeness
 
@@ -137,5 +148,21 @@ theorem honest_witness_satisfies
   | instructionRaVirtualization => exact instructionRaVirtualization trace
   | ramRaVirtualization => exact ramRaVirtualization trace
   | ramHammingWeightBooleanity => exact ramHammingWeightBooleanity trace
+  | unexpandedPCEqBytecodeReadRaf =>
+      exact unexpandedPCEqBytecodeReadRaf trace
+  | immEqBytecodeReadRaf => exact immEqBytecodeReadRaf trace
+  | circuitFlagsEqBytecodeReadRaf =>
+      exact circuitFlagsEqBytecodeReadRaf trace
+  | pcEqBytecodeReadRafAddress => exact pcEqBytecodeReadRafAddress trace
+  | instructionFlagsEqBytecodeReadRaf =>
+      exact instructionFlagsEqBytecodeReadRaf trace
+  | rs1RaEqBytecodeReadRaf => exact rs1RaEqBytecodeReadRaf trace
+  | rs2RaEqBytecodeReadRaf => exact rs2RaEqBytecodeReadRaf trace
+  | rdWaEqBytecodeReadRaf => exact rdWaEqBytecodeReadRaf trace
+  | instructionRafFlagEqBytecodeReadRaf =>
+      exact instructionRafFlagEqBytecodeReadRaf trace
+  | lookupTableFlagsEqBytecodeReadRaf =>
+      exact lookupTableFlagsEqBytecodeReadRaf trace
+  | initialBytecodeRaEqEntry => exact initialBytecodeRaEqEntry trace
 
 end JoltConstraints.JoltConstraint.Completeness
