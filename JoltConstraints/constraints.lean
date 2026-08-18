@@ -13,9 +13,10 @@ open scoped BigOperators
 # Jolt witness constraints
 
 Each constructor names one unbatched identity tested by a Jolt sumcheck. The
-48 constructors are grouped by Rust proving stage as 19 in Stage 1, seven in
+59 constructors are grouped by Rust proving stage as 19 in Stage 1, seven in
 Stage 2, seven in Stage 3, five in Stage 4, four in Stage 5, and three currently
-modelled booleanity components plus instruction-RA virtualization in Stage 6.
+modelled booleanity components plus the Stage 6 virtualization and fixed/public
+bytecode read-RAF coefficient identities.
 Claim reductions, batching, and sumcheck round-splitting
 machinery are intentionally not included.
 -/
@@ -82,6 +83,19 @@ inductive JoltConstraint where
   | instructionRaVirtualization
   | ramRaVirtualization
   | ramHammingWeightBooleanity
+  -- Stage 6: coefficient identities inside Rust's single fixed/public
+  -- bytecode read-RAF relation.
+  | unexpandedPCEqBytecodeReadRaf
+  | immEqBytecodeReadRaf
+  | circuitFlagsEqBytecodeReadRaf
+  | pcEqBytecodeReadRafAddress
+  | instructionFlagsEqBytecodeReadRaf
+  | rs1RaEqBytecodeReadRaf
+  | rs2RaEqBytecodeReadRaf
+  | rdWaEqBytecodeReadRaf
+  | instructionRafFlagEqBytecodeReadRaf
+  | lookupTableFlagsEqBytecodeReadRaf
+  | initialBytecodeRaEqEntry
   deriving DecidableEq, Repr
 
 private def ramAddrEqRs1PlusImmIfLoadStore_satisfied
@@ -486,6 +500,113 @@ private def ramHammingWeightBooleanity_satisfied
     witness.ramHammingWeight i * witness.ramHammingWeight i -
         witness.ramHammingWeight i = 0
 
+private def unexpandedPCEqBytecodeReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.virtual .unexpandedPC i -
+        witness.bytecodeRead
+          (fun address => HonestWitness.fieldFromU64
+            (publicInputs.bytecode address).unexpandedPC) i = 0
+
+private def immEqBytecodeReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.virtual .imm i -
+        witness.bytecodeRead
+          (fun address => HonestWitness.fieldFromInt
+            (publicInputs.bytecode address).instruction.operands.imm) i = 0
+
+private def circuitFlagsEqBytecodeReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (flag : JoltCircuitFlag) (i : Fin params.traceLength),
+    witness.opFlag flag i -
+        witness.bytecodeRead
+          (fun address => HonestWitness.fieldBool
+            ((publicInputs.bytecode address).circuitFlagValue flag)) i = 0
+
+private def pcEqBytecodeReadRafAddress_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.virtual .pc i -
+        witness.bytecodeRead (fun address => (address.val : F)) i = 0
+
+private def instructionFlagsEqBytecodeReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (flag : JoltInstructionFlag) (i : Fin params.traceLength),
+    witness.instructionFlag flag i -
+        witness.bytecodeRead
+          (fun address => HonestWitness.fieldBool
+            ((publicInputs.bytecode address).instructionFlagValue flag)) i = 0
+
+private def rs1RaEqBytecodeReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (register : RegisterAddress) (i : Fin params.traceLength),
+    witness.rs1Ra register i -
+        witness.bytecodeRead
+          (fun address => HonestWitness.registerAddressIndicator
+            (publicInputs.bytecode address).instruction.operands.rs1
+            register) i = 0
+
+private def rs2RaEqBytecodeReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (register : RegisterAddress) (i : Fin params.traceLength),
+    witness.rs2Ra register i -
+        witness.bytecodeRead
+          (fun address => HonestWitness.registerAddressIndicator
+            (publicInputs.bytecode address).instruction.operands.rs2
+            register) i = 0
+
+private def rdWaEqBytecodeReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (register : RegisterAddress) (i : Fin params.traceLength),
+    witness.rdWa register i -
+        witness.bytecodeRead
+          (fun address => HonestWitness.registerAddressIndicator
+            (publicInputs.bytecode address).instruction.operands.rd
+            register) i = 0
+
+private def instructionRafFlagEqBytecodeReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ i : Fin params.traceLength,
+    witness.instructionRafFlag i -
+        witness.bytecodeRead
+          (fun address => HonestWitness.fieldBool
+            (publicInputs.bytecode address).instructionRafFlagValue) i = 0
+
+private def lookupTableFlagsEqBytecodeReadRaf_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  ∀ (table : JoltLookupTable) (i : Fin params.traceLength),
+    witness.lookupTableFlag table i -
+        witness.bytecodeRead
+          (fun address => HonestWitness.fieldBool
+            ((publicInputs.bytecode address).lookupTable == some table)) i = 0
+
+private def initialBytecodeRaEqEntry_satisfied
+    {params : JoltWitnessParams} {F : Type u} [Field F]
+    (publicInputs : JoltPublicInputs params)
+    (witness : JoltWitness params F) : Prop :=
+  witness.bytecodeRaProduct publicInputs.entryBytecodeIndex
+      ⟨0, by simp [JoltWitnessParams.traceLength]⟩ - 1 = 0
+
 def JoltConstraint.Satisfied
     {params : JoltWitnessParams} {F : Type u} [Field F]
     (constraint : JoltConstraint)
@@ -574,5 +695,27 @@ def JoltConstraint.Satisfied
       ramRaVirtualization_satisfied witness
   | .ramHammingWeightBooleanity =>
       ramHammingWeightBooleanity_satisfied witness
+  | .unexpandedPCEqBytecodeReadRaf =>
+      unexpandedPCEqBytecodeReadRaf_satisfied publicInputs witness
+  | .immEqBytecodeReadRaf =>
+      immEqBytecodeReadRaf_satisfied publicInputs witness
+  | .circuitFlagsEqBytecodeReadRaf =>
+      circuitFlagsEqBytecodeReadRaf_satisfied publicInputs witness
+  | .pcEqBytecodeReadRafAddress =>
+      pcEqBytecodeReadRafAddress_satisfied witness
+  | .instructionFlagsEqBytecodeReadRaf =>
+      instructionFlagsEqBytecodeReadRaf_satisfied publicInputs witness
+  | .rs1RaEqBytecodeReadRaf =>
+      rs1RaEqBytecodeReadRaf_satisfied publicInputs witness
+  | .rs2RaEqBytecodeReadRaf =>
+      rs2RaEqBytecodeReadRaf_satisfied publicInputs witness
+  | .rdWaEqBytecodeReadRaf =>
+      rdWaEqBytecodeReadRaf_satisfied publicInputs witness
+  | .instructionRafFlagEqBytecodeReadRaf =>
+      instructionRafFlagEqBytecodeReadRaf_satisfied publicInputs witness
+  | .lookupTableFlagsEqBytecodeReadRaf =>
+      lookupTableFlagsEqBytecodeReadRaf_satisfied publicInputs witness
+  | .initialBytecodeRaEqEntry =>
+      initialBytecodeRaEqEntry_satisfied publicInputs witness
 
 end JoltConstraints
