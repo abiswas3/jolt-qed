@@ -37,10 +37,8 @@ theorem andiInstr_eq_sail
   obtain ⟨s', h_write⟩ := wX_shape rd (op h.rs1_val imm) js.sail  
   simp only [pure, EStateM.pure, h_write] 
   -- LHS 
-  simp only [JoltISA.execInstr]
-  -- being lazy and letting lean infer all the args
-  rw [bind_after_success_of_readSrc_xreg rs1 js h.rs1_val h.rs1_read]
-  rw [bind_after_success_of_writeDst_xreg rd js (op h.rs1_val imm) s' h_write _] -- write succeeds and the value is interpreted. 
+  simp only [JoltISA.execInstr, JoltISA.readSrc, JoltISA.writeDst, liftSail,
+    bind, EStateM.bind, h.rs1_read, h_write]
   exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
     (op h.rs1_val imm)
     h.linkedCSRs h_write

@@ -33,13 +33,14 @@ theorem sltuInstr_eq_sail
   simp only [h.rs1_read, h.rs2_read]
   simp only [pure, EStateM.pure]
   obtain ⟨s', h_write⟩ := wX_shape rd (op h.rs1_val h.rs2_val) js.sail 
-  unfold op at h_write
-  unfold jolt_sltu_value at h_write
-  simp only [h_write]
-  simp only [JoltISA.execInstr]
-  rw [bind_after_success_of_readSrc_xreg rs1 js h.rs1_val h.rs1_read]
-  rw [bind_after_success_of_readSrc_xreg rs2 js h.rs2_val h.rs2_read]
-  rw [bind_after_success_of_writeDst_xreg rd js (op h.rs1_val h.rs2_val) s' h_write _]
+  have h_write_sail :
+      wX_bits rd
+          (zero_extend (m := 64) (bool_to_bit (zopz0zI_u h.rs1_val h.rs2_val)))
+          js.sail = .ok () s' := by
+    simpa only [op, jolt_sltu_value] using h_write
+  simp only [h_write_sail]
+  simp only [JoltISA.execInstr, JoltISA.readSrc, JoltISA.writeDst, liftSail,
+    bind, EStateM.bind, h.rs1_read, h.rs2_read, h_write]
   exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
     (op h.rs1_val h.rs2_val)
     h.linkedCSRs h_write

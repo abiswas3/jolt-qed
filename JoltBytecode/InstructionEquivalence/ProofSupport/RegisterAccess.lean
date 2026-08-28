@@ -77,6 +77,15 @@ namespace JoltISA
 @[simp] theorem readSrc_xreg (rs : regidx) :
     readSrc (.xreg rs) = liftSail (rX_bits rs) := rfl
 
+/-- A successful Sail architectural-register read has the same result when
+lifted through a Jolt architectural source. -/
+theorem readSrc_xreg_run_of_read
+    (rs : regidx) (js : SailJoltState) (v : BitVec 64)
+    (hread : rX_bits rs js.sail = .ok v js.sail) :
+    readSrc (.xreg rs) js = .ok v js := by
+  unfold readSrc liftSail
+  simp only [hread]
+
 /-- Writing a virtual-register destination is exactly `writeVReg`. -/
 @[simp] theorem writeDst_vreg (vr : VReg) (value : BitVec 64) :
     writeDst (.vreg vr) value = writeVReg vr value := rfl
@@ -87,37 +96,6 @@ namespace JoltISA
     writeDst (.xreg rd) value = liftSail (wX_bits rd value) := rfl
 
 end JoltISA
-
-/-- If the underlying Sail architectural-register read succeeds, a bound Jolt
-`readSrc` line reduces to the continuation at that value and unchanged Jolt
-state. -/
-theorem bind_after_success_of_readSrc_xreg
-    (rs : regidx)
-    (js : SailJoltState)
-    (v : BitVec 64)
-    (hread : rX_bits rs js.sail = .ok v js.sail)
-    (k : BitVec 64 → JoltMonad α) :
-    ((JoltISA.readSrc (.xreg rs) >>= k) js) = k v js := by
-  simp only [JoltISA.readSrc]
-  unfold liftSail
-  simp only [bind, EStateM.bind, hread]
-
-/-- If the underlying Sail architectural-register write succeeds, a bound Jolt
-`writeDst` line reduces to the continuation at `()` with the Sail component
-updated and virtual registers unchanged. -/
-theorem bind_after_success_of_writeDst_xreg
-    (rd : regidx)
-    (js : SailJoltState)
-    (v : BitVec 64)
-    (s' : SailState)
-    (hwrite : wX_bits rd v js.sail = .ok () s')
-    (k : Unit → JoltMonad α) :
-    ((JoltISA.writeDst (.xreg rd) v >>= k) js) =
-      k () { sail := s', vregs := js.vregs } := by
-  simp only [JoltISA.writeDst]
-  unfold liftSail
-  simp only [bind, EStateM.bind]
-  simp only [hwrite]
 
 -- ============================================================================
 -- reg_cases tactic
