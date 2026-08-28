@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Word
+import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
 
@@ -167,13 +168,15 @@ def amoaddwProgramEqSailStatement
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (_h : AmoWordProgramEqSailAssumptions amoop.AMOADD rs2 rs1 rd js) : Prop :=
   ProgramMatchesSailWithProtectedFrame js
-    ((JoltISA.execProgram (JoltISA.amoaddwProgram rs2 rs1 rd)).run js)
+    ((JoltISA.execProgram (JoltISA.amoaddwProgramAuto rd rs1 rs2)).run js)
     ((execute_AMO amoop.AMOADD false false rs2 rs1 4 rd).run js.sail)
 
 theorem amoaddwProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOADD rs2 rs1 rd js) :
     amoaddwProgramEqSailStatement rs2 rs1 rd js h := by
+  unfold amoaddwProgramEqSailStatement
+  rw [← JoltISA.amoaddw_auto_eq rs2 rs1 rd]
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact amoaddwProgram_project_eq_sail rs2 rs1 rd js h
   · simp [JoltISA.amoaddwProgram, JoltISA.amoWordBinopProgram,

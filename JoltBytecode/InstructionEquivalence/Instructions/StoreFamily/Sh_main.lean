@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Expansions.Store
+import JoltBytecode.JoltISA.automaticEquivHand
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows
@@ -360,7 +361,7 @@ def shProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (_h : StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
     System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.shProgram imm rs2 rs1)).run js) =
+      ((JoltISA.execProgram (JoltISA.shProgramAuto rs1 rs2 imm)).run js) =
     (execute_STORE imm rs2 rs1 2).run js.sail
 
 /-- **Main public SH theorem.**  The Jolt bytecode expansion matches Sail after
@@ -370,6 +371,7 @@ theorem shProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (h : StoreProgramEqSailAssumptions imm rs2 rs1 js) :
     shProgramEqSailStatement imm rs2 rs1 js h := by
   unfold shProgramEqSailStatement
+  rw [← JoltISA.sh_auto_eq imm rs2 rs1]
   let ea := load_effective_address h.rs1_val imm
   let base := compute_aligned_dword_base_address h.rs1_val imm
   let offset := (ea &&& (7 : BitVec 64)).toNat

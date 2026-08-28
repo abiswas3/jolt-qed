@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Dword
+import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
 
@@ -85,13 +86,15 @@ def amominudProgramEqSailStatement
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (_h : AmoDwordProgramEqSailAssumptions amoop.AMOMINU rs2 rs1 rd js) : Prop :=
   ProgramMatchesSailWithProtectedFrame js
-    ((JoltISA.execProgram (JoltISA.amominudProgram rs2 rs1 rd)).run js)
+    ((JoltISA.execProgram (JoltISA.amominudProgramAuto rd rs1 rs2)).run js)
     ((execute_AMO amoop.AMOMINU false false rs2 rs1 8 rd).run js.sail)
 
 theorem amominudProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOMINU rs2 rs1 rd js) :
     amominudProgramEqSailStatement rs2 rs1 rd js h := by
+  unfold amominudProgramEqSailStatement
+  rw [← JoltISA.amominud_auto_eq rs2 rs1 rd]
   apply programMatchesSailWithProtectedFrame_of_projectResult_eq
   · exact amominudProgram_project_eq_sail rs2 rs1 rd js h
   · simp [JoltISA.amominudProgram, JoltISA.amoDoubleSelectProgram,
