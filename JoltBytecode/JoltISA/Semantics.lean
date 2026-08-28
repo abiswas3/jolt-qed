@@ -28,11 +28,13 @@ noncomputable section
 namespace JoltISA
 
 def execInstr : Instr → JoltMonad ExecutionResult
-  | .NoOp =>
-      pure RETIRE_SUCCESS
   | .ADDI dst src imm => do
       let x ← readSrc src
       writeDst dst (x + sign_extend (m := 64) imm)
+      pure RETIRE_SUCCESS
+  | .ADDIW dst src imm => do
+      let x ← readSrc src
+      writeDst dst (jolt_addiw_value x imm)
       pure RETIRE_SUCCESS
   | .ANDI dst src imm => do
       let x ← readSrc src
@@ -135,15 +137,30 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let y ← readSrc rhs
       writeDst dst (x + y)
       pure RETIRE_SUCCESS
+  | .ADDW dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (jolt_addw_value x y)
+      pure RETIRE_SUCCESS
   | .SUB dst lhs rhs => do
       let x ← readSrc lhs
       let y ← readSrc rhs
       writeDst dst (x - y)
       pure RETIRE_SUCCESS
+  | .SUBW dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (jolt_subw_value x y)
+      pure RETIRE_SUCCESS
   | .MUL dst lhs rhs => do
       let x ← readSrc lhs
       let y ← readSrc rhs
       writeDst dst (x * y)
+      pure RETIRE_SUCCESS
+  | .MULW dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (jolt_mulw_value x y)
       pure RETIRE_SUCCESS
   | .MULHU dst lhs rhs => do
       let x ← readSrc lhs
@@ -158,6 +175,10 @@ def execInstr : Instr → JoltMonad ExecutionResult
   | .VirtualMULI dst src imm => do
       let x ← readSrc src
       writeDst dst (jolt_virtual_muli_value x imm)
+      pure RETIRE_SUCCESS
+  | .VirtualMULIW dst src imm => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_muliw_value x imm)
       pure RETIRE_SUCCESS
   | .VirtualPow2 dst src => do
       let x ← readSrc src
@@ -180,6 +201,10 @@ def execInstr : Instr → JoltMonad ExecutionResult
   | .VirtualShiftRightBitmaskI dst imm => do
       writeDst dst (jolt_virtual_shift_right_bitmaski_value imm)
       pure RETIRE_SUCCESS
+  | .VirtualShiftRightBitmaskW dst src => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_shift_right_bitmaskw_value x)
+      pure RETIRE_SUCCESS
   | .VirtualSRLI dst src bitmask => do
       let x ← readSrc src
       writeDst dst (jolt_virtual_srli_value x bitmask)
@@ -187,6 +212,14 @@ def execInstr : Instr → JoltMonad ExecutionResult
   | .VirtualSRAI dst src bitmask => do
       let x ← readSrc src
       writeDst dst (jolt_virtual_srai_value x bitmask)
+      pure RETIRE_SUCCESS
+  | .VirtualSRLIW dst src bitmask => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_srliw_value x bitmask)
+      pure RETIRE_SUCCESS
+  | .VirtualSRAIW dst src bitmask => do
+      let x ← readSrc src
+      writeDst dst (jolt_virtual_sraiw_value x bitmask)
       pure RETIRE_SUCCESS
   | .VirtualSRL dst value bitmask => do
       let x ← readSrc value
@@ -197,6 +230,16 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc value
       let b ← readSrc bitmask
       writeDst dst (jolt_virtual_sra_value x b)
+      pure RETIRE_SUCCESS
+  | .VirtualSRLW dst value bitmask => do
+      let x ← readSrc value
+      let b ← readSrc bitmask
+      writeDst dst (jolt_virtual_srlw_value x b)
+      pure RETIRE_SUCCESS
+  | .VirtualSRAW dst value bitmask => do
+      let x ← readSrc value
+      let b ← readSrc bitmask
+      writeDst dst (jolt_virtual_sraw_value x b)
       pure RETIRE_SUCCESS
   | .VirtualROTRI dst src bitmask => do
       let x ← readSrc src
@@ -250,6 +293,21 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let y ← readSrc rhs
       writeDst dst (jolt_virtual_xorrotw_value 7 x y)
       pure RETIRE_SUCCESS
+  | .VirtualXORROTW22 dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (jolt_virtual_xorrotw_value 22 x y)
+      pure RETIRE_SUCCESS
+  | .VirtualXORROTW19 dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (jolt_virtual_xorrotw_value 19 x y)
+      pure RETIRE_SUCCESS
+  | .VirtualXORROTW6 dst lhs rhs => do
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      writeDst dst (jolt_virtual_xorrotw_value 6 x y)
+      pure RETIRE_SUCCESS
   | .OR dst lhs rhs => do
       let x ← readSrc lhs
       let y ← readSrc rhs
@@ -274,6 +332,32 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc lhs
       let y ← readSrc rhs
       writeDst dst (jolt_sltu_value x y)
+      pure RETIRE_SUCCESS
+  | .VirtualAlignAddr dst base imm => do
+      let baseValue ← readSrc base
+      writeDst dst (jolt_virtual_align_addr_value baseValue imm)
+      pure RETIRE_SUCCESS
+  | .VirtualWindowMaskB dst base imm => do
+      let baseValue ← readSrc base
+      writeDst dst (jolt_virtual_window_mask_b_value baseValue imm)
+      pure RETIRE_SUCCESS
+  | .VirtualWindowMaskH dst base imm => do
+      let baseValue ← readSrc base
+      writeDst dst (jolt_virtual_window_mask_h_value baseValue imm)
+      pure RETIRE_SUCCESS
+  | .VirtualWindowMaskW dst base imm => do
+      let baseValue ← readSrc base
+      writeDst dst (jolt_virtual_window_mask_w_value baseValue imm)
+      pure RETIRE_SUCCESS
+  | .VirtualPext dst value mask => do
+      let x ← readSrc value
+      let y ← readSrc mask
+      writeDst dst (jolt_virtual_pext_value x y)
+      pure RETIRE_SUCCESS
+  | .VirtualPextSigned dst value mask => do
+      let x ← readSrc value
+      let y ← readSrc mask
+      writeDst dst (jolt_virtual_pext_signed_value x y)
       pure RETIRE_SUCCESS
   | .VirtualSignExtendWord dst src => do
       let x ← readSrc src
@@ -352,15 +436,10 @@ def execInstr : Instr → JoltMonad ExecutionResult
         throw (Error.Assertion "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
       else
         pure RETIRE_SUCCESS
-  | .VirtualChangeDivisor dst dividend divisor => do
-      let a ← readSrc dividend
-      let b ← readSrc divisor
-      writeDst dst (change_divisor_value a b)
-      pure RETIRE_SUCCESS
-  | .VirtualChangeDivisorW dst dividend divisor => do
-      let a ← readSrc dividend
-      let b ← readSrc divisor
-      writeDst dst (change_divisor_w_value a b)
+  | .VirtualNegateIf dst signSource value => do
+      let sign ← readSrc signSource
+      let x ← readSrc value
+      writeDst dst (jolt_virtual_negate_if_value sign x)
       pure RETIRE_SUCCESS
   | .VirtualAssertValidUnsignedRemainder remainder divisor => do
       let r ← readSrc remainder
