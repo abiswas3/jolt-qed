@@ -16,9 +16,6 @@ produced by `jolt-lean-gen --lean`). The argument order differs between the two
 (hand: `rs2 rs1 rd`; auto: `rd rs1 rs2`), so each statement maps the arguments
 across.
 
-Shift-immediate instructions are specialised in the generator to the sentinel
-shift amount 37, so those equivalences are stated at `shamt = 37`.
-
 Starting set: easy ALU cases, including block-using ones (`slliBlock`, and the
 `inlineTmp0` scratch in `sll`/`srl`) to confirm block/wrapper unfolding closes
 by `rfl`.
@@ -32,55 +29,23 @@ set_option linter.unusedSimpArgs false
 
 namespace JoltISA
 
-theorem addw_auto_eq (rs2 rs1 rd : regidx) :
-    addwProgram rs2 rs1 rd = addwProgramAuto rd rs1 rs2 := by rfl
-
-theorem subw_auto_eq (rs2 rs1 rd : regidx) :
-    subwProgram rs2 rs1 rd = subwProgramAuto rd rs1 rs2 := by rfl
-
-theorem mulw_auto_eq (rs2 rs1 rd : regidx) :
-    mulwProgram rs2 rs1 rd = mulwProgramAuto rd rs1 rs2 := by rfl
-
 theorem sll_auto_eq (rs2 rs1 rd : regidx) :
     sllProgram rs2 rs1 rd = sllProgramAuto rd rs1 rs2 := by rfl
 
 theorem srl_auto_eq (rs2 rs1 rd : regidx) :
     srlProgram rs2 rs1 rd = srlProgramAuto rd rs1 rs2 := by rfl
 
-theorem slli_auto_eq (rs1 rd : regidx) :
-    slliProgram 37 rs1 rd = slliProgramAuto rd rs1 := by rfl
+theorem slli_auto_eq (shamt : BitVec 6) (rs1 rd : regidx) :
+    slliProgram shamt rs1 rd = slliProgramAuto rd rs1 shamt := by rfl
 
-theorem srli_auto_eq (rs1 rd : regidx) :
-    srliProgram 37 rs1 rd = srliProgramAuto rd rs1 := by rfl
+theorem srli_auto_eq (shamt : BitVec 6) (rs1 rd : regidx) :
+    srliProgram shamt rs1 rd = srliProgramAuto rd rs1 shamt := by rfl
 
-theorem srai_auto_eq (rs1 rd : regidx) :
-    sraiProgram 37 rs1 rd = sraiProgramAuto rd rs1 := by rfl
+theorem srai_auto_eq (shamt : BitVec 6) (rs1 rd : regidx) :
+    sraiProgram shamt rs1 rd = sraiProgramAuto rd rs1 shamt := by rfl
 
 theorem sra_auto_eq (rs2 rs1 rd : regidx) :
     sraProgram rs2 rs1 rd = sraProgramAuto rd rs1 rs2 := by rfl
-
-/-! ## Word ALU -/
-
-theorem sllw_auto_eq (rs2 rs1 rd : regidx) :
-    sllwProgram rs2 rs1 rd = sllwProgramAuto rd rs1 rs2 := by rfl
-
-theorem srlw_auto_eq (rs2 rs1 rd : regidx) :
-    srlwProgram rs2 rs1 rd = srlwProgramAuto rd rs1 rs2 := by rfl
-
-theorem sraw_auto_eq (rs2 rs1 rd : regidx) :
-    srawProgram rs2 rs1 rd = srawProgramAuto rd rs1 rs2 := by rfl
-
-theorem addiw_auto_eq (imm : BitVec 12) (rs1 rd : regidx) :
-    addiwProgram imm rs1 rd = addiwProgramAuto rd rs1 imm := by rfl
-
-theorem slliw_auto_eq (rs1 rd : regidx) :
-    slliwProgram 5 rs1 rd = slliwProgramAuto rd rs1 := by rfl
-
-theorem srliw_auto_eq (rs1 rd : regidx) :
-    srliwProgram 5 rs1 rd = srliwProgramAuto rd rs1 := by rfl
-
-theorem sraiw_auto_eq (rs1 rd : regidx) :
-    sraiwProgram 5 rs1 rd = sraiwProgramAuto rd rs1 := by rfl
 
 /-! ## Multiply-high -/
 
@@ -90,28 +55,16 @@ theorem mulh_auto_eq (rs2 rs1 rd : regidx) :
 theorem mulhsu_auto_eq (rs2 rs1 rd : regidx) :
     mulhsuProgram rs2 rs1 rd = mulhsuProgramAuto rd rs1 rs2 := by rfl
 
-/-! ## DivRem — general over the advice values -/
-
-theorem div_auto_eq (rs2 rs1 rd : regidx) (a0 a1 : BitVec 64) :
-    divProgram rs2 rs1 rd a0 a1 = divProgramAuto rd rs1 rs2 a0 a1 := by rfl
+/-! ## Unsigned DivRem — general over the advice value -/
 
 theorem divu_auto_eq (rs2 rs1 rd : regidx) (a0 : BitVec 64) :
     divuProgram rs2 rs1 rd a0 = divuProgramAuto rd rs1 rs2 a0 := by rfl
 
-theorem divw_auto_eq (rs2 rs1 rd : regidx) (a0 a1 : BitVec 64) :
-    divwProgram rs2 rs1 rd a0 a1 = divwProgramAuto rd rs1 rs2 a0 a1 := by rfl
-
 theorem divuw_auto_eq (rs2 rs1 rd : regidx) (a0 : BitVec 64) :
     divuwProgram rs2 rs1 rd a0 = divuwProgramAuto rd rs1 rs2 a0 := by rfl
 
-theorem rem_auto_eq (rs2 rs1 rd : regidx) (a0 a1 : BitVec 64) :
-    remProgram rs2 rs1 rd a0 a1 = remProgramAuto rd rs1 rs2 a0 a1 := by rfl
-
 theorem remu_auto_eq (rs2 rs1 rd : regidx) (a0 : BitVec 64) :
     remuProgram rs2 rs1 rd a0 = remuProgramAuto rd rs1 rs2 a0 := by rfl
-
-theorem remw_auto_eq (rs2 rs1 rd : regidx) (a0 a1 : BitVec 64) :
-    remwProgram rs2 rs1 rd a0 a1 = remwProgramAuto rd rs1 rs2 a0 a1 := by rfl
 
 theorem remuw_auto_eq (rs2 rs1 rd : regidx) (a0 : BitVec 64) :
     remuwProgram rs2 rs1 rd a0 = remuwProgramAuto rd rs1 rs2 a0 := by rfl
@@ -152,49 +105,6 @@ theorem sh_auto_eq (imm : BitVec 12) (rs2 rs1 : regidx) :
 
 theorem sw_auto_eq (imm : BitVec 12) (rs2 rs1 : regidx) :
     swProgram imm rs2 rs1 = swProgramAuto rs1 rs2 imm := by rfl
-
-/-! ## Loads
-
-Side-effecting: the hand def threads the rd==x0 branch through each temporary
-(`loadV0For`/`loadDstFor`/…), while the generated def has a single outer
-`if isX0 rd`. Not definitionally equal, so we split on `isX0 rd` and let `simp`
-resolve the per-operand branches against the outer one. -/
-
-theorem lb_auto_eq (imm : BitVec 12) (rs1 rd : regidx) :
-    lbProgram imm rs1 rd = lbProgramAuto rd rs1 imm := by
-  unfold lbProgram lbProgramAuto loadV0For loadV1For loadInlineTmpFor loadDstFor
-    sideEffectingRdZeroDst
-  cases isX0 rd <;> rfl
-
-theorem lbu_auto_eq (imm : BitVec 12) (rs1 rd : regidx) :
-    lbuProgram imm rs1 rd = lbuProgramAuto rd rs1 imm := by
-  unfold lbuProgram lbuProgramAuto loadV0For loadV1For loadInlineTmpFor loadDstFor
-    sideEffectingRdZeroDst
-  cases isX0 rd <;> rfl
-
-theorem lh_auto_eq (imm : BitVec 12) (rs1 rd : regidx) :
-    lhProgram imm rs1 rd = lhProgramAuto rd rs1 imm := by
-  unfold lhProgram lhProgramAuto loadV0For loadV1For loadInlineTmpFor loadDstFor
-    sideEffectingRdZeroDst
-  cases isX0 rd <;> rfl
-
-theorem lhu_auto_eq (imm : BitVec 12) (rs1 rd : regidx) :
-    lhuProgram imm rs1 rd = lhuProgramAuto rd rs1 imm := by
-  unfold lhuProgram lhuProgramAuto loadV0For loadV1For loadInlineTmpFor loadDstFor
-    sideEffectingRdZeroDst
-  cases isX0 rd <;> rfl
-
-theorem lw_auto_eq (imm : BitVec 12) (rs1 rd : regidx) :
-    lwProgram imm rs1 rd = lwProgramAuto rd rs1 imm := by
-  unfold lwProgram lwProgramAuto loadV0For loadV1For loadInlineTmpFor loadDstFor
-    sideEffectingRdZeroDst
-  cases isX0 rd <;> rfl
-
-theorem lwu_auto_eq (imm : BitVec 12) (rs1 rd : regidx) :
-    lwuProgram imm rs1 rd = lwuProgramAuto rd rs1 imm := by
-  unfold lwuProgram lwuProgramAuto loadV0For loadV1For loadInlineTmpFor loadDstFor
-    sideEffectingRdZeroDst
-  cases isX0 rd <;> rfl
 
 /-! ## Atomics
 
