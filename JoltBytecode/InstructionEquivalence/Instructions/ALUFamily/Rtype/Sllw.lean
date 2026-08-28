@@ -1,4 +1,5 @@
 import JoltBytecode.Bundles
+import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.JoltISA.Expansions.ALU
@@ -34,161 +35,17 @@ abbrev sllw_jolt_val (v1 v2 : BitVec 64) : BitVec 64 :=
   sign_extend (m := 64)
     (Sail.BitVec.extractLsb (v1 * jolt_virtual_pow2w_value v2) 31 0)
 
-theorem execute_RTYPEW_SLLW_factored
-    (rs2 : regidx)
-    (rs1 : regidx)
-    (rd : regidx) :
-    execute_RTYPEW rs2 rs1 rd ropw.SLLW = (do
-      let v1 ← rX_bits rs1
-      let v2 ← rX_bits rs2
-      wX_bits rd (sllw_sail_operation v1 v2)
-      pure RETIRE_SUCCESS) := by
-  simp only [execute_RTYPEW]
-  simp only [bind_pure_comp, pure_bind, sllw_sail_operation]
-
-private def sllwJolt (rs1_val rs2_val : BitVec 64) : BitVec 64 :=
-  let v_pow := jolt_virtual_pow2w_value rs2_val
-  let product := Riscv.mul rs1_val v_pow
-  jolt_virtual_sign_extend_word_value product
-
 private lemma sll_32_eq_mul_trunc (x : BitVec 64) (s : Nat) (hs : s < 32) :
     x.setWidth 32 <<< s = (x * BitVec.ofNat 64 (2 ^ s)).setWidth 32 := by
   apply BitVec.eq_of_toNat_eq
-  simp [BitVec.toNat_shiftLeft, BitVec.toNat_mul, BitVec.toNat_ofNat,
-        BitVec.toNat_setWidth, Nat.shiftLeft_eq]
-
-private theorem sllw_eq_sllwJolt (rs1_val rs2_val : BitVec 64) :
-    Riscv.sllw rs1_val rs2_val = sllwJolt rs1_val rs2_val := by
-  unfold Riscv.sllw sllwJolt jolt_virtual_pow2w_value Riscv.mul jolt_virtual_sign_extend_word_value
-  congr 1
-  exact sll_32_eq_mul_trunc rs1_val (rs2_val.setWidth 5).toNat (by
-    have := (rs2_val.setWidth 5).isLt; norm_num at this; exact this)
-
-private lemma mul_eq_sllwJolt (v1 v2 : BitVec 64) :
-    sign_extend (m := 64)
-      (Sail.BitVec.extractLsb (v1 * BitVec.ofNat 64 (2 ^ (v2.setWidth 5).toNat)) 31 0) =
-    sllwJolt v1 v2 := by
-  unfold sllwJolt jolt_virtual_sign_extend_word_value jolt_virtual_pow2w_value Riscv.mul sign_extend
-  simp [Sail.BitVec.signExtend, Sail.BitVec.extractLsb, BitVec.extractLsb,
-    BitVec.extractLsb']
-  congr 1
-  apply BitVec.eq_of_toNat_eq
-  simp [BitVec.toNat_setWidth, BitVec.toNat_mul, BitVec.toNat_ofNat]
-
-private lemma sail_sllw_eq_riscv (v1 v2 : BitVec 64) :
-    sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v1 31 0)
-      (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) =
-    Riscv.sllw v1 v2 := by
-  unfold Riscv.sllw sign_extend shift_bits_left
-  simp [Sail.BitVec.signExtend, Sail.BitVec.extractLsb,
-        BitVec.extractLsb, BitVec.extractLsb']
-
-private theorem sllw_mul_eq_shift (v1 v2 : BitVec 64) :
-    sign_extend (m := 64)
-      (Sail.BitVec.extractLsb (v1 * BitVec.ofNat 64 (2 ^ (v2.setWidth 5).toNat)) 31 0) =
-    sign_extend (m := 64) (shift_bits_left (Sail.BitVec.extractLsb v1 31 0)
-      (Sail.BitVec.extractLsb (Sail.BitVec.extractLsb v2 31 0) 4 0)) := by
-  rw [mul_eq_sllwJolt, sail_sllw_eq_riscv, sllw_eq_sllwJolt]
-
-/-- Math bridge: the three-step Jolt SLLW value equals Sail's SLLW value. -/
-private theorem sllw_value_eq_sail (v1 v2 : BitVec 64) :
-    sllw_jolt_val v1 v2 = sllw_sail_operation v1 v2 := by
-  simp only [sllw_jolt_val, sllw_sail_operation]
-  unfold jolt_virtual_pow2w_value
-  rw [sllw_mul_eq_shift v1 v2]
-
-/-- Program-level concrete theorem for `SLLW`.
-
-The expansion is `VirtualPow2W` into scratch `v0`, a real-destination
-multiply by that scratch value, then `VirtualSignExtendWord` on `rd`. -/
-theorem sllwProgram_concrete
-    (rs2 : regidx)
-    (rs1 : regidx)
-    (rd : regidx)
-    (js : SailJoltState)
-    (v1 v2 : BitVec 64)
-    (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
-    (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
-    (hrd : rd ≠ regidx.Regidx 0) :
-    ∃ (js' : SailJoltState),
-      (JoltISA.execProgram (JoltISA.sllwProgram rs2 rs1 rd)).run js =
-          .ok RETIRE_SUCCESS js' ∧
-        js'.sail = stateAfterWrite js.sail rd (sllw_sail_operation v1 v2) := by
-
-  -- Instruction 1: `VirtualPow2W v0, rs2` writes `2 ^ rs2[4:0]` to `v0`.
-  let pow2 := jolt_virtual_pow2w_value v2
-  obtain ⟨js_afterPow2, h_pow2_reads_rs2, h_pow2_keeps_sail,
-      h_pow2_writes_pow2, _, h_pow2_succeeds⟩ :=
-    JoltISA.exists_state_after_virtual_pow2w_run_vreg_xreg
-      JoltISA.inlineTmp0 rs2 js v2 h_read_rs2
-      (by unfold WritableVReg; decide)
-
-  -- Instruction 2: `MUL rd, rs1, v0` writes the shifted word product to `rd`.
-  let product := v1 * pow2
-  obtain ⟨js_afterMul, h_mul_reads_rs1, h_mul_writes_product, h_mul_succeeds⟩ :=
-    JoltISA.exists_state_after_mul_run_xreg_xreg_vreg_of_value
-      rd rs1 JoltISA.inlineTmp0 js_afterPow2 js.sail v1 pow2
-      h_pow2_keeps_sail h_read_rs1 h_pow2_writes_pow2
-
-  -- Instruction 3: `VirtualSignExtendWord rd, rd` writes the SLLW result.
-  let jolt_val := sllw_jolt_val v1 v2
-  obtain ⟨js_afterSignExtend, h_sign_extend_writes_jolt_val, h_sign_extend_succeeds⟩ :=
-    JoltISA.exists_state_after_virtual_sign_extend_word_run_xreg_xreg_of_same_register_write
-      rd js_afterMul js.sail product h_mul_writes_product
-
-  -- Full program succeeds by stepping through the three instruction runs.
-  have h_program_succeeds :
-      (JoltISA.execProgram (JoltISA.sllwProgram rs2 rs1 rd)).run js =
-        .ok RETIRE_SUCCESS js_afterSignExtend := by
-    unfold JoltISA.sllwProgram
-    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterPow2 h_pow2_succeeds]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterPow2 js_afterMul h_mul_succeeds]
-    rw [JoltISA.execProgram_instr_run_retire _ _ js_afterMul js_afterSignExtend
-      h_sign_extend_succeeds]
-    rfl
-
-  refine ⟨js_afterSignExtend, h_program_succeeds, ?_⟩
-
-  -- The instruction trace leaves `rd` containing the Jolt SLLW value.
-  have h_final_jolt_value :
-      js_afterSignExtend.sail = stateAfterWrite js.sail rd jolt_val := by
-    exact h_sign_extend_writes_jolt_val
-
-  -- No more execution reasoning remains.
-  -- The only real content left is the pure value equality:
-  -- Jolt's three-instruction value is Sail's SLLW value.
-  have h_sllw_value :
-      jolt_val = sllw_sail_operation v1 v2 := by
-    simp only [jolt_val]
-    -- NOTE: The core math theorem.
-    exact sllw_value_eq_sail v1 v2
-
-  -- After the value theorem, the final state claim is mechanical.
-  rw [← h_sllw_value]
-  exact h_final_jolt_value
-
-/-- `SLLW` never writes the persistent CSR virtual registers materialized by
-`systemProject`. -/
-theorem sllwProgram_preserves_projected_vregs
-    (rs2 rs1 rd : regidx)
-    {js js' : SailJoltState}
-    {result : ExecutionResult}
-    (hrun : (JoltISA.execProgram (JoltISA.sllwProgram rs2 rs1 rd)).run js =
-      .ok result js') :
-    Projection.ProjectedVRegsPreserved js js' := by
-  have hsafe :
-      JoltISA.ProgramWritesNoProtectedVReg
-        (JoltISA.sllwProgram rs2 rs1 rd) := by
-    unfold JoltISA.sllwProgram
-    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-    simp only [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      true_and]
-    exact ⟨JoltISA.inlineTmp0_not_protected, trivial⟩
-  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
-    (js := js) (js' := js') (result := result) hsafe hrun
+  simp only [BitVec.toNat_shiftLeft, BitVec.toNat_mul, BitVec.toNat_ofNat,
+    BitVec.toNat_setWidth, Nat.shiftLeft_eq]
+  rw [Nat.mod_eq_of_lt (Nat.pow_lt_pow_right (by norm_num) (by omega : s < 64))]
+  rw [Nat.mod_mod_of_dvd _ (Nat.pow_dvd_pow 2 (by norm_num : 32 ≤ 64))]
+  have hp : 2 ^ s < 2 ^ 32 := Nat.pow_lt_pow_right (by norm_num) hs
+  have hmul := (Nat.mul_mod x.toNat (2 ^ s) (2 ^ 32)).symm
+  rw [Nat.mod_eq_of_lt hp] at hmul
+  exact hmul
 
 /-- Main program-level equivalence for `SLLW`. -/
 def sllwProgramEqSailStatement
@@ -198,7 +55,7 @@ def sllwProgramEqSailStatement
     (js : SailJoltState)
     (_h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.sllwProgram rs2 rs1 rd)).run js) =
+      ((JoltISA.execProgram (JoltISA.sllwProgramAuto rd rs1 rs2)).run js) =
     (execute_RTYPEW rs2 rs1 rd ropw.SLLW).run js.sail
 
 /-- Main program-level equivalence for `SLLW`. -/
@@ -211,43 +68,122 @@ theorem sllwProgram_eq_sail
     sllwProgramEqSailStatement rs2 rs1 rd js h := by
   unfold sllwProgramEqSailStatement
   let v1 := h.rs1_val
-  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
   let v2 := h.rs2_val
+  have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
   have h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail := h.rs2_read
   have h_project_initial : System.systemProject js = js.sail :=
     Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   by_cases hrd : rd = regidx.Regidx 0
   · subst rd
-    unfold JoltISA.sllwProgram
-    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+    unfold JoltISA.sllwProgramAuto
+    rw [JoltISA.isX0_regidx_zero]
+    simp only [↓reduceIte]
+    change System.systemProjectResult
+      ((JoltISA.execProgram JoltISA.pureWritebackRdZeroProgram).run js) = _
     rw [JoltISA.pureWritebackRdZeroProgram_run js]
     simp only [System.systemProjectResult]
     rw [h_project_initial]
-    rw [execute_RTYPEW_SLLW_factored rs2 rs1 (regidx.Regidx 0)]
-    simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-    simp only [h_read_rs1, h_read_rs2]
-    simp only [wX_bits_regidx_zero]
+    simp only [execute_RTYPEW]
+    simp only [EStateM.run_bind]
+    simp only [EStateM.run]
+    simp only [h_read_rs1, h_read_rs2, pure, EStateM.pure, wX_bits_regidx_zero]
 
-  obtain ⟨js_afterSignExtend, h_program_succeeds, h_final_sail⟩ :=
-    sllwProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
-  have h_projected_vregs :
-      Projection.ProjectedVRegsPreserved js js_afterSignExtend :=
-    sllwProgram_preserves_projected_vregs rs2 rs1 rd h_program_succeeds
+  have hrd_not_x0 : JoltISA.isX0 rd = false :=
+    JoltISA.isX0_eq_false_of_ne_zero hrd
+  have h_value :
+      jolt_mulw_value v1 (jolt_virtual_pow2w_value v2) =
+        sllw_sail_operation v1 v2 := by
+    unfold jolt_mulw_value jolt_virtual_pow2w_value sllw_sail_operation
+    unfold sign_extend shift_bits_left
+    simp only [Sail.BitVec.signExtend, Sail.BitVec.extractLsb,
+      BitVec.extractLsb, Nat.sub_zero, Nat.reduceAdd, BitVec.extractLsb',
+      Nat.shiftRight_zero, BitVec.ofNat_toNat]
+    rw [BitVec.setWidth_setWidth_of_le v2 (by norm_num : 5 ≤ 32)]
+    change
+      ((v1 * BitVec.ofNat 64 (2 ^ (v2.setWidth 5).toNat)).setWidth 32).signExtend 64 =
+        (v1.setWidth 32 <<< (v2.setWidth 5).toNat).signExtend 64
+    congr 1
+    exact (sll_32_eq_mul_trunc v1 (v2.setWidth 5).toNat (by
+      have := (v2.setWidth 5).isLt
+      norm_num at this
+      exact this)).symm
 
-  rw [h_program_succeeds]
-  simp only [System.systemProjectResult]
-
-  rw [execute_RTYPEW_SLLW_factored rs2 rs1 rd]
-  simp only [EStateM.run, bind, EStateM.bind, pure, EStateM.pure]
-  simp only [h_read_rs1, h_read_rs2]
-
+  let tmp := JoltISA.inlineTmp0
+  let pow2 := jolt_virtual_pow2w_value v2
+  let js_tmp : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = tmp then pow2 else js.vregs r }
   obtain ⟨s', h_write⟩ := wX_shape rd (sllw_sail_operation v1 v2) js.sail
-  simp only [h_write]
-  congr 1
+  let js_final : SailJoltState := { sail := s', vregs := js_tmp.vregs }
 
+  simp only [execute_RTYPEW]
+  simp only [EStateM.run_bind]
+  simp only [EStateM.run]
+  simp only [h_read_rs1, h_read_rs2, pure, EStateM.pure, h_write]
+
+  unfold JoltISA.sllwProgramAuto
+  rw [hrd_not_x0]
+  simp only [Bool.false_eq_true, ↓reduceIte]
+  change System.systemProjectResult
+    (JoltISA.execProgram
+      (.instr (.VirtualPow2W (.vreg tmp) (.xreg rs2))
+        (.instr (.MULW (.xreg rd) (.xreg rs1) (.vreg tmp))
+          (.done RETIRE_SUCCESS))) js) = _
+  have htmp : WritableVReg tmp := by
+    unfold tmp WritableVReg
+    decide
+  have h_read_rs1_tmp : rX_bits rs1 js_tmp.sail = .ok v1 js_tmp.sail := by
+    simpa only [js_tmp] using h_read_rs1
+  have h_first :
+      JoltISA.execInstr (.VirtualPow2W (.vreg tmp) (.xreg rs2)) js =
+        .ok RETIRE_SUCCESS js_tmp := by
+    unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst liftSail
+    simp only [h_read_rs2, bind, EStateM.bind]
+    simpa only [js_tmp, pow2] using
+      JoltISA.writeVReg_retire_run_of_writable tmp pow2 js htmp
+  have h_second :
+      JoltISA.execInstr (.MULW (.xreg rd) (.xreg rs1) (.vreg tmp)) js_tmp =
+        .ok RETIRE_SUCCESS js_final := by
+    unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst liftSail
+    simp only [h_read_rs1_tmp, bind, EStateM.bind]
+    simp only [readVReg_run]
+    simp only [js_tmp, if_pos, pow2]
+    rw [h_value]
+    rw [h_write]
+    rfl
+  have h_program :
+      JoltISA.execProgram
+        (.instr (.VirtualPow2W (.vreg tmp) (.xreg rs2))
+          (.instr (.MULW (.xreg rd) (.xreg rs1) (.vreg tmp))
+            (.done RETIRE_SUCCESS))) js =
+        .ok RETIRE_SUCCESS js_final := by
+    simp only [JoltISA.execProgram_instr, bind, EStateM.bind]
+    rw [h_first]
+    simp only [RETIRE_SUCCESS, pure]
+    simp only [EStateM.bind]
+    rw [h_second]
+    rfl
+  rw [h_program]
+  simp only [System.systemProjectResult]
+  congr 1
+  have hsafe :
+      JoltISA.ProgramWritesNoProtectedVReg
+        (.instr (.VirtualPow2W (.vreg tmp) (.xreg rs2))
+          (.instr (.MULW (.xreg rd) (.xreg rs1) (.vreg tmp))
+            (.done RETIRE_SUCCESS))) := by
+    simp only [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
+      true_and]
+    exact ⟨by simpa only [tmp] using JoltISA.inlineTmp0_not_protected, trivial⟩
+  have h_projected : Projection.ProjectedVRegsPreserved js js_final :=
+    Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+      (js := js) (js' := js_final) (result := RETIRE_SUCCESS) hsafe h_program
+  have h_final_sail :
+      js_final.sail = stateAfterWrite js.sail rd (sllw_sail_operation v1 v2) := by
+    simpa only [js_final] using
+      wX_bits_eq_stateAfterWrite rd (sllw_sail_operation v1 v2) js.sail s' h_write
   rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
-    js js_afterSignExtend rd (sllw_sail_operation v1 v2)
-    h_final_sail h_projected_vregs]
+    js js_final rd (sllw_sail_operation v1 v2) h_final_sail h_projected]
   rw [h_project_initial]
   exact (wX_bits_eq_stateAfterWrite rd (sllw_sail_operation v1 v2)
     js.sail s' h_write).symm

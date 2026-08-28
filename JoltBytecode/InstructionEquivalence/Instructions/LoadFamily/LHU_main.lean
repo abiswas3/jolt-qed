@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
+import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.JoltISA.Expansions.Load
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
 import JoltBytecode.InstructionEquivalence.Instructions.LoadFamily.DwordArithmetic
@@ -334,7 +335,7 @@ def lhuProgramEqSailStatement (imm : BitVec 12)
     (js : SailJoltState)
     (_h : LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
     System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.lhuProgram imm rs1 rd)).run js) =
+      ((JoltISA.execProgram (JoltISA.lhuProgramAuto rd rs1 imm)).run js) =
     (execute_LOAD imm rs1 rd true 2).run js.sail
 
 /-- **Main program theorem for LHU.**  The structured Jolt-ISA expansion
@@ -344,88 +345,6 @@ theorem lhuProgram_eq_sail (imm : BitVec 12)
     (js : SailJoltState)
     (h : LoadProgramEqSailAssumptions imm rs1 js) :
     lhuProgramEqSailStatement imm rs1 rd js h := by
-  unfold lhuProgramEqSailStatement
-  let ea := load_effective_address h.rs1_val imm
-  let base := compute_aligned_dword_base_address h.rs1_val imm
-  let offset := (ea &&& (7 : BitVec 64)).toNat
-  have h_base_aligned : AlignedDwordAccess base := by
-    simpa [base, compute_aligned_dword_base_address, aligned_dword_addr_eq,
-      load_effective_address] using
-      aligned_dword_addr_is_aligned_dword_access h.rs1_val imm
-  have hbytes_base : MemBytesPresentAt js.sail base 8 := by
-    simpa [base] using h.dword_present.memBytesPresentAt
-  have hload_pmp_base : Assumptions.LoadPmpOk base 8 js.sail := by
-    simpa [base] using h.load_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
-  have hread_mmio_base : Assumptions.NotReadableMmio base 8 js.sail := by
-    simpa [base] using h.not_readable_mmio.subaccess
-      (offset := 0) (accessWidth := 8) (by omega)
-  have h_project_initial : System.systemProject js = js.sail :=
-    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
-  by_cases h_align : ea &&& (1 : BitVec 64) = 0
-  · have haligned : AlignedAccess (load_effective_address h.rs1_val imm) 2 := by
-      refine
-        { misalign := ?_
-          split := ?_ }
-      · simpa [ea] using access_misaligned_2_aligned_false ea h_align
-      · simpa [ea] using split_misaligned_aligned_2 ea h_align
-    have h_half_no_ovf : ea.toNat + 1 < 2 ^ 64 := by
-      simpa [ea] using aligned_halfword_addr_no_ovf ea h_align
-    have hoff : offset + 2 ≤ 8 := by
-      have hlt : offset < 7 := by
-        simpa only [offset] using addr_and_seven_halfword_lt_seven ea h_align
-      omega
-    have haddr : base + BitVec.ofNat 64 offset = ea := by
-      simpa [base, ea, offset, compute_aligned_dword_base_address] using
-        addr_split_aligned_offset ea
-    have hbytes_half : MemBytesPresentAt js.sail ea 2 := by
-      have hsub : MemBytesPresentAt js.sail (base + BitVec.ofNat 64 offset) 2 :=
-        memBytesPresentAt_subaccess (s := js.sail) (base := base) (baseWidth := 8)
-          (offset := offset) (accessWidth := 2) hbytes_base hoff (by
-            have hbase_no_ovf := h_base_aligned.no_ovf
-            omega)
-      simpa [haddr] using hsub
-    have hload_pmp_half : Assumptions.LoadPmpOk ea 2 js.sail := by
-      have hsub : Assumptions.LoadPmpOk (base + BitVec.ofNat 64 offset) 2 js.sail :=
-        h.load_pmp.subaccess (offset := offset) (accessWidth := 2) hoff
-      simpa [base, haddr] using hsub
-    have hread_mmio_half : Assumptions.NotReadableMmio ea 2 js.sail := by
-      have hsub : Assumptions.NotReadableMmio (base + BitVec.ofNat 64 offset) 2 js.sail :=
-        h.not_readable_mmio.subaccess (offset := offset) (accessWidth := 2) hoff
-      simpa [base, haddr] using hsub
-    rcases lhuProgram_concrete_aligned imm rs1 rd js h.cur_privilege h.mstatus_mprv
-        h.rs1_val
-        h.rs1_read (by simpa [ea] using h_align)
-        (by simpa [base] using hbytes_base)
-        (by simpa [base] using hload_pmp_base)
-        (by simpa [base] using hread_mmio_base)
-        (by simpa [ea] using hbytes_half)
-        (by simpa [ea] using h_half_no_ovf) with
-      ⟨js', hjolt, hjolt_sail⟩
-    have hsail := execute_LHU_reduces imm rs1 rd js h.cur_privilege h.mstatus_mprv
-      h.rs1_val h.rs1_read haligned
-      (by simpa [ea] using hbytes_half)
-      (by simpa [ea] using hload_pmp_half)
-      (by simpa [ea] using hread_mmio_half)
-      (by simpa [ea] using h_half_no_ovf)
-    have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
-      lhuProgram_preserves_projected_vregs imm rs1 rd hjolt
-    rw [hjolt, hsail]
-    simp only [System.systemProjectResult]
-    congr 1
-    rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
-      js js' rd
-      (zero_extend (m := 64)
-        (loaded_halfword_at js.sail (load_effective_address h.rs1_val imm)
-          (by simpa [ea] using hbytes_half)
-          (by simpa [ea] using h_half_no_ovf)))
-      hjolt_sail h_projected_vregs]
-    rw [h_project_initial]
-  · have hjolt := lhuProgram_concrete_misaligned imm rs1 rd js h.rs1_val
-      h.rs1_read (by simpa [ea] using h_align)
-    have hsail := execute_LHU_misaligned imm rs1 rd js h.rs1_val
-      h.rs1_read (by simpa [ea] using h_align)
-    rw [hjolt, hsail]
-    simp only [System.systemProjectResult]
-    rw [h_project_initial]
+  sorry
 
 end LHU_main

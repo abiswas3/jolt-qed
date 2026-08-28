@@ -2,6 +2,7 @@ import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.JoltISA.Expansions.ALU
+import JoltBytecode.JoltISA.automaticEquivHand
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualSRA
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualShiftRightBitmask
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
@@ -154,7 +155,7 @@ def sraProgramEqSailStatement
     (js : SailJoltState)
     (_h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.sraProgram rs2 rs1 rd)).run js) =
+      ((JoltISA.execProgram (JoltISA.sraProgramAuto rd rs1 rs2)).run js) =
     (execute_RTYPE rs2 rs1 rd rop.SRA).run js.sail
 
 /-- Main program-level equivalence for `SRA`. -/
@@ -166,6 +167,7 @@ theorem sraProgram_eq_sail
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     sraProgramEqSailStatement rs2 rs1 rd js h := by
   unfold sraProgramEqSailStatement
+  rw [← JoltISA.sra_auto_eq rs2 rs1 rd]
   let v1 := h.rs1_val
   have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
   let v2 := h.rs2_val

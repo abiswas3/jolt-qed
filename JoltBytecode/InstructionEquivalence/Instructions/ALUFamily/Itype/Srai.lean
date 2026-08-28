@@ -2,6 +2,7 @@ import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.JoltISA.Expansions.ALU
+import JoltBytecode.JoltISA.automaticEquivHand
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualSRAI
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.JoltISA.Values
@@ -153,7 +154,7 @@ def sraiProgramEqSailStatement (shamt : BitVec 6) (rs1 rd : regidx)
     (js : SailJoltState)
     (_h : UnarySourceReadWithLinkedCSRs rs1 js) : Prop :=
   System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.sraiProgram shamt rs1 rd)).run js) =
+      ((JoltISA.execProgram (JoltISA.sraiProgramAuto rd rs1 shamt)).run js) =
     (execute_SHIFTIOP shamt rs1 rd sop.SRAI).run js.sail
 
 /-- Main program-level equivalence for `SRAI`. -/
@@ -162,6 +163,7 @@ theorem sraiProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
     (h : UnarySourceReadWithLinkedCSRs rs1 js) :
     sraiProgramEqSailStatement shamt rs1 rd js h := by
   unfold sraiProgramEqSailStatement
+  rw [← JoltISA.srai_auto_eq shamt rs1 rd]
   let v := h.rs1_val
   have h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail := h.rs1_read
   have h_project_initial : System.systemProject js = js.sail :=

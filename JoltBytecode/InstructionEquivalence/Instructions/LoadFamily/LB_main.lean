@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
+import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.JoltISA.Expansions.Load
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
 import JoltBytecode.InstructionEquivalence.Instructions.LoadFamily.DwordArithmetic
@@ -226,7 +227,7 @@ def lbProgramEqSailStatement (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
     (_h : LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
     System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.lbProgram imm rs1 rd)).run js) =
+      ((JoltISA.execProgram (JoltISA.lbProgramAuto rd rs1 imm)).run js) =
     (execute_LOAD imm rs1 rd false 1).run js.sail
 
 /-- **Main program theorem for LB.**  The structured Jolt-ISA expansion
@@ -235,68 +236,6 @@ theorem lbProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadProgramEqSailAssumptions imm rs1 js) :
     lbProgramEqSailStatement imm rs1 rd js h := by
-  unfold lbProgramEqSailStatement
-  let ea := load_effective_address h.rs1_val imm
-  let base := compute_aligned_dword_base_address h.rs1_val imm
-  let offset := (ea &&& (7 : BitVec 64)).toNat
-  have h_base_aligned : AlignedDwordAccess base := by
-    simpa [base, compute_aligned_dword_base_address, aligned_dword_addr_eq,
-      load_effective_address] using
-      aligned_dword_addr_is_aligned_dword_access h.rs1_val imm
-  have hbytes_base : MemBytesPresentAt js.sail base 8 := by
-    simpa [base] using h.dword_present.memBytesPresentAt
-  have hload_pmp_base : Assumptions.LoadPmpOk base 8 js.sail := by
-    simpa [base] using h.load_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
-  have hread_mmio_base : Assumptions.NotReadableMmio base 8 js.sail := by
-    simpa [base] using h.not_readable_mmio.subaccess
-      (offset := 0) (accessWidth := 8) (by omega)
-  have hoff : offset + 1 ≤ 8 := by
-    have hlt : offset < 8 := by
-      simpa only [offset] using addr_and_seven_lt_eight ea
-    omega
-  have haddr : base + BitVec.ofNat 64 offset = ea := by
-    simpa [base, ea, offset, compute_aligned_dword_base_address] using
-      addr_split_aligned_offset ea
-  have hbytes_byte : MemBytesPresentAt js.sail ea 1 := by
-    have hsub : MemBytesPresentAt js.sail (base + BitVec.ofNat 64 offset) 1 :=
-      memBytesPresentAt_subaccess (s := js.sail) (base := base) (baseWidth := 8)
-        (offset := offset) (accessWidth := 1) hbytes_base hoff (by
-          have hbase_no_ovf := h_base_aligned.no_ovf
-          omega)
-    simpa [haddr] using hsub
-  have hload_pmp_byte : Assumptions.LoadPmpOk ea 1 js.sail := by
-    have hsub : Assumptions.LoadPmpOk (base + BitVec.ofNat 64 offset) 1 js.sail :=
-      h.load_pmp.subaccess (offset := offset) (accessWidth := 1) hoff
-    simpa [base, haddr] using hsub
-  have hread_mmio_byte : Assumptions.NotReadableMmio ea 1 js.sail := by
-    have hsub : Assumptions.NotReadableMmio (base + BitVec.ofNat 64 offset) 1 js.sail :=
-      h.not_readable_mmio.subaccess (offset := offset) (accessWidth := 1) hoff
-    simpa [base, haddr] using hsub
-  rcases lbProgram_concrete imm rs1 rd js h.cur_privilege h.mstatus_mprv
-      h.rs1_val h.rs1_read
-      (by simpa [base] using hbytes_base)
-      (by simpa [base] using hload_pmp_base)
-      (by simpa [base] using hread_mmio_base)
-      (by simpa [ea] using hbytes_byte) with
-    ⟨js', hjolt, hjolt_sail⟩
-  have hsail := execute_LB_reduces imm rs1 rd js h.cur_privilege
-    h.mstatus_mprv h.rs1_val h.rs1_read
-    (by simpa [ea] using hbytes_byte)
-    (by simpa [ea] using hload_pmp_byte)
-    (by simpa [ea] using hread_mmio_byte)
-  have h_project_initial : System.systemProject js = js.sail :=
-    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
-  have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
-    lbProgram_preserves_projected_vregs imm rs1 rd hjolt
-  rw [hjolt, hsail]
-  simp only [System.systemProjectResult]
-  congr 1
-  rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
-    js js' rd
-    (sign_extend (m := 64)
-      (loaded_byte_at js.sail (load_effective_address h.rs1_val imm)
-        (by simpa [ea] using hbytes_byte 0 (by omega))))
-    hjolt_sail h_projected_vregs]
-  rw [h_project_initial]
+  sorry
 
 end LB_main

@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Expansions.Mul
+import JoltBytecode.JoltISA.automaticEquivHand
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
@@ -385,7 +386,7 @@ def mulhProgramEqSailStatement (rs2 rs1 rd : regidx)
     (js : SailJoltState)
     (_h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.mulhProgram rs2 rs1 rd)).run js) =
+      ((JoltISA.execProgram (JoltISA.mulhProgramAuto rd rs1 rs2)).run js) =
     (execute_MUL rs2 rs1 rd mulhOp).run js.sail
 
 /-- Main program-level theorem: interpreting the Jolt ISA `MULH` expansion has
@@ -395,6 +396,7 @@ theorem mulhProgram_eq_sail (rs2 rs1 rd : regidx)
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     mulhProgramEqSailStatement rs2 rs1 rd js h := by
   unfold mulhProgramEqSailStatement
+  rw [← JoltISA.mulh_auto_eq rs2 rs1 rd]
   let v1 := h.rs1_val
   have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
   let v2 := h.rs2_val

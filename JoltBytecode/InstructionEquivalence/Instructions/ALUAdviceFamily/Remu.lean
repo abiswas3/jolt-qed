@@ -1,5 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
 import JoltBytecode.JoltISA.Expansions.DivRem
+import JoltBytecode.JoltISA.automaticEquivHand
 import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
@@ -243,7 +244,7 @@ def remuProgramCompletenessStatement
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   quotient = sail_div_value h.rs1_val h.rs2_val true →
     System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.remuProgram rs2 rs1 rd quotient)).run js) =
+      ((JoltISA.execProgram (JoltISA.remuProgramAuto rd rs1 rs2 quotient)).run js) =
     (execute_REM rs2 rs1 rd true).run js.sail
 
 def remuProgramSoundnessStatement
@@ -253,7 +254,7 @@ def remuProgramSoundnessStatement
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   rd ≠ regidx.Regidx 0 →
     ∀ js',
-      (JoltISA.execProgram (JoltISA.remuProgram rs2 rs1 rd quotient)).run js =
+      (JoltISA.execProgram (JoltISA.remuProgramAuto rd rs1 rs2 quotient)).run js =
           .ok RETIRE_SUCCESS js' →
         js'.sail = stateAfterWrite js.sail rd
           (sail_rem_value h.rs1_val h.rs2_val true)
@@ -272,6 +273,9 @@ theorem remuProgram_eq_sail
     (js : SailJoltState)
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     remuProgramEqSailStatement rs2 rs1 rd quotient js h := by
+  unfold remuProgramEqSailStatement remuProgramCompletenessStatement
+    remuProgramSoundnessStatement
+  rw [← JoltISA.remu_auto_eq rs2 rs1 rd quotient]
   constructor
   · intro hquotient
     subst quotient
