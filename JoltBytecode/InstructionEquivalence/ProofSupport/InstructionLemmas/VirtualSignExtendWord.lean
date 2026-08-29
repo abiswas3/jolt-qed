@@ -207,6 +207,24 @@ theorem exists_state_after_virtual_sign_extend_word_run_vreg_xreg
     simp [js', hne]
   · simpa only [js'] using virtual_sign_extend_word_run_vreg_xreg vd rs js x h hvd
 
+/-- `VirtualSignExtendWord` from a real source to a virtual destination, in the
+standard single-vreg-write shape used by program-block proofs. -/
+theorem virtual_sign_extend_word_run_vreg_xreg_ex
+    (vd : VReg) (rs : regidx) (js : SailJoltState) (x : BitVec 64)
+    (hread : rX_bits rs js.sail = .ok x js.sail)
+    (hvd : WritableVReg vd) :
+    ∃ js',
+      (execInstr (.VirtualSignExtendWord (.vreg vd) (.xreg rs))).run js =
+        .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd =
+        sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0) ∧
+      (∀ r, r ≠ vd → js'.vregs r = js.vregs r) ∧
+      js'.sail = js.sail := by
+  obtain ⟨js', _, hsail, hvalue, hpreserved, hrun⟩ :=
+    exists_state_after_virtual_sign_extend_word_run_vreg_xreg
+      vd rs js x hread hvd
+  exact ⟨js', hrun, hvalue, hpreserved, hsail⟩
+
 end JoltISA
 
 end
