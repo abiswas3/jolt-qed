@@ -253,9 +253,9 @@ def jolt_virtual_window_mask_w_value (base : BitVec 64) (imm : BitVec 12) : BitV
   let word := ((ea >>> 2) &&& (1 : BitVec 64)).toNat
   BitVec.ofNat 64 (0xFFFF_FFFF <<< (32 * word))
 
-/-- Fixed-width implementation of Rust's general `pext`: scan the low `fuel`
-bits of `x` and `mask`, packing selected bits toward bit zero. -/
-private def jolt_pext_nat : Nat → Nat → Nat → Nat
+/-- Recursive implementation used by `VirtualPext`. The first argument bounds
+the number of source/mask bits inspected. `execInstr` always supplies 64. -/
+def jolt_pext_nat : Nat → Nat → Nat → Nat
   | 0, _, _ => 0
   | fuel + 1, x, mask =>
       if mask % 2 = 1 then
@@ -263,8 +263,8 @@ private def jolt_pext_nat : Nat → Nat → Nat → Nat
       else
         jolt_pext_nat fuel (x / 2) (mask / 2)
 
-/-- Count the set bits in the low `fuel` bits of a natural number. -/
-private def jolt_popcount_nat : Nat → Nat → Nat
+/-- Count the set bits in the low `fuel` positions of a natural number. -/
+def jolt_popcount_nat : Nat → Nat → Nat
   | 0, _ => 0
   | fuel + 1, x => x % 2 + jolt_popcount_nat fuel (x / 2)
 

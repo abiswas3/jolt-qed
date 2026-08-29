@@ -1,5 +1,6 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualPext
 import Mathlib.Tactic.IntervalCases
 
 set_option linter.unusedVariables false
@@ -343,6 +344,147 @@ theorem word_offset_cases (addr : BitVec 64) (halign : addr &&& 3 = 0) :
     rw [hk_mod8]
     omega
   omega
+
+-- ============================================================================
+-- Fused window-mask / parallel-extract identities
+-- ============================================================================
+
+/-- The byte window mask selects exactly the addressed byte from a dword. -/
+theorem window_mask_b_pext (d base : BitVec 64) (imm : BitVec 12) :
+    jolt_virtual_pext_value d (jolt_virtual_window_mask_b_value base imm) =
+      zero_extend (m := 64)
+        (byte_of_dword d
+          ((load_effective_address base imm) &&& (7 : BitVec 64)).toNat) := by
+  let offset := ((load_effective_address base imm) &&& (7 : BitVec 64)).toNat
+  have hoffset : offset < 8 := by
+    simpa only [offset] using addr_and_seven_lt_eight (load_effective_address base imm)
+  have hfit : 8 * offset + 8 ≤ 64 := by omega
+  have hpext := JoltISA.pext_value_contiguous d (8 * offset) 8 hfit
+  simpa only [jolt_virtual_window_mask_b_value, load_effective_address, offset,
+    byte_of_dword, Nat.shiftLeft_eq,
+    show (0xFF : Nat) = 2 ^ 8 - 1 by norm_num] using hpext
+
+/-- Signed byte extraction is the same selected byte sign-extended to XLEN. -/
+theorem window_mask_b_pext_signed (d base : BitVec 64) (imm : BitVec 12) :
+    jolt_virtual_pext_signed_value d (jolt_virtual_window_mask_b_value base imm) =
+      sign_extend (m := 64)
+        (byte_of_dword d
+          ((load_effective_address base imm) &&& (7 : BitVec 64)).toNat) := by
+  let offset := ((load_effective_address base imm) &&& (7 : BitVec 64)).toNat
+  have hoffset : offset < 8 := by
+    simpa only [offset] using addr_and_seven_lt_eight (load_effective_address base imm)
+  have hfit : 8 * offset + 8 ≤ 64 := by omega
+  have hpext := JoltISA.pext_signed_value_contiguous d (8 * offset) 8 (by omega) hfit
+  simpa only [jolt_virtual_window_mask_b_value, load_effective_address, offset,
+    byte_of_dword, Nat.shiftLeft_eq,
+    show (0xFF : Nat) = 2 ^ 8 - 1 by norm_num] using hpext
+
+private theorem halfword_window_offset_eq (addr : BitVec 64)
+    (halign : addr &&& (1 : BitVec 64) = 0) :
+    (addr &&& (6 : BitVec 64)).toNat = (addr &&& (7 : BitVec 64)).toNat := by
+  have hseven : (7 : BitVec 64) = (6 : BitVec 64) ||| (1 : BitVec 64) := by decide
+  have hvec : addr &&& (7 : BitVec 64) = addr &&& (6 : BitVec 64) := by
+    rw [hseven, BitVec.and_or_distrib_left, halign]
+    exact BitVec.or_zero
+  exact congrArg BitVec.toNat hvec.symm
+
+private theorem word_selector_eq_offset_div_four (addr : BitVec 64) :
+    (((addr >>> 2) &&& (1 : BitVec 64)).toNat) =
+      (addr &&& (7 : BitVec 64)).toNat / 4 := by
+  rw [BitVec.toNat_and, BitVec.toNat_ushiftRight, BitVec.toNat_and]
+  have hone : (1 : BitVec 64).toNat = 1 := by decide
+  have hseven : (7 : BitVec 64).toNat = 7 := by decide
+  rw [hone, hseven, Nat.shiftRight_eq_div_pow]
+  rw [show (1 : Nat) = 2 ^ 1 - 1 by norm_num,
+    Nat.and_two_pow_sub_one_eq_mod]
+  rw [show (7 : Nat) = 2 ^ 3 - 1 by norm_num,
+    Nat.and_two_pow_sub_one_eq_mod]
+  norm_num
+  exact (Nat.mod_mul_right_div_self addr.toNat 4 2).symm
+
+/-- The halfword window mask selects the addressed aligned halfword. -/
+theorem window_mask_h_pext (d base : BitVec 64) (imm : BitVec 12)
+    (halign : load_effective_address base imm &&& (1 : BitVec 64) = 0) :
+    jolt_virtual_pext_value d (jolt_virtual_window_mask_h_value base imm) =
+      zero_extend (m := 64)
+        (halfword_of_dword d
+          ((load_effective_address base imm) &&& (7 : BitVec 64)).toNat) := by
+  let ea := load_effective_address base imm
+  let offset := (ea &&& (7 : BitVec 64)).toNat
+  have hoffset : offset < 7 := by
+    simpa only [ea, offset] using addr_and_seven_halfword_lt_seven ea halign
+  have hfit : 8 * offset + 16 ≤ 64 := by omega
+  have hpext := JoltISA.pext_value_contiguous d (8 * offset) 16 hfit
+  have hoffset_eq := halfword_window_offset_eq ea halign
+  simpa only [jolt_virtual_window_mask_h_value, load_effective_address, ea, offset,
+    hoffset_eq, halfword_of_dword, Nat.shiftLeft_eq,
+    show (0xFFFF : Nat) = 2 ^ 16 - 1 by norm_num] using hpext
+
+/-- Signed halfword extraction sign-extends the selected aligned halfword. -/
+theorem window_mask_h_pext_signed (d base : BitVec 64) (imm : BitVec 12)
+    (halign : load_effective_address base imm &&& (1 : BitVec 64) = 0) :
+    jolt_virtual_pext_signed_value d (jolt_virtual_window_mask_h_value base imm) =
+      sign_extend (m := 64)
+        (halfword_of_dword d
+          ((load_effective_address base imm) &&& (7 : BitVec 64)).toNat) := by
+  let ea := load_effective_address base imm
+  let offset := (ea &&& (7 : BitVec 64)).toNat
+  have hoffset : offset < 7 := by
+    simpa only [ea, offset] using addr_and_seven_halfword_lt_seven ea halign
+  have hfit : 8 * offset + 16 ≤ 64 := by omega
+  have hpext := JoltISA.pext_signed_value_contiguous d (8 * offset) 16 (by omega) hfit
+  have hoffset_eq := halfword_window_offset_eq ea halign
+  simpa only [jolt_virtual_window_mask_h_value, load_effective_address, ea, offset,
+    hoffset_eq, halfword_of_dword, Nat.shiftLeft_eq,
+    show (0xFFFF : Nat) = 2 ^ 16 - 1 by norm_num] using hpext
+
+/-- The word window mask selects the addressed aligned word. -/
+theorem window_mask_w_pext (d base : BitVec 64) (imm : BitVec 12)
+    (halign : load_effective_address base imm &&& (3 : BitVec 64) = 0) :
+    jolt_virtual_pext_value d (jolt_virtual_window_mask_w_value base imm) =
+      zero_extend (m := 64)
+        (word_of_dword d
+          ((load_effective_address base imm) &&& (7 : BitVec 64)).toNat) := by
+  let ea := load_effective_address base imm
+  let offset := (ea &&& (7 : BitVec 64)).toNat
+  let word := ((ea >>> 2) &&& (1 : BitVec 64)).toNat
+  have hoffset : offset < 5 := by
+    simpa only [ea, offset] using addr_and_seven_word_lt_five ea halign
+  have hword : word = offset / 4 := by
+    simpa only [word, offset] using word_selector_eq_offset_div_four ea
+  have hshift : 32 * word = 8 * offset := by
+    rcases word_offset_cases ea halign with hzero | hfour
+    · simp only [offset, hzero, hword]
+    · simp only [offset, hfour, hword]
+  have hfit : 32 * word + 32 ≤ 64 := by omega
+  have hpext := JoltISA.pext_value_contiguous d (32 * word) 32 hfit
+  simpa only [jolt_virtual_window_mask_w_value, load_effective_address, ea, word,
+    offset, hshift, word_of_dword, Nat.shiftLeft_eq,
+    show (0xFFFF_FFFF : Nat) = 2 ^ 32 - 1 by norm_num] using hpext
+
+/-- Signed word extraction sign-extends the selected aligned word. -/
+theorem window_mask_w_pext_signed (d base : BitVec 64) (imm : BitVec 12)
+    (halign : load_effective_address base imm &&& (3 : BitVec 64) = 0) :
+    jolt_virtual_pext_signed_value d (jolt_virtual_window_mask_w_value base imm) =
+      sign_extend (m := 64)
+        (word_of_dword d
+          ((load_effective_address base imm) &&& (7 : BitVec 64)).toNat) := by
+  let ea := load_effective_address base imm
+  let offset := (ea &&& (7 : BitVec 64)).toNat
+  let word := ((ea >>> 2) &&& (1 : BitVec 64)).toNat
+  have hoffset : offset < 5 := by
+    simpa only [ea, offset] using addr_and_seven_word_lt_five ea halign
+  have hword : word = offset / 4 := by
+    simpa only [word, offset] using word_selector_eq_offset_div_four ea
+  have hshift : 32 * word = 8 * offset := by
+    rcases word_offset_cases ea halign with hzero | hfour
+    · simp only [offset, hzero, hword]
+    · simp only [offset, hfour, hword]
+  have hfit : 32 * word + 32 ≤ 64 := by omega
+  have hpext := JoltISA.pext_signed_value_contiguous d (32 * word) 32 (by omega) hfit
+  simpa only [jolt_virtual_window_mask_w_value, load_effective_address, ea, word,
+    offset, hshift, word_of_dword, Nat.shiftLeft_eq,
+    show (0xFFFF_FFFF : Nat) = 2 ^ 32 - 1 by norm_num] using hpext
 
 -- ============================================================================
 -- Memory-shape bridges: the hashmap key fact for the direct load
