@@ -120,15 +120,12 @@ functions rather than open-coding that branch. -/
 
 /-! ## Store expansion layout -/
 
-/-- Rust store allocation layout on RV64: top-level `v0..v3`, then the
-recursive shift helper's scratch while those guards are live. -/
+/-- Rust store allocation layout on RV64: the four fused-store temporaries. -/
 theorem store_allocate_layout :
     allocateInstructionRegister [] = some (storeV0, [0]) ∧
     allocateInstructionRegister [0] = some (storeV1, [1, 0]) ∧
     allocateInstructionRegister [1, 0] = some (storeV2, [2, 1, 0]) ∧
-    allocateInstructionRegister [2, 1, 0] = some (storeV3, [3, 2, 1, 0]) ∧
-    allocateInstructionRegister [3, 2, 1, 0] =
-      some (storeInlineTmp, [4, 3, 2, 1, 0]) := by
+    allocateInstructionRegister [2, 1, 0] = some (storeV3, [3, 2, 1, 0]) := by
   decide
 
 /-! ## Atomic expansion layouts -/

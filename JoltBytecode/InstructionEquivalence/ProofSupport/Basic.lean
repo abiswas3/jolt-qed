@@ -261,7 +261,7 @@ def InstrWritesNoProtectedVReg : Instr → Prop
   | .MUL dst _ _ => DstWritesNoProtectedVReg dst
   | .MULW dst _ _ => DstWritesNoProtectedVReg dst
   | .MULHU dst _ _ => DstWritesNoProtectedVReg dst
-  | .ANDN _ _ _ => False
+  | .ANDN dst _ _ => DstWritesNoProtectedVReg dst
   | .OR dst _ _ => DstWritesNoProtectedVReg dst
   | .XOR dst _ _ => DstWritesNoProtectedVReg dst
   | .AND dst _ _ => DstWritesNoProtectedVReg dst
@@ -302,6 +302,9 @@ def InstrWritesNoProtectedVReg : Instr → Prop
   | .VirtualWindowMaskB dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualWindowMaskH dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualWindowMaskW dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualShiftDataB dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualShiftDataH dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualShiftDataW dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualPext dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualPextSigned dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualSignExtendWord dst _ => DstWritesNoProtectedVReg dst
@@ -981,7 +984,7 @@ theorem execInstr_preserves_protected
   | MULHU dst lhs rhs =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | ANDN dst lhs rhs =>
-      cases hsafe
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualPow2I dst imm =>
       cases hsafe
   | VirtualPow2IW dst imm =>
@@ -1062,6 +1065,12 @@ theorem execInstr_preserves_protected
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualWindowMaskW dst base imm =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualShiftDataB dst value address =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualShiftDataH dst value address =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualShiftDataW dst value address =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualPext dst value mask =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualPextSigned dst value mask =>

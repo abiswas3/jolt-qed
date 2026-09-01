@@ -1,5 +1,4 @@
 import JoltBytecode.JoltISA.Instruction
-import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.VirtualRegisters
 
 /-!
@@ -21,16 +20,15 @@ Two details matter for stores:
 * `VirtualAssertHalfwordAlignment` and `VirtualAssertWordAlignment` are the
   virtual assertions used by `SH` and `SW`. They return Sail's store/AMO
   alignment exception and stop the tail.
-* Jolt's RV64 `LUI` helper writes the normalized immediate directly.  Thus
-  `LUI v0, 0xff` writes `0xFF`, and `LUI v0, 0xffff` writes `0xFFFF`.
+* `VirtualWindowMask*` and `VirtualShiftData*` select the target lane before
+  `ANDN` clears it and `ADD` inserts the shifted store value.
 -/
 
 open Sail PreSail LeanRV64D.Functions
 
 namespace JoltISA
 
-/-- Rust store `v0`: effective address, then mask/shifted data depending on
-the store width. -/
+/-- Rust store `v0`: effective address. -/
 def storeV0 : VReg := inlineTmp0
 
 /-- Rust store `v1`: aligned doubleword base address. -/
@@ -39,11 +37,8 @@ def storeV1 : VReg := inlineTmp1
 /-- Rust store `v2`: loaded/spliced doubleword. -/
 def storeV2 : VReg := inlineTmp2
 
-/-- Rust store `v3`: shift amount or splice temporary. -/
+/-- Rust store `v3`: window mask, then shifted store data. -/
 def storeV3 : VReg := inlineTmp3
-
-/-- Recursive `SLL` scratch while Rust store `v0..v3` guards are live. -/
-def storeInlineTmp : VReg := inlineTmp4
 
 /-- RV64 Jolt expansion for `SB`, faithful to
 `tracer/src/instruction/sb.rs::inline_sequence_64`. -/
@@ -51,13 +46,10 @@ def sbProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
   .instr (.ADDI (.vreg storeV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg storeV1) (.vreg storeV0) (-8 : BitVec 12)) <|
   .instr (.LD .normal (.vreg storeV2) (.vreg storeV1) 0) <|
-  slliBlock (.vreg storeV3) (.vreg storeV0) (3 : BitVec 6) <|
-  .instr (.LUI (.vreg storeV0) (0xff : BitVec 64)) <|
-  sllBlock (.vreg storeV0) (.vreg storeV0) (.vreg storeV3) storeInlineTmp <|
-  sllBlock (.vreg storeV3) (.xreg rs2) (.vreg storeV3) storeInlineTmp <|
-  .instr (.XOR (.vreg storeV3) (.vreg storeV2) (.vreg storeV3)) <|
-  .instr (.AND (.vreg storeV3) (.vreg storeV3) (.vreg storeV0)) <|
-  .instr (.XOR (.vreg storeV2) (.vreg storeV2) (.vreg storeV3)) <|
+  .instr (.VirtualWindowMaskB (.vreg storeV3) (.vreg storeV0) 0) <|
+  .instr (.ANDN (.vreg storeV2) (.vreg storeV2) (.vreg storeV3)) <|
+  .instr (.VirtualShiftDataB (.vreg storeV3) (.xreg rs2) (.vreg storeV0)) <|
+  .instr (.ADD (.vreg storeV2) (.vreg storeV2) (.vreg storeV3)) <|
   .instr (.SD (.vreg storeV1) (.vreg storeV2) 0) <|
   .done RETIRE_SUCCESS
 
@@ -68,13 +60,10 @@ def shProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
   .instr (.ADDI (.vreg storeV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg storeV1) (.vreg storeV0) (-8 : BitVec 12)) <|
   .instr (.LD .normal (.vreg storeV2) (.vreg storeV1) 0) <|
-  slliBlock (.vreg storeV3) (.vreg storeV0) (3 : BitVec 6) <|
-  .instr (.LUI (.vreg storeV0) (0xffff : BitVec 64)) <|
-  sllBlock (.vreg storeV0) (.vreg storeV0) (.vreg storeV3) storeInlineTmp <|
-  sllBlock (.vreg storeV3) (.xreg rs2) (.vreg storeV3) storeInlineTmp <|
-  .instr (.XOR (.vreg storeV3) (.vreg storeV2) (.vreg storeV3)) <|
-  .instr (.AND (.vreg storeV3) (.vreg storeV3) (.vreg storeV0)) <|
-  .instr (.XOR (.vreg storeV2) (.vreg storeV2) (.vreg storeV3)) <|
+  .instr (.VirtualWindowMaskH (.vreg storeV3) (.vreg storeV0) 0) <|
+  .instr (.ANDN (.vreg storeV2) (.vreg storeV2) (.vreg storeV3)) <|
+  .instr (.VirtualShiftDataH (.vreg storeV3) (.xreg rs2) (.vreg storeV0)) <|
+  .instr (.ADD (.vreg storeV2) (.vreg storeV2) (.vreg storeV3)) <|
   .instr (.SD (.vreg storeV1) (.vreg storeV2) 0) <|
   .done RETIRE_SUCCESS
 
@@ -85,14 +74,10 @@ def swProgram (imm : BitVec 12) (rs2 rs1 : regidx) : Program :=
   .instr (.ADDI (.vreg storeV0) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg storeV1) (.vreg storeV0) (-8 : BitVec 12)) <|
   .instr (.LD .normal (.vreg storeV2) (.vreg storeV1) 0) <|
-  slliBlock (.vreg storeV0) (.vreg storeV0) (3 : BitVec 6) <|
-  .instr (.ORI (.vreg storeV3) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
-  srliBlock (.vreg storeV3) (.vreg storeV3) (32 : BitVec 6) <|
-  sllBlock (.vreg storeV3) (.vreg storeV3) (.vreg storeV0) storeInlineTmp <|
-  sllBlock (.vreg storeV0) (.xreg rs2) (.vreg storeV0) storeInlineTmp <|
-  .instr (.XOR (.vreg storeV0) (.vreg storeV2) (.vreg storeV0)) <|
-  .instr (.AND (.vreg storeV0) (.vreg storeV0) (.vreg storeV3)) <|
-  .instr (.XOR (.vreg storeV2) (.vreg storeV2) (.vreg storeV0)) <|
+  .instr (.VirtualWindowMaskW (.vreg storeV3) (.vreg storeV0) 0) <|
+  .instr (.ANDN (.vreg storeV2) (.vreg storeV2) (.vreg storeV3)) <|
+  .instr (.VirtualShiftDataW (.vreg storeV3) (.xreg rs2) (.vreg storeV0)) <|
+  .instr (.ADD (.vreg storeV2) (.vreg storeV2) (.vreg storeV3)) <|
   .instr (.SD (.vreg storeV1) (.vreg storeV2) 0) <|
   .done RETIRE_SUCCESS
 

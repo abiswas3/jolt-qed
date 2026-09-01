@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Write
+import JoltBytecode.JoltISA.Values
 
 /-!
 # Pure splice facts for store-family expansions
@@ -217,6 +218,174 @@ def wordSplice (dword_orig : BitVec 64) (word_val : BitVec 32) (shift : Nat) : B
   let w_ext : BitVec 64 := word_val.zeroExtend 64 <<< shift
   let mask : BitVec 64 := (0x00000000FFFFFFFF : BitVec 64) <<< shift
   dword_orig ^^^ ((dword_orig ^^^ w_ext) &&& mask)
+
+private theorem ofNat_shift_mask (mask n : Nat) :
+    BitVec.ofNat 64 (mask <<< n) = (BitVec.ofNat 64 mask) <<< n := by
+  apply BitVec.eq_of_toNat_eq
+  simp only [BitVec.toNat_ofNat, BitVec.toNat_shiftLeft, Nat.shiftLeft_eq]
+  apply (Nat.mul_mod mask (2 ^ n) (2 ^ 64)).trans
+  have h := (Nat.mul_mod (mask % 2 ^ 64) (2 ^ n) (2 ^ 64)).symm
+  rw [Nat.mod_mod] at h
+  exact h
+
+private theorem lowByte_zeroExtend (value : BitVec 64) :
+    (Sail.BitVec.extractLsb value 7 0).zeroExtend 64 =
+      value &&& (0xff : BitVec 64) := by
+  unfold Sail.BitVec.extractLsb
+  bv_decide
+
+private theorem lowHalfword_zeroExtend (value : BitVec 64) :
+    (Sail.BitVec.extractLsb value 15 0).zeroExtend 64 =
+      value &&& (0xffff : BitVec 64) := by
+  unfold Sail.BitVec.extractLsb
+  bv_decide
+
+private theorem lowWord_zeroExtend (value : BitVec 64) :
+    (Sail.BitVec.extractLsb value 31 0).zeroExtend 64 =
+      value &&& (0xffff_ffff : BitVec 64) := by
+  unfold Sail.BitVec.extractLsb
+  bv_decide
+
+private theorem masked_add_eq_splice (original value mask : BitVec 64)
+    (hcontained : value &&& mask = value) :
+    (original &&& ~~~mask) + value =
+      original ^^^ ((original ^^^ value) &&& mask) := by
+  bv_decide
+
+private theorem offset_toNat_eq_low_three {ea base : BitVec 64}
+    (hbase : base = ea &&& (-8 : BitVec 64)) :
+    (ea - base).toNat = (ea &&& (7 : BitVec 64)).toNat := by
+  subst base
+  exact congrArg BitVec.toNat (offset_sub_eq_low_three ea)
+
+/-- The fused byte-store mask/shift/add expression is the existing byte splice. -/
+theorem fusedByteSplice_eq (dword value ea base : BitVec 64)
+    (hsetup : ByteStoreFacts ea base) :
+    (dword &&& ~~~(jolt_virtual_window_mask_b_value ea 0)) +
+        jolt_virtual_shift_data_b_value value ea =
+      byteSplice dword (Sail.BitVec.extractLsb value 7 0)
+        ((ea - base).toNat * 8) := by
+  have hoff := offset_toNat_eq_low_three hsetup.base_is_aligned
+  let off := (ea - base).toNat
+  have hmask : jolt_virtual_window_mask_b_value ea 0 =
+      (0xff : BitVec 64) <<< (off * 8) := by
+    have hea0 : ea + sign_extend (m := 64) (0 : BitVec 12) = ea := by
+      rw [show sign_extend (m := 64) (0 : BitVec 12) = 0 by decide]
+      exact BitVec.add_zero ea
+    unfold jolt_virtual_window_mask_b_value
+    rw [hea0]
+    dsimp only
+    rw [← hoff, Nat.mul_comm]
+    exact ofNat_shift_mask 0xff (off * 8)
+  have hshift : jolt_virtual_shift_data_b_value value ea =
+      (value &&& (0xff : BitVec 64)) <<< (off * 8) := by
+    unfold jolt_virtual_shift_data_b_value
+    rw [← hoff, Nat.mul_comm]
+  have hcontained :
+      ((value &&& (0xff : BitVec 64)) <<< (off * 8)) &&&
+          ((0xff : BitVec 64) <<< (off * 8)) =
+        (value &&& (0xff : BitVec 64)) <<< (off * 8) := by
+    rw [← BitVec.shiftLeft_and_distrib]
+    apply congrArg (fun x : BitVec 64 => x <<< (off * 8))
+    bv_decide
+  rw [hmask, hshift]
+  rw [masked_add_eq_splice _ _ _ hcontained]
+  unfold byteSplice
+  rw [lowByte_zeroExtend]
+
+/-- The fused halfword-store mask/shift/add expression is the existing halfword splice. -/
+theorem fusedHalfwordSplice_eq (dword value ea base : BitVec 64)
+    (hsetup : HalfwordStoreFacts ea base) :
+    (dword &&& ~~~(jolt_virtual_window_mask_h_value ea 0)) +
+        jolt_virtual_shift_data_h_value value ea =
+      halfwordSplice dword (Sail.BitVec.extractLsb value 15 0)
+        ((ea - base).toNat * 8) := by
+  have hoff7 := offset_toNat_eq_low_three hsetup.base_is_aligned
+  have hlow : ea &&& (7 : BitVec 64) = ea &&& (6 : BitVec 64) := by
+    bv_decide
+  have hoff : (ea - base).toNat = (ea &&& (6 : BitVec 64)).toNat :=
+    hoff7.trans (congrArg BitVec.toNat hlow)
+  let off := (ea - base).toNat
+  have hmask : jolt_virtual_window_mask_h_value ea 0 =
+      (0xffff : BitVec 64) <<< (off * 8) := by
+    have hea0 : ea + sign_extend (m := 64) (0 : BitVec 12) = ea := by
+      rw [show sign_extend (m := 64) (0 : BitVec 12) = 0 by decide]
+      exact BitVec.add_zero ea
+    unfold jolt_virtual_window_mask_h_value
+    rw [hea0]
+    dsimp only
+    rw [← hoff, Nat.mul_comm]
+    exact ofNat_shift_mask 0xffff (off * 8)
+  have hshift : jolt_virtual_shift_data_h_value value ea =
+      (value &&& (0xffff : BitVec 64)) <<< (off * 8) := by
+    unfold jolt_virtual_shift_data_h_value
+    rw [← hoff, Nat.mul_comm]
+  have hcontained :
+      ((value &&& (0xffff : BitVec 64)) <<< (off * 8)) &&&
+          ((0xffff : BitVec 64) <<< (off * 8)) =
+        (value &&& (0xffff : BitVec 64)) <<< (off * 8) := by
+    rw [← BitVec.shiftLeft_and_distrib]
+    apply congrArg (fun x : BitVec 64 => x <<< (off * 8))
+    bv_decide
+  rw [hmask, hshift]
+  rw [masked_add_eq_splice _ _ _ hcontained]
+  unfold halfwordSplice
+  rw [lowHalfword_zeroExtend]
+
+/-- The fused word-store mask/shift/add expression is the existing word splice. -/
+theorem fusedWordSplice_eq (dword value ea base : BitVec 64)
+    (hsetup : WordStoreFacts ea base) :
+    (dword &&& ~~~(jolt_virtual_window_mask_w_value ea 0)) +
+        jolt_virtual_shift_data_w_value value ea =
+      wordSplice dword (Sail.BitVec.extractLsb value 31 0)
+        ((ea - base).toNat * 8) := by
+  have hoff7 := offset_toNat_eq_low_three hsetup.base_is_aligned
+  have hlow : ea &&& (7 : BitVec 64) = ea &&& (4 : BitVec 64) := by
+    bv_decide
+  have hoff : (ea - base).toNat = (ea &&& (4 : BitVec 64)).toNat :=
+    hoff7.trans (congrArg BitVec.toNat hlow)
+  let off := (ea - base).toNat
+  let word := ((ea >>> 2) &&& (1 : BitVec 64)).toNat
+  have hwordBits : (ea >>> 2) &&& (1 : BitVec 64) =
+      (ea &&& (4 : BitVec 64)) >>> 2 := by
+    bv_decide
+  have hwordShift : 32 * word = off * 8 := by
+    dsimp only [word, off]
+    rw [hwordBits]
+    simp only [BitVec.toNat_ushiftRight]
+    rcases hsetup.word_offset_cases with h0 | h4
+    · have hoff0 : (ea &&& (4 : BitVec 64)).toNat = 0 := by omega
+      rw [hoff0, h0]
+      norm_num
+    · have hoff4 : (ea &&& (4 : BitVec 64)).toNat = 4 := by omega
+      rw [hoff4, h4]
+      decide
+  have hmask : jolt_virtual_window_mask_w_value ea 0 =
+      (0xffff_ffff : BitVec 64) <<< (off * 8) := by
+    have hea0 : ea + sign_extend (m := 64) (0 : BitVec 12) = ea := by
+      rw [show sign_extend (m := 64) (0 : BitVec 12) = 0 by decide]
+      exact BitVec.add_zero ea
+    unfold jolt_virtual_window_mask_w_value
+    rw [hea0]
+    dsimp only
+    rw [show ((ea >>> 2) &&& (1 : BitVec 64)).toNat = word by rfl]
+    rw [hwordShift]
+    exact ofNat_shift_mask 0xffff_ffff (off * 8)
+  have hshift : jolt_virtual_shift_data_w_value value ea =
+      (value &&& (0xffff_ffff : BitVec 64)) <<< (off * 8) := by
+    unfold jolt_virtual_shift_data_w_value
+    rw [← hoff, Nat.mul_comm]
+  have hcontained :
+      ((value &&& (0xffff_ffff : BitVec 64)) <<< (off * 8)) &&&
+          ((0xffff_ffff : BitVec 64) <<< (off * 8)) =
+        (value &&& (0xffff_ffff : BitVec 64)) <<< (off * 8) := by
+    rw [← BitVec.shiftLeft_and_distrib]
+    apply congrArg (fun x : BitVec 64 => x <<< (off * 8))
+    bv_decide
+  rw [hmask, hshift]
+  rw [masked_add_eq_splice _ _ _ hcontained]
+  unfold wordSplice
+  rw [lowWord_zeroExtend]
 
 /-- `spliced` is obtained from `original` by replacing one byte at `offset`. -/
 def IsByteSplice (original spliced : BitVec 64) (byte_val : BitVec 8) (offset : Nat) :

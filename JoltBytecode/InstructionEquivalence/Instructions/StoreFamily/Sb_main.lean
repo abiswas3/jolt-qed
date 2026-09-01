@@ -97,13 +97,10 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   let writeTail : JoltISA.Program :=
     .instr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0) <| .done RETIRE_SUCCESS
   let spliceTail : JoltISA.Program :=
-    JoltISA.slliBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
-    .instr (.LUI (.vreg JoltISA.inlineTmp0) (0xff : BitVec 64)) <|
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp3) JoltISA.inlineTmp4 <|
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp3) (.xreg rs2) (.vreg JoltISA.inlineTmp3) JoltISA.inlineTmp4 <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
-    .instr (.AND (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0)) <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
+    .instr (.VirtualWindowMaskB (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) 0) <|
+    .instr (.ANDN (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
+    .instr (.VirtualShiftDataB (.vreg JoltISA.inlineTmp3) (.xreg rs2) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.ADD (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
     writeTail
   let base := compute_aligned_dword_base_address rs1_val imm
   let dword_orig :=
@@ -114,7 +111,7 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   rcases StoreProgramBlocks.setupBlock spliceTail imm rs1 js hpriv hmprv rs1_val hrs1
       h_base_aligned hbytes hload_pmp hread_mmio with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
-  rcases StoreProgramBlocks.byteSpliceBlock writeTail imm rs2 js js_load
+  rcases StoreProgramBlocks.fusedByteSpliceBlock writeTail imm rs2 js js_load
       rs1_val rs2_val dword_orig hsetup hload_sail hload_v0 hload_v1
       (by simpa [dword_orig] using hload_v2) hrs2 with
     ⟨js_splice, hsplice_run, hsplice_sail, hsplice_v1, hsplice_v2⟩
@@ -292,12 +289,11 @@ theorem sbProgram_preserves_projected_vregs
     Projection.ProjectedVRegsPreserved js js' := by
   have hsafe : JoltISA.ProgramWritesNoProtectedVReg
       (JoltISA.sbProgram imm rs2 rs1) := by
-    unfold JoltISA.sbProgram JoltISA.slliBlock JoltISA.sllBlock
+    unfold JoltISA.sbProgram
     simp [JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
       JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3,
-      JoltISA.storeInlineTmp]
+      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3]
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     hsafe hrun
 

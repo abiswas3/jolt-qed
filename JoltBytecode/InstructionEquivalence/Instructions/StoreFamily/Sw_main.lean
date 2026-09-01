@@ -41,15 +41,6 @@ noncomputable section
 
 namespace SW_main
 
-/-- Reading architectural register `x0` is always the pure zero read.
-
-`SW`'s mask construction uses `ORI v3, x0, -1`, so the program-block proof
-needs this fact at the point where the mask block begins. -/
-private theorem read_x0_eq_zero (s : SailState) :
-    rX_bits (regidx.Regidx 0) s = .ok 0#64 s := by
-  unfold rX_bits rX regval_from_reg zero_reg zeros
-  simp [Sail.BitVec.toNatInt, bind, EStateM.bind, pure, EStateM.pure]
-
 /-- The exact dword value that the Rust `SW` inline sequence writes back.
 
 The Jolt program first loads the enclosing dword, then replaces exactly the
@@ -119,35 +110,24 @@ theorem swProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   let writeTail : JoltISA.Program :=
     .instr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0) <| .done RETIRE_SUCCESS
   let spliceTail : JoltISA.Program :=
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp0) (.xreg rs2) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp4 <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp0)) <|
-    .instr (.AND (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp3)) <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.VirtualWindowMaskW (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) 0) <|
+    .instr (.ANDN (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
+    .instr (.VirtualShiftDataW (.vreg JoltISA.inlineTmp3) (.xreg rs2) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.ADD (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
     writeTail
-  let maskTail : JoltISA.Program :=
-    JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
-    .instr (.ORI (.vreg JoltISA.inlineTmp3) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
-    JoltISA.srliBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (32 : BitVec 6) <|
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp4 <|
-    spliceTail
   let base := compute_aligned_dword_base_address rs1_val imm
   let dword_orig :=
     loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
       hbytes h_base_aligned.no_ovf
   let dword_new := swSplicedDword imm rs1_val rs2_val dword_orig
   let finalSail := state_after_dword_store js.sail base dword_new
-  rcases StoreProgramBlocks.assertWordSetupBlockAligned maskTail
+  rcases StoreProgramBlocks.assertWordSetupBlockAligned spliceTail
       imm rs1 js hpriv hmprv rs1_val hrs1 hsetup.word_aligned
       h_base_aligned hbytes hload_pmp hread_mmio with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
-  have hx0 : rX_bits (regidx.Regidx 0) js_load.sail = .ok 0#64 js_load.sail :=
-    read_x0_eq_zero js_load.sail
-  rcases StoreProgramBlocks.wordMaskBlock spliceTail imm js js_load rs1_val
-      dword_orig hload_sail hload_v0 hload_v1
-      (by simpa [dword_orig] using hload_v2) hx0 with
-    ⟨js_mask, hmask_run, hmask_sail, hmask_v0, hmask_v1, hmask_v2, hmask_v3⟩
-  rcases StoreProgramBlocks.wordSpliceBlock writeTail imm rs2 js js_mask
-      rs1_val rs2_val dword_orig hsetup hmask_sail hmask_v0 hmask_v1 hmask_v2 hmask_v3 hrs2 with
+  rcases StoreProgramBlocks.fusedWordSpliceBlock writeTail imm rs2 js js_load
+      rs1_val rs2_val dword_orig hsetup hload_sail hload_v0 hload_v1
+      (by simpa [dword_orig] using hload_v2) hrs2 with
     ⟨js_splice, hsplice_run, hsplice_sail, hsplice_v1, hsplice_v2⟩
   have hdword_new : js_splice.vregs JoltISA.inlineTmp2 = dword_new := by
     simpa [dword_new, swSplicedDword] using hsplice_v2
@@ -165,10 +145,8 @@ theorem swProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   refine ⟨js_write, ?_, ?_⟩
   · calc
       (JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js =
-          (JoltISA.execProgram maskTail).run js_load := by
-            simpa [JoltISA.swProgram, maskTail, spliceTail, writeTail] using hsetup_run
-      _ = (JoltISA.execProgram spliceTail).run js_mask := by
-            simpa [maskTail, spliceTail, writeTail] using hmask_run
+          (JoltISA.execProgram spliceTail).run js_load := by
+            simpa [JoltISA.swProgram, spliceTail, writeTail] using hsetup_run
       _ = (JoltISA.execProgram writeTail).run js_splice := by
             simpa [spliceTail, writeTail] using hsplice_run
       _ = (JoltISA.execProgram (.done RETIRE_SUCCESS)).run js_write := by
@@ -337,14 +315,10 @@ theorem swProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
     .instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
     .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
     .instr (.LD .normal (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp1) 0) <|
-    JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
-    .instr (.ORI (.vreg JoltISA.inlineTmp3) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
-    JoltISA.srliBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (32 : BitVec 6) <|
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp4 <|
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp0) (.xreg rs2) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp4 <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp0)) <|
-    .instr (.AND (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp3)) <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.VirtualWindowMaskW (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) 0) <|
+    .instr (.ANDN (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
+    .instr (.VirtualShiftDataW (.vreg JoltISA.inlineTmp3) (.xreg rs2) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.ADD (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
     .instr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0) <|
     .done RETIRE_SUCCESS
   have h := StoreProgramBlocks.assertWordBlockMisaligned tail
@@ -395,12 +369,11 @@ theorem swProgram_preserves_projected_vregs
     Projection.ProjectedVRegsPreserved js js' := by
   have hsafe : JoltISA.ProgramWritesNoProtectedVReg
       (JoltISA.swProgram imm rs2 rs1) := by
-    unfold JoltISA.swProgram JoltISA.slliBlock JoltISA.srliBlock JoltISA.sllBlock
+    unfold JoltISA.swProgram
     simp [JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
       JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3,
-      JoltISA.storeInlineTmp]
+      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3]
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     hsafe hrun
 
