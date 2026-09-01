@@ -39,11 +39,12 @@ inductive LoadFaultClass where
   | amo
   deriving Repr
 
+-- To make sure the Sail Pipeline does not complain.
 def LoadFaultClass.alignFault : LoadFaultClass → ExceptionType
   | .normal => ExceptionType.E_Load_Addr_Align ()
   | .amo => ExceptionType.E_SAMO_Addr_Align ()
 
--- Opcodes
+-- Opcodes (Jolt ISA)
 inductive Instr where
   | ADDI (dst : Dst) (src : Src) (imm : BitVec 12)
   | ADDIW (dst : Dst) (src : Src) (imm : BitVec 12)
@@ -113,6 +114,9 @@ inductive Instr where
   | VirtualWindowMaskW (dst : Dst) (base : Src) (imm : BitVec 12)
   | VirtualPext (dst : Dst) (value mask : Src)
   | VirtualPextSigned (dst : Dst) (value mask : Src)
+  | VirtualShiftDataB (dst : Dst) (value address : Src)
+  | VirtualShiftDataH (dst : Dst) (value address : Src)
+  | VirtualShiftDataW (dst : Dst) (value address : Src)
   | VirtualSignExtendWord (dst : Dst) (src : Src)
   | VirtualZeroExtendWord (dst : Dst) (src : Src)
   | VirtualMovsign (dst : Dst) (src : Src)
@@ -239,7 +243,7 @@ def pureWritebackTraceProgram (rd : regidx) (normal : Program) : Program :=
 
 /-- The first virtual register Rust's `allocate()` returns for top-level
 side-effecting `rd = x0` source rewrites. -/
-def rdZeroRewriteVReg : VReg := inlineTmp 0
+abbrev rdZeroRewriteVReg : VReg := inlineTmp 0
 
 /-- Rust's source-materialization rule for side-effecting instructions with
 `rd = x0`: keep the side effect, but rewrite the destination to a temporary

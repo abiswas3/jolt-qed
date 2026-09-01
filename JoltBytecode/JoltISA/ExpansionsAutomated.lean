@@ -203,15 +203,10 @@ def sbProgramAuto (rs1 rs2 : regidx) (imm : BitVec 12) : Program :=
   .instr (.ADDI (.vreg (BitVec.ofNat 7 40)) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg (BitVec.ofNat 7 41)) (.vreg (BitVec.ofNat 7 40)) (-8 : BitVec 12)) <|
   .instr (.LD .normal (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 41)) (0 : BitVec 12)) <|
-  .instr (.VirtualMULI (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 40)) (slliMultiplier 3)) <|
-  .instr (.LUI (.vreg (BitVec.ofNat 7 40)) (255 : BitVec 64)) <|
-  .instr (.VirtualPow2 (.vreg (BitVec.ofNat 7 44)) (.vreg (BitVec.ofNat 7 43))) <|
-  .instr (.MUL (.vreg (BitVec.ofNat 7 40)) (.vreg (BitVec.ofNat 7 40)) (.vreg (BitVec.ofNat 7 44))) <|
-  .instr (.VirtualPow2 (.vreg (BitVec.ofNat 7 44)) (.vreg (BitVec.ofNat 7 43))) <|
-  .instr (.MUL (.vreg (BitVec.ofNat 7 43)) (.xreg rs2) (.vreg (BitVec.ofNat 7 44))) <|
-  .instr (.XOR (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
-  .instr (.AND (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 40))) <|
-  .instr (.XOR (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
+  .instr (.VirtualWindowMaskB (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 40)) (0 : BitVec 12)) <|
+  .instr (.ANDN (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
+  .instr (.VirtualShiftDataB (.vreg (BitVec.ofNat 7 43)) (.xreg rs2) (.vreg (BitVec.ofNat 7 40))) <|
+  .instr (.ADD (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
   .instr (.SD (.vreg (BitVec.ofNat 7 41)) (.vreg (BitVec.ofNat 7 42)) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
@@ -221,15 +216,10 @@ def shProgramAuto (rs1 rs2 : regidx) (imm : BitVec 12) : Program :=
   .instr (.ADDI (.vreg (BitVec.ofNat 7 40)) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg (BitVec.ofNat 7 41)) (.vreg (BitVec.ofNat 7 40)) (-8 : BitVec 12)) <|
   .instr (.LD .normal (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 41)) (0 : BitVec 12)) <|
-  .instr (.VirtualMULI (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 40)) (slliMultiplier 3)) <|
-  .instr (.LUI (.vreg (BitVec.ofNat 7 40)) (65535 : BitVec 64)) <|
-  .instr (.VirtualPow2 (.vreg (BitVec.ofNat 7 44)) (.vreg (BitVec.ofNat 7 43))) <|
-  .instr (.MUL (.vreg (BitVec.ofNat 7 40)) (.vreg (BitVec.ofNat 7 40)) (.vreg (BitVec.ofNat 7 44))) <|
-  .instr (.VirtualPow2 (.vreg (BitVec.ofNat 7 44)) (.vreg (BitVec.ofNat 7 43))) <|
-  .instr (.MUL (.vreg (BitVec.ofNat 7 43)) (.xreg rs2) (.vreg (BitVec.ofNat 7 44))) <|
-  .instr (.XOR (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
-  .instr (.AND (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 40))) <|
-  .instr (.XOR (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
+  .instr (.VirtualWindowMaskH (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 40)) (0 : BitVec 12)) <|
+  .instr (.ANDN (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
+  .instr (.VirtualShiftDataH (.vreg (BitVec.ofNat 7 43)) (.xreg rs2) (.vreg (BitVec.ofNat 7 40))) <|
+  .instr (.ADD (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
   .instr (.SD (.vreg (BitVec.ofNat 7 41)) (.vreg (BitVec.ofNat 7 42)) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 
@@ -296,16 +286,10 @@ def swProgramAuto (rs1 rs2 : regidx) (imm : BitVec 12) : Program :=
   .instr (.ADDI (.vreg (BitVec.ofNat 7 40)) (.xreg rs1) imm) <|
   .instr (.ANDI (.vreg (BitVec.ofNat 7 41)) (.vreg (BitVec.ofNat 7 40)) (-8 : BitVec 12)) <|
   .instr (.LD .normal (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 41)) (0 : BitVec 12)) <|
-  .instr (.VirtualMULI (.vreg (BitVec.ofNat 7 40)) (.vreg (BitVec.ofNat 7 40)) (slliMultiplier 3)) <|
-  .instr (.ORI (.vreg (BitVec.ofNat 7 43)) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
-  .instr (.VirtualSRLI (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 43)) (srliBitmask 32)) <|
-  .instr (.VirtualPow2 (.vreg (BitVec.ofNat 7 44)) (.vreg (BitVec.ofNat 7 40))) <|
-  .instr (.MUL (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 44))) <|
-  .instr (.VirtualPow2 (.vreg (BitVec.ofNat 7 44)) (.vreg (BitVec.ofNat 7 40))) <|
-  .instr (.MUL (.vreg (BitVec.ofNat 7 40)) (.xreg rs2) (.vreg (BitVec.ofNat 7 44))) <|
-  .instr (.XOR (.vreg (BitVec.ofNat 7 40)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 40))) <|
-  .instr (.AND (.vreg (BitVec.ofNat 7 40)) (.vreg (BitVec.ofNat 7 40)) (.vreg (BitVec.ofNat 7 43))) <|
-  .instr (.XOR (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 40))) <|
+  .instr (.VirtualWindowMaskW (.vreg (BitVec.ofNat 7 43)) (.vreg (BitVec.ofNat 7 40)) (0 : BitVec 12)) <|
+  .instr (.ANDN (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
+  .instr (.VirtualShiftDataW (.vreg (BitVec.ofNat 7 43)) (.xreg rs2) (.vreg (BitVec.ofNat 7 40))) <|
+  .instr (.ADD (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 42)) (.vreg (BitVec.ofNat 7 43))) <|
   .instr (.SD (.vreg (BitVec.ofNat 7 41)) (.vreg (BitVec.ofNat 7 42)) (0 : BitVec 12)) <|
   .done RETIRE_SUCCESS
 

@@ -9,7 +9,6 @@ This file tells us how to run a program.
 By run we mean how each intruction does state transition on Jolt CPU. 
 The exec logic should be matched against the fn exec block in the corresponding 
 rust code
-TODO: Double check this is the case still as project as grown over time
 
 `execInstr` gives each Jolt-ISA instruction its monadic meaning over
 `SailJoltState`.  `execProgram` is the small interpreter used by generated
@@ -358,6 +357,21 @@ def execInstr : Instr → JoltMonad ExecutionResult
       let x ← readSrc value
       let y ← readSrc mask
       writeDst dst (jolt_virtual_pext_signed_value x y)
+      pure RETIRE_SUCCESS
+  | .VirtualShiftDataB dst value address => do
+      let x ← readSrc value
+      let ea ← readSrc address
+      writeDst dst (jolt_virtual_shift_data_b_value x ea)
+      pure RETIRE_SUCCESS
+  | .VirtualShiftDataH dst value address => do
+      let x ← readSrc value
+      let ea ← readSrc address
+      writeDst dst (jolt_virtual_shift_data_h_value x ea)
+      pure RETIRE_SUCCESS
+  | .VirtualShiftDataW dst value address => do
+      let x ← readSrc value
+      let ea ← readSrc address
+      writeDst dst (jolt_virtual_shift_data_w_value x ea)
       pure RETIRE_SUCCESS
   | .VirtualSignExtendWord dst src => do
       let x ← readSrc src

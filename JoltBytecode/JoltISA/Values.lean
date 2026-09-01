@@ -253,6 +253,21 @@ def jolt_virtual_window_mask_w_value (base : BitVec 64) (imm : BitVec 12) : BitV
   let word := ((ea >>> 2) &&& (1 : BitVec 64)).toNat
   BitVec.ofNat 64 (0xFFFF_FFFF <<< (32 * word))
 
+/-- RV64 `VirtualShiftDataB` value. -/
+def jolt_virtual_shift_data_b_value (value address : BitVec 64) : BitVec 64 :=
+  let offset := (address &&& (7 : BitVec 64)).toNat
+  (value &&& (0xFF : BitVec 64)) <<< (8 * offset)
+
+/-- RV64 `VirtualShiftDataH` value. Bit zero of the effective address is ignored. -/
+def jolt_virtual_shift_data_h_value (value address : BitVec 64) : BitVec 64 :=
+  let offset := (address &&& (6 : BitVec 64)).toNat
+  (value &&& (0xFFFF : BitVec 64)) <<< (8 * offset)
+
+/-- RV64 `VirtualShiftDataW` value. Only effective-address bit two selects the lane. -/
+def jolt_virtual_shift_data_w_value (value address : BitVec 64) : BitVec 64 :=
+  let offset := (address &&& (4 : BitVec 64)).toNat
+  (value &&& (0xFFFF_FFFF : BitVec 64)) <<< (8 * offset)
+
 /-- Recursive implementation used by `VirtualPext`. The first argument bounds
 the number of source/mask bits inspected. `execInstr` always supplies 64. -/
 def jolt_pext_nat : Nat → Nat → Nat → Nat
