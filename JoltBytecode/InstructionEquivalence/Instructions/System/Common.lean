@@ -2,6 +2,7 @@ import JoltBytecode.Assumptions
 import JoltBytecode.JoltISA.Expansions.System
 import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
 import JoltBytecode.InstructionEquivalence.ProofSupport.SystemHelpers
+import JoltBytecode.InstructionEquivalence.ProofSupport.ProtectedVRegWrites
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.ADDI
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualMULI
 
@@ -53,6 +54,18 @@ def systemProject (js : SailJoltState) : SailState :=
         |>.insert Register.mtval (js.vregs JoltISA.mtvalVReg))
         |>.insert Register.mstatus (js.vregs JoltISA.mstatusVReg)) }
 
+/-- TODO: Docs -/
+@[simp] def project (js : SailJoltState) : SailState :=
+  js.sail
+
+/-- TODO: Docs -/
+def projectResult
+    (r : EStateM.Result (Error exception) SailJoltState α) :
+    EStateM.Result (Error exception) SailState α :=
+  match r with
+  | .ok a js' => .ok a (project js')
+  | .error e js' => .error e (project js')
+
 /-- Project a Jolt run result through `systemProject`, preserving the result
 value and error shape while materializing virtual CSRs in the Sail state. -/
 def systemProjectResult
@@ -61,6 +74,15 @@ def systemProjectResult
   match r with
   | .ok a js' => .ok a (systemProject js')
   | .error e js' => .error e (systemProject js')
+
+/-- TODO: Docs -/
+theorem systemProjectResult_execProgram_eq_projectResult
+    (program : JoltISA.Program) (js : SailJoltState)
+    (hlinked : LinkedCSRs js)
+    (h : program.DoesNotWriteProtectedVRegs) :
+    systemProjectResult ((JoltISA.execProgram program).run js) =
+      projectResult ((JoltISA.execProgram program).run js) := by
+  sorry
 
 /-- Re-inserting a dependent-map value that is already present leaves the map
 unchanged. -/

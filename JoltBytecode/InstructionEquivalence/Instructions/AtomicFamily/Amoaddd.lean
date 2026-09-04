@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Dword
+import JoltBytecode.InstructionEquivalence.Instructions.System.Common
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
@@ -10,6 +11,42 @@ set_option autoImplicit true
 noncomputable section
 
 namespace AtomicFamily
+
+theorem amoadddProgram_doesNotWriteProtectedVRegs
+    (rs2 rs1 rd : regidx) :
+    (JoltISA.amoadddProgram rs2 rs1 rd).DoesNotWriteProtectedVRegs := by
+  have hdst :
+      (JoltISA.amoDstFor rd).DoesNotWriteProtectedVRegs := by
+    unfold JoltISA.amoDstFor JoltISA.sideEffectingRdZeroDst
+    split
+    · rw [JoltISA.Dst.vreg_doesNotWriteProtectedVRegs_iff]
+      exact JoltISA.not_protected_of_instructionTmp
+        (r := JoltISA.inlineTmp 0) (n := 0) rfl
+    · exact JoltISA.Dst.xreg_doesNotWriteProtectedVRegs rd
+  unfold JoltISA.amoadddProgram JoltISA.amoDoubleBinopProgram
+  rw [JoltISA.Program.instr_doesNotWriteProtectedVRegs_iff]
+  constructor
+  · change
+      (JoltISA.Dst.vreg
+        (JoltISA.amoDoubleBinopOldVRegFor rd)).DoesNotWriteProtectedVRegs
+    rw [JoltISA.Dst.vreg_doesNotWriteProtectedVRegs_iff]
+    exact JoltISA.amoDoubleBinopOldVRegFor_not_protected rd
+  · rw [JoltISA.Program.instr_doesNotWriteProtectedVRegs_iff]
+    constructor
+    · change
+        (JoltISA.Dst.vreg
+          (JoltISA.amoDoubleBinopNewVRegFor rd)).DoesNotWriteProtectedVRegs
+      rw [JoltISA.Dst.vreg_doesNotWriteProtectedVRegs_iff]
+      exact JoltISA.amoDoubleBinopNewVRegFor_not_protected rd
+    · rw [JoltISA.Program.instr_doesNotWriteProtectedVRegs_iff]
+      constructor
+      · unfold JoltISA.Instr.DoesNotWriteProtectedVRegs
+        unfold JoltISA.Instr.WritesProtectedVReg
+        intro hfalse
+        exact hfalse
+      · rw [JoltISA.Program.instr_doesNotWriteProtectedVRegs_iff]
+        exact ⟨hdst,
+          JoltISA.Program.done_doesNotWriteProtectedVRegs RETIRE_SUCCESS⟩
 
 /-- Sail's generated `AMOADD.D` result expression reduces to dword addition. -/
 theorem amoaddd_sail_result (rs2Val loaded : BitVec 64) :
@@ -80,9 +117,10 @@ every protected Jolt register on successful runs. -/
 def amoadddProgramEqSailStatement
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (_h : AmoDwordProgramEqSailAssumptions amoop.AMOADD rs2 rs1 rd js) : Prop :=
-  ProgramMatchesSailWithProtectedFrame js
-    ((JoltISA.execProgram (JoltISA.amoadddProgramAuto rd rs1 rs2)).run js)
-    ((execute_AMO amoop.AMOADD false false rs2 rs1 8 rd).run js.sail)
+  System.systemProjectResult
+      ((JoltISA.execProgram
+        (JoltISA.amoadddProgramAuto rd rs1 rs2)).run js) =
+    (execute_AMO amoop.AMOADD false false rs2 rs1 8 rd).run js.sail
 
 theorem amoadddProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
@@ -90,13 +128,10 @@ theorem amoadddProgram_eq_sail
     amoadddProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amoadddProgramEqSailStatement
   rw [← JoltISA.amoaddd_auto_eq rs2 rs1 rd]
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact amoadddProgram_project_eq_sail rs2 rs1 rd js h
-  · simp [JoltISA.amoadddProgram, JoltISA.amoDoubleBinopProgram,
-      JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg]
-    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
+  rw [System.systemProjectResult_execProgram_eq_projectResult
+    (JoltISA.amoadddProgram rs2 rs1 rd) js h.linkedCSRs
+    (amoadddProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)]
+  exact amoadddProgram_project_eq_sail rs2 rs1 rd js h
 
 end AtomicFamily
 
