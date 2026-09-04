@@ -215,8 +215,8 @@ inductive Program where
   | instr (instr : Instr) (next : Program)
   deriving Repr
 
-/-- Build the common straight-line "run every instruction, then retire"
-program. -/
+/-- Given a list of instructions build a straight-line "run every instruction, then retire"
+program -/
 def Program.seq (instrs : List Instr) : Program :=
   instrs.foldr Program.instr (.done RETIRE_SUCCESS)
 

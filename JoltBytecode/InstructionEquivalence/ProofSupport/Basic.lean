@@ -4,6 +4,7 @@ import JoltBytecode.JoltISA.VirtualRegisters
 import JoltBytecode.InstructionEquivalence.ProofSupport.ValueLemmas
 import JoltBytecode.InstructionEquivalence.ProofSupport.VirtualRegisters
 import JoltBytecode.InstructionEquivalence.ProofSupport.ExpansionLayouts
+import JoltBytecode.InstructionEquivalence.ProofSupport.ProtectedVRegWrites
 
 set_option linter.unusedVariables false
 

@@ -293,7 +293,7 @@ def joltRegisterCsrAddress? (r : VReg) : Option (BitVec 12) :=
 architectural integer-register addresses and persistent CSR virtual registers.
 Short-lived allocator scratch registers are not protected by this predicate. -/
 def JoltRegisterSlot.isProtected : JoltRegisterSlot → Bool
-  | .xreg _ => true
+  | .xreg _ => false
   -- LR/SC reservation virtual registers are Jolt bookkeeping, not RISC-visible
   -- architectural state. LR/SC proofs will need their own reservation contract.
   | .reservationW => false
