@@ -79,7 +79,7 @@ private theorem offset_sub_eq_low_three (ea : BitVec 64) :
   have hsplit := write_addr_split_aligned_offset ea
   rw [offset_bv_eq_low_three ea] at hsplit
   nth_rewrite 1 [← hsplit]
-  simpa [BitVec.add_comm] using
+  simpa only [BitVec.add_comm] using
     (BitVec.add_sub_cancel (ea &&& (7 : BitVec 64)) (ea &&& (-8 : BitVec 64)))
 
 theorem ea_toNat_eq_base_plus_offset (ea : BitVec 64) :
