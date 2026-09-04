@@ -289,9 +289,7 @@ def joltRegisterSailTarget? (r : VReg) : Option Register :=
 def joltRegisterCsrAddress? (r : VReg) : Option (BitVec 12) :=
   (joltRegisterSlot r).csrAddress?
 
-/-- True exactly for Jolt register addresses that are semantically protected:
-architectural integer-register addresses and persistent CSR virtual registers.
-Short-lived allocator scratch registers are not protected by this predicate. -/
+/-- TODO: Docs -/
 def JoltRegisterSlot.isProtected : JoltRegisterSlot → Bool
   | .xreg _ => false
   -- LR/SC reservation virtual registers are Jolt bookkeeping, not RISC-visible
