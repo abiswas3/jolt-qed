@@ -43,6 +43,11 @@ theorem addiwInstr_eq_sail
   -- Jolt side
   simp only [JoltISA.execInstr, JoltISA.readSrc, JoltISA.writeDst, liftSail,
     bind, EStateM.bind, h.rs1_read, h_write]
+  simp only [pure, EStateM.pure]
+  -- TODO: (ari) Here we can change the goal from system project to normal project 
+  -- I think the current version is much too complex (but I could be wrong)
+  -- If I had this program does not touch system instructions i could just simp [projectResult]
+  -- and close this theorem.
   exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
     (op h.rs1_val imm)
     h.linkedCSRs h_write
