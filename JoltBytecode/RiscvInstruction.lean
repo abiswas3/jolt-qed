@@ -615,7 +615,8 @@ def equivalenceStatement :
     | .MRET =>
       System.mretProgramEqSailStatement js _h
 
-/-- Given Risc indtruction and equivalence assumptions, give me the proof of the equivalence statement-/
+/-- Given Risc indtruction and equivalence assumptions, 
+    give me the proof of the equivalence statement-/
 theorem equivalenceStatement_holds :
     (instr : RiscvInstruction) →
     (js : SailJoltState) →

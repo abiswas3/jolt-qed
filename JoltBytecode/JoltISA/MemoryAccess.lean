@@ -3,20 +3,8 @@ import LeanRV64D.Prelude
 /-!
 # Jolt ISA memory address vocabulary
 
-Pure address expressions used by public assumption bundles and instruction-
-equivalence proofs.  This file is the memory analogue of `RegisterAccess.lean`'s
-address layer: it contains no assumptions, memory-state predicates, or
-proof-collapse lemmas.
-
-The `Memory` namespace holds the canonical names.  The top-level compatibility
-abbrevs below (`aligned_dword_addr`, `load_effective_address`,
-`compute_aligned_dword_base_address`) preserve the legacy spellings used by
-existing load/store proofs.
-
-Phase 2 of the memory-access cleanup will introduce `memRead`/`memWrite`
-helpers wrapping `liftSail (vmem_*_addr …)` and rewire `execInstr`'s `LD`/`SD`
-to use them.  That step touches the load/store proof theory and is deliberately
-scoped separately from this address-vocabulary consolidation.
+These are small helper abbreviations or definitions that make memory
+addressing more readable.
 -/
 
 open Sail PreSail LeanRV64D.Functions
@@ -41,11 +29,8 @@ abbrev effectiveDwordBase12 (base : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
 
 end Memory
 
-/-! Compatibility names used by existing load/store proofs. -/
 
-/-- Common aligned dword address used by the Jolt inline load sequences:
-compute the effective address, align it down to an 8-byte boundary, then use
-zero offset for the actual `LD`. -/
+/-- The double word aligned address -/
 abbrev aligned_dword_addr (v : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
   (v + sign_extend (m := 64) imm) &&& sign_extend (m := 64) (-8 : BitVec 12)
 

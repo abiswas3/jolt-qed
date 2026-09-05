@@ -9,8 +9,7 @@ This file packages primitive assumptions from `JoltBytecode.Assumptions` into
 the public bundles used by instruction-equivalence theorems. It does not add
 new primitive assumptions.
 
-The theorem-facing bundles expose machine-mode execution facts directly. There
-is intentionally no `JoltConfig` wrapper.
+The theorem-facing bundles expose machine-mode execution facts directly. 
 -/
 
 set_option linter.unusedVariables false
