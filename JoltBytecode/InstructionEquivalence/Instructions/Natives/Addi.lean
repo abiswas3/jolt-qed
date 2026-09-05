@@ -50,14 +50,13 @@ theorem addiInstr_preserves_projected_vregs
         .ok result js') :
     Projection.ProjectedVRegsPreserved js js' := by
   have hsafe :
-      JoltISA.InstrWritesNoProtectedVReg
-        (.ADDI (.xreg rd) (.xreg rs1) imm) := by
-    simp only [JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg]
+      (JoltISA.Instr.ADDI (.xreg rd) (.xreg rs1) imm).DoesNotWriteProtectedVRegs := by
+    exact JoltISA.Dst.xreg_doesNotWriteProtectedVRegs rd
   have hprotected :=
     JoltISA.execInstr_preserves_protected
       (instr := .ADDI (.xreg rd) (.xreg rs1) imm)
-      (js := js) (js' := js') (result := result) hsafe hrun
+      js hsafe
+  simp only [hrun] at hprotected
   exact ⟨
     hprotected JoltISA.trapHandlerVReg rfl,
     hprotected JoltISA.mscratchVReg rfl,

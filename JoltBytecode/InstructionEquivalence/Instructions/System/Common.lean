@@ -37,52 +37,6 @@ bit 0. -/
 def mretReturnTarget (js : SailJoltState) : BitVec 64 :=
   BitVec.update (js.vregs JoltISA.mepcVReg) 0 0#1
 
-/-- Re-inserting a dependent-map value that is already present leaves the map
-unchanged. -/
-theorem extDHashMap_insert_eq_self_of_get? {α : Type} [BEq α] [Hashable α]
-    [LawfulBEq α] {β : α → Type} (m : Std.ExtDHashMap α β) (k : α)
-    (v : β k) (h : m.get? k = some v) :
-    m.insert k v = m := by
-  apply Std.ExtDHashMap.ext_get?
-  intro a
-  rw [Std.ExtDHashMap.get?_insert]
-  split
-  · rename_i hbeq
-    have heq : k = a := LawfulBEq.eq_of_beq hbeq
-    cases heq
-    rw [h]
-    rw [cast_eq]
-  · rfl
-
-/-- If the linked CSR virtual registers agree with the generated Sail CSR
-registers, materializing those virtual registers is the same state as the plain
-projection. This is the global linked-register invariant made explicit. -/
-theorem systemProject_eq_project_of_compatible
-    (js : SailJoltState)
-    (h : LinkedCSRs js) :
-    systemProject js = project js := by
-  have hMstatus := h.1
-  have hMtvec := h.2.1
-  have hMscratch := h.2.2.1
-  have hMepc := h.2.2.2.1
-  have hMcause := h.2.2.2.2.1
-  have hMtval := h.2.2.2.2.2
-  unfold systemProject project
-  simp only
-  congr
-  rw [extDHashMap_insert_eq_self_of_get? js.sail.regs Register.mtvec
-    (js.vregs JoltISA.trapHandlerVReg) hMtvec.value_eq]
-  rw [extDHashMap_insert_eq_self_of_get? js.sail.regs Register.mscratch
-    (js.vregs JoltISA.mscratchVReg) hMscratch.value_eq]
-  rw [extDHashMap_insert_eq_self_of_get? js.sail.regs Register.mepc
-    (js.vregs JoltISA.mepcVReg) hMepc.value_eq]
-  rw [extDHashMap_insert_eq_self_of_get? js.sail.regs Register.mcause
-    (js.vregs JoltISA.mcauseVReg) hMcause.value_eq]
-  rw [extDHashMap_insert_eq_self_of_get? js.sail.regs Register.mtval
-    (js.vregs JoltISA.mtvalVReg) hMtval.value_eq]
-  rw [extDHashMap_insert_eq_self_of_get? js.sail.regs Register.mstatus
-    (js.vregs JoltISA.mstatusVReg) hMstatus.value_eq]
-
 /-- Reading after inserting a different key returns the old read. -/
 theorem extDHashMap_get?_insert_of_ne {α : Type} [BEq α] [Hashable α]
     [LawfulBEq α] {β : α → Type} (m : Std.ExtDHashMap α β)

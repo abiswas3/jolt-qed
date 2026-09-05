@@ -25,6 +25,13 @@ def addiwInstrEqSailStatement
 private abbrev op (rs1_val : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
   jolt_addiw_value rs1_val imm
 
+/-- TODO: Docs -/
+theorem addiwInstr_doesNotWriteProtectedVRegs
+    (imm : BitVec 12)
+    (rs1 rd : regidx) :
+    (JoltISA.Instr.ADDIW (.xreg rd) (.xreg rs1) imm).DoesNotWriteProtectedVRegs := by
+  exact JoltISA.Dst.xreg_doesNotWriteProtectedVRegs rd
+
 /-- Native `ADDIW` agrees with Sail `execute_ADDIW`. -/
 theorem addiwInstr_eq_sail
     (imm : BitVec 12)
@@ -33,6 +40,11 @@ theorem addiwInstr_eq_sail
     (h : UnarySourceReadWithLinkedCSRs rs1 js) :
     addiwInstrEqSailStatement imm rs1 rd js h := by
   unfold addiwInstrEqSailStatement
+  -- SystemProject = Project as this instruction does not 
+  -- write to proteced registers.
+  rw [System.systemProjectResult_execInstr_eq_projectResult
+    (.ADDIW (.xreg rd) (.xreg rs1) imm) js h.linkedCSRs
+    (addiwInstr_doesNotWriteProtectedVRegs imm rs1 rd)]
   -- Sail side
   simp only [execute_ADDIW, EStateM.run, bind, EStateM.bind]
   simp only [h.rs1_read]
@@ -43,14 +55,7 @@ theorem addiwInstr_eq_sail
   -- Jolt side
   simp only [JoltISA.execInstr, JoltISA.readSrc, JoltISA.writeDst, liftSail,
     bind, EStateM.bind, h.rs1_read, h_write]
-  simp only [pure, EStateM.pure]
-  -- TODO: (ari) Here we can change the goal from system project to normal project 
-  -- I think the current version is much too complex (but I could be wrong)
-  -- If I had this program does not touch system instructions i could just simp [projectResult]
-  -- and close this theorem.
-  exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
-    (op h.rs1_val imm)
-    h.linkedCSRs h_write
+  simp only [pure, EStateM.pure, projectResult, project]
 
 end Natives
 
