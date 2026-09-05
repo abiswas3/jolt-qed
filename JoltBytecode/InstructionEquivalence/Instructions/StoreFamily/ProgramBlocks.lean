@@ -23,7 +23,6 @@ Rust program top-to-bottom while keeping each proof phase small enough to read.
 -/
 
 set_option linter.unusedVariables false
-set_option mvcgen.warning false
 
 open Sail PreSail LeanRV64D.Functions
 open virtaddr MemoryAccessType mem_payload
