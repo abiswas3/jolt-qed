@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Word
+import JoltBytecode.InstructionEquivalence.Instructions.System.Common
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
@@ -11,6 +12,25 @@ set_option autoImplicit true
 noncomputable section
 
 namespace AtomicFamily
+
+theorem amoswapwProgram_doesNotWriteProtectedVRegs
+    (rs2 rs1 rd : regidx) :
+    (JoltISA.amoswapwProgram rs2 rs1 rd).DoesNotWriteProtectedVRegs := by
+  rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
+  · simp [JoltISA.amoswapwProgram,
+      JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+  · simp [JoltISA.amoswapwProgram,
+      JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
 
 /-- Rust-shaped `AMOSWAP.W` prelude with the allocator order
 `v_mask`, `v_dword`, `v_shift`, `v_rd`. -/
@@ -1661,9 +1681,10 @@ private theorem amoswapwProgram_project_eq_sail
 def amoswapwProgramEqSailStatement
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (_h : AmoWordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) : Prop :=
-  ProgramMatchesSailWithProtectedFrame js
-    ((JoltISA.execProgram (JoltISA.amoswapwProgramAuto rd rs1 rs2)).run js)
-    ((execute_AMO amoop.AMOSWAP false false rs2 rs1 4 rd).run js.sail)
+  System.systemProjectResult
+      ((JoltISA.execProgram
+        (JoltISA.amoswapwProgramAuto rd rs1 rs2)).run js) =
+    (execute_AMO amoop.AMOSWAP false false rs2 rs1 4 rd).run js.sail
 
 theorem amoswapwProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
@@ -1671,15 +1692,10 @@ theorem amoswapwProgram_eq_sail
     amoswapwProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amoswapwProgramEqSailStatement
   rw [← JoltISA.amoswapw_auto_eq rs2 rs1 rd]
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact amoswapwProgram_project_eq_sail rs2 rs1 rd js h
-  · simp [JoltISA.amoswapwProgram,
-      JoltISA.amoPre64ProgramWithScratch,
-      JoltISA.amoPost64ProgramWithScratch,
-      JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg]
-    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
+  rw [System.systemProjectResult_execProgram_eq_projectResult
+    (JoltISA.amoswapwProgram rs2 rs1 rd) js h.linkedCSRs
+    (amoswapwProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)]
+  exact amoswapwProgram_project_eq_sail rs2 rs1 rd js h
 
 end AtomicFamily
 

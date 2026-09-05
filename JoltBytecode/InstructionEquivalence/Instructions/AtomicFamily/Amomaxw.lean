@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.WordSelectRust
+import JoltBytecode.InstructionEquivalence.Instructions.System.Common
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
@@ -11,6 +12,25 @@ set_option autoImplicit true
 noncomputable section
 
 namespace AtomicFamily
+
+theorem amomaxwProgram_doesNotWriteProtectedVRegs
+    (rs2 rs1 rd : regidx) :
+    (JoltISA.amomaxwProgram rs2 rs1 rd).DoesNotWriteProtectedVRegs := by
+  rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
+  · simp [JoltISA.amomaxwProgram, JoltISA.amoWordSelectRustProgram,
+      JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+  · simp [JoltISA.amomaxwProgram, JoltISA.amoWordSelectRustProgram,
+      JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
 
 /-- Sail's generated `AMOMAX.W` result expression reduces to signed word max. -/
 theorem amomaxw_sail_result (rs2Val : BitVec 64) (loaded : BitVec 32) :
@@ -196,9 +216,10 @@ private theorem amomaxwProgram_project_eq_sail
 def amomaxwProgramEqSailStatement
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (_h : AmoWordProgramEqSailAssumptions amoop.AMOMAX rs2 rs1 rd js) : Prop :=
-  ProgramMatchesSailWithProtectedFrame js
-    ((JoltISA.execProgram (JoltISA.amomaxwProgramAuto rd rs1 rs2)).run js)
-    ((execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail)
+  System.systemProjectResult
+      ((JoltISA.execProgram
+        (JoltISA.amomaxwProgramAuto rd rs1 rs2)).run js) =
+    (execute_AMO amoop.AMOMAX false false rs2 rs1 4 rd).run js.sail
 
 theorem amomaxwProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
@@ -206,15 +227,10 @@ theorem amomaxwProgram_eq_sail
     amomaxwProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amomaxwProgramEqSailStatement
   rw [← JoltISA.amomaxw_auto_eq rs2 rs1 rd]
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact amomaxwProgram_project_eq_sail rs2 rs1 rd js h
-  · simp [JoltISA.amomaxwProgram, JoltISA.amoWordSelectRustProgram,
-      JoltISA.amoPre64ProgramWithScratch,
-      JoltISA.amoPost64ProgramWithScratch,
-      JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg]
-    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
+  rw [System.systemProjectResult_execProgram_eq_projectResult
+    (JoltISA.amomaxwProgram rs2 rs1 rd) js h.linkedCSRs
+    (amomaxwProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)]
+  exact amomaxwProgram_project_eq_sail rs2 rs1 rd js h
 
 end AtomicFamily
 
