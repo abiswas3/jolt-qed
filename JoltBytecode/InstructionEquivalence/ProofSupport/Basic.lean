@@ -928,7 +928,7 @@ private theorem sd_preserves_protected
       simp only at hrun
       cases hrun
 
-private theorem execInstr_preserves_protected_legacy
+theorem execInstr_preserves_protected
     {instr : Instr} {js js' : SailJoltState} {result : ExecutionResult}
     (hsafe : InstrWritesNoProtectedVReg instr)
     (hrun : (execInstr instr).run js = .ok result js') :
@@ -1160,7 +1160,7 @@ theorem execProgram_preserves_protected
           rw [hinstr] at hrun
           simp only at hrun
           have hhead :=
-            execInstr_preserves_protected_legacy hsafe.1
+            execInstr_preserves_protected hsafe.1
               (by simpa [EStateM.run] using hinstr)
           cases headResult with
           | Retire_Success u =>

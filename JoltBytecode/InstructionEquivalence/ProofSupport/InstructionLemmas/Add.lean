@@ -1,5 +1,4 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.Lemmas
-import JoltBytecode.InstructionEquivalence.ProofSupport.ProtectedVRegWrites
 import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 import JoltBytecode.InstructionEquivalence.ProofSupport.StateLemmas
 
@@ -16,15 +15,6 @@ set_option autoImplicit true
 noncomputable section
 
 namespace JoltISA
-
-/-- TODO: Docs -/
-theorem add_preservesProtectedRegisters
-    (dst : Dst) (lhs rhs : Src) (js : SailJoltState)
-    (hdst : dst.DoesNotWriteProtectedVRegs) :
-    match (execInstr (.ADD dst lhs rhs)).run js with
-    | .ok _ js' => ProtectedRegistersPreserved js js'
-    | .error _ js' => ProtectedRegistersPreserved js js' := by
-  sorry
 
 /-- `ADD` on virtual sources and a virtual destination reads both virtual
 sources, writes their sum, and leaves the Sail state unchanged. -/

@@ -1,5 +1,4 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Dword
-import JoltBytecode.InstructionEquivalence.ProofSupport.SystemProjection
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
