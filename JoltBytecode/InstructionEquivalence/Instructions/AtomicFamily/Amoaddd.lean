@@ -13,44 +13,20 @@ noncomputable section
 namespace AtomicFamily
 
 /-- The AmoAddd Jolt program does not write to protected register-/
--- TODO: Re-write this theorem. 
--- Lets cases on rd = x0 and everything else. 
--- Then for the everything else branch, finish the proof, leave the other one sorried.
 theorem amoadddProgram_doesNotWriteProtectedVRegs
     (rs2 rs1 rd : regidx) :
     (JoltISA.amoadddProgram rs2 rs1 rd).DoesNotWriteProtectedVRegs := by
-  by_cases hrd : JoltISA.isX0 rd = true
-  · sorry
-  · have hdst :
-        (JoltISA.amoDstFor rd).DoesNotWriteProtectedVRegs := by
-      unfold JoltISA.amoDstFor
-      unfold JoltISA.sideEffectingRdZeroDst
-      simp only [hrd, Bool.false_eq_true, ↓reduceIte]
-      exact JoltISA.Dst.xreg_doesNotWriteProtectedVRegs rd
-    unfold JoltISA.amoadddProgram JoltISA.amoDoubleBinopProgram
-    rw [JoltISA.Program.instr_doesNotWriteProtectedVRegs_iff]
-    constructor
-    · change
-        (JoltISA.Dst.vreg
-          (JoltISA.amoDoubleBinopOldVRegFor rd)).DoesNotWriteProtectedVRegs
-      rw [JoltISA.Dst.vreg_doesNotWriteProtectedVRegs_iff]
-      exact JoltISA.amoDoubleBinopOldVRegFor_not_protected rd
-    · rw [JoltISA.Program.instr_doesNotWriteProtectedVRegs_iff]
-      constructor
-      · change
-          (JoltISA.Dst.vreg
-            (JoltISA.amoDoubleBinopNewVRegFor rd)).DoesNotWriteProtectedVRegs
-        rw [JoltISA.Dst.vreg_doesNotWriteProtectedVRegs_iff]
-        exact JoltISA.amoDoubleBinopNewVRegFor_not_protected rd
-      · rw [JoltISA.Program.instr_doesNotWriteProtectedVRegs_iff]
-        constructor
-        · unfold JoltISA.Instr.DoesNotWriteProtectedVRegs
-          unfold JoltISA.Instr.WritesProtectedVReg
-          intro hfalse
-          exact hfalse
-        · rw [JoltISA.Program.instr_doesNotWriteProtectedVRegs_iff]
-          exact ⟨hdst,
-            JoltISA.Program.done_doesNotWriteProtectedVRegs RETIRE_SUCCESS⟩
+  rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
+  · simp [JoltISA.amoadddProgram, JoltISA.amoDoubleBinopProgram,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+  · simp [JoltISA.amoadddProgram, JoltISA.amoDoubleBinopProgram,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
 
 /-- Sail's generated `AMOADD.D` result expression reduces to dword addition. -/
 theorem amoaddd_sail_result (rs2Val loaded : BitVec 64) :

@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Instruction
+import JoltBytecode.InstructionEquivalence.ProofSupport.VirtualRegisters
 
 /-!
 # Protected virtual-register write footprints
@@ -129,6 +130,11 @@ def Instr.DoesNotWriteProtectedVRegs (instr : Instr) : Prop :=
 /-- This program does not write a protected virtual register. -/
 def Program.DoesNotWriteProtectedVRegs (program : Program) : Prop :=
   ¬ program.WritesProtectedVReg
+
+/-- TODO: Docs -/
+@[simp] theorem rdZeroRewriteVReg_not_protected :
+    ¬ IsProtectedJoltRegister rdZeroRewriteVReg :=
+  inlineTmp0_not_protected
 
 /-- If `rd` is an `xreg`, then it is not a protected virtual register. -/
 @[simp] theorem Dst.xreg_doesNotWriteProtectedVRegs (rd : regidx) :

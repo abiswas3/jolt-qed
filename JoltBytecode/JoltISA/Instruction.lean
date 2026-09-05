@@ -242,7 +242,9 @@ def pureWritebackTraceProgram (rd : regidx) (normal : Program) : Program :=
   if isX0 rd then pureWritebackRdZeroProgram else normal
 
 /-- The first virtual register Rust's `allocate()` returns for top-level
-side-effecting `rd = x0` source rewrites. -/
+side-effecting `rd = x0` source rewrites. 
+NOTE: currently unused in proofs
+-/
 abbrev rdZeroRewriteVReg : VReg := inlineTmp 0
 
 /-- Rust's source-materialization rule for side-effecting instructions with
@@ -258,6 +260,9 @@ def sideEffectingDst : Dst → Dst
 
 @[simp] theorem sideEffectingDst_vreg (v : VReg) :
     sideEffectingDst (.vreg v) = .vreg v := rfl
+
+-- TODO: Not sure if this is the right place for these expansion blocks. 
+-- Was being lazy when i put them here, move them later. 
 
 /-- Source-level `JAL` materialization, including Rust's side-effecting
 `rd = x0` destination rewrite. Native final-row `JAL` semantics are unchanged. -/
