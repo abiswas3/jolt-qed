@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Dword
+import JoltBytecode.InstructionEquivalence.Instructions.System.Common
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
@@ -10,6 +11,21 @@ set_option autoImplicit true
 noncomputable section
 
 namespace AtomicFamily
+
+theorem amoxordProgram_doesNotWriteProtectedVRegs
+    (rs2 rs1 rd : regidx) :
+    (JoltISA.amoxordProgram rs2 rs1 rd).DoesNotWriteProtectedVRegs := by
+  rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
+  · simp [JoltISA.amoxordProgram, JoltISA.amoDoubleBinopProgram,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+  · simp [JoltISA.amoxordProgram, JoltISA.amoDoubleBinopProgram,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
 
 /-- Sail's generated `AMOXOR.D` result expression reduces to dword xor. -/
 theorem amoxord_sail_result (rs2Val loaded : BitVec 64) :
@@ -77,9 +93,10 @@ private theorem amoxordProgram_project_eq_sail
 def amoxordProgramEqSailStatement
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (_h : AmoDwordProgramEqSailAssumptions amoop.AMOXOR rs2 rs1 rd js) : Prop :=
-  ProgramMatchesSailWithProtectedFrame js
-    ((JoltISA.execProgram (JoltISA.amoxordProgramAuto rd rs1 rs2)).run js)
-    ((execute_AMO amoop.AMOXOR false false rs2 rs1 8 rd).run js.sail)
+  System.systemProjectResult
+      ((JoltISA.execProgram
+        (JoltISA.amoxordProgramAuto rd rs1 rs2)).run js) =
+    (execute_AMO amoop.AMOXOR false false rs2 rs1 8 rd).run js.sail
 
 theorem amoxordProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
@@ -87,13 +104,10 @@ theorem amoxordProgram_eq_sail
     amoxordProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amoxordProgramEqSailStatement
   rw [← JoltISA.amoxord_auto_eq rs2 rs1 rd]
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact amoxordProgram_project_eq_sail rs2 rs1 rd js h
-  · simp [JoltISA.amoxordProgram, JoltISA.amoDoubleBinopProgram,
-      JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg]
-    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
+  rw [System.systemProjectResult_execProgram_eq_projectResult
+    (JoltISA.amoxordProgram rs2 rs1 rd) js h.linkedCSRs
+    (amoxordProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)]
+  exact amoxordProgram_project_eq_sail rs2 rs1 rd js h
 
 end AtomicFamily
 

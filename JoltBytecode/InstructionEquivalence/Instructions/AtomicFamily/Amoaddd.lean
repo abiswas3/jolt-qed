@@ -22,11 +22,22 @@ theorem amoadddProgram_doesNotWriteProtectedVRegs
       JoltISA.Program.WritesProtectedVReg,
       JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
       JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
-  · simp [JoltISA.amoadddProgram, JoltISA.amoDoubleBinopProgram,
-      JoltISA.Program.DoesNotWriteProtectedVRegs,
-      JoltISA.Program.WritesProtectedVReg,
-      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
-      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+  · simp only[JoltISA.amoadddProgram, 
+              JoltISA.amoDoubleBinopProgram,
+              JoltISA.Program.DoesNotWriteProtectedVRegs,
+              JoltISA.Program.WritesProtectedVReg,
+              JoltISA.Instr.WritesProtectedVReg, 
+              JoltISA.Dst.WritesProtectedVReg,
+              JoltISA.amoDstFor, 
+              JoltISA.sideEffectingRdZeroDst, 
+              hrd]
+    simp only [JoltISA.sideEffectingDst_vreg, 
+              JoltISA.amoDoubleBinopOldVRegFor_not_protected,
+              JoltISA.amoDoubleBinopNewVRegFor_not_protected, 
+              Bool.false_eq_true, 
+              ↓reduceIte,
+              or_self, 
+              not_false_eq_true]
 
 /-- Sail's generated `AMOADD.D` result expression reduces to dword addition. -/
 theorem amoaddd_sail_result (rs2Val loaded : BitVec 64) :
@@ -39,9 +50,7 @@ theorem amoaddd_sail_result (rs2Val loaded : BitVec 64) :
   unfold trunc Sail.BitVec.truncate
   rfl
 
-/-- Main public theorem for `AMOADD.D`.
-
-The theorem takes one primitive-only atomic bundle. Exact memory context is
+/-- The theorem takes one primitive-only atomic bundle. Exact memory context is
 derived internally from that bundle. -/
 private theorem amoadddProgram_project_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)

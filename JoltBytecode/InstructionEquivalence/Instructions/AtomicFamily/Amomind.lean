@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Dword
+import JoltBytecode.InstructionEquivalence.Instructions.System.Common
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
@@ -10,6 +11,21 @@ set_option autoImplicit true
 noncomputable section
 
 namespace AtomicFamily
+
+theorem amomindProgram_doesNotWriteProtectedVRegs
+    (rs2 rs1 rd : regidx) :
+    (JoltISA.amomindProgram rs2 rs1 rd).DoesNotWriteProtectedVRegs := by
+  rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
+  · simp [JoltISA.amomindProgram, JoltISA.amoDoubleSelectProgram,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+  · simp [JoltISA.amomindProgram, JoltISA.amoDoubleSelectProgram,
+      JoltISA.Program.DoesNotWriteProtectedVRegs,
+      JoltISA.Program.WritesProtectedVReg,
+      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
 
 /-- Sail's generated `AMOMIN.D` result expression reduces to signed min. -/
 theorem amomind_sail_result (rs2Val loaded : BitVec 64) :
@@ -85,9 +101,10 @@ private theorem amomindProgram_project_eq_sail
 def amomindProgramEqSailStatement
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (_h : AmoDwordProgramEqSailAssumptions amoop.AMOMIN rs2 rs1 rd js) : Prop :=
-  ProgramMatchesSailWithProtectedFrame js
-    ((JoltISA.execProgram (JoltISA.amomindProgramAuto rd rs1 rs2)).run js)
-    ((execute_AMO amoop.AMOMIN false false rs2 rs1 8 rd).run js.sail)
+  System.systemProjectResult
+      ((JoltISA.execProgram
+        (JoltISA.amomindProgramAuto rd rs1 rs2)).run js) =
+    (execute_AMO amoop.AMOMIN false false rs2 rs1 8 rd).run js.sail
 
 theorem amomindProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
@@ -95,13 +112,10 @@ theorem amomindProgram_eq_sail
     amomindProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amomindProgramEqSailStatement
   rw [← JoltISA.amomind_auto_eq rs2 rs1 rd]
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact amomindProgram_project_eq_sail rs2 rs1 rd js h
-  · simp [JoltISA.amomindProgram, JoltISA.amoDoubleSelectProgram,
-      JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg]
-    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
+  rw [System.systemProjectResult_execProgram_eq_projectResult
+    (JoltISA.amomindProgram rs2 rs1 rd) js h.linkedCSRs
+    (amomindProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)]
+  exact amomindProgram_project_eq_sail rs2 rs1 rd js h
 
 end AtomicFamily
 
