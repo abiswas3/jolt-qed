@@ -423,10 +423,8 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
   | .MRET, js =>
       System.MretProgramEqSailAssumptions js
   | _, _ => Unit
-/-- Equivalence proposition selected by the operand-bearing instruction.
 
-The fallback is deliberately `False` so unwired opcodes are visible gaps, not
-vacuous successes. -/
+/-- Given RISC-V instruction and assumptions return the proposition that we prove-/
 def equivalenceStatement :
     (instr : RiscvInstruction) →
     (js : SailJoltState) →
@@ -617,10 +615,7 @@ def equivalenceStatement :
     | .MRET =>
       System.mretProgramEqSailStatement js _h
 
-/-- Proof selector for the equivalence statement.
-
-Every constructor is listed explicitly so missing instruction coverage is
-visible in this theorem, not hidden behind a catch-all. -/
+/-- Given Risc indtruction and equivalence assumptions, give me the proof of the equivalence statement-/
 theorem equivalenceStatement_holds :
     (instr : RiscvInstruction) →
     (js : SailJoltState) →
