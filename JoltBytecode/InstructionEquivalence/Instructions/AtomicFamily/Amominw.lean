@@ -1,5 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.WordSelectRust
-import JoltBytecode.InstructionEquivalence.Instructions.System.Common
+import JoltBytecode.InstructionEquivalence.ProofSupport.SystemProjection
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
