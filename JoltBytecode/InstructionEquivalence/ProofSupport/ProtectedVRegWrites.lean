@@ -132,6 +132,31 @@ def Program.DoesNotWriteProtectedVRegs (program : Program) : Prop :=
   ¬ program.WritesProtectedVReg
 
 /-- TODO: Docs -/
+structure ProtectedRegistersPreserved
+    (before after : SailJoltState) : Prop where
+  vreg :
+    ∀ vr, IsProtectedJoltRegister vr →
+      after.vregs vr = before.vregs vr
+  mstatus :
+    after.sail.regs.get? Register.mstatus =
+      before.sail.regs.get? Register.mstatus
+  mtvec :
+    after.sail.regs.get? Register.mtvec =
+      before.sail.regs.get? Register.mtvec
+  mscratch :
+    after.sail.regs.get? Register.mscratch =
+      before.sail.regs.get? Register.mscratch
+  mepc :
+    after.sail.regs.get? Register.mepc =
+      before.sail.regs.get? Register.mepc
+  mcause :
+    after.sail.regs.get? Register.mcause =
+      before.sail.regs.get? Register.mcause
+  mtval :
+    after.sail.regs.get? Register.mtval =
+      before.sail.regs.get? Register.mtval
+
+/-- TODO: Docs -/
 @[simp] theorem rdZeroRewriteVReg_not_protected :
     ¬ IsProtectedJoltRegister rdZeroRewriteVReg :=
   inlineTmp0_not_protected

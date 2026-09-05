@@ -1,5 +1,4 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Word
-import JoltBytecode.InstructionEquivalence.ProofSupport.SystemProjection
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
@@ -15,21 +14,20 @@ namespace AtomicFamily
 
 theorem amoaddwProgram_doesNotWriteProtectedVRegs
     (rs2 rs1 rd : regidx) :
-    (JoltISA.amoaddwProgram rs2 rs1 rd).DoesNotWriteProtectedVRegs := by
+    JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoaddwProgram rs2 rs1 rd) := by
   rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
   · simp [JoltISA.amoaddwProgram, JoltISA.amoWordBinopProgram,
       JoltISA.amoPre64ProgramWithScratch,
       JoltISA.amoPost64ProgramWithScratch,
-      JoltISA.Program.DoesNotWriteProtectedVRegs,
-      JoltISA.Program.WritesProtectedVReg,
-      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
   · simp [JoltISA.amoaddwProgram, JoltISA.amoWordBinopProgram,
       JoltISA.amoPre64ProgramWithScratch,
       JoltISA.amoPost64ProgramWithScratch,
-      JoltISA.Program.DoesNotWriteProtectedVRegs,
-      JoltISA.Program.WritesProtectedVReg,
-      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
 
 /-- Sail's generated `AMOADD.W` result expression reduces to word addition. -/
@@ -46,16 +44,16 @@ theorem amoaddw_sail_result (rs2Val : BitVec 64) (loaded : BitVec 32) :
 
 The theorem takes one primitive-only atomic bundle. Exact memory facts are
 derived internally from that bundle. -/
-private theorem amoaddwProgram_project_eq_sail
+private theorem amoaddwProgram_manual_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOADD rs2 rs1 rd js) :
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoaddwProgram rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOADD false false rs2 rs1 4 rd).run js.sail := by
   let addr := h.rs1_val
   let rs2Val := h.rs2_val
   change
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoWordBinopProgram
         (fun dst lhs rhs => .ADD dst lhs rhs) rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOADD false false rs2 rs1 4 rd).run js.sail
@@ -152,9 +150,19 @@ private theorem amoaddwProgram_project_eq_sail
         h.rs1_read h.rs2_read h.rdReadable.exists_value
         hbytes_word hatomic_pmp_word hread_mmio_word hwrite_mmio_word
         h_align (by decide) (amoaddw_sail_result rs2Val oldWord)
+    have hprojected : Projection.ProjectedVRegsPreserved js jsf :=
+      Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+        (amoaddwProgram_doesNotWriteProtectedVRegs rs2 rs1 rd) hjolt
+    have hprojectFinal : System.systemProject jsf = jsf.sail := by
+      exact Projection.systemProject_eq_sail_of_memory_update_then_write
+        js jsf
+        (state_after_word_store js.sail addr
+          ((Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32) + oldWord))
+        rd _ hjolt_sail rfl hprojected h.linkedCSRs
     rw [hjolt]
-    simp only [projectResult, project]
-    rw [hjolt_sail, hsail, hold]
+    rw [hsail]
+    simp only [System.systemProjectResult]
+    rw [hprojectFinal, hjolt_sail, hold]
   · have hjolt :
         (JoltISA.execProgram
           (JoltISA.amoWordBinopProgram
@@ -179,9 +187,10 @@ private theorem amoaddwProgram_project_eq_sail
         amoop.AMOADD rs2 rs1 rd js addr rs2Val
         h.rs1_read h.rs2_read h_align
     rw [hjolt]
-    simp only [projectResult, project]
-    symm
-    exact hsail
+    rw [hsail]
+    simp only [System.systemProjectResult]
+    congr 1
+    exact Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
 
 /-- Main public theorem for `AMOADD.W`. -/
 def amoaddwProgramEqSailStatement
@@ -198,10 +207,7 @@ theorem amoaddwProgram_eq_sail
     amoaddwProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amoaddwProgramEqSailStatement
   rw [← JoltISA.amoaddw_auto_eq rs2 rs1 rd]
-  rw [System.systemProjectResult_execProgram_eq_projectResult
-    (JoltISA.amoaddwProgram rs2 rs1 rd) js h.linkedCSRs
-    (amoaddwProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)]
-  exact amoaddwProgram_project_eq_sail rs2 rs1 rd js h
+  exact amoaddwProgram_manual_eq_sail rs2 rs1 rd js h
 
 end AtomicFamily
 
