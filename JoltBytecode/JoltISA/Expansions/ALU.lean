@@ -94,36 +94,4 @@ def srlBlock (dst : Dst) (value shift : Src) (scratch : VReg)
   .instr (.VirtualShiftRightBitmask (.vreg scratch) shift) <|
   .instr (.VirtualSRL dst value (.vreg scratch)) tail
 
-/-- `ADDW` as reached through Rust `Instruction::trace`.
-
-If the destination is architectural register `x0`, Rust emits the pure
-writeback no-op replacement `ADDI x0, x0, 0`; otherwise it uses ADDW's
-ordinary instruction-specific `inline_sequence`. -/
-def addwProgram (rs2 rs1 rd : regidx) : Program :=
-  pureWritebackTraceProgram rd <|
-  .instr (.ADD (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
-  .done RETIRE_SUCCESS
-
-/-- `SUBW`: ordinary 64-bit `SUB`, then virtual sign-extend-word. -/
-def subwProgram (rs2 rs1 rd : regidx) : Program :=
-  pureWritebackTraceProgram rd <|
-  .instr (.SUB (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
-  .done RETIRE_SUCCESS
-
-/-- `MULW`: ordinary 64-bit `MUL`, then virtual sign-extend-word. -/
-def mulwProgram (rs2 rs1 rd : regidx) : Program :=
-  pureWritebackTraceProgram rd <|
-  .instr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2)) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
-  .done RETIRE_SUCCESS
-
-/-- `ADDIW`: ordinary `ADDI`, then virtual sign-extend-word. -/
-def addiwProgram (imm : BitVec 12) (rs1 rd : regidx) : Program :=
-  pureWritebackTraceProgram rd <|
-  .instr (.ADDI (.xreg rd) (.xreg rs1) imm) <|
-  .instr (.VirtualSignExtendWord (.xreg rd) (.xreg rd)) <|
-  .done RETIRE_SUCCESS
-
 end JoltISA
