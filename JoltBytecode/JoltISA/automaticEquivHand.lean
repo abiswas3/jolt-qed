@@ -16,9 +16,6 @@ produced by `jolt-lean-gen --lean`). The argument order differs between the two
 (hand: `rs2 rs1 rd`; auto: `rd rs1 rs2`), so each statement maps the arguments
 across.
 
-Starting set: easy ALU cases, including block-using ones (`slliBlock`, and the
-`inlineTmp0` scratch in `sll`/`srl`) to confirm block/wrapper unfolding closes
-by `rfl`.
 -/
 
 open Sail PreSail LeanRV64D.Functions
@@ -28,32 +25,6 @@ open Sail PreSail LeanRV64D.Functions
 set_option linter.unusedSimpArgs false
 
 namespace JoltISA
-
-theorem sll_auto_eq (rs2 rs1 rd : regidx) :
-    sllProgram rs2 rs1 rd = sllProgramAuto rd rs1 rs2 := by rfl
-
-theorem srl_auto_eq (rs2 rs1 rd : regidx) :
-    srlProgram rs2 rs1 rd = srlProgramAuto rd rs1 rs2 := by rfl
-
-theorem slli_auto_eq (shamt : BitVec 6) (rs1 rd : regidx) :
-    slliProgram shamt rs1 rd = slliProgramAuto rd rs1 shamt := by rfl
-
-theorem srli_auto_eq (shamt : BitVec 6) (rs1 rd : regidx) :
-    srliProgram shamt rs1 rd = srliProgramAuto rd rs1 shamt := by rfl
-
-theorem srai_auto_eq (shamt : BitVec 6) (rs1 rd : regidx) :
-    sraiProgram shamt rs1 rd = sraiProgramAuto rd rs1 shamt := by rfl
-
-theorem sra_auto_eq (rs2 rs1 rd : regidx) :
-    sraProgram rs2 rs1 rd = sraProgramAuto rd rs1 rs2 := by rfl
-
-/-! ## Multiply-high -/
-
-theorem mulh_auto_eq (rs2 rs1 rd : regidx) :
-    mulhProgram rs2 rs1 rd = mulhProgramAuto rd rs1 rs2 := by rfl
-
-theorem mulhsu_auto_eq (rs2 rs1 rd : regidx) :
-    mulhsuProgram rs2 rs1 rd = mulhsuProgramAuto rd rs1 rs2 := by rfl
 
 /-! ## Unsigned DivRem — general over the advice value -/
 

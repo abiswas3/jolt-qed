@@ -2,7 +2,7 @@ import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.JoltISA.Expansions.ALU
-import JoltBytecode.JoltISA.automaticEquivHand
+import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualSRLI
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.JoltISA.Values
@@ -94,13 +94,13 @@ theorem execute_SHIFTIOP_SRLI_factored (shamt : BitVec 6) (rs1 rd : regidx) :
 The Jolt-ISA program contains the real emitted operation: `VirtualSRLI` with
 an encoded bitmask immediate.  The bridge lemma above converts that bitmask
 back into Sail's ordinary logical shift amount. -/
-theorem srliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
+theorem srliProgramAuto_concrete (shamt : BitVec 6) (rs1 rd : regidx)
     (js : SailJoltState)
     (v : BitVec 64)
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail)
     (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (js' : SailJoltState),
-      (JoltISA.execProgram (JoltISA.srliProgram shamt rs1 rd)).run js =
+      (JoltISA.execProgram (JoltISA.srliProgramAuto rd rs1 shamt)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd (srli_sail_operation shamt v) := by
 
@@ -112,10 +112,11 @@ theorem srliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
     JoltISA.exists_state_after_virtual_srli_run_xreg_xreg rd rs1 bitmask js v h_read_rs1
 
   have h_program_succeeds :
-      (JoltISA.execProgram (JoltISA.srliProgram shamt rs1 rd)).run js =
+      (JoltISA.execProgram (JoltISA.srliProgramAuto rd rs1 shamt)).run js =
         .ok RETIRE_SUCCESS js_afterSrli := by
-    unfold JoltISA.srliProgram
-    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
+    unfold JoltISA.srliProgramAuto
+    rw [JoltISA.isX0_eq_false_of_ne_zero hrd]
+    simp only [Bool.false_eq_true, ↓reduceIte]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterSrli h_srli_succeeds]
     rfl
 
@@ -142,22 +143,21 @@ theorem srliProgram_concrete (shamt : BitVec 6) (rs1 rd : regidx)
 
 /-- `SRLI` never writes the persistent CSR virtual registers materialized by
 `systemProject`. -/
-theorem srliProgram_preserves_projected_vregs
+theorem srliProgramAuto_preserves_projected_vregs
     (shamt : BitVec 6) (rs1 rd : regidx)
     {js js' : SailJoltState}
     {result : ExecutionResult}
-    (hrun : (JoltISA.execProgram (JoltISA.srliProgram shamt rs1 rd)).run js =
+    (hrun : (JoltISA.execProgram (JoltISA.srliProgramAuto rd rs1 shamt)).run js =
       .ok result js') :
     Projection.ProjectedVRegsPreserved js js' := by
   have hsafe :
       JoltISA.ProgramWritesNoProtectedVReg
-        (JoltISA.srliProgram shamt rs1 rd) := by
-    unfold JoltISA.srliProgram
-    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-    simp only [JoltISA.ProgramWritesNoProtectedVReg,
+        (JoltISA.srliProgramAuto rd rs1 shamt) := by
+    unfold JoltISA.srliProgramAuto
+    split <;> simp only [JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
       JoltISA.DstWritesNoProtectedVReg,
-      true_and]
+      and_true]
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     (js := js) (js' := js') (result := result) hsafe hrun
 
@@ -175,16 +175,18 @@ theorem srliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
     (h : UnarySourceReadWithLinkedCSRs rs1 js) :
     srliProgramEqSailStatement shamt rs1 rd js h := by
   unfold srliProgramEqSailStatement
-  rw [← JoltISA.srli_auto_eq shamt rs1 rd]
   let v := h.rs1_val
   have h_read_rs1 : rX_bits rs1 js.sail = .ok v js.sail := h.rs1_read
   have h_project_initial : System.systemProject js = js.sail :=
     Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   by_cases hrd : rd = regidx.Regidx 0
   · subst rd
-    unfold JoltISA.srliProgram
-    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
-    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    unfold JoltISA.srliProgramAuto
+    rw [JoltISA.isX0_regidx_zero]
+    simp only [↓reduceIte]
+    have hzero := JoltISA.pureWritebackRdZeroProgram_run js
+    unfold JoltISA.pureWritebackRdZeroProgram at hzero
+    rw [hzero]
     simp only [System.systemProjectResult]
     rw [h_project_initial]
     rw [execute_SHIFTIOP_SRLI_factored shamt rs1 (regidx.Regidx 0)]
@@ -193,10 +195,10 @@ theorem srliProgram_eq_sail (shamt : BitVec 6) (rs1 rd : regidx)
     simp only [wX_bits_regidx_zero]
 
   obtain ⟨js_afterSrli, h_program_succeeds, h_final_sail⟩ :=
-    srliProgram_concrete shamt rs1 rd js v h_read_rs1 hrd
+    srliProgramAuto_concrete shamt rs1 rd js v h_read_rs1 hrd
   have h_projected_vregs :
       Projection.ProjectedVRegsPreserved js js_afterSrli :=
-    srliProgram_preserves_projected_vregs shamt rs1 rd h_program_succeeds
+    srliProgramAuto_preserves_projected_vregs shamt rs1 rd h_program_succeeds
 
   rw [h_program_succeeds]
   simp only [System.systemProjectResult]

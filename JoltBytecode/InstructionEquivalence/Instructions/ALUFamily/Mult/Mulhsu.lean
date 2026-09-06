@@ -1,5 +1,5 @@
 import JoltBytecode.JoltISA.Expansions.Mul
-import JoltBytecode.JoltISA.automaticEquivHand
+import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
@@ -24,15 +24,15 @@ The statement we want to be the stable API is program-level:
 
 ```
 System.systemProjectResult
-  ((JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js)
+  ((JoltISA.execProgram (JoltISA.mulhsuProgramAuto rd rs1 rs2)).run js)
   =
 (execute_MUL rs2 rs1 rd mulhsuOp).run js.sail
 ```
 
 As in `Mulh.lean`, the proof separates concerns:
 
-1. `JoltISA.mulhsuProgram` is the faithful Rust inline sequence.
-2. `mulhsuProgram_concrete` executes that program one instruction at a time
+1. `JoltISA.mulhsuProgramAuto` is the faithful Rust inline sequence.
+2. `mulhsuProgramAuto_concrete` executes that program one instruction at a time
    and proves what it writes.
 3. `jolt_mulhsu_value_eq_mulhsu` proves that the Jolt term is Sail's `MULHSU`.
 
@@ -462,13 +462,13 @@ private theorem inlineTmp3_ne_inlineTmp2 :
 The instruction blocks prove the emitted Jolt sequence writes
 `jolt_mulhsu_value`.  The final value block is the only place where the pure
 arithmetic theorem changes that Jolt value into Sail's `MULHSU` value. -/
-theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
+theorem mulhsuProgramAuto_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (v1 v2 : BitVec 64)
     (h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail)
     (h_read_rs2 : rX_bits rs2 js.sail = .ok v2 js.sail)
     (hrd : rd ≠ regidx.Regidx 0) :
     ∃ (jsf : SailJoltState),
-      (JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js =
+      (JoltISA.execProgram (JoltISA.mulhsuProgramAuto rd rs1 rs2)).run js =
         .ok RETIRE_SUCCESS jsf ∧
       jsf.sail = stateAfterWrite js.sail rd (mulhsu v1 v2) := by
 
@@ -680,10 +680,15 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
 
   -- Full program succeeds by stepping through the eleven instruction runs.
   have h_program_succeeds :
-      (JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js =
+      (JoltISA.execProgram (JoltISA.mulhsuProgramAuto rd rs1 rs2)).run js =
         .ok RETIRE_SUCCESS js_afterFinalAdd := by
-    unfold JoltISA.mulhsuProgram
-    rw [JoltISA.pureWritebackTraceProgram_of_ne_zero hrd]
+    unfold JoltISA.mulhsuProgramAuto
+    rw [JoltISA.isX0_eq_false_of_ne_zero hrd]
+    simp only [Bool.false_eq_true, ↓reduceIte]
+    rw [show (BitVec.ofNat 7 40 : JoltISA.VReg) = JoltISA.inlineTmp0 by rfl,
+      show (BitVec.ofNat 7 41 : JoltISA.VReg) = JoltISA.inlineTmp1 by rfl,
+      show (BitVec.ofNat 7 42 : JoltISA.VReg) = JoltISA.inlineTmp2 by rfl,
+      show (BitVec.ofNat 7 43 : JoltISA.VReg) = JoltISA.inlineTmp3 by rfl]
     rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterRs1SignMask
       h_rs1_sign_mask_succeeds]
     rw [JoltISA.execProgram_instr_run_retire _ _ js_afterRs1SignMask js_afterSignBit
@@ -731,27 +736,35 @@ theorem mulhsuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
 
 /-- `MULHSU` never writes the persistent CSR virtual registers materialized by
 `systemProject`. -/
-theorem mulhsuProgram_preserves_projected_vregs
+theorem mulhsuProgramAuto_preserves_projected_vregs
     (rs2 rs1 rd : regidx)
     {js js' : SailJoltState}
     {result : ExecutionResult}
-    (hrun : (JoltISA.execProgram (JoltISA.mulhsuProgram rs2 rs1 rd)).run js =
+    (hrun : (JoltISA.execProgram (JoltISA.mulhsuProgramAuto rd rs1 rs2)).run js =
       .ok result js') :
     Projection.ProjectedVRegsPreserved js js' := by
   have hsafe :
       JoltISA.ProgramWritesNoProtectedVReg
-        (JoltISA.mulhsuProgram rs2 rs1 rd) := by
-    unfold JoltISA.mulhsuProgram
-    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-    simp only [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      and_true]
-    exact ⟨JoltISA.inlineTmp0_not_protected, JoltISA.inlineTmp1_not_protected,
-      JoltISA.inlineTmp2_not_protected, JoltISA.inlineTmp2_not_protected,
-      JoltISA.inlineTmp3_not_protected, JoltISA.inlineTmp2_not_protected,
-      JoltISA.inlineTmp3_not_protected, JoltISA.inlineTmp2_not_protected,
-      JoltISA.inlineTmp0_not_protected, JoltISA.inlineTmp0_not_protected⟩
+        (JoltISA.mulhsuProgramAuto rd rs1 rs2) := by
+    unfold JoltISA.mulhsuProgramAuto
+    split
+    · simp only [JoltISA.ProgramWritesNoProtectedVReg,
+        JoltISA.InstrWritesNoProtectedVReg,
+        JoltISA.DstWritesNoProtectedVReg,
+        and_true]
+    · rw [show (BitVec.ofNat 7 40 : JoltISA.VReg) = JoltISA.inlineTmp0 by rfl,
+        show (BitVec.ofNat 7 41 : JoltISA.VReg) = JoltISA.inlineTmp1 by rfl,
+        show (BitVec.ofNat 7 42 : JoltISA.VReg) = JoltISA.inlineTmp2 by rfl,
+        show (BitVec.ofNat 7 43 : JoltISA.VReg) = JoltISA.inlineTmp3 by rfl]
+      simp only [JoltISA.ProgramWritesNoProtectedVReg,
+        JoltISA.InstrWritesNoProtectedVReg,
+        JoltISA.DstWritesNoProtectedVReg,
+        and_true]
+      exact ⟨JoltISA.inlineTmp0_not_protected, JoltISA.inlineTmp1_not_protected,
+        JoltISA.inlineTmp2_not_protected, JoltISA.inlineTmp2_not_protected,
+        JoltISA.inlineTmp3_not_protected, JoltISA.inlineTmp2_not_protected,
+        JoltISA.inlineTmp3_not_protected, JoltISA.inlineTmp2_not_protected,
+        JoltISA.inlineTmp0_not_protected, JoltISA.inlineTmp0_not_protected⟩
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     (js := js) (js' := js') (result := result) hsafe hrun
 
@@ -771,7 +784,6 @@ theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx)
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     mulhsuProgramEqSailStatement rs2 rs1 rd js h := by
   unfold mulhsuProgramEqSailStatement
-  rw [← JoltISA.mulhsu_auto_eq rs2 rs1 rd]
   let v1 := h.rs1_val
   have h_read_rs1 : rX_bits rs1 js.sail = .ok v1 js.sail := h.rs1_read
   let v2 := h.rs2_val
@@ -780,9 +792,12 @@ theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx)
     Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
   by_cases hrd : rd = regidx.Regidx 0
   · subst rd
-    unfold JoltISA.mulhsuProgram
-    rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
-    rw [JoltISA.pureWritebackRdZeroProgram_run js]
+    unfold JoltISA.mulhsuProgramAuto
+    rw [JoltISA.isX0_regidx_zero]
+    simp only [↓reduceIte]
+    have hzero := JoltISA.pureWritebackRdZeroProgram_run js
+    unfold JoltISA.pureWritebackRdZeroProgram at hzero
+    rw [hzero]
     simp only [System.systemProjectResult]
     rw [h_project_initial]
     rw [execute_MULHSU_factored rs2 rs1 (regidx.Regidx 0)]
@@ -791,10 +806,10 @@ theorem mulhsuProgram_eq_sail (rs2 rs1 rd : regidx)
     simp only [wX_bits_regidx_zero]
 
   obtain ⟨js_afterFinalAdd, h_program_succeeds, h_final_sail⟩ :=
-    mulhsuProgram_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
+    mulhsuProgramAuto_concrete rs2 rs1 rd js v1 v2 h_read_rs1 h_read_rs2 hrd
   have h_projected_vregs :
       Projection.ProjectedVRegsPreserved js js_afterFinalAdd :=
-    mulhsuProgram_preserves_projected_vregs rs2 rs1 rd h_program_succeeds
+    mulhsuProgramAuto_preserves_projected_vregs rs2 rs1 rd h_program_succeeds
 
   rw [h_program_succeeds]
   simp only [System.systemProjectResult]
