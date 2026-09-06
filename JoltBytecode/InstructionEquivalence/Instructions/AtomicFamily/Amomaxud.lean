@@ -1,5 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Dword
-import JoltBytecode.JoltISA.automaticEquivHand
+import JoltBytecode.JoltISA.ExpansionsAutomated
 
 set_option linter.unusedVariables false
 
@@ -14,16 +14,31 @@ namespace AtomicFamily
 theorem amomaxudProgram_doesNotWriteProtectedVRegs
     (rs2 rs1 rd : regidx) :
     JoltISA.ProgramWritesNoProtectedVReg
-      (JoltISA.amomaxudProgram rs2 rs1 rd) := by
+      (JoltISA.amomaxudProgramAuto rd rs1 rs2) := by
+  unfold JoltISA.amomaxudProgramAuto
+  split <;>
+    simp only [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
+      true_and, and_true] <;>
+    repeat' apply And.intro
+  all_goals exact JoltISA.not_protected_of_instructionTmp rfl
+
+private theorem amomaxudProgramCore_doesNotWriteProtectedVRegs
+    (rs2 rs1 rd : regidx) :
+    JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoDoubleSelectProgram
+        (fun dst lhs rhs => .SLTU dst lhs rhs)
+        (.vreg (JoltISA.amoOldVRegFor rd)) (.xreg rs2) rs2 rs1 rd) := by
   rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
-  · simp [JoltISA.amomaxudProgram, JoltISA.amoDoubleSelectProgram,
+  · simp [JoltISA.amoDoubleSelectProgram,
       JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
-  · simp [JoltISA.amomaxudProgram, JoltISA.amoDoubleSelectProgram,
+  · simp [JoltISA.amoDoubleSelectProgram,
       JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+
 
 /-- Sail's generated `AMOMAXU.D` result expression reduces to unsigned max. -/
 theorem amomaxud_sail_result (rs2Val loaded : BitVec 64) :
@@ -40,11 +55,14 @@ theorem amomaxud_sail_result (rs2Val loaded : BitVec 64) :
 
 The theorem takes one primitive-only atomic bundle. Exact memory facts are
 derived internally from that bundle. -/
-private theorem amomaxudProgram_manual_eq_sail
+private theorem amomaxudProgram_core_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOMAXU rs2 rs1 rd js) :
     System.systemProjectResult ((JoltISA.execProgram
-      (JoltISA.amomaxudProgram rs2 rs1 rd)).run js) =
+      (JoltISA.amoDoubleSelectProgram
+        (fun dst lhs rhs => .SLTU dst lhs rhs)
+        (.vreg (JoltISA.amoOldVRegFor rd)) (.xreg rs2) rs2 rs1 rd
+        )).run js) =
       (execute_AMO amoop.AMOMAXU false false rs2 rs1 8 rd).run js.sail := by
   let addr := h.rs1_val
   let rs2Val := h.rs2_val
@@ -60,12 +78,6 @@ private theorem amomaxudProgram_manual_eq_sail
     simpa [addr] using h.not_readable_mmio.subaccess (offset := 0) (accessWidth := 8) (by omega)
   have hwrite_mmio : Assumptions.NotWritableMmio addr 8 js.sail := by
     simpa [addr] using h.not_writable_mmio.subaccess (offset := 0) (accessWidth := 8) (by omega)
-  change
-    System.systemProjectResult ((JoltISA.execProgram
-      (JoltISA.amoDoubleSelectProgram
-        (fun dst lhs rhs => .SLTU dst lhs rhs)
-        (.vreg (JoltISA.amoOldVRegFor rd)) (.xreg rs2) rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOMAXU false false rs2 rs1 8 rd).run js.sail
   by_cases h_align : addr &&& (7 : BitVec 64) = 0
   · exact
       amo_dword_double_select_program_eq_sail_aligned
@@ -82,7 +94,7 @@ private theorem amomaxudProgram_manual_eq_sail
         h.rs1_read h.rs2_read h.rdReadable.exists_value
         hbytes hload_pmp hstore_pmp hatomic_pmp hread_mmio hwrite_mmio
         h_align (by decide) h.linkedCSRs
-        (amomaxudProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)
+        (amomaxudProgramCore_doesNotWriteProtectedVRegs rs2 rs1 rd)
         (amo_dword_maxu_middle_after_load_for rd rs2 js addr rs2Val
           (loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align))
@@ -110,8 +122,15 @@ theorem amomaxudProgram_eq_sail
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOMAXU rs2 rs1 rd js) :
     amomaxudProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amomaxudProgramEqSailStatement
-  rw [← JoltISA.amomaxud_auto_eq rs2 rs1 rd]
-  exact amomaxudProgram_manual_eq_sail rs2 rs1 rd js h
+  have hcore := amomaxudProgram_core_eq_sail rs2 rs1 rd js h
+  cases hrd : JoltISA.isX0 rd <;>
+    simpa only [JoltISA.amomaxudProgramAuto,
+      JoltISA.amoDoubleSelectProgram,
+      JoltISA.amoOldVRegFor, JoltISA.amoNewVRegFor,
+      JoltISA.amoTmpVRegFor, JoltISA.amoVRegFor,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst,
+      JoltISA.rdZeroRewriteVReg,
+      hrd, Bool.false_eq_true, if_false, if_true] using hcore
 
 end AtomicFamily
 

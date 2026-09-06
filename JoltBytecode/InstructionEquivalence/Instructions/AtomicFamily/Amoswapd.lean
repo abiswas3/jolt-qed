@@ -1,5 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Dword
-import JoltBytecode.JoltISA.automaticEquivHand
+import JoltBytecode.JoltISA.ExpansionsAutomated
 
 set_option linter.unusedVariables false
 
@@ -15,26 +15,25 @@ namespace AtomicFamily
 theorem amoswapdProgram_doesNotWriteProtectedVRegs
     (rs2 rs1 rd : regidx) :
     JoltISA.ProgramWritesNoProtectedVReg
-      (JoltISA.amoswapdProgram rs2 rs1 rd) := by
-  rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
-  · simp [JoltISA.amoswapdProgram,
-      JoltISA.ProgramWritesNoProtectedVReg,
+      (JoltISA.amoswapdProgramAuto rd rs1 rs2) := by
+  unfold JoltISA.amoswapdProgramAuto
+  split <;>
+    simp only [JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
-  · simp [JoltISA.amoswapdProgram,
-      JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+      true_and, and_true] <;>
+    repeat' apply And.intro
+  all_goals exact JoltISA.not_protected_of_instructionTmp rfl
+
 
 /-- Main public theorem for `AMOSWAP.D`.
 
 The theorem takes one primitive-only atomic bundle. Exact memory facts are
 derived internally from that bundle. -/
-private theorem amoswapdProgram_manual_eq_sail
+private theorem amoswapdProgramAuto_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
-    System.systemProjectResult ((JoltISA.execProgram
-      (JoltISA.amoswapdProgram rs2 rs1 rd)).run js) =
+    System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.amoswapdProgramAuto rd rs1 rs2)).run js) =
       (execute_AMO amoop.AMOSWAP false false rs2 rs1 8 rd).run js.sail := by
   let addr := h.rs1_val
   let rs2Val := h.rs2_val
@@ -69,13 +68,22 @@ private theorem amoswapdProgram_manual_eq_sail
       amo_dword_writeback_after_store_run_from oldReg
         rd js_afterLoad js_afterStore addr old hsd_vregs hld_old
     have hjolt :
-        (JoltISA.execProgram (JoltISA.amoswapdProgram rs2 rs1 rd)).run js =
+        (JoltISA.execProgram (JoltISA.amoswapdProgramAuto rd rs1 rs2)).run js =
           .ok RETIRE_SUCCESS js_afterWrite := by
-      unfold JoltISA.amoswapdProgram
-      rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterLoad hld]
-      rw [JoltISA.execProgram_instr_run_retire _ _ js_afterLoad js_afterStore hsd]
-      rw [JoltISA.execProgram_instr_run_retire _ _ js_afterStore js_afterWrite haddi]
-      rfl
+      unfold JoltISA.amoswapdProgramAuto
+      cases hrd : JoltISA.isX0 rd
+      all_goals
+        simp only [hrd, Bool.false_eq_true, if_false, if_true,
+          oldReg, JoltISA.amoOldVRegFor, JoltISA.amoVRegFor,
+          JoltISA.inlineTmp, JoltISA.inlineRegisterBase,
+          JoltISA.riscvRegisterBase, JoltISA.riscvRegisterCount,
+          JoltISA.numReservedVirtualRegisters,
+          JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst,
+          JoltISA.rdZeroRewriteVReg] at hld haddi ⊢
+        rw [JoltISA.execProgram_instr_run_retire _ _ js js_afterLoad hld]
+        rw [JoltISA.execProgram_instr_run_retire _ _ js_afterLoad js_afterStore hsd]
+        rw [JoltISA.execProgram_instr_run_retire _ _ js_afterStore js_afterWrite haddi]
+        rfl
     have hsail :=
       execute_AMO_dword_non_cas_aligned
         amoop.AMOSWAP rs2 rs1 rd js h.cur_privilege h.mstatus_mprv
@@ -116,13 +124,21 @@ private theorem amoswapdProgram_manual_eq_sail
         amo_dword_ld_xreg_misaligned_run
           oldReg rs1 js addr h.rs1_read h_align
     have hjolt :
-        (JoltISA.execProgram (JoltISA.amoswapdProgram rs2 rs1 rd)).run js =
+        (JoltISA.execProgram (JoltISA.amoswapdProgramAuto rd rs1 rs2)).run js =
           .ok (ExecutionResult.Memory_Exception e) js := by
-      unfold JoltISA.amoswapdProgram
-      exact
-        JoltISA.execProgram_instr_run_memory_exception
-          (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))
-          rest js js e hld
+      cases hrd : JoltISA.isX0 rd
+      all_goals
+        simpa only [JoltISA.amoswapdProgramAuto, hrd,
+          Bool.false_eq_true, if_false, if_true,
+          oldReg, rest, JoltISA.amoOldVRegFor, JoltISA.amoVRegFor,
+          JoltISA.inlineTmp, JoltISA.inlineRegisterBase,
+          JoltISA.riscvRegisterBase, JoltISA.riscvRegisterCount,
+          JoltISA.numReservedVirtualRegisters,
+          JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst,
+          JoltISA.rdZeroRewriteVReg] using
+          (JoltISA.execProgram_instr_run_memory_exception
+            (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))
+            rest js js e hld)
     have hsail :=
       execute_AMO_dword_misaligned
         amoop.AMOSWAP rs2 rs1 rd js addr rs2Val h.rs1_read h.rs2_read h_align
@@ -146,8 +162,7 @@ theorem amoswapdProgram_eq_sail
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
     amoswapdProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amoswapdProgramEqSailStatement
-  rw [← JoltISA.amoswapd_auto_eq rs2 rs1 rd]
-  exact amoswapdProgram_manual_eq_sail rs2 rs1 rd js h
+  exact amoswapdProgramAuto_eq_sail rs2 rs1 rd js h
 
 end AtomicFamily
 
