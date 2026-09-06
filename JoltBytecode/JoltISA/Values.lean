@@ -1,19 +1,19 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
 import JoltBytecode.JoltISA.Core
 import Mathlib.Tactic
 import Mathlib.Data.BitVec
 
 /-!
-# Semantic value helpers
+# Helper Functions
 
-Pure value-level functions used by `JoltISA/Semantics.lean` to express the
-result a single Jolt instruction writes to its destination register, plus the
-shared Sail-side reference definitions used by instruction-equivalence proofs.
-
-Contents:
-* `ctz` — count trailing zeros, used by the virtual shift family.
-* `Riscv.*` — Sail-equivalent pure reference functions for shift/multiply/
-  bitwise ops, used in math-bridge lemmas.
-* `jolt_*_value` — Jolt-side value functions consumed by `execInstr`.
+Often instruction execution needs helpers like `sign_extend`, 
+or `ctz` (count trailing zeros of a bitstring).
+This file contains commonly used values and helper methods, 
+written in a way that makes Jolt CPU semantics more readable.
 
 Proof-side characterisations of these helpers live in
 `InstructionEquivalence/ValueLemmas.lean`.
@@ -40,6 +40,8 @@ termination_by n
 
 -- ============================================================================
 -- Riscv pure-function reference definitions (Sail-equivalent abstractions)
+-- The actual instruction will have monadic malarkey, here we find the key 
+-- mathematical facts
 -- ============================================================================
 
 namespace Riscv

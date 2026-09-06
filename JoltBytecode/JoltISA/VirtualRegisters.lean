@@ -1,3 +1,8 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
 import JoltBytecode.JoltISA.Core
 
 /-!
@@ -6,7 +11,7 @@ import JoltBytecode.JoltISA.Core
 The Lean Jolt-ISA programs use the same absolute virtual-register numbers as
 `tracer/src/utils/virtual_registers.rs`.
 
-Rust reserves virtual registers `32..39` for persistent architectural state,
+Rust reserves virtual registers `32..39` for control status registers,
 uses `40..47` for the per-instruction `allocate()` scratch pool, and starts
 larger inline allocations at `48`.
 

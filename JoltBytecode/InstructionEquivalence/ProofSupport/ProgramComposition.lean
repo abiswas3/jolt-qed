@@ -1,6 +1,7 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.Lemmas
 
 /-!
+TODO: Consolidate these tactics.
 # Program composition lemmas
 
 `Program.append` is the proof-facing API for composing bytecode fragments.  A
