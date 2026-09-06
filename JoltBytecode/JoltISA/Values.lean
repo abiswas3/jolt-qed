@@ -1,19 +1,19 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
 import JoltBytecode.JoltISA.Core
 import Mathlib.Tactic
 import Mathlib.Data.BitVec
 
 /-!
-# Semantic value helpers
+# Helper Functions
 
-Pure value-level functions used by `JoltISA/Semantics.lean` to express the
-result a single Jolt instruction writes to its destination register, plus the
-shared Sail-side reference definitions used by instruction-equivalence proofs.
-
-Contents:
-* `ctz` — count trailing zeros, used by the virtual shift family.
-* `Riscv.*` — Sail-equivalent pure reference functions for shift/multiply/
-  bitwise ops, used in math-bridge lemmas.
-* `jolt_*_value` — Jolt-side value functions consumed by `execInstr`.
+Often instruction execution needs helpers like `sign_extend`, 
+or `ctz` (count trailing zeros of a bitstring).
+This file contains commonly used values and helper methods, 
+written in a way that makes Jolt CPU semantics more readable.
 
 Proof-side characterisations of these helpers live in
 `InstructionEquivalence/ValueLemmas.lean`.
@@ -40,6 +40,8 @@ termination_by n
 
 -- ============================================================================
 -- Riscv pure-function reference definitions (Sail-equivalent abstractions)
+-- The actual instruction will have monadic malarkey, here we find the key 
+-- mathematical facts
 -- ============================================================================
 
 namespace Riscv
@@ -98,12 +100,35 @@ otherwise zero. -/
 def jolt_sltu_value (x y : BitVec 64) : BitVec 64 :=
   zero_extend (m := 64) (bool_to_bit (zopz0zI_u x y))
 
+/-- RV64 `ADDIW` value: add the sign-extended immediate, retain the low word,
+then sign-extend that word. -/
+def jolt_addiw_value (x : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  ((x + sign_extend (m := 64) imm).setWidth 32).signExtend 64
+
+/-- RV64 `ADDW` value. -/
+def jolt_addw_value (x y : BitVec 64) : BitVec 64 :=
+  ((x + y).setWidth 32).signExtend 64
+
+/-- RV64 `SUBW` value. -/
+def jolt_subw_value (x y : BitVec 64) : BitVec 64 :=
+  ((x - y).setWidth 32).signExtend 64
+
+/-- RV64 `MULW` value. Signed and unsigned multiplication have the same low
+32-bit product, which is then sign-extended. -/
+def jolt_mulw_value (x y : BitVec 64) : BitVec 64 :=
+  ((x * y).setWidth 32).signExtend 64
+
 /-- RV64 `VirtualMULI` value: multiply by the immediate in the 64-bit word
 ring.  In the Rust tracer this instruction writes the sign-extended machine
 word after a wrapping multiply; for RV64 that is exactly the resulting
 64-bit bit pattern. -/
 def jolt_virtual_muli_value (x imm : BitVec 64) : BitVec 64 :=
   x * imm
+
+/-- RV64 `VirtualMULIW` value: wrapping multiplication followed by low-word
+sign extension. -/
+def jolt_virtual_muliw_value (x imm : BitVec 64) : BitVec 64 :=
+  ((x * imm).setWidth 32).signExtend 64
 
 /-- RV64 `VirtualPow2` value: `2 ^ (x[5:0])`, used by `SLL`. -/
 def jolt_virtual_pow2_value (x : BitVec 64) : BitVec 64 :=
@@ -137,6 +162,12 @@ def jolt_virtual_shift_right_bitmaski_value (imm : Nat) : BitVec 64 :=
   let ones := (1 <<< (64 - shift)) - 1
   BitVec.ofNat 64 (ones <<< shift)
 
+/-- RV64 `VirtualShiftRightBitmaskW` value. The low five source bits select
+the shift, and the result's trailing-zero count encodes that shift. -/
+def jolt_virtual_shift_right_bitmaskw_value (x : BitVec 64) : BitVec 64 :=
+  let shift := (x.setWidth 5).toNat
+  BitVec.ofNat 64 (2^32 - 2^shift)
+
 /-- RV64 `VirtualSRLI` value: logical right shift by the trailing-zero count
 of the encoded bitmask immediate. -/
 def jolt_virtual_srli_value (x : BitVec 64) (bitmask : Nat) : BitVec 64 :=
@@ -147,6 +178,16 @@ count of the encoded bitmask immediate. -/
 def jolt_virtual_srai_value (x : BitVec 64) (bitmask : Nat) : BitVec 64 :=
   x.sshiftRight (ctz bitmask)
 
+/-- RV64 `VirtualSRLIW` value: logically shift the low word by the encoded
+mask's trailing-zero count, then sign-extend the word result. -/
+def jolt_virtual_srliw_value (x : BitVec 64) (bitmask : Nat) : BitVec 64 :=
+  ((x.setWidth 32) >>> ctz bitmask).signExtend 64
+
+/-- RV64 `VirtualSRAIW` value: arithmetically shift the low word by the
+encoded mask's trailing-zero count, then sign-extend it. -/
+def jolt_virtual_sraiw_value (x : BitVec 64) (bitmask : Nat) : BitVec 64 :=
+  ((x.setWidth 32).sshiftRight (ctz bitmask)).signExtend 64
+
 /-- RV64 `VirtualSRL` value: logical right shift by `ctz` of the bitmask
 stored in the second source register. -/
 def jolt_virtual_srl_value (x bitmask : BitVec 64) : BitVec 64 :=
@@ -156,6 +197,14 @@ def jolt_virtual_srl_value (x bitmask : BitVec 64) : BitVec 64 :=
 stored in the second source register. -/
 def jolt_virtual_sra_value (x bitmask : BitVec 64) : BitVec 64 :=
   x.sshiftRight (ctz bitmask.toNat)
+
+/-- RV64 `VirtualSRLW` value. -/
+def jolt_virtual_srlw_value (x bitmask : BitVec 64) : BitVec 64 :=
+  ((x.setWidth 32) >>> ctz bitmask.toNat).signExtend 64
+
+/-- RV64 `VirtualSRAW` value. -/
+def jolt_virtual_sraw_value (x bitmask : BitVec 64) : BitVec 64 :=
+  ((x.setWidth 32).sshiftRight (ctz bitmask.toNat)).signExtend 64
 
 /-- RV64 `VirtualROTRI` value: rotate right by the trailing-zero count of the
 encoded bitmask immediate. -/
@@ -181,6 +230,84 @@ def jolt_virtual_xorrotw_value (rot : Nat) (x y : BitVec 64) : BitVec 64 :=
   zero_extend (m := 64)
     (rotater ((Sail.BitVec.extractLsb x 31 0) ^^^ (Sail.BitVec.extractLsb y 31 0)) rot)
 
+/-- RV64 `VirtualAlignAddr` value: align `base + sext(imm)` down to its
+containing doubleword. -/
+def jolt_virtual_align_addr_value (base : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  (base + sign_extend (m := 64) imm) &&& ~~~(7 : BitVec 64)
+
+/-- RV64 `VirtualWindowMaskB` value. -/
+def jolt_virtual_window_mask_b_value (base : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  let ea := base + sign_extend (m := 64) imm
+  let offset := (ea &&& (7 : BitVec 64)).toNat
+  BitVec.ofNat 64 (0xFF <<< (8 * offset))
+
+/-- RV64 `VirtualWindowMaskH` value. Bit zero of the effective address is
+ignored, matching the tracer's `ea & 6`. -/
+def jolt_virtual_window_mask_h_value (base : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  let ea := base + sign_extend (m := 64) imm
+  let offset := (ea &&& (6 : BitVec 64)).toNat
+  BitVec.ofNat 64 (0xFFFF <<< (8 * offset))
+
+/-- RV64 `VirtualWindowMaskW` value. Only effective-address bit two selects
+the low or high word lane. -/
+def jolt_virtual_window_mask_w_value (base : BitVec 64) (imm : BitVec 12) : BitVec 64 :=
+  let ea := base + sign_extend (m := 64) imm
+  let word := ((ea >>> 2) &&& (1 : BitVec 64)).toNat
+  BitVec.ofNat 64 (0xFFFF_FFFF <<< (32 * word))
+
+/-- RV64 `VirtualShiftDataB` value. -/
+def jolt_virtual_shift_data_b_value (value address : BitVec 64) : BitVec 64 :=
+  let offset := (address &&& (7 : BitVec 64)).toNat
+  (value &&& (0xFF : BitVec 64)) <<< (8 * offset)
+
+/-- RV64 `VirtualShiftDataH` value. Bit zero of the effective address is ignored. -/
+def jolt_virtual_shift_data_h_value (value address : BitVec 64) : BitVec 64 :=
+  let offset := (address &&& (6 : BitVec 64)).toNat
+  (value &&& (0xFFFF : BitVec 64)) <<< (8 * offset)
+
+/-- RV64 `VirtualShiftDataW` value. Only effective-address bit two selects the lane. -/
+def jolt_virtual_shift_data_w_value (value address : BitVec 64) : BitVec 64 :=
+  let offset := (address &&& (4 : BitVec 64)).toNat
+  (value &&& (0xFFFF_FFFF : BitVec 64)) <<< (8 * offset)
+
+/-- Recursive implementation used by `VirtualPext`. The first argument bounds
+the number of source/mask bits inspected. `execInstr` always supplies 64. -/
+def jolt_pext_nat : Nat → Nat → Nat → Nat
+  | 0, _, _ => 0
+  | fuel + 1, x, mask =>
+      if mask % 2 = 1 then
+        x % 2 + 2 * jolt_pext_nat fuel (x / 2) (mask / 2)
+      else
+        jolt_pext_nat fuel (x / 2) (mask / 2)
+
+/-- Count the set bits in the low `fuel` positions of a natural number. -/
+def jolt_popcount_nat : Nat → Nat → Nat
+  | 0, _ => 0
+  | fuel + 1, x => x % 2 + jolt_popcount_nat fuel (x / 2)
+
+/-- RV64 `VirtualPext` value. -/
+def jolt_virtual_pext_value (x mask : BitVec 64) : BitVec 64 :=
+  BitVec.ofNat 64 (jolt_pext_nat 64 x.toNat mask.toNat)
+
+/-- RV64 `VirtualPextSigned` value: parallel-extract, then sign-extend from
+the highest extracted bit. -/
+def jolt_virtual_pext_signed_value (x mask : BitVec 64) : BitVec 64 :=
+  let width := jolt_popcount_nat 64 mask.toNat
+  if width = 0 then
+    0
+  else
+    let extracted := jolt_virtual_pext_value x mask
+    if extracted.getLsbD (width - 1) then
+      let lowMask : BitVec 64 := BitVec.ofNat 64 (2^width - 1)
+      extracted ||| ~~~lowMask
+    else
+      extracted
+
+/-- RV64 `VirtualNegateIf` value. The first operand supplies only its sign;
+negation is wrapping in the 64-bit ring. -/
+def jolt_virtual_negate_if_value (signSource value : BitVec 64) : BitVec 64 :=
+  if signSource.msb then -value else value
+
 /-- RV64 `VirtualSignExtendWord` value: sign-extend the low 32 bits to 64
 bits. -/
 def jolt_virtual_sign_extend_word_value (x : BitVec 64) : BitVec 64 :=
@@ -189,26 +316,5 @@ def jolt_virtual_sign_extend_word_value (x : BitVec 64) : BitVec 64 :=
 /-- Upper 64 bits of a signed 64×64 multiply. -/
 def mulhs (a b : BitVec 64) : BitVec 64 :=
   BitVec.ofInt 64 ((a.toInt * b.toInt) / (2 ^ 64))
-
-/-- Signed-division overflow folding rule for `VirtualChangeDivisor`.
-
-When `dividend = INT64_MIN` and `divisor = -1`, signed division would
-overflow. Jolt substitutes `1` for the divisor in the verification sequence;
-otherwise it passes the divisor through unchanged. -/
-def change_divisor_value (dividend divisor : BitVec 64) : BitVec 64 :=
-  let mostNeg : BitVec 64 := (1 : BitVec 64) <<< 63
-  let negOne : BitVec 64 := -1
-  if dividend = mostNeg ∧ divisor = negOne then 1 else divisor
-
-/-- Word-sized version of `change_divisor_value`.
-
-Rust casts both operands to `i32`, so this uses the low 32 bits for the
-overflow check and sign-extends the low-word divisor on the normal path. -/
-def change_divisor_w_value (dividend divisor : BitVec 64) : BitVec 64 :=
-  let dividend := jolt_virtual_sign_extend_word_value dividend
-  let divisor := jolt_virtual_sign_extend_word_value divisor
-  let i32MinSext : BitVec 64 := -((1 : BitVec 64) <<< 31)
-  let negOne : BitVec 64 := -1
-  if dividend = i32MinSext ∧ divisor = negOne then 1 else divisor
 
 end

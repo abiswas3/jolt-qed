@@ -39,14 +39,15 @@ inductive LoadFaultClass where
   | amo
   deriving Repr
 
+-- To make sure the Sail Pipeline does not complain.
 def LoadFaultClass.alignFault : LoadFaultClass → ExceptionType
   | .normal => ExceptionType.E_Load_Addr_Align ()
   | .amo => ExceptionType.E_SAMO_Addr_Align ()
 
--- Opcodes
+-- Opcodes (Jolt ISA)
 inductive Instr where
-  | NoOp
   | ADDI (dst : Dst) (src : Src) (imm : BitVec 12)
+  | ADDIW (dst : Dst) (src : Src) (imm : BitVec 12)
   | ANDI (dst : Dst) (src : Src) (imm : BitVec 12)
   | ORI  (dst : Dst) (src : Src) (imm : BitVec 12)
   | XORI (dst : Dst) (src : Src) (imm : BitVec 12)
@@ -64,21 +65,30 @@ inductive Instr where
   | BGEU (lhs rhs : Src) (imm : BitVec 13)
   | FENCE
   | ADD  (dst : Dst) (lhs rhs : Src)
+  | ADDW (dst : Dst) (lhs rhs : Src)
   | SUB  (dst : Dst) (lhs rhs : Src)
+  | SUBW (dst : Dst) (lhs rhs : Src)
   | MUL  (dst : Dst) (lhs rhs : Src)
+  | MULW (dst : Dst) (lhs rhs : Src)
   | MULHU (dst : Dst) (lhs rhs : Src)
   | ANDN (dst : Dst) (lhs rhs : Src)
   | VirtualMULI (dst : Dst) (src : Src) (imm : BitVec 64)
+  | VirtualMULIW (dst : Dst) (src : Src) (imm : BitVec 64)
   | VirtualPow2 (dst : Dst) (src : Src)
   | VirtualPow2W (dst : Dst) (src : Src)
   | VirtualPow2I (dst : Dst) (imm : Nat)
   | VirtualPow2IW (dst : Dst) (imm : Nat)
   | VirtualShiftRightBitmask (dst : Dst) (src : Src)
   | VirtualShiftRightBitmaskI (dst : Dst) (imm : Nat)
+  | VirtualShiftRightBitmaskW (dst : Dst) (src : Src)
   | VirtualSRLI (dst : Dst) (src : Src) (bitmask : Nat)
   | VirtualSRAI (dst : Dst) (src : Src) (bitmask : Nat)
+  | VirtualSRLIW (dst : Dst) (src : Src) (bitmask : Nat)
+  | VirtualSRAIW (dst : Dst) (src : Src) (bitmask : Nat)
   | VirtualSRL (dst : Dst) (value bitmask : Src)
   | VirtualSRA (dst : Dst) (value bitmask : Src)
+  | VirtualSRLW (dst : Dst) (value bitmask : Src)
+  | VirtualSRAW (dst : Dst) (value bitmask : Src)
   | VirtualROTRI (dst : Dst) (src : Src) (bitmask : Nat)
   | VirtualROTRIW (dst : Dst) (src : Src) (bitmask : Nat)
   | VirtualRev8W (dst : Dst) (src : Src)
@@ -90,11 +100,23 @@ inductive Instr where
   | VirtualXORROTW12 (dst : Dst) (lhs rhs : Src)
   | VirtualXORROTW8 (dst : Dst) (lhs rhs : Src)
   | VirtualXORROTW7 (dst : Dst) (lhs rhs : Src)
+  | VirtualXORROTW22 (dst : Dst) (lhs rhs : Src)
+  | VirtualXORROTW19 (dst : Dst) (lhs rhs : Src)
+  | VirtualXORROTW6 (dst : Dst) (lhs rhs : Src)
   | OR   (dst : Dst) (lhs rhs : Src)
   | XOR  (dst : Dst) (lhs rhs : Src)
   | AND  (dst : Dst) (lhs rhs : Src)
   | SLT  (dst : Dst) (lhs rhs : Src)
   | SLTU (dst : Dst) (lhs rhs : Src)
+  | VirtualAlignAddr (dst : Dst) (base : Src) (imm : BitVec 12)
+  | VirtualWindowMaskB (dst : Dst) (base : Src) (imm : BitVec 12)
+  | VirtualWindowMaskH (dst : Dst) (base : Src) (imm : BitVec 12)
+  | VirtualWindowMaskW (dst : Dst) (base : Src) (imm : BitVec 12)
+  | VirtualPext (dst : Dst) (value mask : Src)
+  | VirtualPextSigned (dst : Dst) (value mask : Src)
+  | VirtualShiftDataB (dst : Dst) (value address : Src)
+  | VirtualShiftDataH (dst : Dst) (value address : Src)
+  | VirtualShiftDataW (dst : Dst) (value address : Src)
   | VirtualSignExtendWord (dst : Dst) (src : Src)
   | VirtualZeroExtendWord (dst : Dst) (src : Src)
   | VirtualMovsign (dst : Dst) (src : Src)
@@ -108,8 +130,7 @@ inductive Instr where
   | VirtualHostIO
   | VirtualAssertEQ (lhs rhs : Src) (imm: BitVec 13)
   | VirtualAssertValidDiv0 (divisor quotient : Src)
-  | VirtualChangeDivisor (dst : Dst) (dividend divisor : Src)
-  | VirtualChangeDivisorW (dst : Dst) (dividend divisor : Src)
+  | VirtualNegateIf (dst : Dst) (signSource value : Src)
   | VirtualAssertValidUnsignedRemainder (remainder divisor : Src)
   | VirtualAssertMulUNoOverflow (lhs rhs : Src)
   | VirtualAssertLTE (lhs rhs : Src)
@@ -121,12 +142,8 @@ This mirrors the built-in `SourceInstructionKind` cases handled by
 `/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/expand/mod.rs`
 in `expand_source_only_instruction`. -/
 inductive Expanded where
-  | ADDIW (dst : Dst) (src : Src) (imm : BitVec 12)
-  | ADDW (dst : Dst) (lhs rhs : Src)
-  | SUBW (dst : Dst) (lhs rhs : Src)
   | MULH (dst : Dst) (lhs rhs : Src)
   | MULHSU (dst : Dst) (lhs rhs : Src)
-  | MULW (dst : Dst) (lhs rhs : Src)
   | LB (dst : Dst) (base : Src) (imm : BitVec 12)
   | LBU (dst : Dst) (base : Src) (imm : BitVec 12)
   | LH (dst : Dst) (base : Src) (imm : BitVec 12)
@@ -198,8 +215,8 @@ inductive Program where
   | instr (instr : Instr) (next : Program)
   deriving Repr
 
-/-- Build the common straight-line "run every instruction, then retire"
-program. -/
+/-- Given a list of instructions build a straight-line "run every instruction, then retire"
+program -/
 def Program.seq (instrs : List Instr) : Program :=
   instrs.foldr Program.instr (.done RETIRE_SUCCESS)
 
@@ -225,8 +242,10 @@ def pureWritebackTraceProgram (rd : regidx) (normal : Program) : Program :=
   if isX0 rd then pureWritebackRdZeroProgram else normal
 
 /-- The first virtual register Rust's `allocate()` returns for top-level
-side-effecting `rd = x0` source rewrites. -/
-def rdZeroRewriteVReg : VReg := inlineTmp 0
+side-effecting `rd = x0` source rewrites. 
+NOTE: currently unused in proofs
+-/
+abbrev rdZeroRewriteVReg : VReg := inlineTmp 0
 
 /-- Rust's source-materialization rule for side-effecting instructions with
 `rd = x0`: keep the side effect, but rewrite the destination to a temporary
@@ -241,6 +260,9 @@ def sideEffectingDst : Dst → Dst
 
 @[simp] theorem sideEffectingDst_vreg (v : VReg) :
     sideEffectingDst (.vreg v) = .vreg v := rfl
+
+-- TODO: Not sure if this is the right place for these expansion blocks. 
+-- Was being lazy when i put them here, move them later. 
 
 /-- Source-level `JAL` materialization, including Rust's side-effecting
 `rd = x0` destination rewrite. Native final-row `JAL` semantics are unchanged. -/

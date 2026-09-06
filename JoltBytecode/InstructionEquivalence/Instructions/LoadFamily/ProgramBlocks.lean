@@ -39,6 +39,180 @@ noncomputable section
 
 namespace LoadProgramBlocks
 
+/-- Generated load setup: compute the containing aligned dword address with
+`VirtualAlignAddr`, load that dword, and continue with `rest`. -/
+theorem alignAddrLdBlock (rest : JoltISA.Program)
+    (v : JoltISA.VReg) (imm : BitVec 12) (rs1 : regidx)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
+    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
+    (hbytes :
+      MemBytesPresentAt js.sail (compute_aligned_dword_base_address val imm) 8)
+    (hload_pmp :
+      Assumptions.LoadPmpOk (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hread_mmio :
+      Assumptions.NotReadableMmio (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hv : WritableVReg v) :
+    ∃ js_load : SailJoltState,
+      (JoltISA.execProgram
+        (.instr (.VirtualAlignAddr (.vreg v) (.xreg rs1) imm) <|
+         .instr (.LD .normal (.vreg v) (.vreg v) 0) rest)).run js =
+        (JoltISA.execProgram rest).run js_load ∧
+      js_load.sail = js.sail ∧
+      js_load.vregs v =
+        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
+          hbytes
+          (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf := by
+  let daddr := compute_aligned_dword_base_address val imm
+  have hdaddr : AlignedDwordAccess daddr := by
+    simpa only [daddr] using aligned_dword_addr_is_aligned_dword_access val imm
+  let dword := loaded_dword_at js.sail daddr (by simpa only [daddr] using hbytes)
+    hdaddr.no_ovf
+  let js_addr : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = v then daddr else js.vregs r }
+  let js_load : SailJoltState :=
+    { sail := js.sail
+      vregs := fun r => if r = v then dword else js_addr.vregs r }
+  have halign_value : jolt_virtual_align_addr_value val imm = daddr := by
+    simp only [jolt_virtual_align_addr_value, daddr,
+      compute_aligned_dword_base_address, load_effective_address,
+      Memory.effectiveAddr12,
+      show ~~~(7 : BitVec 64) = (-8 : BitVec 64) by decide]
+  have halign :
+      (JoltISA.execInstr (.VirtualAlignAddr (.vreg v) (.xreg rs1) imm)).run js =
+        .ok RETIRE_SUCCESS js_addr := by
+    simpa only [js_addr, halign_value] using
+      JoltISA.virtual_align_addr_run_vreg_xreg v rs1 imm js val hrx hv
+  have hread :
+      vmem_read_addr (Virtaddr (js_addr.vregs v +
+        sign_extend (m := 64) (0 : BitVec 12))) 0 8
+        (Load Data) false false false js_addr.sail =
+        .ok (Ok dword) js_addr.sail := by
+    have hzero : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
+    have haddr_zero : daddr + sign_extend (m := 64) (0 : BitVec 12) = daddr := by
+      rw [hzero]
+      norm_num
+    have hvaddr : js_addr.vregs v = daddr := by
+      simp only [js_addr, if_true]
+    have hmemory := aligned_dword_vmem_read_reduces daddr js.sail hpriv hmprv
+      hdaddr (by simpa only [daddr] using hbytes)
+      (by simpa only [daddr] using hload_pmp)
+      (by simpa only [daddr] using hread_mmio)
+    rw [show js_addr.sail = js.sail by rfl, hvaddr, haddr_zero]
+    simpa only [dword] using hmemory
+  have hld_align :
+      (js_addr.vregs v + sign_extend (m := 64) (0 : BitVec 12)) &&&
+          (7 : BitVec 64) = 0 := by
+    have hzero : sign_extend (m := 64) (0 : BitVec 12) = (0 : BitVec 64) := by decide
+    have haddr_zero : daddr + sign_extend (m := 64) (0 : BitVec 12) = daddr := by
+      rw [hzero]
+      norm_num
+    have hvaddr : js_addr.vregs v = daddr := by
+      simp only [js_addr, if_true]
+    rw [hvaddr, haddr_zero]
+    exact hdaddr.align
+  have hld :
+      (JoltISA.execInstr (.LD .normal (.vreg v) (.vreg v) 0)).run js_addr =
+        .ok RETIRE_SUCCESS js_load := by
+    simpa only [js_load] using
+      JoltISA.ld_run_vreg_vreg_from_memory_read (faultClass := .normal)
+        v v (0 : BitVec 12)
+        js_addr dword hld_align hread hv
+  refine ⟨js_load, ?_, rfl, ?_⟩
+  · rw [JoltISA.execProgram_instr_run_retire _ _ js js_addr halign]
+    rw [JoltISA.execProgram_instr_run_retire _ _ js_addr js_load hld]
+  · simp only [js_load, dword, daddr, if_true]
+
+/-- A successful halfword-alignment assertion followed by the generated
+`VirtualAlignAddr; LD` setup block. -/
+theorem assertHalfwordAlignAddrLdBlockAligned (rest : JoltISA.Program)
+    (v : JoltISA.VReg) (imm : BitVec 12) (rs1 : regidx)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
+    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
+    (halign : load_effective_address val imm &&& (1 : BitVec 64) = 0)
+    (hbytes :
+      MemBytesPresentAt js.sail (compute_aligned_dword_base_address val imm) 8)
+    (hload_pmp :
+      Assumptions.LoadPmpOk (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hread_mmio :
+      Assumptions.NotReadableMmio (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hv : WritableVReg v) :
+    ∃ js_load : SailJoltState,
+      (JoltISA.execProgram
+        (.instr
+          (.VirtualAssertHalfwordAlignment rs1 imm
+            (ExceptionType.E_Load_Addr_Align ())) <|
+         .instr (.VirtualAlignAddr (.vreg v) (.xreg rs1) imm) <|
+         .instr (.LD .normal (.vreg v) (.vreg v) 0) rest)).run js =
+        (JoltISA.execProgram rest).run js_load ∧
+      js_load.sail = js.sail ∧
+      js_load.vregs v =
+        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
+          hbytes
+          (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf := by
+  have hassert :
+      (JoltISA.execInstr
+        (.VirtualAssertHalfwordAlignment rs1 imm
+          (ExceptionType.E_Load_Addr_Align ()))).run js =
+        .ok RETIRE_SUCCESS js := by
+    exact JoltISA.virtual_assert_halfword_alignment_run_aligned rs1 imm
+      (ExceptionType.E_Load_Addr_Align ()) js val hrx
+      (by simpa only [load_effective_address] using halign)
+  rcases alignAddrLdBlock rest v imm rs1 js hpriv hmprv val hrx
+      hbytes hload_pmp hread_mmio hv with
+    ⟨js_load, hrun, hsail, hvalue⟩
+  refine ⟨js_load, ?_, hsail, hvalue⟩
+  rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
+  exact hrun
+
+/-- A successful word-alignment assertion followed by the generated
+`VirtualAlignAddr; LD` setup block. -/
+theorem assertWordAlignAddrLdBlockAligned (rest : JoltISA.Program)
+    (v : JoltISA.VReg) (imm : BitVec 12) (rs1 : regidx)
+    (js : SailJoltState)
+    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
+    (hmprv : Assumptions.MstatusMprvZero js.sail)
+    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
+    (halign : load_effective_address val imm &&& (3 : BitVec 64) = 0)
+    (hbytes :
+      MemBytesPresentAt js.sail (compute_aligned_dword_base_address val imm) 8)
+    (hload_pmp :
+      Assumptions.LoadPmpOk (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hread_mmio :
+      Assumptions.NotReadableMmio (compute_aligned_dword_base_address val imm) 8 js.sail)
+    (hv : WritableVReg v) :
+    ∃ js_load : SailJoltState,
+      (JoltISA.execProgram
+        (.instr
+          (.VirtualAssertWordAlignment rs1 imm
+            (ExceptionType.E_Load_Addr_Align ())) <|
+         .instr (.VirtualAlignAddr (.vreg v) (.xreg rs1) imm) <|
+         .instr (.LD .normal (.vreg v) (.vreg v) 0) rest)).run js =
+        (JoltISA.execProgram rest).run js_load ∧
+      js_load.sail = js.sail ∧
+      js_load.vregs v =
+        loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
+          hbytes
+          (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf := by
+  have hassert :
+      (JoltISA.execInstr
+        (.VirtualAssertWordAlignment rs1 imm
+          (ExceptionType.E_Load_Addr_Align ()))).run js =
+        .ok RETIRE_SUCCESS js := by
+    exact JoltISA.virtual_assert_word_alignment_run_aligned rs1 imm
+      (ExceptionType.E_Load_Addr_Align ()) js val hrx
+      (by simpa only [load_effective_address] using halign)
+  rcases alignAddrLdBlock rest v imm rs1 js hpriv hmprv val hrx
+      hbytes hload_pmp hread_mmio hv with
+    ⟨js_load, hrun, hsail, hvalue⟩
+  refine ⟨js_load, ?_, hsail, hvalue⟩
+  rw [JoltISA.execProgram_instr_run_retire _ _ js js hassert]
+  exact hrun
+
 /-- The common dword setup block for load expansions with no leading alignment
 assertion.
 

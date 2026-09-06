@@ -57,6 +57,30 @@ lemma pow2_sub_one_odd {k : Nat} (hk : 0 < k) : (2 ^ k - 1) % 2 = 1 := by
     have : 0 < 2 ^ n := by positivity
     omega
 
+/-- The 32-bit right-shift mask emitted by Rust has exactly the requested
+number of trailing zeroes. -/
+lemma ctz_word_shift_bitmask (shift : Nat) (hshift : shift < 32) :
+    ctz ((1 <<< 32) - (1 <<< shift)) = shift := by
+  simp only [Nat.shiftLeft_eq, one_mul]
+  have hpow : (2 : Nat) ^ 32 = 2 ^ (32 - shift) * 2 ^ shift := by
+    rw [← Nat.pow_add, Nat.sub_add_cancel (Nat.le_of_lt hshift)]
+  have hfactor :
+      (2 : Nat) ^ 32 - 2 ^ shift =
+        2 ^ shift * (2 ^ (32 - shift) - 1) := by
+    rw [hpow]
+    calc
+      2 ^ (32 - shift) * 2 ^ shift - 2 ^ shift =
+          (2 ^ (32 - shift) - 1) * 2 ^ shift := by
+            rw [Nat.sub_mul, one_mul]
+      _ = 2 ^ shift * (2 ^ (32 - shift) - 1) := by rw [mul_comm]
+  rw [hfactor, ctz_mul_pow2]
+  · rw [ctz_of_odd (pow2_sub_one_odd (by omega))]
+    omega
+  · have : 2 ≤ (2 : Nat) ^ (32 - shift) := by
+      exact le_trans (show (2 : Nat) ≤ 2 ^ 1 by norm_num)
+        (Nat.pow_le_pow_right (by omega) (by omega))
+    omega
+
 -- ============================================================================
 -- Shared BitVec shift lemmas (moved from JoltISA/Values/Shift.lean)
 -- ============================================================================
@@ -80,6 +104,106 @@ lemma sshiftRight_eq_signExtend_ushr_trunc (x : BitVec 32) (s : Nat) (hs : s < 3
 -- ============================================================================
 -- Lemmas about JoltISA/Values defs
 -- ============================================================================
+
+/-- Sail's `ADDIW` result agrees with the native Jolt row value. -/
+theorem sail_addiw_value_eq_jolt_addiw_value
+    (x : BitVec 64) (imm : BitVec 12) :
+    sign_extend (m := 64)
+        (Sail.BitVec.extractLsb (x + sign_extend (m := 64) imm) 31 0) =
+      jolt_addiw_value x imm := by
+  unfold jolt_addiw_value
+  rfl
+
+private theorem extractLsb_add_word (x y : BitVec 64) :
+    Sail.BitVec.extractLsb (x + y) 31 0 =
+      Sail.BitVec.extractLsb x 31 0 + Sail.BitVec.extractLsb y 31 0 := by
+  simp only [Sail.BitVec.extractLsb, BitVec.extractLsb]
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_add, Nat.add_mod]
+
+/-- Sail's `ADDW` result agrees with the native Jolt row value. -/
+theorem sail_addw_value_eq_jolt_addw_value (x y : BitVec 64) :
+    sign_extend (m := 64)
+        (Sail.BitVec.extractLsb x 31 0 + Sail.BitVec.extractLsb y 31 0) =
+      jolt_addw_value x y := by
+  unfold jolt_addw_value
+  rw [← extractLsb_add_word]
+  rfl
+
+private theorem extractLsb_sub_word (x y : BitVec 64) :
+    Sail.BitVec.extractLsb (x - y) 31 0 =
+      Sail.BitVec.extractLsb x 31 0 - Sail.BitVec.extractLsb y 31 0 := by
+  simp only [Sail.BitVec.extractLsb, BitVec.extractLsb]
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_sub]
+  omega
+
+/-- Sail's `SUBW` result agrees with the native Jolt row value. -/
+theorem sail_subw_value_eq_jolt_subw_value (x y : BitVec 64) :
+    sign_extend (m := 64)
+        (Sail.BitVec.extractLsb x 31 0 - Sail.BitVec.extractLsb y 31 0) =
+      jolt_subw_value x y := by
+  unfold jolt_subw_value
+  rw [← extractLsb_sub_word]
+  rfl
+
+private theorem word_mod33_toNat_mod32 (x : Int) :
+    (x % 8589934592).toNat % 4294967296 = (x % 4294967296).toNat := by
+  apply Int.ofNat.inj
+  simp [Int.toNat_of_nonneg (Int.emod_nonneg _ (by norm_num : (8589934592 : Int) ≠ 0)),
+    Int.toNat_of_nonneg (Int.emod_nonneg _ (by norm_num : (4294967296 : Int) ≠ 0))]
+
+private theorem word_trunc32_eq_intCast (x : Int) :
+    to_bits_truncate (l := 32) x = (x : BitVec 32) := by
+  apply BitVec.eq_of_toFin_eq
+  rw [show to_bits_truncate (l := 32) x = BitVec.ofNat 32 ((x % 8589934592).toNat) by
+    simp [to_bits_truncate, get_slice_int, BitVec.extractLsb']]
+  rw [BitVec.toFin_ofNat, BitVec.toFin_intCast]
+  ext
+  simpa [Fin.ofNat] using word_mod33_toNat_mod32 x
+
+private theorem word_intCast_mul_toInt_32 (x y : BitVec 32) :
+    (((BitVec.toInt x *i BitVec.toInt y : Int) : BitVec 32)) = x * y := by
+  change BitVec.ofInt 32 (x.toInt * y.toInt) = x * y
+  rw [BitVec.ofInt_mul]
+  have hx : BitVec.ofInt 32 x.toInt = x := by
+    apply BitVec.eq_of_toNat_eq
+    simp [BitVec.toInt]
+    omega
+  have hy : BitVec.ofInt 32 y.toInt = y := by
+    apply BitVec.eq_of_toNat_eq
+    simp [BitVec.toInt]
+    omega
+  rw [hx, hy]
+
+private theorem word_mulw32_eq_mul (x y : BitVec 32) :
+    to_bits_truncate (l := 32) (BitVec.toInt x *i BitVec.toInt y) = x * y := by
+  rw [word_trunc32_eq_intCast]
+  exact word_intCast_mul_toInt_32 x y
+
+private theorem extractLsb_mul_word (x y : BitVec 64) :
+    Sail.BitVec.extractLsb (x * y) 31 0 =
+      Sail.BitVec.extractLsb x 31 0 * Sail.BitVec.extractLsb y 31 0 := by
+  simp only [Sail.BitVec.extractLsb, BitVec.extractLsb]
+  apply BitVec.eq_of_toNat_eq
+  simp [BitVec.toNat_mul]
+
+/-- Sail's signed low-word multiply agrees with the native Jolt `MULW` row. -/
+theorem sail_mulw_value_eq_jolt_mulw_value (x y : BitVec 64) :
+    sign_extend (m := 64)
+        (to_bits_truncate (l := 32)
+          (BitVec.toInt (Sail.BitVec.extractLsb x 31 0) *i
+           BitVec.toInt (Sail.BitVec.extractLsb y 31 0))) =
+      jolt_mulw_value x y := by
+  unfold jolt_mulw_value
+  change sign_extend (m := 64)
+      (to_bits_truncate (l := 32)
+        (BitVec.toInt (Sail.BitVec.extractLsb x 31 0) *i
+         BitVec.toInt (Sail.BitVec.extractLsb y 31 0))) =
+    sign_extend (m := 64) (Sail.BitVec.extractLsb (x * y) 31 0)
+  congr 1
+  rw [word_mulw32_eq_mul]
+  exact (extractLsb_mul_word x y).symm
 
 /-- If a 64-bit word is below `2^63`, `VirtualMovsign` returns zero. -/
 theorem jolt_movsign_value_eq_zero_of_toNat_lt_half (x : BitVec 64)

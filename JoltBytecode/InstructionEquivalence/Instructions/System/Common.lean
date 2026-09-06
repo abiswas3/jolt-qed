@@ -1,5 +1,6 @@
 import JoltBytecode.Assumptions
 import JoltBytecode.JoltISA.Expansions.System
+import JoltBytecode.JoltISA.SystemProjection
 import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
 import JoltBytecode.InstructionEquivalence.ProofSupport.SystemHelpers
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.ADDI
@@ -35,32 +36,6 @@ namespace System
 bit 0. -/
 def mretReturnTarget (js : SailJoltState) : BitVec 64 :=
   BitVec.update (js.vregs JoltISA.mepcVReg) 0 0#1
-
-/-- Overlay Jolt's persistent virtual CSR registers onto the generated Sail CSR
-register keys.
-
-This is only a proof projection: the Rust-faithful Jolt programs still write
-Jolt virtual registers, and the Sail specification still reads/writes generated
-Sail registers. -/
-def systemProject (js : SailJoltState) : SailState :=
-  { js.sail with
-    regs :=
-      ((((((js.sail.regs
-        |>.insert Register.mtvec (js.vregs JoltISA.trapHandlerVReg))
-        |>.insert Register.mscratch (js.vregs JoltISA.mscratchVReg))
-        |>.insert Register.mepc (js.vregs JoltISA.mepcVReg))
-        |>.insert Register.mcause (js.vregs JoltISA.mcauseVReg))
-        |>.insert Register.mtval (js.vregs JoltISA.mtvalVReg))
-        |>.insert Register.mstatus (js.vregs JoltISA.mstatusVReg)) }
-
-/-- Project a Jolt run result through `systemProject`, preserving the result
-value and error shape while materializing virtual CSRs in the Sail state. -/
-def systemProjectResult
-    (r : EStateM.Result (Error exception) SailJoltState α) :
-    EStateM.Result (Error exception) SailState α :=
-  match r with
-  | .ok a js' => .ok a (systemProject js')
-  | .error e js' => .error e (systemProject js')
 
 /-- Re-inserting a dependent-map value that is already present leaves the map
 unchanged. -/

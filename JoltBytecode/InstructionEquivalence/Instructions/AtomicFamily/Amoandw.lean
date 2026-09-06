@@ -1,4 +1,5 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Word
+import JoltBytecode.JoltISA.ExpansionsAutomated
 
 set_option linter.unusedVariables false
 
@@ -10,6 +11,38 @@ set_option autoImplicit true
 noncomputable section
 
 namespace AtomicFamily
+
+theorem amoandwProgram_doesNotWriteProtectedVRegs
+    (rs2 rs1 rd : regidx) :
+    JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoandwProgramAuto rd rs1 rs2) := by
+  unfold JoltISA.amoandwProgramAuto
+  split <;>
+    simp only [JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
+      true_and, and_true] <;>
+    repeat' apply And.intro
+  all_goals exact JoltISA.not_protected_of_instructionTmp rfl
+
+private theorem amoandwProgramCore_doesNotWriteProtectedVRegs
+    (rs2 rs1 rd : regidx) :
+    JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoWordBinopProgram
+        (fun dst lhs rhs => .AND dst lhs rhs) rs2 rs1 rd) := by
+  rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
+  · simp [JoltISA.amoWordBinopProgram,
+      JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+  · simp [JoltISA.amoWordBinopProgram,
+      JoltISA.amoPre64ProgramWithScratch,
+      JoltISA.amoPost64ProgramWithScratch,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
+      JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
+
 
 /-- Sail's generated `AMOAND.W` result expression reduces to word bitwise-and. -/
 theorem amoandw_sail_result (rs2Val : BitVec 64) (loaded : BitVec 32) :
@@ -25,19 +58,15 @@ theorem amoandw_sail_result (rs2Val : BitVec 64) (loaded : BitVec 32) :
 
 The theorem takes one primitive-only atomic bundle. Exact memory facts are
 derived internally from that bundle. -/
-private theorem amoandwProgram_project_eq_sail
+private theorem amoandwProgram_core_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOAND rs2 rs1 rd js) :
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amoandwProgram rs2 rs1 rd)).run js) =
+    System.systemProjectResult ((JoltISA.execProgram
+      (JoltISA.amoWordBinopProgram
+        (fun dst lhs rhs => .AND dst lhs rhs) rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOAND false false rs2 rs1 4 rd).run js.sail := by
   let addr := h.rs1_val
   let rs2Val := h.rs2_val
-  change
-    projectResult ((JoltISA.execProgram
-      (JoltISA.amoWordBinopProgram
-        (fun dst lhs rhs => .AND dst lhs rhs) rs2 rs1 rd)).run js) =
-      (execute_AMO amoop.AMOAND false false rs2 rs1 4 rd).run js.sail
   by_cases h_align : addr &&& (3 : BitVec 64) = 0
   · let base := amoWordBase addr
     let offset := (addr &&& (7 : BitVec 64)).toNat
@@ -131,9 +160,19 @@ private theorem amoandwProgram_project_eq_sail
         h.rs1_read h.rs2_read h.rdReadable.exists_value
         hbytes_word hatomic_pmp_word hread_mmio_word hwrite_mmio_word
         h_align (by decide) (amoandw_sail_result rs2Val oldWord)
+    have hprojected : Projection.ProjectedVRegsPreserved js jsf :=
+      Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+        (amoandwProgramCore_doesNotWriteProtectedVRegs rs2 rs1 rd) hjolt
+    have hprojectFinal : System.systemProject jsf = jsf.sail := by
+      exact Projection.systemProject_eq_sail_of_memory_update_then_write
+        js jsf
+        (state_after_word_store js.sail addr
+          ((Sail.BitVec.extractLsb rs2Val 31 0 : BitVec 32) &&& oldWord))
+        rd _ hjolt_sail rfl hprojected h.linkedCSRs
     rw [hjolt]
-    simp only [projectResult, project]
-    rw [hjolt_sail, hsail, hold]
+    rw [hsail]
+    simp only [System.systemProjectResult]
+    rw [hprojectFinal, hjolt_sail, hold]
   · have hjolt :
         (JoltISA.execProgram
           (JoltISA.amoWordBinopProgram
@@ -158,31 +197,38 @@ private theorem amoandwProgram_project_eq_sail
         amoop.AMOAND rs2 rs1 rd js addr rs2Val
         h.rs1_read h.rs2_read h_align
     rw [hjolt]
-    simp only [projectResult, project]
-    symm
-    exact hsail
+    rw [hsail]
+    simp only [System.systemProjectResult]
+    congr 1
+    exact Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
 
 /-- Main public theorem for `AMOAND.W`. -/
 def amoandwProgramEqSailStatement
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (_h : AmoWordProgramEqSailAssumptions amoop.AMOAND rs2 rs1 rd js) : Prop :=
-  ProgramMatchesSailWithProtectedFrame js
-    ((JoltISA.execProgram (JoltISA.amoandwProgram rs2 rs1 rd)).run js)
-    ((execute_AMO amoop.AMOAND false false rs2 rs1 4 rd).run js.sail)
+  System.systemProjectResult
+      ((JoltISA.execProgram
+        (JoltISA.amoandwProgramAuto rd rs1 rs2)).run js) =
+    (execute_AMO amoop.AMOAND false false rs2 rs1 4 rd).run js.sail
 
 theorem amoandwProgram_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoWordProgramEqSailAssumptions amoop.AMOAND rs2 rs1 rd js) :
     amoandwProgramEqSailStatement rs2 rs1 rd js h := by
-  apply programMatchesSailWithProtectedFrame_of_projectResult_eq
-  · exact amoandwProgram_project_eq_sail rs2 rs1 rd js h
-  · simp [JoltISA.amoandwProgram, JoltISA.amoWordBinopProgram,
+  unfold amoandwProgramEqSailStatement
+  have hcore := amoandwProgram_core_eq_sail rs2 rs1 rd js h
+  cases hrd : JoltISA.isX0 rd <;>
+    simpa only [JoltISA.amoandwProgramAuto,
+      JoltISA.amoWordBinopProgram,
       JoltISA.amoPre64ProgramWithScratch,
       JoltISA.amoPost64ProgramWithScratch,
-      JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg]
-    exact JoltISA.amoDstFor_writesNoProtectedVReg rd
+      JoltISA.amoOldVRegFor, JoltISA.amoNewVRegFor,
+      JoltISA.amoMaskVRegFor, JoltISA.amoDwordVRegFor,
+      JoltISA.amoShiftVRegFor, JoltISA.amoInlineTmpVRegFor,
+      JoltISA.amoVRegFor, JoltISA.amoDstFor,
+      JoltISA.sideEffectingRdZeroDst, JoltISA.rdZeroRewriteVReg,
+      JoltISA.slliMultiplier, JoltISA.srliBitmask,
+      hrd, Bool.false_eq_true, if_false, if_true] using hcore
 
 end AtomicFamily
 

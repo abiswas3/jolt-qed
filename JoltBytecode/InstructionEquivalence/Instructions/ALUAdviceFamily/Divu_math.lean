@@ -67,7 +67,7 @@ private theorem sail_div_value_of_zero_u (dividend divisor : BitVec 64)
   decide
 
 /-- Outside divide-by-zero, unsigned Sail division agrees with `BitVec.udiv`. -/
-private theorem sail_div_value_of_normal_u (dividend divisor : BitVec 64)
+theorem sail_div_value_of_normal_u (dividend divisor : BitVec 64)
     (h_ne : divisor ≠ 0#64) :
     sail_div_value dividend divisor true = dividend / divisor := by
   have hdivNat_ne : divisor.toNat ≠ 0 := by

@@ -411,6 +411,29 @@ theorem systemProject_eq_sail_of_projected_vregs_preserved_of_sail_regs_eq
   systemProject_eq_project_of_projected_vregs_preserved_of_sail_regs_eq
     before after hregs hprojected hlinked
 
+/-- TODO: Docs -/
+theorem systemProject_eq_sail_of_memory_update_then_write
+    (before after : SailJoltState)
+    (stored : SailState)
+    (rd : regidx) (value : BitVec 64)
+    (hsail : after.sail = stateAfterWrite stored rd value)
+    (hregs : stored.regs = before.sail.regs)
+    (hprojected : ProjectedVRegsPreserved before after)
+    (hlinked : LinkedCSRs before) :
+    System.systemProject after = after.sail := by
+  let afterStore : SailJoltState := { before with sail := stored }
+  have hstoreProjected : ProjectedVRegsPreserved before afterStore := by
+    exact ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩
+  have hwriteProjected : ProjectedVRegsPreserved afterStore after := by
+    exact hprojected
+  have hstoreProject : System.systemProject afterStore = stored := by
+    exact
+      systemProject_eq_sail_of_projected_vregs_preserved_of_sail_regs_eq
+        before afterStore hregs hstoreProjected hlinked
+  rw [systemProject_stateAfterWrite_of_projected_vregs_preserved
+    afterStore after rd value hsail hwriteProjected]
+  rw [hstoreProject, ← hsail]
+
 /-- A pure `RETIRE_SUCCESS` after a successful architectural x-register write
 projects to the same pure Sail retirement at the written Sail state. -/
 theorem systemProjectResult_pure_retire_after_xreg_write

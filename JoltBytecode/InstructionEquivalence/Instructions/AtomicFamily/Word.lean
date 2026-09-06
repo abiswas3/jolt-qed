@@ -23,6 +23,7 @@ import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.Virtua
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualZeroExtendWord
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.XOR
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.AND
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 
 set_option linter.unusedVariables false
 

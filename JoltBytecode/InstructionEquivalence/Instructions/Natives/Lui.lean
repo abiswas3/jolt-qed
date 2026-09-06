@@ -39,13 +39,12 @@ theorem luiInstr_eq_sail
   have h_write_sail :
       wX_bits rd (sign_extend (m := 64) (imm +++ (0x000#12 : BitVec 12))) js.sail =
         .ok () s' := by
-    unfold op JoltISA.luiValue at h_write
-    exact h_write
+    simpa only [op, JoltISA.luiValue] using h_write
   simp only [h_write_sail]
 
   -- LHS
-  simp only [JoltISA.execLUI, JoltISA.execInstr]
-  rw [bind_after_success_of_writeDst_xreg rd js _ s' h_write _]
+  simp only [JoltISA.execLUI, JoltISA.execInstr, JoltISA.writeDst, liftSail,
+    bind, EStateM.bind, h_write]
   exact Projection.systemProjectResult_pure_retire_after_xreg_write rd js s'
     (op imm)
     h.linkedCSRs h_write

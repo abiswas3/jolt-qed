@@ -9,8 +9,7 @@ This file packages primitive assumptions from `JoltBytecode.Assumptions` into
 the public bundles used by instruction-equivalence theorems. It does not add
 new primitive assumptions.
 
-The theorem-facing bundles expose machine-mode execution facts directly. There
-is intentionally no `JoltConfig` wrapper.
+The theorem-facing bundles expose machine-mode execution facts directly. 
 -/
 
 set_option linter.unusedVariables false
@@ -218,7 +217,7 @@ abbrev amoWordBase (addr : BitVec 64) : BitVec 64 :=
 /-- Register assumptions shared by dword and word AMO equivalence theorems. -/
 private structure AmoRegisterAssumptions
     (rs2 rs1 rd : regidx) (js : SailJoltState)
-    extends BinarySourceReadAssumptions rs2 rs1 js where
+    extends BinarySourceReadWithLinkedCSRs rs2 rs1 js where
   rd_readable : Assumptions.XRegReadable rd js.sail
 
 /-- Public assumptions for dword AMO equivalence theorems. -/
@@ -235,6 +234,13 @@ def AmoDwordProgramEqSailAssumptions.rdReadable
     Assumptions.XRegReadable rd js.sail :=
   h.toAmoRegisterAssumptions.rd_readable
 
+/-- TODO: Docs -/
+def AmoDwordProgramEqSailAssumptions.linkedCSRs
+    {op : amoop} {rs2 rs1 rd : regidx} {js : SailJoltState}
+    (h : AmoDwordProgramEqSailAssumptions op rs2 rs1 rd js) :
+    LinkedCSRs js :=
+  h.toAmoRegisterAssumptions.toBinarySourceReadWithLinkedCSRs.linkedCSRs
+
 /-- Public assumptions for word AMO equivalence theorems. -/
 structure AmoWordProgramEqSailAssumptions
     (op : amoop) (rs2 rs1 rd : regidx) (js : SailJoltState)
@@ -248,6 +254,13 @@ def AmoWordProgramEqSailAssumptions.rdReadable
     (h : AmoWordProgramEqSailAssumptions op rs2 rs1 rd js) :
     Assumptions.XRegReadable rd js.sail :=
   h.toAmoRegisterAssumptions.rd_readable
+
+/-- TODO: Docs -/
+def AmoWordProgramEqSailAssumptions.linkedCSRs
+    {op : amoop} {rs2 rs1 rd : regidx} {js : SailJoltState}
+    (h : AmoWordProgramEqSailAssumptions op rs2 rs1 rd js) :
+    LinkedCSRs js :=
+  h.toAmoRegisterAssumptions.toBinarySourceReadWithLinkedCSRs.linkedCSRs
 
 -- ============================================================================
 -- System theorem bundles

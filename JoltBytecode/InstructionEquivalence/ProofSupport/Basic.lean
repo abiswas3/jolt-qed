@@ -4,6 +4,7 @@ import JoltBytecode.JoltISA.VirtualRegisters
 import JoltBytecode.InstructionEquivalence.ProofSupport.ValueLemmas
 import JoltBytecode.InstructionEquivalence.ProofSupport.VirtualRegisters
 import JoltBytecode.InstructionEquivalence.ProofSupport.ExpansionLayouts
+import JoltBytecode.InstructionEquivalence.ProofSupport.ProtectedVRegWrites
 
 set_option linter.unusedVariables false
 
@@ -236,8 +237,8 @@ def VRegWritesNoProtectedVReg (vr : VReg) : Prop :=
   ¬ IsProtectedJoltRegister vr
 
 def InstrWritesNoProtectedVReg : Instr → Prop
-  | .NoOp => True
   | .ADDI dst _ _ => DstWritesNoProtectedVReg dst
+  | .ADDIW dst _ _ => DstWritesNoProtectedVReg dst
   | .ANDI dst _ _ => DstWritesNoProtectedVReg dst
   | .ORI dst _ _ => DstWritesNoProtectedVReg dst
   | .XORI dst _ _ => DstWritesNoProtectedVReg dst
@@ -255,26 +256,35 @@ def InstrWritesNoProtectedVReg : Instr → Prop
   | .BGEU _ _ _ => False
   | .FENCE => False
   | .ADD dst _ _ => DstWritesNoProtectedVReg dst
+  | .ADDW dst _ _ => DstWritesNoProtectedVReg dst
   | .SUB dst _ _ => DstWritesNoProtectedVReg dst
+  | .SUBW dst _ _ => DstWritesNoProtectedVReg dst
   | .MUL dst _ _ => DstWritesNoProtectedVReg dst
+  | .MULW dst _ _ => DstWritesNoProtectedVReg dst
   | .MULHU dst _ _ => DstWritesNoProtectedVReg dst
-  | .ANDN _ _ _ => False
+  | .ANDN dst _ _ => DstWritesNoProtectedVReg dst
   | .OR dst _ _ => DstWritesNoProtectedVReg dst
   | .XOR dst _ _ => DstWritesNoProtectedVReg dst
   | .AND dst _ _ => DstWritesNoProtectedVReg dst
   | .SLT dst _ _ => DstWritesNoProtectedVReg dst
   | .SLTU dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualMULI dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualMULIW dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualPow2 dst _ => DstWritesNoProtectedVReg dst
   | .VirtualPow2W dst _ => DstWritesNoProtectedVReg dst
   | .VirtualPow2I _ _ => False
   | .VirtualPow2IW _ _ => False
   | .VirtualShiftRightBitmask dst _ => DstWritesNoProtectedVReg dst
   | .VirtualShiftRightBitmaskI _ _ => False
+  | .VirtualShiftRightBitmaskW dst _ => DstWritesNoProtectedVReg dst
   | .VirtualSRLI dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualSRAI dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualSRLIW dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualSRAIW dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualSRL dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualSRA dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualSRLW dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualSRAW dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualROTRI _ _ _ => False
   | .VirtualROTRIW _ _ _ => False
   | .VirtualRev8W _ _ => False
@@ -286,6 +296,18 @@ def InstrWritesNoProtectedVReg : Instr → Prop
   | .VirtualXORROTW12 _ _ _ => False
   | .VirtualXORROTW8 _ _ _ => False
   | .VirtualXORROTW7 _ _ _ => False
+  | .VirtualXORROTW22 _ _ _ => False
+  | .VirtualXORROTW19 _ _ _ => False
+  | .VirtualXORROTW6 _ _ _ => False
+  | .VirtualAlignAddr dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualWindowMaskB dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualWindowMaskH dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualWindowMaskW dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualShiftDataB dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualShiftDataH dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualShiftDataW dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualPext dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualPextSigned dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualSignExtendWord dst _ => DstWritesNoProtectedVReg dst
   | .VirtualZeroExtendWord dst _ => DstWritesNoProtectedVReg dst
   | .VirtualMovsign dst _ => DstWritesNoProtectedVReg dst
@@ -299,8 +321,7 @@ def InstrWritesNoProtectedVReg : Instr → Prop
   | .VirtualHostIO => False
   | .VirtualAssertEQ _ _ _ => True
   | .VirtualAssertValidDiv0 _ _ => True
-  | .VirtualChangeDivisor dst _ _ => DstWritesNoProtectedVReg dst
-  | .VirtualChangeDivisorW dst _ _ => DstWritesNoProtectedVReg dst
+  | .VirtualNegateIf dst _ _ => DstWritesNoProtectedVReg dst
   | .VirtualAssertValidUnsignedRemainder _ _ => True
   | .VirtualAssertMulUNoOverflow _ _ => True
   | .VirtualAssertLTE _ _ => True
@@ -913,12 +934,9 @@ theorem execInstr_preserves_protected
     (hrun : (execInstr instr).run js = .ok result js') :
     ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
   cases instr with
-  | NoOp =>
-      simp only [execInstr, pure] at hrun
-      cases hrun
-      intro vr hprotected
-      rfl
   | ADDI dst src imm =>
+      exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | ADDIW dst src imm =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | ANDI dst src imm =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
@@ -954,14 +972,20 @@ theorem execInstr_preserves_protected
       cases hsafe
   | ADD dst lhs rhs =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | ADDW dst lhs rhs =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | SUB dst lhs rhs =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | SUBW dst lhs rhs =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | MUL dst lhs rhs =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | MULW dst lhs rhs =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | MULHU dst lhs rhs =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | ANDN dst lhs rhs =>
-      cases hsafe
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualPow2I dst imm =>
       cases hsafe
   | VirtualPow2IW dst imm =>
@@ -990,6 +1014,12 @@ theorem execInstr_preserves_protected
       cases hsafe
   | VirtualXORROTW7 dst lhs rhs =>
       cases hsafe
+  | VirtualXORROTW22 dst lhs rhs =>
+      cases hsafe
+  | VirtualXORROTW19 dst lhs rhs =>
+      cases hsafe
+  | VirtualXORROTW6 dst lhs rhs =>
+      cases hsafe
   | OR dst lhs rhs =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | XOR dst lhs rhs =>
@@ -1002,19 +1032,49 @@ theorem execInstr_preserves_protected
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualMULI dst src imm =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualMULIW dst src imm =>
+      exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualPow2 dst src =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualPow2W dst src =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualShiftRightBitmask dst src =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualShiftRightBitmaskW dst src =>
+      exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualSRLI dst src bitmask =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualSRAI dst src bitmask =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualSRLIW dst src bitmask =>
+      exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualSRAIW dst src bitmask =>
+      exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualSRL dst value bitmask =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualSRA dst value bitmask =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualSRLW dst value bitmask =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualSRAW dst value bitmask =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualAlignAddr dst base imm =>
+      exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualWindowMaskB dst base imm =>
+      exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualWindowMaskH dst base imm =>
+      exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualWindowMaskW dst base imm =>
+      exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualShiftDataB dst value address =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualShiftDataH dst value address =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualShiftDataW dst value address =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualPext dst value mask =>
+      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
+  | VirtualPextSigned dst value mask =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualSignExtendWord dst src =>
       exact unaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
@@ -1055,9 +1115,7 @@ theorem execInstr_preserves_protected
         (p := fun d q => d = 0#64 ∧ q ≠ (-1 : BitVec 64))
         (msg := "VirtualAssertValidDiv0: divisor = 0 but quotient ≠ -1")
         (by simpa [execInstr] using hrun)
-  | VirtualChangeDivisor dst dividend divisor =>
-      exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
-  | VirtualChangeDivisorW dst dividend divisor =>
+  | VirtualNegateIf dst signSource value =>
       exact binaryWrite_preserves_protected hsafe (by simpa [execInstr] using hrun)
   | VirtualAssertValidUnsignedRemainder remainder divisor =>
       exact binaryReadIfPureElseThrow_preserves_protected

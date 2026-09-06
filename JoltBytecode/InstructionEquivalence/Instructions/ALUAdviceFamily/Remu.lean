@@ -1,5 +1,5 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
-import JoltBytecode.JoltISA.Expansions.DivRem
+import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
@@ -19,14 +19,14 @@ noncomputable section
 /-!
 # REMU: Jolt inline sequence with oracle advice
 
-The canonical bytecode object in this file is `remuProgram`. It is the literal
-7-instruction `REMU` expansion. `remuProgramPhases` is only the proof-facing
-decomposition used to compose the phase lemmas.
+The canonical bytecode object in this file is `remuProgramAuto`.
+`remuProgramPhases` is only the proof-facing decomposition used to compose the
+phase lemmas.
 -/
 
 namespace JoltISA
 
-/-- Proof-facing phase decomposition of `remuProgram`. -/
+/-- Proof-facing phase decomposition of `remuProgramAuto`. -/
 def remuProgramPhases (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
   (Remu.phase_setup quotient).append <|
@@ -35,12 +35,26 @@ def remuProgramPhases (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   (Remu.phase_remainder_bound rs1 rs2).append <|
   Remu.phase_writeback rd
 
-/-- The phase decomposition is definitionally the same bytecode as `remuProgram`. -/
-theorem remuProgram_eq_phases (rs2 rs1 rd : regidx) (quotient : BitVec 64) :
-    remuProgram rs2 rs1 rd quotient = remuProgramPhases rs2 rs1 rd quotient := by
+/-- Away from `x0`, the generated program is the proof-facing phase decomposition. -/
+theorem remuProgramAuto_eq_phases_of_ne_zero
+    (rs2 rs1 rd : regidx) (quotient : BitVec 64)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    remuProgramAuto rd rs1 rs2 quotient =
+      remuProgramPhases rs2 rs1 rd quotient := by
+  unfold remuProgramAuto remuProgramPhases
+  rw [isX0_eq_false_of_ne_zero hrd]
+  simp only [Bool.false_eq_true, if_false]
+  rw [pureWritebackTraceProgram_of_ne_zero hrd]
   rfl
 
-/-- Running `remuProgram` with honest quotient advice succeeds and writes Sail's
+/-- At `x0`, the generated program is the shared pure-writeback program. -/
+theorem remuProgramAuto_of_zero
+    (rs2 rs1 : regidx) (quotient : BitVec 64) :
+    remuProgramAuto (regidx.Regidx 0) rs1 rs2 quotient =
+      pureWritebackRdZeroProgram := by
+  rfl
+
+/-- Running `remuProgramAuto` with honest quotient advice succeeds and writes Sail's
 unsigned REM value to `rd`. -/
 theorem remuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
@@ -48,7 +62,7 @@ theorem remuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
     (hrd : rd ≠ regidx.Regidx 0) :
     ∃ js',
-      (execProgram (remuProgram rs2 rs1 rd
+      (execProgram (remuProgramAuto rd rs1 rs2
           (sail_div_value dividend divisor true))).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
@@ -110,8 +124,8 @@ theorem remuProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
         (Program.Run.append hrun3
           (Program.Run.append hrun4 hrun5)))
   have h_program_succeeds :
-      Program.Run (remuProgram rs2 rs1 rd q) js js₅ := by
-    rw [remuProgram_eq_phases]
+      Program.Run (remuProgramAuto rd rs1 rs2 q) js js₅ := by
+    rw [remuProgramAuto_eq_phases_of_ne_zero rs2 rs1 rd q hrd]
     exact h_phase_program_succeeds
   rw [hrem] at h5_sail
   exact ⟨js₅, h_program_succeeds, h5_sail⟩
@@ -150,13 +164,13 @@ theorem remuProgram_sound (rs2 rs1 rd : regidx)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
     (hrd : rd ≠ regidx.Regidx 0)
     (js' : SailJoltState)
-    (hok : (execProgram (remuProgram rs2 rs1 rd q)).run js =
+    (hok : (execProgram (remuProgramAuto rd rs1 rs2 q)).run js =
       .ok RETIRE_SUCCESS js') :
     js'.sail =
       stateAfterWrite js.sail rd (sail_rem_value dividend divisor true) := by
   let rem := dividend - q * divisor
   have h_program_succeeds : Program.Run (remuProgramPhases rs2 rs1 rd q) js js' := by
-    rw [← remuProgram_eq_phases]
+    rw [← remuProgramAuto_eq_phases_of_ne_zero rs2 rs1 rd q hrd]
     exact hok
   unfold remuProgramPhases at h_program_succeeds
   rw [pureWritebackTraceProgram_of_ne_zero hrd] at h_program_succeeds
@@ -220,18 +234,20 @@ theorem remuProgram_preserves_projected_vregs
     {js js' : SailJoltState}
     {result : ExecutionResult}
     (hrun : (JoltISA.execProgram
-      (JoltISA.remuProgram rs2 rs1 rd quotient)).run js = .ok result js') :
+      (JoltISA.remuProgramAuto rd rs1 rs2 quotient)).run js = .ok result js') :
     Projection.ProjectedVRegsPreserved js js' := by
   have hsafe :
       JoltISA.ProgramWritesNoProtectedVReg
-        (JoltISA.remuProgram rs2 rs1 rd quotient) := by
-    unfold JoltISA.remuProgram
-    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.VRegWritesNoProtectedVReg,
-      Remu.v0VReg]
+        (JoltISA.remuProgramAuto rd rs1 rs2 quotient) := by
+    unfold JoltISA.remuProgramAuto
+    split
+    · exact JoltISA.pureWritebackRdZeroProgram_writesNoProtected
+    · simp only [JoltISA.ProgramWritesNoProtectedVReg,
+        JoltISA.InstrWritesNoProtectedVReg,
+        JoltISA.DstWritesNoProtectedVReg,
+        JoltISA.VRegWritesNoProtectedVReg, true_and, and_true]
+      repeat' apply And.intro
+      all_goals exact JoltISA.not_protected_of_instructionTmp rfl
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     (js := js) (js' := js') (result := result) hsafe hrun
 
@@ -243,7 +259,7 @@ def remuProgramCompletenessStatement
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   quotient = sail_div_value h.rs1_val h.rs2_val true →
     System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.remuProgram rs2 rs1 rd quotient)).run js) =
+      ((JoltISA.execProgram (JoltISA.remuProgramAuto rd rs1 rs2 quotient)).run js) =
     (execute_REM rs2 rs1 rd true).run js.sail
 
 def remuProgramSoundnessStatement
@@ -253,7 +269,7 @@ def remuProgramSoundnessStatement
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   rd ≠ regidx.Regidx 0 →
     ∀ js',
-      (JoltISA.execProgram (JoltISA.remuProgram rs2 rs1 rd quotient)).run js =
+      (JoltISA.execProgram (JoltISA.remuProgramAuto rd rs1 rs2 quotient)).run js =
           .ok RETIRE_SUCCESS js' →
         js'.sail = stateAfterWrite js.sail rd
           (sail_rem_value h.rs1_val h.rs2_val true)
@@ -272,6 +288,8 @@ theorem remuProgram_eq_sail
     (js : SailJoltState)
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     remuProgramEqSailStatement rs2 rs1 rd quotient js h := by
+  unfold remuProgramEqSailStatement remuProgramCompletenessStatement
+    remuProgramSoundnessStatement
   constructor
   · intro hquotient
     subst quotient
@@ -284,8 +302,7 @@ theorem remuProgram_eq_sail
         Projection.systemProject_eq_project_of_compatible js h.linkedCSRs
     by_cases hrd : rd = regidx.Regidx 0
     · subst rd
-      unfold JoltISA.remuProgram
-      rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+      rw [JoltISA.remuProgramAuto_of_zero]
       rw [JoltISA.pureWritebackRdZeroProgram_run js]
       simp only [System.systemProjectResult]
       rw [h_project_initial]

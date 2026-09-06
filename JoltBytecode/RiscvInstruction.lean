@@ -8,16 +8,12 @@ import JoltBytecode.JoltISA.Expansions.LoadReserved
 import JoltBytecode.JoltISA.Expansions.Mul
 import JoltBytecode.JoltISA.Expansions.Store
 import JoltBytecode.JoltISA.Expansions.System
-import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Rtype.Addw
-import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Rtype.Mulw
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Rtype.Sll
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Rtype.Sllw
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Rtype.Sra
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Rtype.Sraw
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Rtype.Srl
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Rtype.Srlw
-import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Rtype.Subw
-import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Itype.Addiw
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Itype.Slli
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Itype.Slliw
 import JoltBytecode.InstructionEquivalence.Instructions.ALUFamily.Itype.Srai
@@ -60,6 +56,8 @@ import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrw
 import JoltBytecode.InstructionEquivalence.Instructions.System.Csrrs
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Add
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Addi
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Addiw
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Addw
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.And
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Andn
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Andi
@@ -77,6 +75,7 @@ import JoltBytecode.InstructionEquivalence.Instructions.Natives.Ld
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Lui
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Mul
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Mulhu
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Mulw
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Or
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Ori
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Sd
@@ -85,6 +84,7 @@ import JoltBytecode.InstructionEquivalence.Instructions.Natives.Slti
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Sltiu
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Sltu
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Sub
+import JoltBytecode.InstructionEquivalence.Instructions.Natives.Subw
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Xor
 import JoltBytecode.InstructionEquivalence.Instructions.Natives.Xori
 import JoltBytecode.InstructionEquivalence.Instructions.LoadFamily.LB_main
@@ -197,14 +197,14 @@ inductive RiscvInstruction where
   | MULH (rd rs1 rs2 : regidx)
   | MULHU (rd rs1 rs2 : regidx)
   | MULHSU (rd rs1 rs2 : regidx)
-  | DIV (rd rs1 rs2 : regidx) (quotient remAbs : BitVec 64)
+  | DIV (rd rs1 rs2 : regidx) (quotient : BitVec 64)
   | DIVU (rd rs1 rs2 : regidx) (quotient : BitVec 64)
-  | REM (rd rs1 rs2 : regidx) (quotient remAbs : BitVec 64)
+  | REM (rd rs1 rs2 : regidx) (quotientMagnitude : BitVec 64)
   | REMU (rd rs1 rs2 : regidx) (quotient : BitVec 64)
   | MULW (rd rs1 rs2 : regidx)
-  | DIVW (rd rs1 rs2 : regidx) (quotient remAbs : BitVec 64)
+  | DIVW (rd rs1 rs2 : regidx) (quotient : BitVec 64)
   | DIVUW (rd rs1 rs2 : regidx) (quotient : BitVec 64)
-  | REMW (rd rs1 rs2 : regidx) (quotient remAbs : BitVec 64)
+  | REMW (rd rs1 rs2 : regidx) (quotientMagnitude : BitVec 64)
   | REMUW (rd rs1 rs2 : regidx) (quotient : BitVec 64)
 
   /- A extension for atomic instructions. The `aq` and `rl` operands are the
@@ -350,19 +350,19 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .MULW _rd rs1 rs2, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
-  | .DIV _rd rs1 rs2 _quotient _remAbs, js =>
+  | .DIV _rd rs1 rs2 _quotient, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .DIVU _rd rs1 rs2 _quotient, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
-  | .REM _rd rs1 rs2 _quotient _remAbs, js =>
+  | .REM _rd rs1 rs2 _quotientMagnitude, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .REMU _rd rs1 rs2 _quotient, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
-  | .DIVW _rd rs1 rs2 _quotient _remAbs, js =>
+  | .DIVW _rd rs1 rs2 _quotient, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .DIVUW _rd rs1 rs2 _quotient, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
-  | .REMW _rd rs1 rs2 _quotient _remAbs, js =>
+  | .REMW _rd rs1 rs2 _quotientMagnitude, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
   | .REMUW _rd rs1 rs2 _quotient, js =>
       BinarySourceReadWithLinkedCSRs rs2 rs1 js
@@ -423,10 +423,8 @@ def equivAssumptions : (instr : RiscvInstruction) → SailJoltState → Type
   | .MRET, js =>
       System.MretProgramEqSailAssumptions js
   | _, _ => Unit
-/-- Equivalence proposition selected by the operand-bearing instruction.
 
-The fallback is deliberately `False` so unwired opcodes are visible gaps, not
-vacuous successes. -/
+/-- Given RISC-V instruction and assumptions return the proposition that we prove-/
 def equivalenceStatement :
     (instr : RiscvInstruction) →
     (js : SailJoltState) →
@@ -515,7 +513,7 @@ def equivalenceStatement :
     | .LD rd rs1 imm =>
       Natives.ldInstrEqSailStatement imm rs1 rd js _h
     | .ADDIW rd rs1 imm =>
-      addiwProgramEqSailStatement imm rs1 rd js _h
+      Natives.addiwInstrEqSailStatement imm rs1 rd js _h
     | .SLLIW rd rs1 shamt =>
       slliwProgramEqSailStatement shamt rs1 rd js _h
     | .SRLIW rd rs1 shamt =>
@@ -523,9 +521,9 @@ def equivalenceStatement :
     | .SRAIW rd rs1 shamt =>
       sraiwProgramEqSailStatement shamt rs1 rd js _h
     | .ADDW rd rs1 rs2 =>
-      addwProgramEqSailStatement rs2 rs1 rd js _h
+      Natives.addwInstrEqSailStatement rs2 rs1 rd js _h
     | .SUBW rd rs1 rs2 =>
-      subwProgramEqSailStatement rs2 rs1 rd js _h
+      Natives.subwInstrEqSailStatement rs2 rs1 rd js _h
     | .SLLW rd rs1 rs2 =>
       sllwProgramEqSailStatement rs2 rs1 rd js _h
     | .SRLW rd rs1 rs2 =>
@@ -540,22 +538,22 @@ def equivalenceStatement :
       Natives.mulhuInstrEqSailStatement rs2 rs1 rd js _h
     | .MULHSU rd rs1 rs2 =>
       mulhsuProgramEqSailStatement rs2 rs1 rd js _h
-    | .DIV rd rs1 rs2 quotient remAbs =>
-      divProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
+    | .DIV rd rs1 rs2 quotient =>
+      divProgramEqSailStatement rs2 rs1 rd quotient js _h
     | .DIVU rd rs1 rs2 quotient =>
       divuProgramEqSailStatement rs2 rs1 rd quotient js _h
-    | .REM rd rs1 rs2 quotient remAbs =>
-      remProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
+    | .REM rd rs1 rs2 quotientMagnitude =>
+      remProgramEqSailStatement rs2 rs1 rd quotientMagnitude js _h
     | .REMU rd rs1 rs2 quotient =>
       remuProgramEqSailStatement rs2 rs1 rd quotient js _h
     | .MULW rd rs1 rs2 =>
-      mulwProgramEqSailStatement rs2 rs1 rd js _h
-    | .DIVW rd rs1 rs2 quotient remAbs =>
-      divwProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
+      Natives.mulwInstrEqSailStatement rs2 rs1 rd js _h
+    | .DIVW rd rs1 rs2 quotient =>
+      divwProgramEqSailStatement rs2 rs1 rd quotient js _h
     | .DIVUW rd rs1 rs2 quotient =>
       divuwProgramEqSailStatement rs2 rs1 rd quotient js _h
-    | .REMW rd rs1 rs2 quotient remAbs =>
-      remwProgramEqSailStatement rs2 rs1 rd quotient remAbs js _h
+    | .REMW rd rs1 rs2 quotientMagnitude =>
+      remwProgramEqSailStatement rs2 rs1 rd quotientMagnitude js _h
     | .REMUW rd rs1 rs2 quotient =>
       remuwProgramEqSailStatement rs2 rs1 rd quotient js _h
     | .LR_W _rd _rs1 _aq _rl =>
@@ -617,31 +615,29 @@ def equivalenceStatement :
     | .MRET =>
       System.mretProgramEqSailStatement js _h
 
-/-- Proof selector for the equivalence statement.
-
-Every constructor is listed explicitly so missing instruction coverage is
-visible in this theorem, not hidden behind a catch-all. -/
+/-- Given Risc indtruction and equivalence assumptions, 
+    give me the proof of the equivalence statement-/
 theorem equivalenceStatement_holds :
     (instr : RiscvInstruction) →
     (js : SailJoltState) →
     (h : equivAssumptions instr js) →
     equivalenceStatement instr js h
   | .ADDW rd rs1 rs2, js, h =>
-      addwProgram_eq_sail rs2 rs1 rd js h
-  | .DIV rd rs1 rs2 quotient remAbs, js, h =>
-      divProgram_eq_sail rs2 rs1 rd quotient remAbs js h
+      Natives.addwInstr_eq_sail rs2 rs1 rd js h
+  | .DIV rd rs1 rs2 quotient, js, h =>
+      divProgram_eq_sail rs2 rs1 rd quotient js h
   | .DIVU rd rs1 rs2 quotient, js, h =>
       divuProgram_eq_sail rs2 rs1 rd quotient js h
-  | .REM rd rs1 rs2 quotient remAbs, js, h =>
-      remProgram_eq_sail rs2 rs1 rd quotient remAbs js h
+  | .REM rd rs1 rs2 quotientMagnitude, js, h =>
+      remProgram_eq_sail rs2 rs1 rd quotientMagnitude js h
   | .REMU rd rs1 rs2 quotient, js, h =>
       remuProgram_eq_sail rs2 rs1 rd quotient js h
-  | .DIVW rd rs1 rs2 quotient remAbs, js, h =>
-      divwProgram_eq_sail rs2 rs1 rd quotient remAbs js h
+  | .DIVW rd rs1 rs2 quotient, js, h =>
+      divwProgram_eq_sail rs2 rs1 rd quotient js h
   | .DIVUW rd rs1 rs2 quotient, js, h =>
       divuwProgram_eq_sail rs2 rs1 rd quotient js h
-  | .REMW rd rs1 rs2 quotient remAbs, js, h =>
-      remwProgram_eq_sail rs2 rs1 rd quotient remAbs js h
+  | .REMW rd rs1 rs2 quotientMagnitude, js, h =>
+      remwProgram_eq_sail rs2 rs1 rd quotientMagnitude js h
   | .REMUW rd rs1 rs2 quotient, js, h =>
       remuwProgram_eq_sail rs2 rs1 rd quotient js h
   | .LUI rd imm, js, h =>
@@ -703,7 +699,7 @@ theorem equivalenceStatement_holds :
   | .LD rd rs1 imm, js, h =>
       Natives.ldInstr_eq_sail imm rs1 rd js h
   | .ADDIW rd rs1 imm, js, h =>
-      addiwProgram_eq_sail imm rs1 rd js h
+      Natives.addiwInstr_eq_sail imm rs1 rd js h
   | .SLLIW rd rs1 shamt, js, h =>
       slliwProgram_eq_sail shamt rs1 rd js h
   | .SRLIW rd rs1 shamt, js, h =>
@@ -711,7 +707,7 @@ theorem equivalenceStatement_holds :
   | .SRAIW rd rs1 shamt, js, h =>
       sraiwProgram_eq_sail shamt rs1 rd js h
   | .SUBW rd rs1 rs2, js, h =>
-      subwProgram_eq_sail rs2 rs1 rd js h
+      Natives.subwInstr_eq_sail rs2 rs1 rd js h
   | .SLLW rd rs1 rs2, js, h =>
       sllwProgram_eq_sail rs2 rs1 rd js h
   | .SRLW rd rs1 rs2, js, h =>
@@ -727,7 +723,7 @@ theorem equivalenceStatement_holds :
   | .MULHSU rd rs1 rs2, js, h =>
       mulhsuProgram_eq_sail rs2 rs1 rd js h
   | .MULW rd rs1 rs2, js, h =>
-      mulwProgram_eq_sail rs2 rs1 rd js h
+      Natives.mulwInstr_eq_sail rs2 rs1 rd js h
   | .SB rs2 rs1 imm, js, h =>
       SB_main.sbProgram_eq_sail imm rs2 rs1 js h
   | .SH rs2 rs1 imm, js, h =>

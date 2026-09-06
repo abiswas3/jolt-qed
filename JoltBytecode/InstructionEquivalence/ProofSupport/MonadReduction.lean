@@ -10,6 +10,7 @@ set_option autoImplicit true
 noncomputable section
 
 /-!
+TODO: Not sure these are being used anymore.
 # Shared monadic reduction lemmas
 
 These lemmas isolate the small `EStateM.run` manipulations that appear when

@@ -29,7 +29,7 @@ structure SailJoltState where
 
 abbrev JoltMonad (α : Type) := EStateM (Error exception) SailJoltState α
 
--- TODO: I thought structures had natural projects (so do we need this ?)
+-- TODO: (ari) I thought structures had natural projects (so do we need this ?)
 @[simp] def project (js : SailJoltState) : SailState := js.sail
 
 -- Replace current Sail state with new Sail State
@@ -51,5 +51,8 @@ def liftSail (m : SailM α) : JoltMonad α := fun js =>
   match m js.sail with
   | .ok a ss' => .ok a { js with sail := ss' }
   | .error e ss' => .error e { js with sail := ss' }
+
+-- TODO: Common has a copy of project and System project. I am not sure if System 
+-- project should also be here?
 
 end

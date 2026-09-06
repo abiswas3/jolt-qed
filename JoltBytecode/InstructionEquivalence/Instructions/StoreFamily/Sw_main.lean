@@ -1,4 +1,5 @@
 import JoltBytecode.JoltISA.Expansions.Store
+import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows
@@ -11,7 +12,7 @@ import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 # SW: top-down store-word equivalence
 
 This file is deliberately organized like the program-level load proofs.
-`JoltISA.swProgram` is the Rust-faithful bytecode expansion; the proof reduces
+`JoltISA.swProgramAuto` is the Rust-faithful bytecode expansion; the proof reduces
 that program in phases, reduces Sail's native `execute_STORE`, and then bridges
 the two final memory states with a pure splice lemma.
 
@@ -40,15 +41,6 @@ noncomputable section
 
 namespace SW_main
 
-/-- Reading architectural register `x0` is always the pure zero read.
-
-`SW`'s mask construction uses `ORI v3, x0, -1`, so the program-block proof
-needs this fact at the point where the mask block begins. -/
-private theorem read_x0_eq_zero (s : SailState) :
-    rX_bits (regidx.Regidx 0) s = .ok 0#64 s := by
-  unfold rX_bits rX regval_from_reg zero_reg zeros
-  simp [Sail.BitVec.toNatInt, bind, EStateM.bind, pure, EStateM.pure]
-
 /-- The exact dword value that the Rust `SW` inline sequence writes back.
 
 The Jolt program first loads the enclosing dword, then replaces exactly the
@@ -75,7 +67,7 @@ Intended proof phases:
    dword.
 2. The SW mask/value logic computes `swSplicedDword`.
 3. `SD v1, v2, 0` writes that dword through Sail's store pipeline. -/
-theorem swProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
+theorem swProgramAuto_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (hpriv : Assumptions.CurPrivilegeMachine js.sail)
     (hmprv : Assumptions.MstatusMprvZero js.sail)
@@ -107,7 +99,7 @@ theorem swProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
             (loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
               hbytes h_base_aligned.no_ovf)))) :
     ∃ js' : SailJoltState,
-      (JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js =
+      (JoltISA.execProgram (JoltISA.swProgramAuto rs1 rs2 imm)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail =
         state_after_dword_store js.sail
@@ -118,35 +110,24 @@ theorem swProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
   let writeTail : JoltISA.Program :=
     .instr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0) <| .done RETIRE_SUCCESS
   let spliceTail : JoltISA.Program :=
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp0) (.xreg rs2) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp4 <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp0)) <|
-    .instr (.AND (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp3)) <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.VirtualWindowMaskW (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) 0) <|
+    .instr (.ANDN (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
+    .instr (.VirtualShiftDataW (.vreg JoltISA.inlineTmp3) (.xreg rs2) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.ADD (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
     writeTail
-  let maskTail : JoltISA.Program :=
-    JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
-    .instr (.ORI (.vreg JoltISA.inlineTmp3) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
-    JoltISA.srliBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (32 : BitVec 6) <|
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp4 <|
-    spliceTail
   let base := compute_aligned_dword_base_address rs1_val imm
   let dword_orig :=
     loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
       hbytes h_base_aligned.no_ovf
   let dword_new := swSplicedDword imm rs1_val rs2_val dword_orig
   let finalSail := state_after_dword_store js.sail base dword_new
-  rcases StoreProgramBlocks.assertWordSetupBlockAligned maskTail
+  rcases StoreProgramBlocks.assertWordSetupBlockAligned spliceTail
       imm rs1 js hpriv hmprv rs1_val hrs1 hsetup.word_aligned
       h_base_aligned hbytes hload_pmp hread_mmio with
     ⟨js_load, hsetup_run, hload_sail, hload_v0, hload_v1, hload_v2⟩
-  have hx0 : rX_bits (regidx.Regidx 0) js_load.sail = .ok 0#64 js_load.sail :=
-    read_x0_eq_zero js_load.sail
-  rcases StoreProgramBlocks.wordMaskBlock spliceTail imm js js_load rs1_val
-      dword_orig hload_sail hload_v0 hload_v1
-      (by simpa [dword_orig] using hload_v2) hx0 with
-    ⟨js_mask, hmask_run, hmask_sail, hmask_v0, hmask_v1, hmask_v2, hmask_v3⟩
-  rcases StoreProgramBlocks.wordSpliceBlock writeTail imm rs2 js js_mask
-      rs1_val rs2_val dword_orig hsetup hmask_sail hmask_v0 hmask_v1 hmask_v2 hmask_v3 hrs2 with
+  rcases StoreProgramBlocks.fusedWordSpliceBlock writeTail imm rs2 js js_load
+      rs1_val rs2_val dword_orig hsetup hload_sail hload_v0 hload_v1
+      (by simpa [dword_orig] using hload_v2) hrs2 with
     ⟨js_splice, hsplice_run, hsplice_sail, hsplice_v1, hsplice_v2⟩
   have hdword_new : js_splice.vregs JoltISA.inlineTmp2 = dword_new := by
     simpa [dword_new, swSplicedDword] using hsplice_v2
@@ -163,11 +144,9 @@ theorem swProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     ⟨js_write, hsd_run, hsail_write, _hvregs_write⟩
   refine ⟨js_write, ?_, ?_⟩
   · calc
-      (JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js =
-          (JoltISA.execProgram maskTail).run js_load := by
-            simpa [JoltISA.swProgram, maskTail, spliceTail, writeTail] using hsetup_run
-      _ = (JoltISA.execProgram spliceTail).run js_mask := by
-            simpa [maskTail, spliceTail, writeTail] using hmask_run
+      (JoltISA.execProgram (JoltISA.swProgramAuto rs1 rs2 imm)).run js =
+          (JoltISA.execProgram spliceTail).run js_load := by
+            simpa [JoltISA.swProgramAuto, spliceTail, writeTail] using hsetup_run
       _ = (JoltISA.execProgram writeTail).run js_splice := by
             simpa [spliceTail, writeTail] using hsplice_run
       _ = (JoltISA.execProgram (.done RETIRE_SUCCESS)).run js_write := by
@@ -241,7 +220,7 @@ theorem sw_spliced_dword_store_eq_word_store (imm : BitVec 12)
 This composes the Jolt monadic reduction with the pure splice bridge.  After
 this theorem, the Jolt side is expressed in the same canonical memory state as
 the Sail side: `state_after_word_store`. -/
-theorem swProgram_concrete_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
+theorem swProgramAuto_concrete_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (hpriv : Assumptions.CurPrivilegeMachine js.sail)
     (hmprv : Assumptions.MstatusMprvZero js.sail)
@@ -273,13 +252,13 @@ theorem swProgram_concrete_aligned (imm : BitVec 12) (rs2 rs1 : regidx)
             (loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
               hbytes h_base_aligned.no_ovf)))) :
     ∃ js' : SailJoltState,
-      (JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js =
+      (JoltISA.execProgram (JoltISA.swProgramAuto rs1 rs2 imm)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail =
         state_after_word_store js.sail
           (load_effective_address rs1_val imm)
           (Sail.BitVec.extractLsb rs2_val 31 0) := by
-  rcases swProgram_reduces_to_dword_store imm rs2 rs1 js hpriv hmprv rs1_val rs2_val
+  rcases swProgramAuto_reduces_to_dword_store imm rs2 rs1 js hpriv hmprv rs1_val rs2_val
       hrs1 hrs2 hsetup h_base_aligned hbytes hload_pmp hread_mmio hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   refine ⟨js', hjolt, ?_⟩
@@ -324,11 +303,11 @@ theorem execute_SW_reduces (imm : BitVec 12) (rs2 rs1 : regidx)
 
 The leading `VirtualAssertWordAlignment` stops the Jolt program before setup,
 returning Sail's store/AMO alignment exception. -/
-theorem swProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
+theorem swProgramAuto_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState) (rs1_val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok rs1_val js.sail)
     (hmis : load_effective_address rs1_val imm &&& 3 ≠ 0) :
-    (JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js =
+    (JoltISA.execProgram (JoltISA.swProgramAuto rs1 rs2 imm)).run js =
       .ok (ExecutionResult.Memory_Exception
         (Virtaddr (load_effective_address rs1_val imm),
           ExceptionType.E_SAMO_Addr_Align ())) js := by
@@ -336,19 +315,15 @@ theorem swProgram_concrete_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
     .instr (.ADDI (.vreg JoltISA.inlineTmp0) (.xreg rs1) imm) <|
     .instr (.ANDI (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp0) (-8 : BitVec 12)) <|
     .instr (.LD .normal (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp1) 0) <|
-    JoltISA.slliBlock (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (3 : BitVec 6) <|
-    .instr (.ORI (.vreg JoltISA.inlineTmp3) (.xreg (regidx.Regidx 0)) (-1 : BitVec 12)) <|
-    JoltISA.srliBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (32 : BitVec 6) <|
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp4 <|
-    JoltISA.sllBlock (.vreg JoltISA.inlineTmp0) (.xreg rs2) (.vreg JoltISA.inlineTmp0) JoltISA.inlineTmp4 <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp0)) <|
-    .instr (.AND (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp0) (.vreg JoltISA.inlineTmp3)) <|
-    .instr (.XOR (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.VirtualWindowMaskW (.vreg JoltISA.inlineTmp3) (.vreg JoltISA.inlineTmp0) 0) <|
+    .instr (.ANDN (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
+    .instr (.VirtualShiftDataW (.vreg JoltISA.inlineTmp3) (.xreg rs2) (.vreg JoltISA.inlineTmp0)) <|
+    .instr (.ADD (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp2) (.vreg JoltISA.inlineTmp3)) <|
     .instr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0) <|
     .done RETIRE_SUCCESS
   have h := StoreProgramBlocks.assertWordBlockMisaligned tail
     imm rs1 js rs1_val hrs1 hmis
-  simpa [JoltISA.swProgram, tail] using h
+  simpa [JoltISA.swProgramAuto, tail] using h
 
 /-- **Sail-side misaligned SW skeleton.**
 
@@ -386,20 +361,21 @@ theorem execute_SW_misaligned (imm : BitVec 12) (rs2 rs1 : regidx)
 
 /-- Successful `SW` expansions do not modify the persistent CSR virtual
 registers materialized by `systemProject`. -/
-theorem swProgram_preserves_projected_vregs
+theorem swProgramAuto_preserves_projected_vregs
     (imm : BitVec 12) (rs2 rs1 : regidx)
     {js js' : SailJoltState} {result : ExecutionResult}
-    (hrun : (JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js =
+    (hrun : (JoltISA.execProgram (JoltISA.swProgramAuto rs1 rs2 imm)).run js =
       .ok result js') :
     Projection.ProjectedVRegsPreserved js js' := by
   have hsafe : JoltISA.ProgramWritesNoProtectedVReg
-      (JoltISA.swProgram imm rs2 rs1) := by
-    unfold JoltISA.swProgram JoltISA.slliBlock JoltISA.srliBlock JoltISA.sllBlock
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      (JoltISA.swProgramAuto rs1 rs2 imm) := by
+    unfold JoltISA.swProgramAuto
+    simp only [JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
       JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3,
-      JoltISA.storeInlineTmp]
+      true_and, and_true]
+    repeat' apply And.intro
+    all_goals exact JoltISA.not_protected_of_instructionTmp rfl
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     hsafe hrun
 
@@ -409,7 +385,7 @@ def swProgramEqSailStatement (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (_h : StoreProgramEqSailAssumptions imm rs2 rs1 js) : Prop :=
     System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.swProgram imm rs2 rs1)).run js) =
+      ((JoltISA.execProgram (JoltISA.swProgramAuto rs1 rs2 imm)).run js) =
     (execute_STORE imm rs2 rs1 4).run js.sail
 
 /-- **Main public SW theorem.**  The Jolt bytecode expansion matches Sail after
@@ -465,7 +441,7 @@ theorem swProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
         (by simpa [ea] using halign)
         (by simpa [ea] using hstore_access.store_pmp)
         (by simpa [ea] using hstore_access.write_mmio)
-    rcases swProgram_concrete_aligned imm rs2 rs1 js h.cur_privilege h.mstatus_mprv
+    rcases swProgramAuto_concrete_aligned imm rs2 rs1 js h.cur_privilege h.mstatus_mprv
         h.rs1_val h.rs2_val
         h.rs1_read h.rs2_read hsetup
         (by simpa [base] using hwin.aligned)
@@ -477,7 +453,7 @@ theorem swProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     have hsail := execute_SW_reduces imm rs2 rs1 js h.rs1_val h.rs2_val
       h.rs1_read h.rs2_read hwrite_word
     have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
-      swProgram_preserves_projected_vregs imm rs2 rs1 hjolt
+      swProgramAuto_preserves_projected_vregs imm rs2 rs1 hjolt
     have hregs : js'.sail.regs = js.sail.regs := by
       rw [hjolt_sail]
       rfl
@@ -488,7 +464,7 @@ theorem swProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     simp only [System.systemProjectResult]
     congr 1
     rw [h_project_final, hjolt_sail]
-  · have hjolt := swProgram_concrete_misaligned imm rs2 rs1 js h.rs1_val
+  · have hjolt := swProgramAuto_concrete_misaligned imm rs2 rs1 js h.rs1_val
       h.rs1_read (by simpa [ea] using halign)
     have hsail := execute_SW_misaligned imm rs2 rs1 js h.rs1_val h.rs2_val
       h.rs1_read h.rs2_read (by simpa [ea] using halign)

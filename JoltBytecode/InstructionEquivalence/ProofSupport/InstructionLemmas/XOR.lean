@@ -15,6 +15,34 @@ noncomputable section
 
 namespace JoltISA
 
+/-- `XOR` from two real sources to a virtual destination. -/
+theorem xor_run_vreg_xreg_xreg (vd : VReg) (lhs rhs : regidx)
+    (js : SailJoltState) (x y : BitVec 64)
+    (hlhs : rX_bits lhs js.sail = .ok x js.sail)
+    (hrhs : rX_bits rhs js.sail = .ok y js.sail)
+    (hvd : WritableVReg vd) :
+    (execInstr (.XOR (.vreg vd) (.xreg lhs) (.xreg rhs))).run js =
+      .ok RETIRE_SUCCESS
+        { sail := js.sail
+          vregs := fun r => if r = vd then x ^^^ y else js.vregs r } := by
+  unfold execInstr readSrc writeDst liftSail
+  simp only [hlhs, hrhs, bind, EStateM.bind, EStateM.run]
+  exact writeVReg_retire_run_of_writable vd (x ^^^ y) js hvd
+
+/-- Existential single-write form for `XOR` from two real sources. -/
+theorem xor_run_vreg_xreg_xreg_ex (vd : VReg) (lhs rhs : regidx)
+    (js : SailJoltState) (x y : BitVec 64)
+    (hlhs : rX_bits lhs js.sail = .ok x js.sail)
+    (hrhs : rX_bits rhs js.sail = .ok y js.sail)
+    (hvd : WritableVReg vd) :
+    ∃ js',
+      (execInstr (.XOR (.vreg vd) (.xreg lhs) (.xreg rhs))).run js =
+        .ok RETIRE_SUCCESS js' ∧
+      js'.vregs vd = x ^^^ y ∧
+      (∀ r, r ≠ vd → js'.vregs r = js.vregs r) ∧
+      js'.sail = js.sail :=
+  writeSingleVReg_ex (xor_run_vreg_xreg_xreg vd lhs rhs js x y hlhs hrhs hvd)
+
 /-- `XOR` from a real source and a virtual source to a virtual destination reads
 the real source through Sail and writes the xor result. -/
 theorem xor_run_vreg_xreg_vreg (vd : VReg) (lhs : regidx) (rhs : VReg)

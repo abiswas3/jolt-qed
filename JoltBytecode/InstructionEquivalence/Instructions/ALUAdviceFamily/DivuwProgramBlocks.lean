@@ -1,6 +1,5 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.Primitives
-import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.DivProgramBlocks
 import JoltBytecode.InstructionEquivalence.Instructions.ALUAdviceFamily.DivwProgramBlocks
 import JoltBytecode.InstructionEquivalence.ProofSupport.ProgramComposition
 

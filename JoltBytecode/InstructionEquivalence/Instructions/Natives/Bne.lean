@@ -35,22 +35,20 @@ theorem bneInstr_eq_sail
   simp only [h.rs1_read, h.rs2_read]
   simp only [pure, EStateM.pure]
   -- LHS
-  simp only [JoltISA.execInstr]
-  rw [bind_after_success_of_readSrc_xreg rs1 js h.rs1_val h.rs1_read _]
-  rw [bind_after_success_of_readSrc_xreg rs2 js h.rs2_val h.rs2_read _]
-  by_cases h_ne : h.rs1_val ≠ h.rs2_val
-  · -- taken
-    simp [h_ne]
-    rw [← Projection.liftSail_bind]
-    exact Projection.systemProjectResult_liftSail_eq_of_preservesSystemProjectRegs
-      h.linkedCSRs
-      (branchJump_preservesSystemProjectRegs imm js)
+  simp only [JoltISA.execInstr, bind, EStateM.bind,
+    JoltISA.readSrc_xreg_run_of_read rs1 js h.rs1_val h.rs1_read,
+    JoltISA.readSrc_xreg_run_of_read rs2 js h.rs2_val h.rs2_read]
+  by_cases h_eq : h.rs1_val = h.rs2_val
   · -- not taken
-    have h_eq : h.rs1_val = h.rs2_val := by
-      by_contra h_eq
-      exact h_ne h_eq
-    simp [h_eq]
+    simp only [bne_iff_ne,
+      if_neg (fun hne : h.rs1_val ≠ h.rs2_val => hne h_eq)]
     exact Projection.systemProjectResult_pure_retire js h.linkedCSRs
+  · -- taken
+    simp only [bne_iff_ne, if_pos h_eq]
+    simpa only [Projection.liftSail_bind] using
+      (Projection.systemProjectResult_liftSail_eq_of_preservesSystemProjectRegs
+        h.linkedCSRs
+        (branchJump_preservesSystemProjectRegs imm js))
 
 end Natives
 

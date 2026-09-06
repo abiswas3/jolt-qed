@@ -1,5 +1,5 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
-import JoltBytecode.JoltISA.Expansions.DivRem
+import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 import JoltBytecode.Bundles
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
@@ -20,14 +20,14 @@ noncomputable section
 /-!
 # DIVUW: Jolt inline sequence with oracle advice
 
-The canonical bytecode object in this file is `divuwProgram`. It is the
-literal 11-instruction `DIVUW` expansion. `divuwProgramPhases` is only the
-proof-facing decomposition used to compose the phase lemmas.
+The canonical bytecode object in this file is `divuwProgramAuto`.
+`divuwProgramPhases` is only the proof-facing decomposition used to compose
+the phase lemmas.
 -/
 
 namespace JoltISA
 
-/-- Proof-facing phase decomposition of `divuwProgram`. -/
+/-- Proof-facing phase decomposition of `divuwProgramAuto`. -/
 def divuwProgramPhases (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   pureWritebackTraceProgram rd <|
   (Divuw.phase_setup rs1 rs2 quotient).append <|
@@ -36,13 +36,26 @@ def divuwProgramPhases (rs2 rs1 rd : regidx) (quotient : BitVec 64) : Program :=
   Divuw.phase_div0_check.append <|
   Divuw.phase_writeback rd
 
-/-- The phase decomposition is definitionally the same bytecode as `divuwProgram`. -/
-theorem divuwProgram_eq_phases (rs2 rs1 rd : regidx) (quotient : BitVec 64) :
-    divuwProgram rs2 rs1 rd quotient =
+/-- Away from `x0`, the generated program is the proof-facing phase decomposition. -/
+theorem divuwProgramAuto_eq_phases_of_ne_zero
+    (rs2 rs1 rd : regidx) (quotient : BitVec 64)
+    (hrd : rd ≠ regidx.Regidx 0) :
+    divuwProgramAuto rd rs1 rs2 quotient =
       divuwProgramPhases rs2 rs1 rd quotient := by
+  unfold divuwProgramAuto divuwProgramPhases
+  rw [isX0_eq_false_of_ne_zero hrd]
+  simp only [Bool.false_eq_true, if_false]
+  rw [pureWritebackTraceProgram_of_ne_zero hrd]
   rfl
 
-/-- Running `divuwProgram` with honest quotient advice succeeds and writes
+/-- At `x0`, the generated program is the shared pure-writeback program. -/
+theorem divuwProgramAuto_of_zero
+    (rs2 rs1 : regidx) (quotient : BitVec 64) :
+    divuwProgramAuto (regidx.Regidx 0) rs1 rs2 quotient =
+      pureWritebackRdZeroProgram := by
+  rfl
+
+/-- Running `divuwProgramAuto` with honest quotient advice succeeds and writes
 Sail's unsigned 32-bit DIV value to `rd`. -/
 theorem divuwProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (dividend divisor : BitVec 64)
@@ -50,7 +63,7 @@ theorem divuwProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
     (hrd : rd ≠ regidx.Regidx 0) :
     ∃ js',
-      (execProgram (divuwProgram rs2 rs1 rd
+      (execProgram (divuwProgramAuto rd rs1 rs2
           (sail_divuw_advice dividend divisor))).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail = stateAfterWrite js.sail rd
@@ -106,8 +119,8 @@ theorem divuwProgram_concrete (rs2 rs1 rd : regidx) (js : SailJoltState)
         (Program.Run.append hrun3
           (Program.Run.append hrun4 hrun5)))
   have h_program_succeeds :
-      Program.Run (divuwProgram rs2 rs1 rd q) js js₅ := by
-    rw [divuwProgram_eq_phases]
+      Program.Run (divuwProgramAuto rd rs1 rs2 q) js js₅ := by
+    rw [divuwProgramAuto_eq_phases_of_ne_zero rs2 rs1 rd q hrd]
     exact h_phase_program_succeeds
   rw [h_sext_q] at h5_sail
   exact ⟨js₅, h_program_succeeds, h5_sail⟩
@@ -146,14 +159,14 @@ theorem divuwProgram_sound (rs2 rs1 rd : regidx)
     (hrs2 : rX_bits rs2 js.sail = .ok divisor js.sail)
     (hrd : rd ≠ regidx.Regidx 0)
     (js' : SailJoltState)
-    (hok : (execProgram (divuwProgram rs2 rs1 rd q)).run js =
+    (hok : (execProgram (divuwProgramAuto rd rs1 rs2 q)).run js =
       .ok RETIRE_SUCCESS js') :
     js'.sail =
       stateAfterWrite js.sail rd (sail_divw_value dividend divisor true) := by
   let zd := zero_extend (m := 64) (Sail.BitVec.extractLsb dividend 31 0)
   let zv := zero_extend (m := 64) (Sail.BitVec.extractLsb divisor 31 0)
   have h_program_succeeds : Program.Run (divuwProgramPhases rs2 rs1 rd q) js js' := by
-    rw [← divuwProgram_eq_phases]
+    rw [← divuwProgramAuto_eq_phases_of_ne_zero rs2 rs1 rd q hrd]
     exact hok
   unfold divuwProgramPhases at h_program_succeeds
   rw [pureWritebackTraceProgram_of_ne_zero hrd] at h_program_succeeds
@@ -206,18 +219,20 @@ theorem divuwProgram_preserves_projected_vregs
     {js js' : SailJoltState}
     {result : ExecutionResult}
     (hrun : (JoltISA.execProgram
-      (JoltISA.divuwProgram rs2 rs1 rd quotient)).run js = .ok result js') :
+      (JoltISA.divuwProgramAuto rd rs1 rs2 quotient)).run js = .ok result js') :
     Projection.ProjectedVRegsPreserved js js' := by
   have hsafe :
       JoltISA.ProgramWritesNoProtectedVReg
-        (JoltISA.divuwProgram rs2 rs1 rd quotient) := by
-    unfold JoltISA.divuwProgram
-    apply JoltISA.pureWritebackTraceProgram_writesNoProtected
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg,
-      JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.VRegWritesNoProtectedVReg,
-      Divuw.rs1VReg, Divuw.rs2VReg, Divuw.quoVReg, Divuw.tempVReg]
+        (JoltISA.divuwProgramAuto rd rs1 rs2 quotient) := by
+    unfold JoltISA.divuwProgramAuto
+    split
+    · exact JoltISA.pureWritebackRdZeroProgram_writesNoProtected
+    · simp only [JoltISA.ProgramWritesNoProtectedVReg,
+        JoltISA.InstrWritesNoProtectedVReg,
+        JoltISA.DstWritesNoProtectedVReg,
+        JoltISA.VRegWritesNoProtectedVReg, true_and, and_true]
+      repeat' apply And.intro
+      all_goals exact JoltISA.not_protected_of_instructionTmp rfl
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     (js := js) (js' := js') (result := result) hsafe hrun
 
@@ -229,7 +244,7 @@ def divuwProgramCompletenessStatement
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   quotient = sail_divuw_advice h.rs1_val h.rs2_val →
     System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.divuwProgram rs2 rs1 rd quotient)).run js) =
+      ((JoltISA.execProgram (JoltISA.divuwProgramAuto rd rs1 rs2 quotient)).run js) =
     (execute_DIVW rs2 rs1 rd true).run js.sail
 
 def divuwProgramSoundnessStatement
@@ -239,7 +254,7 @@ def divuwProgramSoundnessStatement
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) : Prop :=
   rd ≠ regidx.Regidx 0 →
     ∀ js',
-      (JoltISA.execProgram (JoltISA.divuwProgram rs2 rs1 rd quotient)).run js =
+      (JoltISA.execProgram (JoltISA.divuwProgramAuto rd rs1 rs2 quotient)).run js =
           .ok RETIRE_SUCCESS js' →
         js'.sail = stateAfterWrite js.sail rd
           (sail_divw_value h.rs1_val h.rs2_val true)
@@ -258,6 +273,8 @@ theorem divuwProgram_eq_sail
     (js : SailJoltState)
     (h : BinarySourceReadWithLinkedCSRs rs2 rs1 js) :
     divuwProgramEqSailStatement rs2 rs1 rd quotient js h := by
+  unfold divuwProgramEqSailStatement divuwProgramCompletenessStatement
+    divuwProgramSoundnessStatement
   constructor
   · intro hquotient
     subst quotient
@@ -270,8 +287,7 @@ theorem divuwProgram_eq_sail
         Projection.systemProject_eq_project_of_compatible js h.linkedCSRs
     by_cases hrd : rd = regidx.Regidx 0
     · subst rd
-      unfold JoltISA.divuwProgram
-      rw [JoltISA.pureWritebackTraceProgram_regidx_zero]
+      rw [JoltISA.divuwProgramAuto_of_zero]
       rw [JoltISA.pureWritebackRdZeroProgram_run js]
       simp only [System.systemProjectResult]
       rw [h_project_initial]

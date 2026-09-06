@@ -19,6 +19,37 @@ set_option autoImplicit true
 
 noncomputable section
 
+/-- Derived facts for the enclosing dword window used by load-family proofs. -/
+structure LoadDwordWindowFacts
+    (imm : BitVec 12) (rs1 : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js) : Prop where
+  aligned :
+    AlignedDwordAccess (compute_aligned_dword_base_address h.rs1_val imm)
+  bytes :
+    MemBytesPresentAt js.sail (compute_aligned_dword_base_address h.rs1_val imm) 8
+  load_pmp :
+    Assumptions.LoadPmpOk
+      (compute_aligned_dword_base_address h.rs1_val imm) 8 js.sail
+  read_mmio :
+    Assumptions.NotReadableMmio
+      (compute_aligned_dword_base_address h.rs1_val imm) 8 js.sail
+
+def LoadProgramEqSailAssumptions.dwordWindowFacts
+    {imm : BitVec 12} {rs1 : regidx} {js : SailJoltState}
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
+    LoadDwordWindowFacts imm rs1 js h :=
+  { aligned := by
+      simpa [compute_aligned_dword_base_address, aligned_dword_addr_eq,
+        load_effective_address] using
+        aligned_dword_addr_is_aligned_dword_access h.rs1_val imm
+    bytes := by
+      simpa using h.dword_present.memBytesPresentAt
+    load_pmp := by
+      simpa using h.load_pmp.subaccess (offset := 0) (accessWidth := 8) (by omega)
+    read_mmio := by
+      simpa using h.not_readable_mmio.subaccess
+        (offset := 0) (accessWidth := 8) (by omega) }
+
 /-- Derived facts for the enclosing dword window used by store-family proofs.
 
 All fields are consequences of `StoreProgramEqSailAssumptions`; this structure
