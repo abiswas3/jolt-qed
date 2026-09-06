@@ -22,39 +22,6 @@ noncomputable section
 
 namespace LBU_main
 
-/-!
-# LBU: Jolt load-byte (unsigned) top-level equivalence
-
-From `tracer/src/instruction/lbu.rs::inline_sequence_64`:
-
-    ADDI  v0, rs1, imm
-    ANDI  v1, v0, -8
-    LD    v1, v1, 0
-    XORI  v0, v0, 7
-    SLLI  v0, v0, 3
-    SLL   v1, v1, v0
-    SRLI  rd, v1, 56
-
-This is identical to `LB` (see `LB_main.lean`) except the final step is
-`SRLI` (logical right shift) instead of `SRAI` (arithmetic right shift).
-Logical shift zero-fills the upper 56 bits; arithmetic shift replicates the
-sign bit. Accordingly:
-
-* The write phase uses `shift_bits_right` in place of
-  `shift_bits_right_arith`.
-* The bridge's RHS and the final `rd` value use `zero_extend` in place of
-  `sign_extend`.
-* `execute_LOAD`'s signed/unsigned flag is `true` (unsigned) instead of
-  `false`.
-
-## What lives here (by role)
-
-* `jolt_lbu_bridge` — specialisation: Jolt's logic-phase expression equals
-  `zero_extend (loaded_byte_at …)`.
-* `lbuProgram_concrete` — the program-level Jolt execution fact.
-* `execute_LBU_reduces` — the Sail-side `execute_LOAD … true 1` reduction.
-* `lbuProgram_eq_sail` — the main equivalence theorem.
--/
 
 /-- **Bridge lemma for LBU.** The Jolt logic-phase computation (XOR with 7,
     SLL by 3, SLL the dword, logical-shift-right by 56) equals the
@@ -147,94 +114,6 @@ theorem execute_LBU_reduces (imm : BitVec 12) (rs1 rd : regidx)
   simp only [RETIRE_SUCCESS]
   congr 1
   exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
-
-/-!
-## Program-level LBU theorem
-
-The Jolt side is now the structured `JoltISA.lbuProgram`.  This is identical
-to the program-level `LB` proof except for the final unsigned `SRLI` writeback
-and the pure bridge theorem's `zero_extend` result.
--/
-
-/-- Program-level execution for LBU.
-
-The common setup and lane-positioning facts are shared with `LB`; the final
-write block is the logical-right-shift version, which zero-fills the result
-before writing the architectural destination. -/
-theorem lbuProgram_concrete (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState)
-    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
-    (hmprv : Assumptions.MstatusMprvZero js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hbytes_base :
-      MemBytesPresentAt js.sail (compute_aligned_dword_base_address val imm) 8)
-    (hload_pmp_base :
-      Assumptions.LoadPmpOk (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hread_mmio_base :
-      Assumptions.NotReadableMmio (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hbytes_byte : MemBytesPresentAt js.sail (load_effective_address val imm) 1) :
-    ∃ js' : SailJoltState,
-      (JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js = .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd
-        (zero_extend (m := 64)
-          (loaded_byte_at js.sail (load_effective_address val imm)
-            (by simpa using hbytes_byte 0 (by omega)))) := by
-  let v0 := JoltISA.loadV0For rd
-  let v1 := JoltISA.loadV1For rd
-  let tmp := JoltISA.loadInlineTmpFor rd
-  let dst := JoltISA.loadDstFor rd
-  have hv0 : WritableVReg v0 := by simp [v0]
-  have hv1 : WritableVReg v1 := by simp [v1]
-  have htmp : WritableVReg tmp := by simp [tmp]
-  have hv0_ne_v1 : v0 ≠ v1 := by simp [v0, v1]
-  have hv0_ne_tmp : v0 ≠ tmp := by simp [v0, tmp]
-  have hv1_ne_tmp : v1 ≠ tmp := by simp [v1, tmp]
-  let writeTail : JoltISA.Program :=
-    .instr (.VirtualSRLI dst (.vreg v1) (JoltISA.srliBitmask (56 : BitVec 6)))
-      (.done RETIRE_SUCCESS)
-  let logicTail : JoltISA.Program :=
-    .instr (.XORI (.vreg v0) (.vreg v0) (7 : BitVec 12)) <|
-    JoltISA.slliBlock (.vreg v0) (.vreg v0) (3 : BitVec 6) <|
-    JoltISA.sllBlock (.vreg v1) (.vreg v1) (.vreg v0) tmp writeTail
-  rcases LoadProgramBlocks.setupBlock logicTail v0 v1 imm rs1 js hpriv hmprv val hrx
-      hbytes_base hload_pmp_base hread_mmio_base hv0 hv1 hv0_ne_v1 with
-    ⟨js_load, hload_run, hload_sail, hload_v0, hload_v1⟩
-  let dword := loaded_dword_at js.sail (compute_aligned_dword_base_address val imm)
-    hbytes_base (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf
-  rcases LoadProgramBlocks.xoriSlliSllBlock writeTail v0 v1 tmp imm (7 : BitVec 12)
-      js js_load val dword hload_sail hload_v0 hload_v1 hv0 hv1 htmp
-      hv0_ne_v1 hv0_ne_tmp hv1_ne_tmp with
-    ⟨js_shift, hlogic_run, hshift_sail, _hshift_v0, hshift_v1⟩
-  let shiftedValue :=
-    shift_bits_left
-      dword
-      (Sail.BitVec.extractLsb
-        (shift_bits_left
-          (load_effective_address val imm ^^^ sign_extend (m := 64) (7 : BitVec 12))
-          (3 : BitVec 6)) 5 0)
-  have hshifted : js_shift.vregs v1 = shiftedValue := by
-    simpa [shiftedValue] using hshift_v1
-  rcases LoadProgramBlocks.srliWriteBlock (.done RETIRE_SUCCESS)
-      rd v1 (56 : BitVec 6) js js_shift shiftedValue hshift_sail hshifted with
-    ⟨js', hwrite_run, hwrite_sail⟩
-  refine ⟨js', ?_, ?_⟩
-  · unfold JoltISA.lbuProgram
-    change (JoltISA.execProgram
-      (.instr (.ADDI (.vreg v0) (.xreg rs1) imm) <|
-       .instr (.ANDI (.vreg v1) (.vreg v0) (-8 : BitVec 12)) <|
-       .instr (.LD .normal (.vreg v1) (.vreg v1) 0) logicTail)).run js = .ok RETIRE_SUCCESS js'
-    rw [hload_run, hlogic_run, hwrite_run]
-    rfl
-  · rw [hwrite_sail]
-    exact congrArg (stateAfterWrite js.sail rd) (by
-      have h7 : sign_extend (m := 64) (7 : BitVec 12) = (7 : BitVec 64) := by decide
-      simpa [shiftedValue, compute_aligned_dword_base_address, h7] using
-        (jolt_lbu_bridge js.sail (load_effective_address val imm)
-          (by simpa [compute_aligned_dword_base_address] using hbytes_base)
-          (by
-            simpa [compute_aligned_dword_base_address] using
-              (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf)
-          (by simpa using hbytes_byte 0 (by omega))))
 
 /-- Execution of the Rust-generated fused `LBU` expansion. -/
 theorem lbuProgramAuto_concrete (imm : BitVec 12) (rs1 rd : regidx)
@@ -381,22 +260,6 @@ theorem lbuProgramAuto_concrete (imm : BitVec 12) (rs1 rd : regidx)
       rw [JoltISA.execProgram_instr_run_retire _ _ js_mask js' hpext]
       rfl
     · exact wX_bits_eq_stateAfterWrite rd finalValue js.sail s' hwrite
-
-/-- Successful `LBU` expansions do not modify the persistent CSR virtual
-registers materialized by `systemProject`. -/
-theorem lbuProgram_preserves_projected_vregs
-    (imm : BitVec 12) (rs1 rd : regidx)
-    {js js' : SailJoltState} {result : ExecutionResult}
-    (hrun : (JoltISA.execProgram (JoltISA.lbuProgram imm rs1 rd)).run js =
-      .ok result js') :
-    Projection.ProjectedVRegsPreserved js js' := by
-  have hsafe : JoltISA.ProgramWritesNoProtectedVReg
-      (JoltISA.lbuProgram imm rs1 rd) := by
-    unfold JoltISA.lbuProgram JoltISA.slliBlock JoltISA.sllBlock
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
-      JoltISA.InstrWritesNoProtectedVReg]
-  exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
-    hsafe hrun
 
 /-- The generated `LBU` expansion writes only instruction-local scratch vregs. -/
 theorem lbuProgramAuto_preserves_projected_vregs
