@@ -1,5 +1,5 @@
 import JoltBytecode.JoltISA.Expansions.Store
-import JoltBytecode.JoltISA.automaticEquivHand
+import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows
@@ -50,11 +50,11 @@ def sbSplicedDword (imm : BitVec 12) (rs1_val rs2_val dword_orig : BitVec 64) :
 
 /-- **Jolt-side reduction for SB.**
 
-This theorem follows the program exactly as written in `JoltISA.sbProgram`.
+This theorem follows the program exactly as written in `JoltISA.sbProgramAuto`.
 The statement hides all scratch-register churn and exposes only the semantic
 boundary: after the program retires, Sail has performed an `SD` of the spliced
 enclosing dword. -/
-theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
+theorem sbProgramAuto_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (hpriv : Assumptions.CurPrivilegeMachine js.sail)
     (hmprv : Assumptions.MstatusMprvZero js.sail)
@@ -86,7 +86,7 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
             (loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
               hbytes h_base_aligned.no_ovf)))) :
     ∃ js' : SailJoltState,
-      (JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js =
+      (JoltISA.execProgram (JoltISA.sbProgramAuto rs1 rs2 imm)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail =
         state_after_dword_store js.sail
@@ -130,9 +130,9 @@ theorem sbProgram_reduces_to_dword_store (imm : BitVec 12) (rs2 rs1 : regidx)
     ⟨js_write, hsd_run, hsail_write, _hvregs_write⟩
   refine ⟨js_write, ?_, ?_⟩
   · calc
-      (JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js =
+      (JoltISA.execProgram (JoltISA.sbProgramAuto rs1 rs2 imm)).run js =
           (JoltISA.execProgram spliceTail).run js_load := by
-            simpa [JoltISA.sbProgram, spliceTail, writeTail] using hsetup_run
+            simpa [JoltISA.sbProgramAuto, spliceTail, writeTail] using hsetup_run
       _ = (JoltISA.execProgram writeTail).run js_splice := by
             simpa [spliceTail, writeTail] using hsplice_run
       _ = (JoltISA.execProgram (.done RETIRE_SUCCESS)).run js_write := by
@@ -203,7 +203,7 @@ theorem sb_spliced_dword_store_eq_byte_store (imm : BitVec 12)
 
 After the pure bridge, the Jolt result is phrased in the same state expression
 as the native Sail byte-store theorem. -/
-theorem sbProgram_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
+theorem sbProgramAuto_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
     (js : SailJoltState)
     (hpriv : Assumptions.CurPrivilegeMachine js.sail)
     (hmprv : Assumptions.MstatusMprvZero js.sail)
@@ -235,13 +235,13 @@ theorem sbProgram_concrete (imm : BitVec 12) (rs2 rs1 : regidx)
             (loaded_dword_at js.sail (compute_aligned_dword_base_address rs1_val imm)
               hbytes h_base_aligned.no_ovf)))) :
     ∃ js' : SailJoltState,
-      (JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js =
+      (JoltISA.execProgram (JoltISA.sbProgramAuto rs1 rs2 imm)).run js =
         .ok RETIRE_SUCCESS js' ∧
       js'.sail =
         state_after_byte_store js.sail
           (load_effective_address rs1_val imm)
           (Sail.BitVec.extractLsb rs2_val 7 0) := by
-  rcases sbProgram_reduces_to_dword_store imm rs2 rs1 js hpriv hmprv rs1_val rs2_val
+  rcases sbProgramAuto_reduces_to_dword_store imm rs2 rs1 js hpriv hmprv rs1_val rs2_val
       hrs1 hrs2 hsetup h_base_aligned hbytes hload_pmp hread_mmio hwrite_dword with
     ⟨js', hjolt, hjolt_sail⟩
   refine ⟨js', hjolt, ?_⟩
@@ -281,19 +281,21 @@ theorem execute_SB_reduces (imm : BitVec 12) (rs2 rs1 : regidx)
 
 /-- Successful `SB` expansions do not modify the persistent CSR virtual
 registers materialized by `systemProject`. -/
-theorem sbProgram_preserves_projected_vregs
+theorem sbProgramAuto_preserves_projected_vregs
     (imm : BitVec 12) (rs2 rs1 : regidx)
     {js js' : SailJoltState} {result : ExecutionResult}
-    (hrun : (JoltISA.execProgram (JoltISA.sbProgram imm rs2 rs1)).run js =
+    (hrun : (JoltISA.execProgram (JoltISA.sbProgramAuto rs1 rs2 imm)).run js =
       .ok result js') :
     Projection.ProjectedVRegsPreserved js js' := by
   have hsafe : JoltISA.ProgramWritesNoProtectedVReg
-      (JoltISA.sbProgram imm rs2 rs1) := by
-    unfold JoltISA.sbProgram
-    simp [JoltISA.ProgramWritesNoProtectedVReg,
+      (JoltISA.sbProgramAuto rs1 rs2 imm) := by
+    unfold JoltISA.sbProgramAuto
+    simp only [JoltISA.ProgramWritesNoProtectedVReg,
       JoltISA.InstrWritesNoProtectedVReg,
       JoltISA.DstWritesNoProtectedVReg,
-      JoltISA.storeV0, JoltISA.storeV1, JoltISA.storeV2, JoltISA.storeV3]
+      and_true]
+    repeat' apply And.intro
+    all_goals exact JoltISA.not_protected_of_instructionTmp rfl
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     hsafe hrun
 
@@ -313,7 +315,6 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
     (h : StoreProgramEqSailAssumptions imm rs2 rs1 js) :
     sbProgramEqSailStatement imm rs2 rs1 js h := by
   unfold sbProgramEqSailStatement
-  rw [← JoltISA.sb_auto_eq imm rs2 rs1]
   let ea := load_effective_address h.rs1_val imm
   let base := compute_aligned_dword_base_address h.rs1_val imm
   let offset := (ea &&& (7 : BitVec 64)).toNat
@@ -355,7 +356,7 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
       h.rs1_val h.rs1_read (Sail.BitVec.extractLsb h.rs2_val 7 0)
       (by simpa [ea] using hstore_access.store_pmp)
       (by simpa [ea] using hstore_access.write_mmio)
-  rcases sbProgram_concrete imm rs2 rs1 js h.cur_privilege h.mstatus_mprv
+  rcases sbProgramAuto_concrete imm rs2 rs1 js h.cur_privilege h.mstatus_mprv
       h.rs1_val h.rs2_val
       h.rs1_read h.rs2_read hsetup
       (by simpa [base] using hwin.aligned)
@@ -367,7 +368,7 @@ theorem sbProgram_eq_sail (imm : BitVec 12) (rs2 rs1 : regidx)
   have hsail := execute_SB_reduces imm rs2 rs1 js h.rs1_val h.rs2_val
     h.rs1_read h.rs2_read hwrite_byte
   have h_projected_vregs : Projection.ProjectedVRegsPreserved js js' :=
-    sbProgram_preserves_projected_vregs imm rs2 rs1 hjolt
+    sbProgramAuto_preserves_projected_vregs imm rs2 rs1 hjolt
   have hregs : js'.sail.regs = js.sail.regs := by
     rw [hjolt_sail]
     rfl

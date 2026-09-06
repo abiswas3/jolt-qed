@@ -2,7 +2,6 @@ import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.Expansions.Mul
 import JoltBytecode.JoltISA.Expansions.DivRem
 import JoltBytecode.JoltISA.Expansions.Load
-import JoltBytecode.JoltISA.Expansions.Store
 import JoltBytecode.JoltISA.Expansions.Atomics
 import JoltBytecode.JoltISA.Expansions.Advice
 import JoltBytecode.JoltISA.ExpansionsAutomated
@@ -65,17 +64,6 @@ theorem adviceld_auto_eq (rd : regidx) (advice : BitVec 64) :
   unfold adviceldProgram adviceldProgramAuto adviceLoadDstFor sideEffectingRdZeroDst
     rdZeroRewriteVReg
   cases isX0 rd <;> rfl
-
-/-! ## Stores (no rd branch; imm pass-through) -/
-
-theorem sb_auto_eq (imm : BitVec 12) (rs2 rs1 : regidx) :
-    sbProgram imm rs2 rs1 = sbProgramAuto rs1 rs2 imm := by rfl
-
-theorem sh_auto_eq (imm : BitVec 12) (rs2 rs1 : regidx) :
-    shProgram imm rs2 rs1 = shProgramAuto rs1 rs2 imm := by rfl
-
-theorem sw_auto_eq (imm : BitVec 12) (rs2 rs1 : regidx) :
-    swProgram imm rs2 rs1 = swProgramAuto rs1 rs2 imm := by rfl
 
 /-! ## Atomics
 
