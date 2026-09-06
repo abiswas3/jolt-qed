@@ -1,8 +1,8 @@
 import JoltBytecode.Assumptions
 import JoltBytecode.JoltISA.Expansions.System
+import JoltBytecode.JoltISA.SystemProjection
 import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
 import JoltBytecode.InstructionEquivalence.ProofSupport.SystemHelpers
-import JoltBytecode.InstructionEquivalence.ProofSupport.SystemProjection
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.ADDI
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualMULI
 

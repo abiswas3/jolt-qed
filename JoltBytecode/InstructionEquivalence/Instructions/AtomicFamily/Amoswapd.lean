@@ -1,5 +1,4 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Dword
-import JoltBytecode.InstructionEquivalence.ProofSupport.SystemProjection
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
@@ -15,27 +14,26 @@ namespace AtomicFamily
 
 theorem amoswapdProgram_doesNotWriteProtectedVRegs
     (rs2 rs1 rd : regidx) :
-    (JoltISA.amoswapdProgram rs2 rs1 rd).DoesNotWriteProtectedVRegs := by
+    JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoswapdProgram rs2 rs1 rd) := by
   rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
   · simp [JoltISA.amoswapdProgram,
-      JoltISA.Program.DoesNotWriteProtectedVRegs,
-      JoltISA.Program.WritesProtectedVReg,
-      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
   · simp [JoltISA.amoswapdProgram,
-      JoltISA.Program.DoesNotWriteProtectedVRegs,
-      JoltISA.Program.WritesProtectedVReg,
-      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
 
 /-- Main public theorem for `AMOSWAP.D`.
 
 The theorem takes one primitive-only atomic bundle. Exact memory facts are
 derived internally from that bundle. -/
-private theorem amoswapdProgram_project_eq_sail
+private theorem amoswapdProgram_manual_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOSWAP rs2 rs1 rd js) :
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoswapdProgram rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOSWAP false false rs2 rs1 8 rd).run js.sail := by
   let addr := h.rs1_val
@@ -87,9 +85,22 @@ private theorem amoswapdProgram_project_eq_sail
           unfold amoDwordSailResult
           unfold trunc Sail.BitVec.truncate
           rfl)
+    have hjolt_sail :
+        js_afterWrite.sail =
+          amoDwordFinalSailState rd js.sail addr rs2Val old := by
+      rw [haddi_sail, hsd_sail, hld_sail]
+    have hprojected : Projection.ProjectedVRegsPreserved js js_afterWrite :=
+      Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+        (amoswapdProgram_doesNotWriteProtectedVRegs rs2 rs1 rd) hjolt
+    have hprojectFinal :
+        System.systemProject js_afterWrite = js_afterWrite.sail := by
+      exact Projection.systemProject_eq_sail_of_memory_update_then_write
+        js js_afterWrite (state_after_dword_store js.sail addr rs2Val) rd old
+        hjolt_sail rfl hprojected h.linkedCSRs
     rw [hjolt]
-    simp only [projectResult, project]
-    rw [haddi_sail, hsd_sail, hld_sail, hsail]
+    rw [hsail]
+    simp only [System.systemProjectResult]
+    rw [hprojectFinal, hjolt_sail]
   · let rest : JoltISA.Program :=
       .instr (.SD (.xreg rs1) (.xreg rs2) (0 : BitVec 12)) <|
       .instr (.ADDI (JoltISA.amoDstFor rd) (.vreg (JoltISA.amoOldVRegFor rd))
@@ -116,9 +127,10 @@ private theorem amoswapdProgram_project_eq_sail
       execute_AMO_dword_misaligned
         amoop.AMOSWAP rs2 rs1 rd js addr rs2Val h.rs1_read h.rs2_read h_align
     rw [hjolt]
-    simp only [projectResult, project]
-    symm
-    exact hsail
+    rw [hsail]
+    simp only [System.systemProjectResult]
+    congr 1
+    exact Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
 
 /-- Main public theorem for `AMOSWAP.D`. -/
 def amoswapdProgramEqSailStatement
@@ -135,10 +147,7 @@ theorem amoswapdProgram_eq_sail
     amoswapdProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amoswapdProgramEqSailStatement
   rw [← JoltISA.amoswapd_auto_eq rs2 rs1 rd]
-  rw [System.systemProjectResult_execProgram_eq_projectResult
-    (JoltISA.amoswapdProgram rs2 rs1 rd) js h.linkedCSRs
-    (amoswapdProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)]
-  exact amoswapdProgram_project_eq_sail rs2 rs1 rd js h
+  exact amoswapdProgram_manual_eq_sail rs2 rs1 rd js h
 
 end AtomicFamily
 

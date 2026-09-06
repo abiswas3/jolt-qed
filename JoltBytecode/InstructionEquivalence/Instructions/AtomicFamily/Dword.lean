@@ -12,6 +12,7 @@ import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.SLTU
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.Sub
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualAssertAlignment
 import JoltBytecode.InstructionEquivalence.ProofSupport.ProgramComposition
+import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.RegisterAccess
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Write
 
@@ -3186,6 +3187,9 @@ theorem amo_dword_double_binop_program_eq_sail_aligned
     (hwrite_mmio : Assumptions.NotWritableMmio addr 8 js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hnot_cas : (op == amoop.AMOCAS) = false)
+    (hlinked : LinkedCSRs js)
+    (hsafe : JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoDoubleBinopProgram binop rs2 rs1 rd))
     (hmiddle :
       ∀ oldReg newReg : JoltISA.VReg,
       WritableVReg newReg →
@@ -3209,7 +3213,7 @@ theorem amo_dword_double_binop_program_eq_sail_aligned
           (loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align))) =
       result) :
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoDoubleBinopProgram binop rs2 rs1 rd)).run js) =
       (execute_AMO op false false rs2 rs1 8 rd).run js.sail := by
   rcases amo_dword_double_binop_program_concrete_aligned
@@ -3221,9 +3225,19 @@ theorem amo_dword_double_binop_program_eq_sail_aligned
       op rs2 rs1 rd js hpriv hmprv addr rs2Val result
       hrs1 hrs2 hrd hbytes hatomic_pmp hread_mmio hwrite_mmio
       h_align hnot_cas hresult
+  have hprojected : Projection.ProjectedVRegsPreserved js jsf :=
+    Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+      hsafe hjolt
+  have hprojectFinal : System.systemProject jsf = jsf.sail := by
+    exact Projection.systemProject_eq_sail_of_memory_update_then_write
+      js jsf (state_after_dword_store js.sail addr result) rd
+      (loaded_dword_at js.sail addr hbytes
+        (amo_dword_aligned_no_ovf addr h_align))
+      hjolt_sail rfl hprojected hlinked
   rw [hjolt]
-  simp only [projectResult, project]
-  rw [hjolt_sail, hsail]
+  rw [hsail]
+  simp only [System.systemProjectResult]
+  rw [hprojectFinal, hjolt_sail]
 
 /-- Shared Sail-side misaligned reduction for native 64-bit AMOs. -/
 theorem execute_AMO_dword_misaligned
@@ -3262,8 +3276,9 @@ theorem amo_dword_double_binop_program_eq_sail_misaligned
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hlinked : LinkedCSRs js)
     (h_align : addr &&& (7 : BitVec 64) ≠ 0) :
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoDoubleBinopProgram binop rs2 rs1 rd)).run js) =
       (execute_AMO op false false rs2 rs1 8 rd).run js.sail := by
   have hjolt :=
@@ -3273,9 +3288,10 @@ theorem amo_dword_double_binop_program_eq_sail_misaligned
     execute_AMO_dword_misaligned
       op rs2 rs1 rd js addr rs2Val hrs1 hrs2 h_align
   rw [hjolt]
-  simp only [projectResult, project]
-  symm
-  exact hsail
+  rw [hsail]
+  simp only [System.systemProjectResult]
+  congr 1
+  exact Projection.systemProject_eq_sail_of_compatible js hlinked
 
 /-- Shared projection helper for dword AMO double-binop expansions.
 
@@ -3298,6 +3314,9 @@ theorem amo_dword_double_binop_program_project_eq_sail
     (hread_mmio : Assumptions.NotReadableMmio addr 8 js.sail)
     (hwrite_mmio : Assumptions.NotWritableMmio addr 8 js.sail)
     (hnot_cas : (op == amoop.AMOCAS) = false)
+    (hlinked : LinkedCSRs js)
+    (hsafe : JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoDoubleBinopProgram binop rs2 rs1 rd))
     (hmiddle :
       ∀ h_align : addr &&& (7 : BitVec 64) = 0,
       ∀ oldReg newReg : JoltISA.VReg,
@@ -3323,7 +3342,7 @@ theorem amo_dword_double_binop_program_project_eq_sail
           (loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align))) =
       result) :
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoDoubleBinopProgram binop rs2 rs1 rd)).run js) =
       (execute_AMO op false false rs2 rs1 8 rd).run js.sail := by
   by_cases h_align : addr &&& (7 : BitVec 64) = 0
@@ -3331,11 +3350,11 @@ theorem amo_dword_double_binop_program_project_eq_sail
       amo_dword_double_binop_program_eq_sail_aligned
         op binop rs2 rs1 rd js hpriv hmprv addr rs2Val result
         hrs1 hrs2 hrd hbytes hload_pmp hstore_pmp hatomic_pmp
-        hread_mmio hwrite_mmio h_align hnot_cas (hmiddle h_align)
+        hread_mmio hwrite_mmio h_align hnot_cas hlinked hsafe (hmiddle h_align)
         (hresult h_align)
   · exact
       amo_dword_double_binop_program_eq_sail_misaligned
-        op binop rs2 rs1 rd js addr rs2Val hrs1 hrs2 h_align
+        op binop rs2 rs1 rd js addr rs2Val hrs1 hrs2 hlinked h_align
 
 /-- Shared aligned concrete execution for `amoDoubleSelectProgram`.
 
@@ -3506,6 +3525,9 @@ theorem amo_dword_double_select_program_eq_sail_aligned
     (hwrite_mmio : Assumptions.NotWritableMmio addr 8 js.sail)
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hnot_cas : (op == amoop.AMOCAS) = false)
+    (hlinked : LinkedCSRs js)
+    (hsafe : JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoDoubleSelectProgram cmpInstr cmpLhs cmpRhs rs2 rs1 rd))
     (hmiddle :
       ∀ js_afterLoad : SailJoltState,
         js_afterLoad.sail = js.sail →
@@ -3528,7 +3550,7 @@ theorem amo_dword_double_select_program_eq_sail_aligned
           (loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align))) =
       result) :
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoDoubleSelectProgram cmpInstr cmpLhs cmpRhs rs2 rs1 rd)).run js) =
       (execute_AMO op false false rs2 rs1 8 rd).run js.sail := by
   rcases amo_dword_double_select_program_concrete_aligned
@@ -3541,9 +3563,19 @@ theorem amo_dword_double_select_program_eq_sail_aligned
       op rs2 rs1 rd js hpriv hmprv addr rs2Val result
       hrs1 hrs2 hrd hbytes hatomic_pmp hread_mmio hwrite_mmio
       h_align hnot_cas hresult
+  have hprojected : Projection.ProjectedVRegsPreserved js jsf :=
+    Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
+      hsafe hjolt
+  have hprojectFinal : System.systemProject jsf = jsf.sail := by
+    exact Projection.systemProject_eq_sail_of_memory_update_then_write
+      js jsf (state_after_dword_store js.sail addr result) rd
+      (loaded_dword_at js.sail addr hbytes
+        (amo_dword_aligned_no_ovf addr h_align))
+      hjolt_sail rfl hprojected hlinked
   rw [hjolt]
-  simp only [projectResult, project]
-  rw [hjolt_sail, hsail]
+  rw [hsail]
+  simp only [System.systemProjectResult]
+  rw [hprojectFinal, hjolt_sail]
 
 /-- Shared misaligned public branch for dword AMO double-select expansions. -/
 theorem amo_dword_double_select_program_eq_sail_misaligned
@@ -3554,8 +3586,9 @@ theorem amo_dword_double_select_program_eq_sail_misaligned
     (addr rs2Val : BitVec 64)
     (hrs1 : rX_bits rs1 js.sail = .ok addr js.sail)
     (hrs2 : rX_bits rs2 js.sail = .ok rs2Val js.sail)
+    (hlinked : LinkedCSRs js)
     (h_align : addr &&& (7 : BitVec 64) ≠ 0) :
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoDoubleSelectProgram cmpInstr cmpLhs cmpRhs rs2 rs1 rd)).run js) =
       (execute_AMO op false false rs2 rs1 8 rd).run js.sail := by
   have hjolt :=
@@ -3565,9 +3598,10 @@ theorem amo_dword_double_select_program_eq_sail_misaligned
     execute_AMO_dword_misaligned
       op rs2 rs1 rd js addr rs2Val hrs1 hrs2 h_align
   rw [hjolt]
-  simp only [projectResult, project]
-  symm
-  exact hsail
+  rw [hsail]
+  simp only [System.systemProjectResult]
+  congr 1
+  exact Projection.systemProject_eq_sail_of_compatible js hlinked
 
 /-- Shared projection helper for dword AMO double-select expansions. -/
 theorem amo_dword_double_select_program_project_eq_sail
@@ -3588,6 +3622,9 @@ theorem amo_dword_double_select_program_project_eq_sail
     (hread_mmio : Assumptions.NotReadableMmio addr 8 js.sail)
     (hwrite_mmio : Assumptions.NotWritableMmio addr 8 js.sail)
     (hnot_cas : (op == amoop.AMOCAS) = false)
+    (hlinked : LinkedCSRs js)
+    (hsafe : JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoDoubleSelectProgram cmpInstr cmpLhs cmpRhs rs2 rs1 rd))
     (hmiddle :
       ∀ h_align : addr &&& (7 : BitVec 64) = 0,
       ∀ js_afterLoad : SailJoltState,
@@ -3612,7 +3649,7 @@ theorem amo_dword_double_select_program_project_eq_sail
           (loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align))) =
       result) :
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoDoubleSelectProgram cmpInstr cmpLhs cmpRhs rs2 rs1 rd)).run js) =
       (execute_AMO op false false rs2 rs1 8 rd).run js.sail := by
   by_cases h_align : addr &&& (7 : BitVec 64) = 0
@@ -3621,10 +3658,10 @@ theorem amo_dword_double_select_program_project_eq_sail
         op cmpInstr cmpLhs cmpRhs rs2 rs1 rd js hpriv hmprv
         addr rs2Val result hrs1 hrs2 hrd hbytes hload_pmp
         hstore_pmp hatomic_pmp hread_mmio hwrite_mmio h_align
-        hnot_cas (hmiddle h_align) (hresult h_align)
+        hnot_cas hlinked hsafe (hmiddle h_align) (hresult h_align)
   · exact
       amo_dword_double_select_program_eq_sail_misaligned
-        op cmpInstr cmpLhs cmpRhs rs2 rs1 rd js addr rs2Val hrs1 hrs2 h_align
+        op cmpInstr cmpLhs cmpRhs rs2 rs1 rd js addr rs2Val hrs1 hrs2 hlinked h_align
 
 end AtomicFamily
 

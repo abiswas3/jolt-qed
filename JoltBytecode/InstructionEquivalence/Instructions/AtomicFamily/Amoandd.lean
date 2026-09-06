@@ -1,5 +1,4 @@
 import JoltBytecode.InstructionEquivalence.Instructions.AtomicFamily.Dword
-import JoltBytecode.InstructionEquivalence.ProofSupport.SystemProjection
 import JoltBytecode.JoltISA.automaticEquivHand
 
 set_option linter.unusedVariables false
@@ -14,17 +13,16 @@ namespace AtomicFamily
 
 theorem amoanddProgram_doesNotWriteProtectedVRegs
     (rs2 rs1 rd : regidx) :
-    (JoltISA.amoanddProgram rs2 rs1 rd).DoesNotWriteProtectedVRegs := by
+    JoltISA.ProgramWritesNoProtectedVReg
+      (JoltISA.amoanddProgram rs2 rs1 rd) := by
   rcases eq_or_ne (JoltISA.isX0 rd) true with hrd | hrd
   · simp [JoltISA.amoanddProgram, JoltISA.amoDoubleBinopProgram,
-      JoltISA.Program.DoesNotWriteProtectedVRegs,
-      JoltISA.Program.WritesProtectedVReg,
-      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
   · simp [JoltISA.amoanddProgram, JoltISA.amoDoubleBinopProgram,
-      JoltISA.Program.DoesNotWriteProtectedVRegs,
-      JoltISA.Program.WritesProtectedVReg,
-      JoltISA.Instr.WritesProtectedVReg, JoltISA.Dst.WritesProtectedVReg,
+      JoltISA.ProgramWritesNoProtectedVReg,
+      JoltISA.InstrWritesNoProtectedVReg, JoltISA.DstWritesNoProtectedVReg,
       JoltISA.amoDstFor, JoltISA.sideEffectingRdZeroDst, hrd]
 
 /-- Sail's generated `AMOAND.D` result expression reduces to dword and. -/
@@ -42,10 +40,10 @@ theorem amoandd_sail_result (rs2Val loaded : BitVec 64) :
 
 The theorem takes one primitive-only atomic bundle. Exact memory facts are
 derived internally from that bundle. -/
-private theorem amoanddProgram_project_eq_sail
+private theorem amoanddProgram_manual_eq_sail
     (rs2 rs1 rd : regidx) (js : SailJoltState)
     (h : AmoDwordProgramEqSailAssumptions amoop.AMOAND rs2 rs1 rd js) :
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoanddProgram rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail := by
   let addr := h.rs1_val
@@ -63,7 +61,7 @@ private theorem amoanddProgram_project_eq_sail
   have hwrite_mmio : Assumptions.NotWritableMmio addr 8 js.sail := by
     simpa [addr] using h.not_writable_mmio.subaccess (offset := 0) (accessWidth := 8) (by omega)
   change
-    projectResult ((JoltISA.execProgram
+    System.systemProjectResult ((JoltISA.execProgram
       (JoltISA.amoDoubleBinopProgram
         (fun dst lhs rhs => .AND dst lhs rhs) rs2 rs1 rd)).run js) =
       (execute_AMO amoop.AMOAND false false rs2 rs1 8 rd).run js.sail
@@ -76,7 +74,8 @@ private theorem amoanddProgram_project_eq_sail
           (amo_dword_aligned_no_ovf addr h_align))
         h.rs1_read h.rs2_read h.rdReadable.exists_value
         hbytes hload_pmp hstore_pmp hatomic_pmp hread_mmio hwrite_mmio
-        h_align (by decide)
+        h_align (by decide) h.linkedCSRs
+        (amoanddProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)
         (amo_dword_and_middle_after_load_into rs2 js addr rs2Val
           (loaded_dword_at js.sail addr hbytes
             (amo_dword_aligned_no_ovf addr h_align))
@@ -87,7 +86,7 @@ private theorem amoanddProgram_project_eq_sail
   · exact
       amo_dword_double_binop_program_eq_sail_misaligned
         amoop.AMOAND (fun dst lhs rhs => .AND dst lhs rhs)
-        rs2 rs1 rd js addr rs2Val h.rs1_read h.rs2_read h_align
+        rs2 rs1 rd js addr rs2Val h.rs1_read h.rs2_read h.linkedCSRs h_align
 
 /-- Main public theorem for `AMOAND.D`. -/
 def amoanddProgramEqSailStatement
@@ -104,10 +103,7 @@ theorem amoanddProgram_eq_sail
     amoanddProgramEqSailStatement rs2 rs1 rd js h := by
   unfold amoanddProgramEqSailStatement
   rw [← JoltISA.amoandd_auto_eq rs2 rs1 rd]
-  rw [System.systemProjectResult_execProgram_eq_projectResult
-    (JoltISA.amoanddProgram rs2 rs1 rd) js h.linkedCSRs
-    (amoanddProgram_doesNotWriteProtectedVRegs rs2 rs1 rd)]
-  exact amoanddProgram_project_eq_sail rs2 rs1 rd js h
+  exact amoanddProgram_manual_eq_sail rs2 rs1 rd js h
 
 end AtomicFamily
 
