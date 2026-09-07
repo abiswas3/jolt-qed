@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
 import LeanRV64D.InstsEnd
 import JoltBytecode.Bundles
 import JoltBytecode.JoltISA.Semantics
@@ -97,11 +103,10 @@ import JoltBytecode.InstructionEquivalence.Instructions.LoadFamily.LWU_main
 /-!
 # RISC-V Instructions
 
-This file records the operand-bearing guest RISC-V instruction universe accepted
-by Jolt's Rust `RV64IMAC_JOLT` source profile.
-
-Rust is the source of truth for which guest opcodes Jolt accepts; the RISC-V ISA
-docs are cited for the meaning of those opcodes.
+THis can be thought of as the projects "main" file. 
+For every RISC-V instruction, we tell you 
+what the equivalence proposition is, what assumptions are needed,
+and finally where the proof is.
 -/
 
 open Sail PreSail

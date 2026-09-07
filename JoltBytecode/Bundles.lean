@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
 import JoltBytecode.Assumptions
 import JoltBytecode.JoltISA.MemoryAccess
 import JoltBytecode.JoltISA.SystemCSR
@@ -5,11 +11,17 @@ import JoltBytecode.JoltISA.SystemCSR
 /-!
 # Jolt proof bundles
 
-This file packages primitive assumptions from `JoltBytecode.Assumptions` into
-the public bundles used by instruction-equivalence theorems. It does not add
-new primitive assumptions.
+A bundle is just a subset of assumptions from Assumptions.lean.
+Each main equivalence theorem gets a bundle, which states everything 
+we must assume to prove the theorem. 
+A bundle should NEVER invent assumptions, it can only import them from 
+Assumptions.lean.
 
-The theorem-facing bundles expose machine-mode execution facts directly. 
+Thus, the entire assumption surface lives in Assumption.lean.
+We could have passed the entire list of assumptions to every theorem, 
+but then it is not clear which theorems use which assumptions.
+The bundles are a clean way to show that memory equivalence proofs 
+require far more assumptions than ALU expansions.
 -/
 
 set_option linter.unusedVariables false

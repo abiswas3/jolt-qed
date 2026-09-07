@@ -249,7 +249,6 @@ def pureWritebackTraceProgram (rd : regidx) (normal : Program) : Program :=
 
 /-- The first virtual register Rust's `allocate()` returns for top-level
 side-effecting `rd = x0` source rewrites. 
-NOTE: currently unused in proofs
 -/
 abbrev rdZeroRewriteVReg : VReg := inlineTmp 0
 
@@ -267,19 +266,4 @@ def sideEffectingDst : Dst → Dst
 @[simp] theorem sideEffectingDst_vreg (v : VReg) :
     sideEffectingDst (.vreg v) = .vreg v := rfl
 
--- TODO: Not sure if this is the right place for these expansion blocks. 
--- Was being lazy when i put them here, move them later. 
-
--- /-- Source-level `JAL` materialization, including Rust's side-effecting
--- `rd = x0` destination rewrite. Native final-row `JAL` semantics are unchanged. -/
--- def jalProgram (rd : regidx) (imm : BitVec 21) : Program :=
---   .instr (.JAL (sideEffectingRdZeroDst rd) imm) <|
---   .done RETIRE_SUCCESS
---
--- /-- Source-level `JALR` materialization, including Rust's side-effecting
--- `rd = x0` destination rewrite. Native final-row `JALR` semantics are unchanged. -/
--- def jalrProgram (rd rs1 : regidx) (imm : BitVec 12) : Program :=
---   .instr (.JALR (sideEffectingRdZeroDst rd) (.xreg rs1) imm) <|
---   .done RETIRE_SUCCESS
---
 end JoltISA

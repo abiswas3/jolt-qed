@@ -1,9 +1,20 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
 import JoltBytecode.JoltISA.VirtualRegisters
 /-!
 # Jolt proof assumptions
 
 This file is the top-level index of primitive assumptions used by the
 instruction-equivalence proofs. 
+See: https://randomwalks.xyz/blog/jolt-qed/assumptions/
+for a detailed justification of these assumptions. 
+
+NOTE: The control status register assumptions should be tightened
+in the rust code. Till then, those assumptions are fine.
 -/
 
 set_option linter.unusedVariables false

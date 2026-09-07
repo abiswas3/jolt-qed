@@ -1,17 +1,20 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
+
 import JoltBytecode.JoltISA.Instruction
 import JoltBytecode.JoltISA.VirtualRegisters
 
 /-!
-# Jolt ISA ALU expansions
+# Jolt ISA ALU expansions Helpers
 
-These programs are the handwritten Jolt-ISA layer for ALU bytecode
-expansions.  They are intentionally close to the Rust `inline_sequence`
-methods: each constructor below corresponds to one emitted Jolt instruction,
-and temporary virtual registers are written explicitly.
+The full expansions are already present in ExpansionsAutomated.
+In this file we often re-define blocks of the expansion to make 
+theorem proving more ergonomic.
 
-The fixed temporary convention used here follows Rust's allocator:
-`inlineTmp0` is virtual register 40, `inlineTmp1` is virtual register 41, and
-so on.
 -/
 
 open Sail PreSail LeanRV64D.Functions
