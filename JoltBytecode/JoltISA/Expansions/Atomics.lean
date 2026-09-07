@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
 import JoltBytecode.JoltISA.Instruction
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.JoltISA.VirtualRegisters
@@ -5,13 +11,8 @@ import JoltBytecode.JoltISA.VirtualRegisters
 /-!
 # Atomic Jolt expansion programs
 
-These are RV64 data-level Jolt programs for the AMO expansion family.  The
-definitions follow the Rust sources in
-`/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction`.
-
-The `.W` programs deliberately share Rust's `amo_pre64` / `amo_post64` shape:
-extract the target word from the containing doubleword, compute the new word,
-splice it back, and sign-extend the old word into `rd`.
+Small wrappers around atomic expansions that make proof writing a little bit more 
+ergonomic.
 -/
 
 open Sail PreSail LeanRV64D.Functions

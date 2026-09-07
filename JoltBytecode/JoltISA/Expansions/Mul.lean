@@ -1,12 +1,17 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
+
 import JoltBytecode.JoltISA.Instruction
 import JoltBytecode.JoltISA.VirtualRegisters
 
 /-!
 # M-extension Jolt expansion programs
 
-These definitions are data, not proofs.  They are intentionally close to the
-Rust inline sequences and are the shape a future Rust-to-Lean extractor should
-produce.
+
 -/
 
 open Sail PreSail LeanRV64D.Functions
