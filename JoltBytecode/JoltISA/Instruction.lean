@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
 import JoltBytecode.JoltISA.VirtualRegisters
 
 /-!
@@ -264,16 +270,16 @@ def sideEffectingDst : Dst → Dst
 -- TODO: Not sure if this is the right place for these expansion blocks. 
 -- Was being lazy when i put them here, move them later. 
 
-/-- Source-level `JAL` materialization, including Rust's side-effecting
-`rd = x0` destination rewrite. Native final-row `JAL` semantics are unchanged. -/
-def jalProgram (rd : regidx) (imm : BitVec 21) : Program :=
-  .instr (.JAL (sideEffectingRdZeroDst rd) imm) <|
-  .done RETIRE_SUCCESS
-
-/-- Source-level `JALR` materialization, including Rust's side-effecting
-`rd = x0` destination rewrite. Native final-row `JALR` semantics are unchanged. -/
-def jalrProgram (rd rs1 : regidx) (imm : BitVec 12) : Program :=
-  .instr (.JALR (sideEffectingRdZeroDst rd) (.xreg rs1) imm) <|
-  .done RETIRE_SUCCESS
-
+-- /-- Source-level `JAL` materialization, including Rust's side-effecting
+-- `rd = x0` destination rewrite. Native final-row `JAL` semantics are unchanged. -/
+-- def jalProgram (rd : regidx) (imm : BitVec 21) : Program :=
+--   .instr (.JAL (sideEffectingRdZeroDst rd) imm) <|
+--   .done RETIRE_SUCCESS
+--
+-- /-- Source-level `JALR` materialization, including Rust's side-effecting
+-- `rd = x0` destination rewrite. Native final-row `JALR` semantics are unchanged. -/
+-- def jalrProgram (rd rs1 : regidx) (imm : BitVec 12) : Program :=
+--   .instr (.JALR (sideEffectingRdZeroDst rd) (.xreg rs1) imm) <|
+--   .done RETIRE_SUCCESS
+--
 end JoltISA

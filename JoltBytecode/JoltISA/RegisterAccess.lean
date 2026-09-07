@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
 import JoltBytecode.JoltISA.Core
 import JoltBytecode.JoltISA.Instruction
 
@@ -20,21 +26,22 @@ set_option linter.unusedVariables true
 
 open Sail PreSail LeanRV64D.Functions
 
--- TODO: These should use vreg abbrev not BitVec7 directly
 noncomputable section
 
+abbrev VReg := BitVec 7
+
 -- Get the value in vr as a monadic computation
-def readVReg (vr : BitVec 7) : JoltMonad (BitVec 64) := do
+def readVReg (vr : VReg) : JoltMonad (BitVec 64) := do
   let js ← get
   pure (js.vregs vr)
 
 -- The general purpose registers are in the Sail hashmap already
 -- so we should never write to vr 0-31
-def WritableVReg (vr : BitVec 7) : Prop :=
+def WritableVReg (vr : VReg) : Prop :=
   ¬ vr.toNat < 32
 
 -- We cannot write the to the first 32 registers, as we use xreg for them.
-def writeVReg (vr : BitVec 7) (val : BitVec 64) : JoltMonad Unit :=
+def writeVReg (vr : VReg) (val : BitVec 64) : JoltMonad Unit :=
   if vr.toNat < 32 then
     throw (Error.Assertion "writeVReg: architectural xreg address")
   else
