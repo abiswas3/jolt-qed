@@ -105,6 +105,15 @@ abbrev writeValue
       (load_effective_address h.rs1_val imm)
       (byte_present imm rs1 js h))
 
+/-- The architectural value written by Sail's `LBU`. -/
+abbrev writeValueUnsigned
+    (imm : BitVec 12) (rs1 : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js) : BitVec 64 :=
+  zero_extend (m := 64)
+    (loaded_byte_at js.sail
+      (load_effective_address h.rs1_val imm)
+      (byte_present imm rs1 js h))
+
 /-- 
 TODO: Move to dword arithmetic
 Writing Sail's directly loaded byte is the same as writing the selected
@@ -124,6 +133,34 @@ theorem stateAfterWrite_writeValue_eq_dword_byte
         (sign_extend (m := 64) (byte_of_dword dval byteOffset)) := by
   simp only
   unfold writeValue
+  rw [loaded_byte_in_dword
+    (s := js.sail)
+    (addr := load_effective_address h.rs1_val imm)
+    (hbytes := by
+      simpa only [compute_aligned_dword_base_address] using
+        h.dwordWindowFacts.bytes)
+    (h_no_ovf := by
+      simpa only [compute_aligned_dword_base_address] using
+        h.dwordWindowFacts.aligned.no_ovf)
+    (hpresent := byte_present imm rs1 js h)]
+
+/-- Writing Sail's directly loaded unsigned byte is the same as writing the
+selected byte of the enclosing loaded dword. -/
+theorem stateAfterWrite_writeValueUnsigned_eq_dword_byte
+    (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
+    let facts := h.dwordWindowFacts
+    let dval :=
+      loaded_dword_at js.sail
+        (compute_aligned_dword_base_address h.rs1_val imm)
+        facts.bytes facts.aligned.no_ovf
+    let byteOffset :=
+      (load_effective_address h.rs1_val imm &&& (7 : BitVec 64)).toNat
+    stateAfterWrite js.sail rd (writeValueUnsigned imm rs1 js h) =
+      stateAfterWrite js.sail rd
+        (zero_extend (m := 64) (byte_of_dword dval byteOffset)) := by
+  simp only
+  unfold writeValueUnsigned
   rw [loaded_byte_in_dword
     (s := js.sail)
     (addr := load_effective_address h.rs1_val imm)
@@ -175,6 +212,48 @@ theorem execute_LB_reduces
   simp only [extend_value, Bool.false_eq_true, if_false, EStateM.bind,
     EStateM.pure]
   obtain ⟨s', hw⟩ := wX_shape rd (writeValue imm rs1 js h) js.sail
+  rw [hw]
+  simp only [RETIRE_SUCCESS]
+  congr 1
+  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
+
+/-- Sail-side `execute_LOAD imm rs1 rd true 1` reduces to a register write of
+the zero-extended loaded byte. -/
+theorem execute_LBU_reduces
+    (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
+    (execute_LOAD imm rs1 rd true 1).run js.sail =
+    .ok RETIRE_SUCCESS
+      (stateAfterWrite js.sail rd (writeValueUnsigned imm rs1 js h)) := by
+  unfold execute_LOAD
+  simp only [bind, pure]
+  unfold Sail.assert LeanRV64D.Functions.xlen_bytes
+  simp (config := { decide := true }) only []
+  simp (config := { decide := true }) only [PreSail.assert, EStateM.bind, pure,
+    EStateM.pure, EStateM.run, if_true]
+  rw [vmem_read_byte_reduces
+    (imm := imm)
+    (rs1 := rs1)
+    (s := js.sail)
+    (hpriv := h.cur_privilege)
+    (hmprv := h.mstatus_mprv)
+    (v := h.rs1_val)
+    (hrx := h.rs1_read)
+    (ha := aligned_access_1 (load_effective_address h.rs1_val imm))
+    (value := loaded_byte_at js.sail
+      (load_effective_address h.rs1_val imm)
+      (byte_present imm rs1 js h))
+    (h_mem := mem_read_1_eq_loaded_byte
+      (addr := load_effective_address h.rs1_val imm)
+      (s := js.sail)
+      (hpriv := h.cur_privilege)
+      (hmprv := h.mstatus_mprv)
+      (hbytes := byte_mem_present imm rs1 js h)
+      (hpmp := byte_load_pmp_ok imm rs1 js h)
+      (hmmio := byte_not_readable_mmio imm rs1 js h))]
+
+  simp only [extend_value, if_true, EStateM.bind, EStateM.pure]
+  obtain ⟨s', hw⟩ := wX_shape rd (writeValueUnsigned imm rs1 js h) js.sail
   rw [hw]
   simp only [RETIRE_SUCCESS]
   congr 1

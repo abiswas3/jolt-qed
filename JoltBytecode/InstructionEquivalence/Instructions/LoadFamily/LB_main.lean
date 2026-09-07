@@ -1,12 +1,14 @@
 import JoltBytecode.InstructionEquivalence.ProofSupport.BundleLemmas
+import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import JoltBytecode.JoltISA.ExpansionsAutomated
 import JoltBytecode.JoltISA.Expansions.Load
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Read
 import JoltBytecode.InstructionEquivalence.Instructions.LoadFamily.DwordArithmetic
 import JoltBytecode.InstructionEquivalence.ProofSupport.Memory.Windows
-import JoltBytecode.InstructionEquivalence.Instructions.LoadFamily.ProgramBlocks
+import JoltBytecode.InstructionEquivalence.Instructions.LoadFamily.LB_SailSide
 import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
+import JoltBytecode.InstructionEquivalence.ProofSupport.StateLemmas
 import Mathlib.Tactic.IntervalCases
 
 set_option linter.unusedVariables false
@@ -22,235 +24,171 @@ noncomputable section
 
 namespace LB_main
 
+abbrev Vreg x := BitVec.ofNat 7 x
 
-/-- **Bridge lemma for LB.** The Jolt logic-phase computation (XOR with 7,
-    SLL by 3, SLL the dword, arith-shift-right by 56) equals the Sail-side
-    direct byte load sign-extended to 64 bits. Pure bit-vector algebra —
-    just combines `sll_srai_extracts_byte` with `loaded_byte_in_dword`. -/
-theorem jolt_lb_bridge (s : SailState) (addr : BitVec 64)
-    (hbytes_base : MemBytesPresentAt s (addr &&& (-8 : BitVec 64)) 8)
-    (h_no_ovf_base : (addr &&& (-8 : BitVec 64)).toNat + 7 < 2 ^ 64)
-    (hpresent : MemBytePresentAt s addr.toNat) :
-    (let dword     := loaded_dword_at s (addr &&& (-8 : BitVec 64))
-        hbytes_base h_no_ovf_base
-     let xor_addr  := addr ^^^ (7 : BitVec 64)
-     let shift_amt := shift_bits_left xor_addr (3 : BitVec 6)
-     let shift_6   := Sail.BitVec.extractLsb shift_amt 5 0
-     let shifted   := shift_bits_left dword shift_6
-     shift_bits_right_arith shifted (56 : BitVec 6))
-    = sign_extend (m := 64) (loaded_byte_at s addr hpresent) := by
-  simp only [sll_srai_extracts_byte,
-    ← loaded_byte_in_dword s addr hbytes_base h_no_ovf_base hpresent]
-
-/-- Bridge for the generated fused byte extraction. -/
-theorem jolt_lb_pext_bridge (s : SailState) (base : BitVec 64) (imm : BitVec 12)
-    (hbytes : MemBytesPresentAt s (compute_aligned_dword_base_address base imm) 8)
-    (h_no_ovf : (compute_aligned_dword_base_address base imm).toNat + 7 < 2 ^ 64)
-    (hpresent : MemBytePresentAt s (load_effective_address base imm).toNat) :
-    jolt_virtual_pext_signed_value
-        (loaded_dword_at s (compute_aligned_dword_base_address base imm)
-          hbytes h_no_ovf)
-        (jolt_virtual_window_mask_b_value base imm) =
-      sign_extend (m := 64)
-        (loaded_byte_at s (load_effective_address base imm) hpresent) := by
-  rw [window_mask_b_pext_signed]
-  have hloaded := loaded_byte_in_dword s (load_effective_address base imm)
-    (by simpa only [compute_aligned_dword_base_address] using hbytes)
-    (by simpa only [compute_aligned_dword_base_address] using h_no_ovf)
-    hpresent
-  rw [hloaded]
-
--- ============================================================================
--- Top-level LB ↔ Sail equivalence theorems
--- ============================================================================
-
-/-- Sail-side `execute_LOAD imm rs1 rd false 1` reduces to
-    `stateAfterWrite rd (sign_extend (loaded_byte_at ea))` under the
-    flat memory facts for size 1. No `h_no_ovf` needed —
-    single-byte reads cannot overflow the 64-bit address space. -/
-theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
+/-- **Main program theorem for LB.**  The structured Jolt-ISA expansion
+matches Sail after materializing Jolt's persistent CSR virtual registers. -/
+def lbProgramEqSailStatement (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
-    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
-    (hmprv : Assumptions.MstatusMprvZero js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hbytes : MemBytesPresentAt js.sail (load_effective_address val imm) 1)
-    (hload_pmp : Assumptions.LoadPmpOk (load_effective_address val imm) 1 js.sail)
-    (hread_mmio : Assumptions.NotReadableMmio (load_effective_address val imm) 1 js.sail) :
-    (execute_LOAD imm rs1 rd false 1).run js.sail =
-    .ok RETIRE_SUCCESS
-      (stateAfterWrite js.sail rd
-        (sign_extend (m := 64)
-          (loaded_byte_at js.sail (load_effective_address val imm)
-            hbytes.single_byte))) := by
-  unfold execute_LOAD
-  simp only [bind, pure]
-  unfold Sail.assert LeanRV64D.Functions.xlen_bytes
-  simp (config := { decide := true }) only []
-  simp (config := { decide := true }) only [PreSail.assert, EStateM.bind, pure, EStateM.pure,
-       EStateM.run, if_true]
-  rw [vmem_read_byte_reduces imm rs1 js.sail hpriv hmprv val hrx
-      (aligned_access_1 (load_effective_address val imm))
-      (loaded_byte_at js.sail (load_effective_address val imm)
-        hbytes.single_byte)
-      (mem_read_1_eq_loaded_byte _ js.sail hpriv hmprv hbytes hload_pmp
-        hread_mmio)]
-  simp only [extend_value, Bool.false_eq_true, if_false, EStateM.bind, EStateM.pure]
-  obtain ⟨s', hw⟩ := wX_shape rd
-    (sign_extend (m := 64)
-      (loaded_byte_at js.sail (load_effective_address val imm)
-        hbytes.single_byte))
-    js.sail
-  rw [hw]
-  simp only [RETIRE_SUCCESS]
-  congr 1
-  exact wX_bits_eq_stateAfterWrite rd _ js.sail s' hw
+    (_h : LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
+    System.systemProjectResult
+      ((JoltISA.execProgram (JoltISA.lbProgramAuto rd rs1 imm)).run js) =
+    (execute_LOAD imm rs1 rd false 1).run js.sail
 
-/-- Execution of the Rust-generated fused `LB` expansion. -/
-theorem lbProgramAuto_concrete (imm : BitVec 12) (rs1 rd : regidx)
-    (js : SailJoltState)
-    (hpriv : Assumptions.CurPrivilegeMachine js.sail)
-    (hmprv : Assumptions.MstatusMprvZero js.sail)
-    (val : BitVec 64) (hrx : rX_bits rs1 js.sail = .ok val js.sail)
-    (hbytes_base :
-      MemBytesPresentAt js.sail (compute_aligned_dword_base_address val imm) 8)
-    (hload_pmp_base :
-      Assumptions.LoadPmpOk (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hread_mmio_base :
-      Assumptions.NotReadableMmio (compute_aligned_dword_base_address val imm) 8 js.sail)
-    (hbytes_byte : MemBytesPresentAt js.sail (load_effective_address val imm) 1) :
-    ∃ js' : SailJoltState,
-      (JoltISA.execProgram (JoltISA.lbProgramAuto rd rs1 imm)).run js =
-        .ok RETIRE_SUCCESS js' ∧
-      js'.sail = stateAfterWrite js.sail rd
-        (sign_extend (m := 64)
-          (loaded_byte_at js.sail (load_effective_address val imm)
-            (by simpa only using hbytes_byte 0 (by omega)))) := by
-  let v40 : JoltISA.VReg := BitVec.ofNat 7 40
-  let v41 : JoltISA.VReg := BitVec.ofNat 7 41
-  let v42 : JoltISA.VReg := BitVec.ofNat 7 42
-  have hv40 : WritableVReg v40 := by
-    simp only [v40, WritableVReg, BitVec.toNat_ofNat]
-    norm_num
-  have hv41 : WritableVReg v41 := by
-    simp only [v41, WritableVReg, BitVec.toNat_ofNat]
-    norm_num
-  have hv42 : WritableVReg v42 := by
-    simp only [v42, WritableVReg, BitVec.toNat_ofNat]
-    norm_num
-  have h40_ne_41 : v40 ≠ v41 := by decide
-  have h41_ne_42 : v41 ≠ v42 := by decide
-  let maskValue := jolt_virtual_window_mask_b_value val imm
-  by_cases hx0 : JoltISA.isX0 rd = true
-  · let tail : JoltISA.Program :=
-      .instr (.VirtualWindowMaskB (.vreg v41) (.xreg rs1) imm) <|
-      .instr (.VirtualPextSigned (.vreg v40) (.vreg v42) (.vreg v41)) <|
-      .done RETIRE_SUCCESS
-    rcases LoadProgramBlocks.alignAddrLdBlock tail v42 imm rs1 js hpriv hmprv
-        val hrx hbytes_base hload_pmp_base hread_mmio_base hv42 with
-      ⟨js_load, hload_run, hload_sail, _hload_value⟩
-    let js_mask : SailJoltState :=
-      { sail := js_load.sail
-        vregs := fun r => if r = v41 then maskValue else js_load.vregs r }
-    have hrx_load : rX_bits rs1 js_load.sail = .ok val js_load.sail := by
-      simpa only [hload_sail] using hrx
-    have hmask :
-        (JoltISA.execInstr
-          (.VirtualWindowMaskB (.vreg v41) (.xreg rs1) imm)).run js_load =
-          .ok RETIRE_SUCCESS js_mask := by
-      simpa only [js_mask, maskValue] using
-        JoltISA.virtual_window_mask_b_run_vreg_xreg
-          v41 rs1 imm js_load val hrx_load hv41
-    let js' : SailJoltState :=
-      { sail := js_mask.sail
-        vregs := fun r =>
-          if r = v40 then
-            jolt_virtual_pext_signed_value (js_mask.vregs v42) (js_mask.vregs v41)
-          else js_mask.vregs r }
-    have hpext :
-        (JoltISA.execInstr
-          (.VirtualPextSigned (.vreg v40) (.vreg v42) (.vreg v41))).run js_mask =
-          .ok RETIRE_SUCCESS js' := by
-      simpa only [js'] using
-        JoltISA.virtual_pext_signed_run_vreg_vreg_vreg v40 v42 v41 js_mask hv40
-    refine ⟨js', ?_, ?_⟩
-    · unfold JoltISA.lbProgramAuto
-      rw [hx0]
-      simp only [if_true]
-      change (JoltISA.execProgram
-        (.instr (.VirtualAlignAddr (.vreg v42) (.xreg rs1) imm) <|
-         .instr (.LD .normal (.vreg v42) (.vreg v42) 0) tail)).run js = _
-      rw [hload_run]
-      rw [JoltISA.execProgram_instr_run_retire _ _ js_load js_mask hmask]
-      rw [JoltISA.execProgram_instr_run_retire _ _ js_mask js' hpext]
-      rfl
-    · rw [JoltISA.stateAfterWrite_of_isX0_eq_true hx0]
-      simp only [js', js_mask, hload_sail]
-  · have hx0_false : JoltISA.isX0 rd = false := by
-      exact Bool.eq_false_of_not_eq_true hx0
-    let tail : JoltISA.Program :=
-      .instr (.VirtualWindowMaskB (.vreg v40) (.xreg rs1) imm) <|
-      .instr (.VirtualPextSigned (.xreg rd) (.vreg v41) (.vreg v40)) <|
-      .done RETIRE_SUCCESS
-    rcases LoadProgramBlocks.alignAddrLdBlock tail v41 imm rs1 js hpriv hmprv
-        val hrx hbytes_base hload_pmp_base hread_mmio_base hv41 with
-      ⟨js_load, hload_run, hload_sail, hload_value⟩
-    let dword := loaded_dword_at js.sail
-      (compute_aligned_dword_base_address val imm) hbytes_base
-      (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf
-    let js_mask : SailJoltState :=
-      { sail := js_load.sail
-        vregs := fun r => if r = v40 then maskValue else js_load.vregs r }
-    have hrx_load : rX_bits rs1 js_load.sail = .ok val js_load.sail := by
-      simpa only [hload_sail] using hrx
-    have hmask :
-        (JoltISA.execInstr
-          (.VirtualWindowMaskB (.vreg v40) (.xreg rs1) imm)).run js_load =
-          .ok RETIRE_SUCCESS js_mask := by
-      simpa only [js_mask, maskValue] using
-        JoltISA.virtual_window_mask_b_run_vreg_xreg
-          v40 rs1 imm js_load val hrx_load hv40
-    have hmask_value : js_mask.vregs v40 = maskValue := by
-      simp only [js_mask, if_true]
-    have hmask_dword : js_mask.vregs v41 = dword := by
-      simp only [js_mask, if_neg h40_ne_41.symm, dword]
-      exact hload_value
-    let finalValue := sign_extend (m := 64)
-      (loaded_byte_at js.sail (load_effective_address val imm)
-        (by simpa only using hbytes_byte 0 (by omega)))
-    have hpext_value :
-        jolt_virtual_pext_signed_value (js_mask.vregs v41) (js_mask.vregs v40) =
-          finalValue := by
-      rw [hmask_dword, hmask_value]
-      exact jolt_lb_pext_bridge js.sail val imm hbytes_base
-        (aligned_dword_addr_is_aligned_dword_access val imm).no_ovf
-        (by simpa only using hbytes_byte 0 (by omega))
-    obtain ⟨s', hwrite⟩ := wX_shape rd finalValue js.sail
-    have hwrite_mask :
-        wX_bits rd
-          (jolt_virtual_pext_signed_value (js_mask.vregs v41) (js_mask.vregs v40))
-          js_mask.sail = .ok () s' := by
-      rw [hload_sail, hpext_value]
-      exact hwrite
-    let js' : SailJoltState := { sail := s', vregs := js_mask.vregs }
-    have hpext :
-        (JoltISA.execInstr
-          (.VirtualPextSigned (.xreg rd) (.vreg v41) (.vreg v40))).run js_mask =
-          .ok RETIRE_SUCCESS js' := by
-      simpa only [js'] using
-        JoltISA.virtual_pext_signed_run_xreg_vreg_vreg
-          rd v41 v40 js_mask s' hwrite_mask
-    refine ⟨js', ?_, ?_⟩
-    · unfold JoltISA.lbProgramAuto
-      rw [hx0_false]
-      simp only [Bool.false_eq_true, if_false]
-      change (JoltISA.execProgram
-        (.instr (.VirtualAlignAddr (.vreg v41) (.xreg rs1) imm) <|
-         .instr (.LD .normal (.vreg v41) (.vreg v41) 0) tail)).run js = _
-      rw [hload_run]
-      rw [JoltISA.execProgram_instr_run_retire _ _ js_load js_mask hmask]
-      rw [JoltISA.execProgram_instr_run_retire _ _ js_mask js' hpext]
-      rfl
-    · exact wX_bits_eq_stateAfterWrite rd finalValue js.sail s' hwrite
+/-- The byte-window mask used by the pext instruction 
+comes in two forms. 
+This lemma helps use the version that makes proofs more ergonomic.
+-/
+theorem byte_window_mask_eq_contiguous (byteOffset : Nat) :
+    BitVec.ofNat 64 (0xFF <<< (8 * byteOffset)) =
+    BitVec.ofNat 64 ((2 ^ 8 - 1) * 2 ^ (8 * byteOffset)) := by
+  simp only [Nat.shiftLeft_eq]
+  norm_num
+
+/-- Signed PEXT with an eight-bit window mask extracts the selected byte and
+sign-extends it to 64 bits. -/
+theorem pext_signed_byte_window
+    (dval : BitVec 64) (byteOffset : Nat)
+    (hOffset : byteOffset < 8) :
+    jolt_virtual_pext_signed_value dval
+      (BitVec.ofNat 64 (0xFF <<< (8 * byteOffset))) =
+    sign_extend (m := 64) (byte_of_dword dval byteOffset) := by
+  rw [byte_window_mask_eq_contiguous]
+  -- We already have a generic lemma that does all the heavy 
+  -- lifting for us
+  rw [JoltISA.pext_signed_value_contiguous
+    (x := dval)
+    (offset := 8 * byteOffset)
+    (width := 8)
+    (hwidth := by omega)
+    (hfit := by omega)]
+  rfl
+
+/-- The first LB instruction writes the aligned dword address to its chosen
+scratch virtual register and leaves the Sail state unchanged. -/
+theorem lb_virtual_align_addr_run
+    (addrVReg : JoltISA.VReg) (hWritable : WritableVReg addrVReg)
+    (imm : BitVec 12) (rs1 : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
+    (JoltISA.execInstr
+      (.VirtualAlignAddr (.vreg addrVReg) (.xreg rs1) imm)).run js =
+      .ok RETIRE_SUCCESS
+        (stateAfterVRegWrite js addrVReg
+          (jolt_virtual_align_addr_value h.rs1_val imm)) := by
+  simpa only [stateAfterVRegWrite] using
+    JoltISA.virtual_align_addr_run_vreg_xreg
+      (vd := addrVReg)
+      (rs := rs1)
+      (imm := imm)
+      (js := js)
+      (x := h.rs1_val)
+      (hread := h.rs1_read)
+      (hvd := hWritable)
+
+/-- The second LB instruction loads the aligned dword into the chosen scratch
+virtual register. -/
+theorem lb_ld_run
+    (dwordVReg : JoltISA.VReg) (hWritable : WritableVReg dwordVReg)
+    (imm : BitVec 12) (rs1 : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
+    let daddr := compute_aligned_dword_base_address h.rs1_val imm
+    let facts := h.dwordWindowFacts
+    let jsAlign :=
+      stateAfterVRegWrite js dwordVReg
+        (jolt_virtual_align_addr_value h.rs1_val imm)
+    let dval :=
+      loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+    (JoltISA.execInstr
+      (.LD .normal (.vreg dwordVReg) (.vreg dwordVReg)
+        (0 : BitVec 12))).run jsAlign =
+      .ok RETIRE_SUCCESS
+        (stateAfterVRegWrite jsAlign dwordVReg dval) := by
+  apply vreg_LD_run_of_aligned_dword_phys
+  · simp only [stateAfterVRegWrite, if_true, jolt_virtual_align_addr_value,
+      compute_aligned_dword_base_address, load_effective_address,
+      Memory.effectiveAddr12,
+      show ~~~(7 : BitVec 64) = (-8 : BitVec 64) by decide]
+  · exact h.cur_privilege
+  · exact h.mstatus_mprv
+  · exact h.dwordWindowFacts.aligned
+  · exact h.dwordWindowFacts.load_pmp
+  · exact h.dwordWindowFacts.read_mmio
+  · exact hWritable
+
+/-- The third LB instruction writes the byte-window mask to its chosen scratch
+virtual register. -/
+theorem lb_virtual_window_mask_b_run
+    (dwordVReg maskVReg : JoltISA.VReg)
+    (hWritable : WritableVReg maskVReg)
+    (imm : BitVec 12) (rs1 : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
+    let facts := h.dwordWindowFacts
+    let daddr := compute_aligned_dword_base_address h.rs1_val imm
+    let jsAlign := stateAfterVRegWrite js dwordVReg
+      (jolt_virtual_align_addr_value h.rs1_val imm)
+    let dval :=
+      loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+    let jsLoad := stateAfterVRegWrite jsAlign dwordVReg dval
+    let maskValue := jolt_virtual_window_mask_b_value h.rs1_val imm
+    (JoltISA.execInstr
+      (.VirtualWindowMaskB (.vreg maskVReg) (.xreg rs1) imm)).run jsLoad =
+      .ok RETIRE_SUCCESS
+        (stateAfterVRegWrite jsLoad maskVReg maskValue) := by
+  apply JoltISA.virtual_window_mask_b_run_vreg_xreg
+  · simpa only [stateAfterVRegWrite] using h.rs1_read
+  · exact hWritable
+
+/-- The final instruction of the non-`x0` LB expansion writes the signed
+parallel-extract result to the architectural destination register. -/
+theorem lb_virtual_pext_signed_rd_run
+    (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
+    let facts := h.dwordWindowFacts
+    let daddr := compute_aligned_dword_base_address h.rs1_val imm
+    let jsAlign := stateAfterVRegWrite js (Vreg 41)
+      (jolt_virtual_align_addr_value h.rs1_val imm)
+    let dval :=
+      loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+    let jsLoad := stateAfterVRegWrite jsAlign (Vreg 41) dval
+    let maskValue := jolt_virtual_window_mask_b_value h.rs1_val imm
+    let jsMask := stateAfterVRegWrite jsLoad (Vreg 40) maskValue
+    let pextValue := jolt_virtual_pext_signed_value dval maskValue
+    (JoltISA.execInstr
+      (.VirtualPextSigned
+        (.xreg rd) (.vreg (Vreg 41)) (.vreg (Vreg 40)))).run jsMask =
+      .ok RETIRE_SUCCESS
+        { jsMask with
+          sail := stateAfterWrite jsMask.sail rd pextValue } := by
+  apply JoltISA.virtual_pext_signed_run_xreg_vreg_vreg
+  simpa only [stateAfterVRegWrite, Vreg, BitVec.reduceEq, ↓reduceIte] using
+    wX_bits_stateAfterWrite
+      (rd := rd)
+      (v := _)
+      (s := js.sail)
+
+/-- The final instruction of the `x0` LB expansion writes the signed
+parallel-extract result to virtual register 40. -/
+theorem lb_virtual_pext_signed_v40_run
+    (imm : BitVec 12) (rs1 : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js) :
+    let facts := h.dwordWindowFacts
+    let daddr := compute_aligned_dword_base_address h.rs1_val imm
+    let jsAlign := stateAfterVRegWrite js (Vreg 42)
+      (jolt_virtual_align_addr_value h.rs1_val imm)
+    let dval :=
+      loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+    let jsLoad := stateAfterVRegWrite jsAlign (Vreg 42) dval
+    let maskValue := jolt_virtual_window_mask_b_value h.rs1_val imm
+    let jsMask := stateAfterVRegWrite jsLoad (Vreg 41) maskValue
+    let pextValue := jolt_virtual_pext_signed_value dval maskValue
+    (JoltISA.execInstr
+      (.VirtualPextSigned
+        (.vreg (Vreg 40)) (.vreg (Vreg 42)) (.vreg (Vreg 41)))).run jsMask =
+      .ok RETIRE_SUCCESS
+        (stateAfterVRegWrite jsMask (Vreg 40) pextValue) := by
+  apply JoltISA.virtual_pext_signed_run_vreg_vreg_vreg
+  simp only [WritableVReg, Vreg, BitVec.toNat_ofNat]
+  norm_num
 
 /-- The generated `LB` expansion writes only instruction-local scratch vregs. -/
 theorem lbProgramAuto_preserves_projected_vregs
@@ -271,14 +209,375 @@ theorem lbProgramAuto_preserves_projected_vregs
   exact Projection.execProgram_preserves_projected_vregs_of_no_protected_writes
     hsafe hrun
 
-/-- **Main program theorem for LB.**  The structured Jolt-ISA expansion
-matches Sail after materializing Jolt's persistent CSR virtual registers. -/
-def lbProgramEqSailStatement (imm : BitVec 12) (rs1 rd : regidx)
+/-- After either generated `LB` branch runs, `systemProject` agrees with the
+embedded Sail state. -/
+theorem lbProgramAuto_systemProject_eq_sail
+    (imm : BitVec 12) (rs1 rd : regidx)
+    (js js' : SailJoltState) (value : BitVec 64)
+    (hlinked : LinkedCSRs js)
+    (hrun : (JoltISA.execProgram (JoltISA.lbProgramAuto rd rs1 imm)).run js =
+      .ok RETIRE_SUCCESS js')
+    (hsail : js'.sail = stateAfterWrite js.sail rd value) :
+    System.systemProject js' = js'.sail := by
+  have hprojected : Projection.ProjectedVRegsPreserved js js' :=
+    lbProgramAuto_preserves_projected_vregs
+      (imm := imm)
+      (rs1 := rs1)
+      (rd := rd)
+      (hrun := hrun)
+  rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
+    (before := js)
+    (after := js')
+    (rd := rd)
+    (value := value)
+    (hsail := hsail)
+    (hprojected := hprojected)]
+  rw [Projection.systemProject_eq_sail_of_compatible
+    (js := js)
+    (h := hlinked)]
+  rw [← hsail]
+
+/-- The non-`x0` generated expansion runs through its four instructions to the
+explicit final state used by the equivalence proof. -/
+theorem lbProgramAuto_nonzero_run
+    (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js)
+    (hx0 : JoltISA.isX0 rd ≠ true) :
+    let jsAlign := stateAfterVRegWrite js (Vreg 41)
+      (jolt_virtual_align_addr_value h.rs1_val imm)
+    let facts := h.dwordWindowFacts
+    let daddr := compute_aligned_dword_base_address h.rs1_val imm
+    let dval :=
+      loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+    let jsLoad := stateAfterVRegWrite jsAlign (Vreg 41) dval
+    let maskValue := jolt_virtual_window_mask_b_value h.rs1_val imm
+    let jsMask := stateAfterVRegWrite jsLoad (Vreg 40) maskValue
+    let pextValue := jolt_virtual_pext_signed_value dval maskValue
+    let jsPext :=
+      { jsMask with sail := stateAfterWrite jsMask.sail rd pextValue }
+    (JoltISA.execProgram (JoltISA.lbProgramAuto rd rs1 imm)).run js =
+      .ok RETIRE_SUCCESS jsPext := by
+  simp only [JoltISA.lbProgramAuto, if_neg hx0]
+  have hv40 : WritableVReg (Vreg 40) := by
+    simp only [WritableVReg, BitVec.toNat_ofNat]
+    norm_num
+  have hv41 : WritableVReg (Vreg 41) := by
+    simp only [WritableVReg, BitVec.toNat_ofNat]
+    norm_num
+
+  let jsAlign := stateAfterVRegWrite js (Vreg 41)
+    (jolt_virtual_align_addr_value h.rs1_val imm)
+  let alignInstr : JoltISA.Instr :=
+    .VirtualAlignAddr (.vreg (Vreg 41)) (.xreg rs1) imm
+  rw [JoltISA.execProgram_instr_run_retire
+    (instr := alignInstr)
+    (rest := _)
+    (js := js)
+    (js' := jsAlign)
+    (h := lb_virtual_align_addr_run
+      (addrVReg := Vreg 41)
+      (hWritable := hv41)
+      (imm := imm)
+      (rs1 := rs1)
+      (js := js)
+      (h := h))]
+
+  let facts := h.dwordWindowFacts
+  let daddr := compute_aligned_dword_base_address h.rs1_val imm
+  let dval := loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+  let jsLoad := stateAfterVRegWrite jsAlign (Vreg 41) dval
+  let ldInstr : JoltISA.Instr :=
+    .LD .normal (.vreg (Vreg 41)) (.vreg (Vreg 41)) (0 : BitVec 12)
+  rw [JoltISA.execProgram_instr_run_retire
+    (instr := ldInstr)
+    (rest := _)
+    (js := jsAlign)
+    (js' := jsLoad)
+    (h := lb_ld_run
+      (dwordVReg := Vreg 41)
+      (hWritable := hv41)
+      (imm := imm)
+      (rs1 := rs1)
+      (js := js)
+      (h := h))]
+
+  let maskValue := jolt_virtual_window_mask_b_value h.rs1_val imm
+  let jsMask := stateAfterVRegWrite jsLoad (Vreg 40) maskValue
+  let maskInstr : JoltISA.Instr :=
+    .VirtualWindowMaskB (.vreg (Vreg 40)) (.xreg rs1) imm
+  rw [JoltISA.execProgram_instr_run_retire
+    (instr := maskInstr)
+    (rest := _)
+    (js := jsLoad)
+    (js' := jsMask)
+    (h := lb_virtual_window_mask_b_run
+      (dwordVReg := Vreg 41)
+      (maskVReg := Vreg 40)
+      (hWritable := hv40)
+      (imm := imm)
+      (rs1 := rs1)
+      (js := js)
+      (h := h))]
+
+  let pextValue := jolt_virtual_pext_signed_value dval maskValue
+  let jsPext :=
+    { jsMask with sail := stateAfterWrite jsMask.sail rd pextValue }
+  let pextInstr : JoltISA.Instr :=
+    .VirtualPextSigned
+      (.xreg rd) (.vreg (Vreg 41)) (.vreg (Vreg 40))
+  rw [JoltISA.execProgram_instr_run_retire
+    (instr := pextInstr)
+    (rest := _)
+    (js := jsMask)
+    (js' := jsPext)
+    (h := lb_virtual_pext_signed_rd_run
+      (imm := imm)
+      (rs1 := rs1)
+      (rd := rd)
+      (js := js)
+      (h := h))]
+  simp only [JoltISA.execProgram, pure, EStateM.pure, EStateM.run]
+  rfl
+
+
+/-- The non-`x0` branch of the main LB program theorem. -/
+theorem lbProgram_eq_sail_nonzero (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
-    (_h : LoadProgramEqSailAssumptions imm rs1 js) : Prop :=
-    System.systemProjectResult
-      ((JoltISA.execProgram (JoltISA.lbProgramAuto rd rs1 imm)).run js) =
-    (execute_LOAD imm rs1 rd false 1).run js.sail
+    (h : LoadProgramEqSailAssumptions imm rs1 js)
+    (hx0 : JoltISA.isX0 rd ≠ true) :
+    lbProgramEqSailStatement imm rs1 rd js h := by
+  unfold lbProgramEqSailStatement
+  let jsAlign := stateAfterVRegWrite js (Vreg 41)
+    (jolt_virtual_align_addr_value h.rs1_val imm)
+  let facts := h.dwordWindowFacts
+  let daddr := compute_aligned_dword_base_address h.rs1_val imm
+  let dval := loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+  let jsLoad := stateAfterVRegWrite jsAlign (Vreg 41) dval
+  let maskValue := jolt_virtual_window_mask_b_value h.rs1_val imm
+  let jsMask := stateAfterVRegWrite jsLoad (Vreg 40) maskValue
+  let pextValue := jolt_virtual_pext_signed_value dval maskValue
+  let jsPext :=
+    { jsMask with sail := stateAfterWrite jsMask.sail rd pextValue }
+  have hjolt :
+      (JoltISA.execProgram (JoltISA.lbProgramAuto rd rs1 imm)).run js =
+        .ok RETIRE_SUCCESS jsPext := by
+    exact lbProgramAuto_nonzero_run
+      (imm := imm)
+      (rs1 := rs1)
+      (rd := rd)
+      (js := js)
+      (h := h)
+      (hx0 := hx0)
+  have hFinalSail :
+      jsPext.sail = stateAfterWrite js.sail rd pextValue := by
+    rfl
+  have hProject : System.systemProject jsPext = jsPext.sail :=
+    lbProgramAuto_systemProject_eq_sail
+      (imm := imm)
+      (rs1 := rs1)
+      (rd := rd)
+      (js := js)
+      (js' := jsPext)
+      (value := pextValue)
+      (hlinked := h.linkedCSRs)
+      (hrun := hjolt)
+      (hsail := hFinalSail)
+
+  rw [hjolt]
+  rw [LB_SailSide.execute_LB_reduces
+    (imm := imm)
+    (rs1 := rs1)
+    (rd := rd)
+    (js := js)
+    (h := h)]
+  rw [LB_SailSide.stateAfterWrite_writeValue_eq_dword_byte
+    (imm := imm)
+    (rs1 := rs1)
+    (rd := rd)
+    (js := js)
+    (h := h)]
+
+  -- NOTE: Math lemma
+  rw [← pext_signed_byte_window
+    (dval := dval)
+    (byteOffset :=
+      (load_effective_address h.rs1_val imm &&& (7 : BitVec 64)).toNat)
+    (hOffset :=
+      addr_and_seven_lt_eight (load_effective_address h.rs1_val imm))]
+  simp only [System.systemProjectResult]
+  rw [hProject, hFinalSail]
+  rfl
+
+/-- The `x0` generated expansion runs through its four instructions to the
+explicit final state used by the equivalence proof. -/
+theorem lbProgramAuto_x0_run
+    (imm : BitVec 12) (rs1 rd : regidx) (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js)
+    (hx0 : JoltISA.isX0 rd = true) :
+    let jsAlign := stateAfterVRegWrite js (Vreg 42)
+      (jolt_virtual_align_addr_value h.rs1_val imm)
+    let facts := h.dwordWindowFacts
+    let daddr := compute_aligned_dword_base_address h.rs1_val imm
+    let dval :=
+      loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+    let jsLoad := stateAfterVRegWrite jsAlign (Vreg 42) dval
+    let maskValue := jolt_virtual_window_mask_b_value h.rs1_val imm
+    let jsMask := stateAfterVRegWrite jsLoad (Vreg 41) maskValue
+    let pextValue := jolt_virtual_pext_signed_value dval maskValue
+    let jsPext := stateAfterVRegWrite jsMask (Vreg 40) pextValue
+    (JoltISA.execProgram (JoltISA.lbProgramAuto rd rs1 imm)).run js =
+      .ok RETIRE_SUCCESS jsPext := by
+  simp only [JoltISA.lbProgramAuto, hx0, if_true]
+  have hv41 : WritableVReg (Vreg 41) := by
+    simp only [WritableVReg, BitVec.toNat_ofNat]
+    norm_num
+  have hv42 : WritableVReg (Vreg 42) := by
+    simp only [WritableVReg, BitVec.toNat_ofNat]
+    norm_num
+
+  let jsAlign := stateAfterVRegWrite js (Vreg 42)
+    (jolt_virtual_align_addr_value h.rs1_val imm)
+  let alignInstr : JoltISA.Instr :=
+    .VirtualAlignAddr (.vreg (Vreg 42)) (.xreg rs1) imm
+  rw [JoltISA.execProgram_instr_run_retire
+    (instr := alignInstr)
+    (rest := _)
+    (js := js)
+    (js' := jsAlign)
+    (h := lb_virtual_align_addr_run
+      (addrVReg := Vreg 42)
+      (hWritable := hv42)
+      (imm := imm)
+      (rs1 := rs1)
+      (js := js)
+      (h := h))]
+
+  let facts := h.dwordWindowFacts
+  let daddr := compute_aligned_dword_base_address h.rs1_val imm
+  let dval := loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+  let jsLoad := stateAfterVRegWrite jsAlign (Vreg 42) dval
+  let ldInstr : JoltISA.Instr :=
+    .LD .normal (.vreg (Vreg 42)) (.vreg (Vreg 42)) (0 : BitVec 12)
+  rw [JoltISA.execProgram_instr_run_retire
+    (instr := ldInstr)
+    (rest := _)
+    (js := jsAlign)
+    (js' := jsLoad)
+    (h := lb_ld_run
+      (dwordVReg := Vreg 42)
+      (hWritable := hv42)
+      (imm := imm)
+      (rs1 := rs1)
+      (js := js)
+      (h := h))]
+
+  let maskValue := jolt_virtual_window_mask_b_value h.rs1_val imm
+  let jsMask := stateAfterVRegWrite jsLoad (Vreg 41) maskValue
+  let maskInstr : JoltISA.Instr :=
+    .VirtualWindowMaskB (.vreg (Vreg 41)) (.xreg rs1) imm
+  rw [JoltISA.execProgram_instr_run_retire
+    (instr := maskInstr)
+    (rest := _)
+    (js := jsLoad)
+    (js' := jsMask)
+    (h := lb_virtual_window_mask_b_run
+      (dwordVReg := Vreg 42)
+      (maskVReg := Vreg 41)
+      (hWritable := hv41)
+      (imm := imm)
+      (rs1 := rs1)
+      (js := js)
+      (h := h))]
+
+  let pextValue := jolt_virtual_pext_signed_value dval maskValue
+  let jsPext := stateAfterVRegWrite jsMask (Vreg 40) pextValue
+  let pextInstr : JoltISA.Instr :=
+    .VirtualPextSigned
+      (.vreg (Vreg 40)) (.vreg (Vreg 42)) (.vreg (Vreg 41))
+  rw [JoltISA.execProgram_instr_run_retire
+    (instr := pextInstr)
+    (rest := _)
+    (js := jsMask)
+    (js' := jsPext)
+    (h := lb_virtual_pext_signed_v40_run
+      (imm := imm)
+      (rs1 := rs1)
+      (js := js)
+      (h := h))]
+  simp only [JoltISA.execProgram, pure, EStateM.pure, EStateM.run]
+  rfl
+
+/-- The `x0` branch of the main LB program theorem. -/
+theorem lbProgram_eq_sail_x0 (imm : BitVec 12) (rs1 rd : regidx)
+    (js : SailJoltState)
+    (h : LoadProgramEqSailAssumptions imm rs1 js)
+    (hx0 : JoltISA.isX0 rd = true) :
+    lbProgramEqSailStatement imm rs1 rd js h := by
+  unfold lbProgramEqSailStatement
+  let jsAlign := stateAfterVRegWrite js (Vreg 42)
+    (jolt_virtual_align_addr_value h.rs1_val imm)
+  let facts := h.dwordWindowFacts
+  let daddr := compute_aligned_dword_base_address h.rs1_val imm
+  let dval := loaded_dword_at js.sail daddr facts.bytes facts.aligned.no_ovf
+  let jsLoad := stateAfterVRegWrite jsAlign (Vreg 42) dval
+  let maskValue := jolt_virtual_window_mask_b_value h.rs1_val imm
+  let jsMask := stateAfterVRegWrite jsLoad (Vreg 41) maskValue
+  let pextValue := jolt_virtual_pext_signed_value dval maskValue
+  let jsPext := stateAfterVRegWrite jsMask (Vreg 40) pextValue
+  have hjolt :
+      (JoltISA.execProgram (JoltISA.lbProgramAuto rd rs1 imm)).run js =
+        .ok RETIRE_SUCCESS jsPext := by
+    exact lbProgramAuto_x0_run
+      (imm := imm)
+      (rs1 := rs1)
+      (rd := rd)
+      (js := js)
+      (h := h)
+      (hx0 := hx0)
+  have hFinalSail :
+      jsPext.sail = stateAfterWrite js.sail rd pextValue := by
+    rw [JoltISA.stateAfterWrite_of_isX0_eq_true
+      (rd := rd)
+      (h := hx0)
+      (s := js.sail)
+      (val := pextValue)]
+    rfl
+  have hProject : System.systemProject jsPext = jsPext.sail :=
+    lbProgramAuto_systemProject_eq_sail
+      (imm := imm)
+      (rs1 := rs1)
+      (rd := rd)
+      (js := js)
+      (js' := jsPext)
+      (value := pextValue)
+      (hlinked := h.linkedCSRs)
+      (hrun := hjolt)
+      (hsail := hFinalSail)
+
+  rw [hjolt]
+  rw [LB_SailSide.execute_LB_reduces
+    (imm := imm)
+    (rs1 := rs1)
+    (rd := rd)
+    (js := js)
+    (h := h)]
+  rw [LB_SailSide.stateAfterWrite_writeValue_eq_dword_byte
+    (imm := imm)
+    (rs1 := rs1)
+    (rd := rd)
+    (js := js)
+    (h := h)]
+
+  -- NOTE: Math lemma
+  rw [← pext_signed_byte_window
+    (dval := dval)
+    (byteOffset :=
+      (load_effective_address h.rs1_val imm &&& (7 : BitVec 64)).toNat)
+    (hOffset :=
+      addr_and_seven_lt_eight (load_effective_address h.rs1_val imm))]
+  simp only [System.systemProjectResult]
+  rw [hProject, hFinalSail]
+  rfl
 
 /-- **Main program theorem for LB.**  The structured Jolt-ISA expansion
 matches Sail after materializing Jolt's persistent CSR virtual registers. -/
@@ -286,65 +585,19 @@ theorem lbProgram_eq_sail (imm : BitVec 12) (rs1 rd : regidx)
     (js : SailJoltState)
     (h : LoadProgramEqSailAssumptions imm rs1 js) :
     lbProgramEqSailStatement imm rs1 rd js h := by
-  unfold lbProgramEqSailStatement
-  let ea := load_effective_address h.rs1_val imm
-  let base := compute_aligned_dword_base_address h.rs1_val imm
-  let offset := (ea &&& (7 : BitVec 64)).toNat
-  let hwindow := h.dwordWindowFacts
-  have hbase_aligned : AlignedDwordAccess base := by
-    simpa only [base, hwindow] using hwindow.aligned
-  have hbytes_base : MemBytesPresentAt js.sail base 8 := by
-    simpa only [base, hwindow] using hwindow.bytes
-  have hload_pmp_base : Assumptions.LoadPmpOk base 8 js.sail := by
-    simpa only [base, hwindow] using hwindow.load_pmp
-  have hread_mmio_base : Assumptions.NotReadableMmio base 8 js.sail := by
-    simpa only [base, hwindow] using hwindow.read_mmio
-  have hoffset : offset + 1 ≤ 8 := by
-    have hlt : offset < 8 := by
-      simpa only [offset] using addr_and_seven_lt_eight ea
-    omega
-  have haddr : base + BitVec.ofNat 64 offset = ea := by
-    simpa only [base, ea, offset, compute_aligned_dword_base_address] using
-      addr_split_aligned_offset ea
-  have hbytes_byte : MemBytesPresentAt js.sail ea 1 := by
-    have hsub := memBytesPresentAt_subaccess (s := js.sail) (base := base)
-      (baseWidth := 8) (offset := offset) (accessWidth := 1)
-      hbytes_base hoffset (by
-        have hbase_no_ovf := hbase_aligned.no_ovf
-        omega)
-    simpa only [haddr] using hsub
-  have hload_pmp_byte : Assumptions.LoadPmpOk ea 1 js.sail := by
-    have hsub := h.load_pmp.subaccess (offset := offset) (accessWidth := 1) hoffset
-    simpa only [base, haddr] using hsub
-  have hread_mmio_byte : Assumptions.NotReadableMmio ea 1 js.sail := by
-    have hsub := h.not_readable_mmio.subaccess
-      (offset := offset) (accessWidth := 1) hoffset
-    simpa only [base, haddr] using hsub
-  rcases lbProgramAuto_concrete imm rs1 rd js h.cur_privilege h.mstatus_mprv
-      h.rs1_val h.rs1_read
-      (by simpa only [base] using hbytes_base)
-      (by simpa only [base] using hload_pmp_base)
-      (by simpa only [base] using hread_mmio_base)
-      (by simpa only [ea] using hbytes_byte) with
-    ⟨js', hjolt, hjolt_sail⟩
-  have hsail := execute_LB_reduces imm rs1 rd js h.cur_privilege h.mstatus_mprv
-    h.rs1_val h.rs1_read
-    (by simpa only [ea] using hbytes_byte)
-    (by simpa only [ea] using hload_pmp_byte)
-    (by simpa only [ea] using hread_mmio_byte)
-  have hproject_initial : System.systemProject js = js.sail :=
-    Projection.systemProject_eq_sail_of_compatible js h.linkedCSRs
-  have hprojected : Projection.ProjectedVRegsPreserved js js' :=
-    lbProgramAuto_preserves_projected_vregs imm rs1 rd hjolt
-  rw [hjolt, hsail]
-  simp only [System.systemProjectResult]
-  congr 1
-  rw [Projection.systemProject_stateAfterWrite_of_projected_vregs_preserved
-    js js' rd
-    (sign_extend (m := 64)
-      (loaded_byte_at js.sail (load_effective_address h.rs1_val imm)
-        (by simpa only [ea] using hbytes_byte 0 (by omega))))
-    hjolt_sail hprojected]
-  rw [hproject_initial]
-
+  by_cases hx0 : JoltISA.isX0 rd = true
+  · exact lbProgram_eq_sail_x0
+      (imm := imm)
+      (rs1 := rs1)
+      (rd := rd)
+      (js := js)
+      (h := h)
+      (hx0 := hx0)
+  · exact lbProgram_eq_sail_nonzero
+      (imm := imm)
+      (rs1 := rs1)
+      (rd := rd)
+      (js := js)
+      (h := h)
+      (hx0 := hx0)
 end LB_main
