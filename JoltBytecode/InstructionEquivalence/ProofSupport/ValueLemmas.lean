@@ -19,15 +19,6 @@ noncomputable section
 -- ctz / pow2 number-theory lemmas (moved from JoltISA/Values/Shift.lean)
 -- ============================================================================
 
-@[simp] lemma ctz_pow2 (n : Nat) : ctz (2 ^ n) = n := by
-  induction n with
-  | zero => unfold ctz; simp
-  | succ k ih =>
-    unfold ctz
-    rw [if_neg (show 2 ^ (k + 1) ≠ 0 from Nat.pos_iff_ne_zero.mp (by positivity))]
-    rw [if_neg (show ¬(2 ^ (k + 1) % 2 = 1) from by rw [pow_succ]; omega)]
-    rw [show 2 ^ (k + 1) / 2 = 2 ^ k from by rw [pow_succ]; omega]
-    rw [ih]; omega
 
 lemma ctz_of_odd {n : Nat} (h : n % 2 = 1) : ctz n = 0 := by
   have hne : n ≠ 0 := by omega
@@ -91,15 +82,6 @@ lemma shiftLeft_eq_mul_pow2 (x : BitVec 64) (s : Nat) :
   apply BitVec.eq_of_toNat_eq
   simp [BitVec.toNat_shiftLeft, BitVec.toNat_mul, BitVec.toNat_ofNat, Nat.shiftLeft_eq]
 
-lemma sshiftRight_eq_signExtend_ushr_trunc (x : BitVec 32) (s : Nat) (hs : s < 32) :
-    x.sshiftRight s = (x.signExtend 64 >>> s).setWidth 32 := by
-  ext i hi
-  simp only [BitVec.getElem_sshiftRight, BitVec.getElem_setWidth,
-             BitVec.getLsbD_ushiftRight, BitVec.getLsbD_signExtend]
-  simp only [show s + i < 64 from by omega, decide_true, Bool.true_and]
-  split
-  · rename_i hsi; simp [BitVec.getLsbD_eq_getElem, hsi]
-  · rfl
 
 -- ============================================================================
 -- Lemmas about JoltISA/Values defs

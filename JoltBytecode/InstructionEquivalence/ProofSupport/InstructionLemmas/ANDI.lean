@@ -93,29 +93,6 @@ theorem exists_state_after_andi_run_vreg_xreg_of_sail_eq
     simp [js', hne]
   · simpa only [js'] using andi_run_vreg_xreg vd rs imm js x h_read_current hvd
 
-/-- `ANDI` from a real source to a virtual destination, also exposing that one
-chosen virtual register is preserved. -/
-theorem exists_state_after_andi_run_vreg_xreg_preserving_value
-    (vd vkeep : VReg) (rs : regidx) (imm : BitVec 12)
-    (js : SailJoltState) (s : SailState) (x keep : BitVec 64)
-    (h_sail : js.sail = s)
-    (h_read : rX_bits rs s = .ok x s)
-    (h_keep : js.vregs vkeep = keep)
-    (h_ne : vkeep ≠ vd)
-    (hvd : WritableVReg vd) :
-    ∃ js',
-      rX_bits rs js.sail = .ok x js.sail ∧
-      js'.sail = s ∧
-      js'.vregs vd = x &&& sign_extend (m := 64) imm ∧
-      js'.vregs vkeep = keep ∧
-      (execInstr (.ANDI (.vreg vd) (.xreg rs) imm)).run js =
-        .ok RETIRE_SUCCESS js' := by
-  obtain ⟨js', h_read_current, h_sail_after_andi, h_write, h_preserves, h_run⟩ :=
-    exists_state_after_andi_run_vreg_xreg_of_sail_eq vd rs imm js s x h_sail h_read hvd
-  refine ⟨js', h_read_current, ?_, h_write, ?_, h_run⟩
-  · rw [h_sail_after_andi, h_sail]
-  · rw [h_preserves vkeep h_ne]
-    exact h_keep
 
 end JoltISA
 
