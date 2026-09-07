@@ -63,6 +63,13 @@ theorem MemBytesPresentAt.byte_addr
     MemBytePresentAt s (base + BitVec.ofNat 64 k).toNat := by
   simpa [toNat_add_small_of_no_ovf base k h_no_ovf] using hbytes k hk
 
+/-- A one-byte memory window contains the byte at its base address. -/
+theorem MemBytesPresentAt.single_byte
+    {s : SailState} {addr : BitVec 64}
+    (hbytes : MemBytesPresentAt s addr 1) :
+    MemBytePresentAt s addr.toNat := by
+  simpa only [Nat.add_zero] using hbytes 0 (by omega)
+
 namespace Assumptions.DwordPresent
 
 theorem memBytesPresentAt

@@ -81,7 +81,7 @@ theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
       (stateAfterWrite js.sail rd
         (sign_extend (m := 64)
           (loaded_byte_at js.sail (load_effective_address val imm)
-            (by simpa using hbytes 0 (by omega))))) := by
+            hbytes.single_byte))) := by
   unfold execute_LOAD
   simp only [bind, pure]
   unfold Sail.assert LeanRV64D.Functions.xlen_bytes
@@ -91,14 +91,14 @@ theorem execute_LB_reduces (imm : BitVec 12) (rs1 rd : regidx)
   rw [vmem_read_byte_reduces imm rs1 js.sail hpriv hmprv val hrx
       (aligned_access_1 (load_effective_address val imm))
       (loaded_byte_at js.sail (load_effective_address val imm)
-        (by simpa using hbytes 0 (by omega)))
+        hbytes.single_byte)
       (mem_read_1_eq_loaded_byte _ js.sail hpriv hmprv hbytes hload_pmp
         hread_mmio)]
   simp only [extend_value, Bool.false_eq_true, if_false, EStateM.bind, EStateM.pure]
   obtain ⟨s', hw⟩ := wX_shape rd
     (sign_extend (m := 64)
       (loaded_byte_at js.sail (load_effective_address val imm)
-        (by simpa using hbytes 0 (by omega))))
+        hbytes.single_byte))
     js.sail
   rw [hw]
   simp only [RETIRE_SUCCESS]

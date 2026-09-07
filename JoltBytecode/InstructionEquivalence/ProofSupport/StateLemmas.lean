@@ -14,6 +14,12 @@ open Sail PreSail LeanRV64D.Functions
 
 noncomputable section
 
+/-- Update one virtual register while leaving the Sail state unchanged. -/
+def stateAfterVRegWrite (js : SailJoltState) (vd : JoltISA.VReg)
+    (value : BitVec 64) : SailJoltState :=
+  { js with
+    vregs := fun r => if r = vd then value else js.vregs r }
+
 /-- After writing `v` to vreg `vd`, the lookup at `vd` returns `v`. -/
 theorem vregs_write_self (js : SailJoltState) (vd : BitVec 7) (v : BitVec 64) :
     ({ sail := js.sail
