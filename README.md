@@ -6,7 +6,16 @@ As Jolt is a large code base, we decompose the task of formally verifying Jolt i
 
 ```mermaid
 flowchart LR
-    A["Bytecode Expansion"] --> B["Jolt Constraints"] --> C["Jolt Sumcehcks"] --> D["Jolt Reductions"] --> E["Commitment Scheme"]
+    A["Bytecode Expansion"] --> B["Jolt Constraints"] --> C["Jolt Sumchecks"] --> D["Jolt Reductions"] --> E["Commitment Scheme"]
+
+    classDef complete fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff
+    classDef inprogress fill:#fef3c7,stroke:#d97706,stroke-width:3px,stroke-dasharray:8 4,color:#92400e
+    classDef pending fill:#f3f4f6,stroke:#9ca3af,stroke-width:2px,color:#6b7280
+
+    class A complete
+    class B inprogress
+    class C,D,E pending
+
 ```
 
 1. First we verify that the RISC-V program is correctly transformed into the Jolt ISA program. We have completed this phase of the project. See Bytecode expansion section for details.
