@@ -1,19 +1,34 @@
-# Formally Verifying Jolt Bytecode Expansions
+# Jolt Qed: Formally Verifying The Jolt Zk-VM
+
+This repository contains Lean4 proofs aimed at the effort of verifying the completeness and soundness of the Jolt zk-VM.
+As Jolt is a large code base, we decompose the task of formally verifying Jolt into the following components.
 
 
-TODO: Add a bit of an executive summary.
+```mermaid
+flowchart LR
+    A["Bytecode Expansion"] --> B["Jolt Constraints"] --> C["Jolt Sumcehcks"] --> D["Jolt Reductions"] --> E["Commitment Scheme"]
+```
 
-1. [Introduction to Jolt Bytecode Expansions]()
-2. [Jolt ISA in Lean]()
-3. [Assumptions]() made to close theorems.
+1. First we verify that the RISC-V program is correctly transformed into the Jolt ISA program. We have completed this phase of the project. See Bytecode expansion section for details.
 
-Currently, we have _only_ written proofs for bytecode expansion. 
-We are working, on formalising the constraints behind Jolts sum-checks. 
-Once those are in Lean, we can prove that satisfying all of Jolts constraints does indeed produce the right NP witness.
+2. The jolt tracer executes every instruction of the guest program written in Jolt ISA to leave behind an NP witness. The task of proving that the tracer correctly ran every instruction can be reduced to satisfying a set of constraints on the witness. This project is currently in progress, see ... for up to date progress.
 
-## Rust To Lean Extraction
+3. The Jolt sum-checks are randomised efficient tests that the above constraints are satisfied. In this phase of the verification project, we extract sum-checks from Jolt, and prove that they satisfy the constraints above. 
 
-TODO: Details on automatic extraction.
+4. At this point, if we are willing to assume an idealised polynomial commitment scheme, Jolt is complete and sound (given explicit assumptions stated in Lean theorems).
+
+## Formally Verifying Jolt Bytecode Expansions
+
+See [preprint](paper.pdf) or [blog series](https://randomwalks.xyz/blog/jolt-qed/) for details on the process of going from Jolt Rust code to lean proofs showing the Jolt CPU faithfully emulates a RISC-V cpu.
+
+Details of Rust-to-Lean extraction for bytecode expansions can be found [here](https://github.com/a16z/jolt/tree/main/crates/jolt-lean-gen).
+
+
+## Verifying Jolt Constraints 
+
+## Verifying Sum-checks
+
+
 
 ## AI Usage And Miscellany
 
