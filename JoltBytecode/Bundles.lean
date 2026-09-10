@@ -22,6 +22,9 @@ We could have passed the entire list of assumptions to every theorem,
 but then it is not clear which theorems use which assumptions.
 The bundles are a clean way to show that memory equivalence proofs 
 require far more assumptions than ALU expansions.
+
+TODO: (Ari) Eventually clean up the CSRRW assumptions. 
+They are fine for now.
 -/
 
 set_option linter.unusedVariables false
