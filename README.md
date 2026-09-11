@@ -19,8 +19,8 @@ flowchart LR
 
 ```
 
-Explicit details about each component, and current progress can be found [here](https://randomwalks.xyz/blog/jolt-qed/). 
-The self contained manuscript describing the efforts of formally verifying is available [here](paper.pdf)
+Explicit details about each component, trust assumptions, and current progress can be found [here](https://randomwalks.xyz/blog/jolt-qed/). 
+A self contained manuscript describing the efforts of formally verifying is available [here](paper.pdf)
 
 If you wanted to dig around the source code.
 [This file](jolt-qed/JoltBytecode/RiscvInstruction.lean) serves as the main entry point for the bytecode expansion project.
@@ -37,7 +37,7 @@ Only 60 of them were proven. Details about why the remaining seven instructions 
 ## AI Usage And Miscellany
 
 As is the case for most projects in present times, AI agents assisted us in writing several proofs.
-We did not any use a special AI-Lean skill, software, or any MCP servers (perhaps there are better ways to do this).
+We did not any use a special AI-Lean skill or any MCP servers (perhaps there are better ways to do this).
 Our process so far has involved opening two panes in a terminal, one with a Neovim editor of the source code equipped with a Lean LSP, and the other pane with Codex or Claude.
 The chats were free form.
 
@@ -45,25 +45,25 @@ TODO: Insert picture here
 
 The most frequently used pattern that we found useful was the following.
 A lot of the theorems in the bytecode expansion project are very similar. 
-For instance the work done to prove equivalence of `LWU` and `LW` RISC-V instructions is nearly identical. 
+For instance the work done to prove equivalence of `LBU` and `LB` RISC-V instructions is nearly identical. 
 They differ in the last step in the application of sign vs unsigned extension. 
-Often, we carefully prove `LW` with comments, and make the proof easily readable (see `LB_main.lean` for example). 
-Then, we tell the ai agent to complete the proof for `LW` following the exact principles and style. 
+In this case, we carefully prove `LB` with guiding comments, and make the proof easily readable (see `LB_main.lean` for example). 
+Then, we tell the AI agent to complete the proof for `LBU` following the exact principles and style. 
 It seemed to be able to close the theorems with very limited guidance. 
 This strategy has proven to be extremely valuable so far. 
 
 On the other hand, we found that agents were not as good at designing definitions from scratch. 
 It took a lot of back and forth, and iterations for the ISA to reach its current state.
 So for the Jolt-ISA definition, almost all of it was written by hand, then the AI-agents was asked to do formatting, and check against the rust code. 
-It took a few iterations for us to get the final version.
 As an effort to enforce human eyes on all critical components of the code, all comments and documentation about the ISA are hand-written.
 
 This project was completed over a span of two and a half months, during which we learned a great deal about Lean. 
 Different proofs were written at different phases.
-This means that some theorems are more human readable than others (though all pass, so this does not matter if that's all one cares about).
+This means that some theorems are simpler and easier to follow than others (though all pass, so this does not matter if that's all one cares about).
 The goal was always to first have a passing proof for the correct theorem statement.
 Often we let an AI agent loose to close the theorem by whatever means necessary. 
-Then, we explored the output and made proofs simpler, or more human like (akin to how one would proof things on paper, though this is not always possible).
+Then, we explored the output and made proofs simpler, and more readable (akin to how one would proof things on paper, though this is not always possible).
+This process shrunk the code base significantly, and led to greater re-use of theorems.
 We would eventually like to do this for all proofs, but in the interest of time, we have not yet done this. 
-Contributions which make proofs shorter and more human readable are **always** welcome.
+Contributions which make proofs shorter, more general and simple are **always** welcome.
 
