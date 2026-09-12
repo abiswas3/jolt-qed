@@ -15,7 +15,6 @@ If you find a problem write to us.
 For bug reports, and feature requests, please open an issue
 in this repository.
 
-TODO: change the email.
 For general questions, or other recommendations, you are welcome to email us at [jolt.qed@randomwalks.xyz](mailto:jolt.qed@randomwalks.xyz).
 Before preparing your correspondence, please read the code of conduct above, and also make sure to follow the rules outlined [here](http://www.catb.org/esr/faqs/smart-questions.html).
 Beyond that, there are no set rules. 
@@ -33,5 +32,4 @@ Please ensure that pull requests:
 - Explain what changed and why.
 
 - If it's a major contribution to the design of the project, we expect some sort of a write up explaining your thought process. There is no strict format, blogs, PR comments, or anything that gets the job done is fine.
-
 

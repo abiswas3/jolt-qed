@@ -23,7 +23,7 @@ Explicit details about each component, trust assumptions, and current progress c
 A self contained manuscript describing the efforts of formally verifying is available [here](paper.pdf)
 
 If you wanted to dig around the source code.
-[This file](jolt-qed/JoltBytecode/RiscvInstruction.lean) serves as the main entry point for the bytecode expansion project.
+[This file](JoltBytecode/RiscvInstruction.lean) serves as the main entry point for the bytecode expansion project.
 It contains 3 large match blocks. 
 Loosely, it says given a RISC-V instruction, here is 
 
@@ -34,14 +34,25 @@ Loosely, it says given a RISC-V instruction, here is
 There were 67 expandable RISC-V instructions. 
 Only 60 of them were proven. Details about why the remaining seven instructions were unprovable is given in Section 7 of the pre-print.
 
+## Trusted Reference Model and Provenance
+
+`LeanRV64D/` contains the trusted RISC-V reference model used by these proofs.
+It was generated from [`abiswas3`'s fork](https://github.com/abiswas3/sail-riscv)
+of the official [`riscv/sail-riscv`](https://github.com/riscv/sail-riscv)
+repository, using [`abiswas3`'s fork](https://github.com/abiswas3/sail) of the
+official [`rems-project/sail`](https://github.com/rems-project/sail) compiler.
+The complete generation process is documented in
+[Sail RISC-V Into Lean](https://randomwalks.xyz/blog/sail-to-lean/). The upstream
+Sail compiler and Sail RISC-V model are distributed under the BSD 2-Clause
+License. The complete notice is included in
+[`LeanRV64D/LICENSE`](LeanRV64D/LICENSE).
+
 ## AI Usage And Miscellany
 
 As is the case for most projects in present times, AI agents assisted us in writing several proofs.
 We did not any use a special AI-Lean skill or any MCP servers (perhaps there are better ways to do this).
 Our process so far has involved opening two panes in a terminal, one with a Neovim editor of the source code equipped with a Lean LSP, and the other pane with Codex or Claude.
 The chats were free form.
-
-TODO: Insert picture here
 
 The most frequently used pattern that we found useful was the following.
 A lot of the theorems in the bytecode expansion project are very similar. 
@@ -66,4 +77,3 @@ Then, we explored the output and made proofs simpler, and more readable (akin to
 This process shrunk the code base significantly, and led to greater re-use of theorems.
 We would eventually like to do this for all proofs, but in the interest of time, we have not yet done this. 
 Contributions which make proofs shorter, more general and simple are **always** welcome.
-
