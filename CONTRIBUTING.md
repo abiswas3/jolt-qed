@@ -16,22 +16,27 @@ For bug reports, and feature requests, please open an issue
 in this repository.
 
 TODO: change the email.
-For general questions, or other recommendations, you are welcome to email us at [jolt.qed@randomwalks.xyz](mailto:jolt.qed@randomwalks.xyz).
+For general questions, or other recommendations, you are welcome to email us at [jolt-qed@](mailto:jolt.qed@randomwalks.xyz).
 Before preparing your correspondence, please read the code of conduct above, and also make sure to follow the rules outlined [here](http://www.catb.org/esr/faqs/smart-questions.html).
 Beyond that, there are no set rules. 
 Use common sense.
 
 ## Pull Requests
 
+### AI USAGE Policy 
+
 Firstly, we expect AI agents to be part of developer workflows.
 So it is perfectly reasonable to send us code written by an AI agent, as long as you have read and understood what your agent wrote, and can have a meaningful discussion about it.
 Our aim is not to be particularly fussy about what is AI vs human generated. 
 We just want to ensure our limited time is used most effectively at improving the security guarantees of the Jolt-zk-VM.
 
-Please ensure that pull requests:
 
-- Explain what changed and why.
+### Pull Request Guidelines
 
-- If it's a major contribution to the design of the project, we expect some sort of a write up explaining your thought process. There is no strict format, blogs, PR comments, or anything that gets the job done is fine.
+1. **Keep PRs focused:** Try to target one feature, proof, or bug fix per pull request.
+2. **Verify locally:** Run `lake build` to ensure all proofs check out and there are no compilation errors or warnings.
+3. **Allow maintainer edits:** Please ensure the **"Allow edits from maintainers"** box is checked when opening your pull request. This allows maintainers to quickly fix minor typos, formatting, or lint issues directly on your branch, speeding up the review process.
+4. **Documentation**: Explain what changed and why. If the change is a large re-organisation of the proofs that greatly simplify, and shorten existing proofs, reach out to as 
+
 
 
