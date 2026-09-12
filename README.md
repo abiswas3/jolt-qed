@@ -1,8 +1,9 @@
 # Jolt Qed: Formally Verifying The Jolt Zk-VM
 
 This repository contains proofs written using the Lean theorem proving assistant, towards formally verifying the completeness and soundness of the [Jolt zk-VM](https://github.com/a16z/jolt).
-The project is _still on-going_, and as Jolt is a relatively complex piece of software, we decompose the task of formally verifying Jolt into the following components.
+The project is _still on-going_, and as Jolt is a relatively complex piece of software, we decompose the task of formally verifying Jolt into the components shown below.
 Blocks in green are complete. Blocks in yellow are in-progress and, greyed out boxes are not yet started.
+Explicit details about each component, trust assumptions, and current progress can be found [here](https://randomwalks.xyz/blog/jolt-qed/). 
 See [CONTRIBUTING](CONTRIBUTING.md) for information about how to contribute to this project.
 
 ```mermaid
@@ -19,7 +20,6 @@ flowchart LR
 
 ```
 
-Explicit details about each component, trust assumptions, and current progress can be found [here](https://randomwalks.xyz/blog/jolt-qed/). 
 A self contained manuscript describing the efforts of formally verifying is available [here](paper.pdf)
 
 If you wanted to dig around the source code.
@@ -37,22 +37,20 @@ Only 60 of them were proven. Details about why the remaining seven instructions 
 ## AI Usage And Miscellany
 
 As is the case for most projects in present times, AI agents assisted us in writing several proofs.
-We did not any use a special AI-Lean skill or any MCP servers (perhaps there are better ways to do this).
-Our process so far has involved opening two panes in a terminal, one with a Neovim editor of the source code equipped with a Lean LSP, and the other pane with Codex or Claude.
+We did not any use any skills or MCP servers (perhaps there are better ways to do this).
+Our process so far has involved opening two panes, one with an editor equipped with a Lean Language Server (LSP), and the other pane with Codex or Claude.
 The chats were free form.
 
-TODO: Insert picture here
-
-The most frequently used pattern that we found useful was the following.
+The most frequently used pattern was the following.
 A lot of the theorems in the bytecode expansion project are very similar. 
 For instance the work done to prove equivalence of `LBU` and `LB` RISC-V instructions is nearly identical. 
 They differ in the last step in the application of sign vs unsigned extension. 
 In this case, we carefully prove `LB` with guiding comments, and make the proof easily readable (see `LB_main.lean` for example). 
 Then, we tell the AI agent to complete the proof for `LBU` following the exact principles and style. 
 It seemed to be able to close the theorems with very limited guidance. 
-This strategy has proven to be extremely valuable so far. 
+This strategy has proven to be extremely valuable so far, and saved us a lot of time.
 
-On the other hand, we found that agents were not as good at designing definitions from scratch. 
+On the other hand, we found that agents were not as good at designing definitions from scratch (this could change as models improve, or if we used a better setup). 
 It took a lot of back and forth, and iterations for the ISA to reach its current state.
 So for the Jolt-ISA definition, almost all of it was written by hand, then the AI-agents was asked to do formatting, and check against the rust code. 
 As an effort to enforce human eyes on all critical components of the code, all comments and documentation about the ISA are hand-written.
