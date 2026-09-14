@@ -21,7 +21,7 @@ flowchart LR
 
 ```
 
-A self contained manuscript describing the efforts of formally verifying bytecode expansion is available [here](paper.pdf)
+A self contained manuscript describing the efforts of formally verifying bytecode expansion is available [here](./jolt-qed.pdf)
 
 If you wanted to dig around the bytecode expansion source code.
 [This file](jolt-qed/JoltBytecode/RiscvInstruction.lean) serves as the main entry point for the bytecode expansion project.
