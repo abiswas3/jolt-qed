@@ -1,8 +1,9 @@
 # Jolt Qed: Formally Verifying The Jolt Zk-VM
 
 This repository contains proofs written using the Lean theorem proving assistant, towards formally verifying the completeness and soundness of the [Jolt zk-VM](https://github.com/a16z/jolt).
-The project is _still on-going_, and as Jolt is a relatively complex piece of software, we decompose the task of formally verifying Jolt into the components shown below.
-Blocks in green are complete. Blocks in yellow are in-progress and, greyed out boxes are not yet started.
+The project is _still on-going_, and as Jolt is relatively complex, we logically decompose the task of formally verifying Jolt into the components shown below.
+Blocks in green are complete. 
+Blocks in yellow are in-progress and, greyed out boxes are not yet started.
 Explicit details about each component, trust assumptions, and current progress can be found [here](https://randomwalks.xyz/blog/jolt-qed/). 
 See [CONTRIBUTING](CONTRIBUTING.md) for information about how to contribute to this project.
 
@@ -20,9 +21,9 @@ flowchart LR
 
 ```
 
-A self contained manuscript describing the efforts of formally verifying is available [here](paper.pdf)
+A self contained manuscript describing the efforts of formally verifying bytecode expansion is available [here](paper.pdf)
 
-If you wanted to dig around the source code.
+If you wanted to dig around the bytecode expansion source code.
 [This file](jolt-qed/JoltBytecode/RiscvInstruction.lean) serves as the main entry point for the bytecode expansion project.
 It contains 3 large match blocks. 
 Loosely, it says given a RISC-V instruction, here is 
@@ -34,10 +35,11 @@ Loosely, it says given a RISC-V instruction, here is
 There were 67 expandable RISC-V instructions. 
 Only 60 of them were proven. Details about why the remaining seven instructions were unprovable is given in Section 7 of the pre-print.
 
+
 ## AI Usage And Miscellany
 
 As is the case for most projects in present times, AI agents assisted us in writing several proofs.
-We did not any use any skills or MCP servers (perhaps there are better ways to do this).
+We did not any use any particular skills or MCP servers so far (perhaps there are better ways to do this).
 Our process so far has involved opening two panes, one with an editor equipped with a Lean Language Server (LSP), and the other pane with Codex or Claude.
 The chats were free form.
 
@@ -48,20 +50,22 @@ They differ in the last step in the application of sign vs unsigned extension.
 In this case, we carefully prove `LB` with guiding comments, and make the proof easily readable (see `LB_main.lean` for example). 
 Then, we tell the AI agent to complete the proof for `LBU` following the exact principles and style. 
 It seemed to be able to close the theorems with very limited guidance. 
+We still skim the proof for `LBU`, but do not read it as thoroughly.
 This strategy has proven to be extremely valuable so far, and saved us a lot of time.
 
 On the other hand, we found that agents were not as good at designing definitions from scratch (this could change as models improve, or if we used a better setup). 
 It took a lot of back and forth, and iterations for the ISA to reach its current state.
 So for the Jolt-ISA definition, almost all of it was written by hand, then the AI-agents was asked to do formatting, and check against the rust code. 
 As an effort to enforce human eyes on all critical components of the code, all comments and documentation about the ISA are hand-written.
+We found AI agents were particularly bad at writing clear documentation. 
 
 This project was completed over a span of two and a half months, during which we learned a great deal about Lean. 
 Different proofs were written at different phases.
-This means that some theorems are simpler and easier to follow than others (though all pass, so this does not matter if that's all one cares about).
+This means that some theorems are simpler and easier to follow than others (though all pass, so this does not a security concern).
 The goal was always to first have a passing proof for the correct theorem statement.
 Often we let an AI agent loose to close the theorem by whatever means necessary. 
 Then, we explored the output and made proofs simpler, and more readable (akin to how one would proof things on paper, though this is not always possible).
 This process shrunk the code base significantly, and led to greater re-use of theorems.
-We would eventually like to do this for all proofs, but in the interest of time, we have not yet done this. 
+We would eventually like to do this for all proofs, but in the interest of time, we have not yet done this.
 Contributions which make proofs shorter, more general and simple are **always** welcome.
 
