@@ -1,3 +1,10 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
+
 import LeanRV64D.Prelude
 
 /-!

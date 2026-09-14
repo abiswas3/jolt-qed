@@ -29,17 +29,6 @@ theorem sltu_run_vreg_vreg_vreg (vd lhs rhs : VReg)
   exact writeVReg_retire_run_of_writable vd
     (jolt_sltu_value (js.vregs lhs) (js.vregs rhs)) js hvd
 
-/-- `SLTU` from two real sources to a real destination reads both architectural
-sources and writes the unsigned less-than flag through Sail. -/
-theorem sltu_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
-    (js : SailJoltState) (x y : BitVec 64) (s' : SailState)
-    (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
-    (h₂ : rX_bits rs2 js.sail = .ok y js.sail)
-    (hw : wX_bits rd (jolt_sltu_value x y) js.sail = .ok () s') :
-    (execInstr (.SLTU (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
-      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
-  unfold execInstr readSrc writeDst liftSail
-  simp only [h₁, h₂, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
 
 /-- `SLTU` from two virtual sources to a virtual destination, packaged from
 known virtual-source values. -/

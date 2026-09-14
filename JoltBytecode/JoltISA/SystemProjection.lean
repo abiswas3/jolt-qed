@@ -1,3 +1,8 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
 import JoltBytecode.JoltISA.VirtualRegisters
 
 open Sail PreSail LeanRV64D.Functions
@@ -8,7 +13,15 @@ noncomputable section
 
 namespace System
 
-/-- TODO: Docs -/
+/-- As the control status registers are present in both the virtual register 
+file and the sail hash map.
+Simply killing of vregs does not suffice for equivalence. 
+A jolt program could write to virutal registers, which result in writing of 
+the sail control status registers.
+TODO: (Ari) In the future, I might re-design this component by having definitional 
+equality between the two objects as an axiom, and it might make my life easier.
+For now this works.
+-/
 def systemProject (js : SailJoltState) : SailState :=
   { js.sail with
     regs :=
@@ -20,7 +33,9 @@ def systemProject (js : SailJoltState) : SailState :=
         |>.insert Register.mtval (js.vregs JoltISA.mtvalVReg))
         |>.insert Register.mstatus (js.vregs JoltISA.mstatusVReg)) }
 
-/-- TODO: Docs -/
+/-- Given the post execution result of Jolt computation, 
+Get the post execution result of the Sail part of that computation.
+-/
 def systemProjectResult
     (r : EStateM.Result (Error exception) SailJoltState α) :
     EStateM.Result (Error exception) SailState α :=

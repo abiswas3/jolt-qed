@@ -69,51 +69,7 @@ theorem virtual_shift_right_bitmask_run_vreg_vreg (vd vs : VReg)
   exact writeVReg_retire_run_of_writable vd
     (jolt_virtual_shift_right_bitmask_value (js.vregs vs)) js hvd
 
-/-- `VirtualShiftRightBitmask` from a virtual source to a virtual destination,
-packaged as an instruction step from the source value. -/
-theorem exists_state_after_virtual_shift_right_bitmask_run_vreg_vreg_of_value
-    (vd vs : VReg) (js : SailJoltState) (x : BitVec 64)
-    (h_source : js.vregs vs = x)
-    (hvd : WritableVReg vd) :
-    ∃ js',
-      js'.sail = js.sail ∧
-      js'.vregs vd = jolt_virtual_shift_right_bitmask_value x ∧
-      (∀ r, r ≠ vd → js'.vregs r = js.vregs r) ∧
-      (execInstr (.VirtualShiftRightBitmask (.vreg vd) (.vreg vs))).run js =
-        .ok RETIRE_SUCCESS js' := by
-  let js' : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r =>
-        if r = vd then jolt_virtual_shift_right_bitmask_value (js.vregs vs) else js.vregs r }
-  refine ⟨js', rfl, ?_, ?_, ?_⟩
-  · simp [js', h_source]
-  · intro r hne
-    simp [js', hne]
-  · simpa only [js'] using virtual_shift_right_bitmask_run_vreg_vreg vd vs js hvd
 
-/-- `VirtualShiftRightBitmask` from a virtual source to a virtual destination,
-also exposing that one chosen virtual register is preserved. -/
-theorem exists_state_after_virtual_shift_right_bitmask_run_vreg_vreg_preserving_value
-    (vd vs vkeep : VReg) (js : SailJoltState) (s : SailState)
-    (x keep : BitVec 64)
-    (h_sail : js.sail = s)
-    (h_source : js.vregs vs = x)
-    (h_keep : js.vregs vkeep = keep)
-    (h_ne : vkeep ≠ vd)
-    (hvd : WritableVReg vd) :
-    ∃ js',
-      js'.sail = s ∧
-      js'.vregs vd = jolt_virtual_shift_right_bitmask_value x ∧
-      js'.vregs vkeep = keep ∧
-      (execInstr (.VirtualShiftRightBitmask (.vreg vd) (.vreg vs))).run js =
-        .ok RETIRE_SUCCESS js' := by
-  obtain ⟨js', h_sail_after_bitmask, h_write, h_preserves, h_run⟩ :=
-    exists_state_after_virtual_shift_right_bitmask_run_vreg_vreg_of_value vd vs js x
-      h_source hvd
-  refine ⟨js', ?_, h_write, ?_, h_run⟩
-  · rw [h_sail_after_bitmask, h_sail]
-  · rw [h_preserves vkeep h_ne]
-    exact h_keep
 
 end JoltISA
 

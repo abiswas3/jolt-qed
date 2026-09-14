@@ -70,24 +70,6 @@ theorem addi_run_xreg_xreg (rd rs1 : regidx) (imm : BitVec 12)
   unfold execInstr readSrc writeDst liftSail
   simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
 
-/-- `ADDI` from a real source to a real destination, with the output Sail state
-exposed as the architectural write performed by the instruction. -/
-theorem exists_state_after_addi_run_xreg_xreg (rd rs1 : regidx) (imm : BitVec 12)
-    (js : SailJoltState) (x : BitVec 64)
-    (h : rX_bits rs1 js.sail = .ok x js.sail) :
-    ∃ js',
-      rX_bits rs1 js.sail = .ok x js.sail ∧
-      js'.sail = stateAfterWrite js.sail rd (x + sign_extend (m := 64) imm) ∧
-      (execInstr (.ADDI (.xreg rd) (.xreg rs1) imm)).run js =
-        .ok RETIRE_SUCCESS js' := by
-  obtain ⟨s', hw⟩ := wX_shape rd (x + sign_extend (m := 64) imm) js.sail
-  have h_sail_after_addi :
-      s' = stateAfterWrite js.sail rd (x + sign_extend (m := 64) imm) :=
-    wX_bits_eq_stateAfterWrite rd (x + sign_extend (m := 64) imm) js.sail s' hw
-  exact ⟨{ sail := s', vregs := js.vregs },
-    h,
-    h_sail_after_addi,
-    addi_run_xreg_xreg rd rs1 imm js x s' h hw⟩
 
 /-- Rust's pure-writeback `rd = x0` no-op replacement retires successfully and
 leaves the Jolt state unchanged. -/

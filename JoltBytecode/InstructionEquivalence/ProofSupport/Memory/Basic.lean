@@ -63,6 +63,13 @@ theorem MemBytesPresentAt.byte_addr
     MemBytePresentAt s (base + BitVec.ofNat 64 k).toNat := by
   simpa [toNat_add_small_of_no_ovf base k h_no_ovf] using hbytes k hk
 
+/-- A one-byte memory window contains the byte at its base address. -/
+theorem MemBytesPresentAt.single_byte
+    {s : SailState} {addr : BitVec 64}
+    (hbytes : MemBytesPresentAt s addr 1) :
+    MemBytePresentAt s addr.toNat := by
+  simpa only [Nat.add_zero] using hbytes 0 (by omega)
+
 namespace Assumptions.DwordPresent
 
 theorem memBytesPresentAt
@@ -167,15 +174,7 @@ theorem loaded_word_at_eq_of_addr_eq {s : SailState} {a b : BitVec 64}
 -- ============================================================================
 -- Reusable EStateM / Sail plumbing lemmas
 -- ============================================================================
-@[simp] theorem liftM_pure_in_SailME {α} (x : α) :
-    (liftM (pure x : SailM α) : SailME (Result (BitVec 64) ExecutionResult) α)
-      = pure x := by
-  rfl
 
-theorem EStateM_bind_ok {ε σ α β : Type} {f : EStateM ε σ α} {g : α → EStateM ε σ β}
-    {s : σ} {a : α} {s' : σ} (h : f s = .ok a s') :
-    EStateM.bind f g s = g a s' := by
-  simp [EStateM.bind, h]
 
 theorem readReg_eq (r : Register) (s : SailState) (v : RegisterType r)
     (h : s.regs.get? r = some v) :
@@ -184,11 +183,5 @@ theorem readReg_eq (r : Register) (s : SailState) (v : RegisterType r)
   simp only [bind, EStateM.bind, pure, EStateM.pure,
              MonadStateOf.get, EStateM.get, getThe, get, h]
 
-theorem readByte_eq (n : Nat) (s : SailState) (v : BitVec 8)
-    (h : s.mem.get? n = some v) :
-    (PreSail.readByte n : SailM (BitVec 8)) s = .ok v s := by
-  unfold PreSail.readByte
-  simp only [bind, EStateM.bind, pure, EStateM.pure,
-             MonadStateOf.get, EStateM.get, getThe, get, h]
 
 end

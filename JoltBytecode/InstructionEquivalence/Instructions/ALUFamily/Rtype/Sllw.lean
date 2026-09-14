@@ -4,7 +4,6 @@ import JoltBytecode.InstructionEquivalence.ProofSupport.Projection
 import JoltBytecode.InstructionEquivalence.ProofSupport.Basic
 import JoltBytecode.JoltISA.Expansions.ALU
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.Mul
-import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualPow2W
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas.VirtualSignExtendWord
 import JoltBytecode.InstructionEquivalence.ProofSupport.InstructionLemmas
 import Mathlib.Data.Nat.Bitwise

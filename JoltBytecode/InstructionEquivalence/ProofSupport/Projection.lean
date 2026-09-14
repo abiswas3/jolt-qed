@@ -225,14 +225,6 @@ theorem set_next_pc_preservesSystemProjectRegs
   change PreservesSystemProjectRegs s (System.setNextPCState s target)
   exact setNextPCState_preservesSystemProjectRegs s target
 
-private theorem currentlyEnabled_Ext_C_preservesSystemProjectRegs
-    (s : SailState) :
-    ResultPreservesSystemProjectRegs s ((currentlyEnabled extension.Ext_C) s) := by
-  simpa [currentlyEnabled, Functor.map, bind] using
-    bind_preservesSystemProjectRegs
-    (readReg_preservesSystemProjectRegs Register.misa s)
-    (fun _ s1 _ =>
-      pure_preservesSystemProjectRegs s1 _)
 
 private theorem currentlyEnabled_Ext_Zca_preservesSystemProjectRegs
     (s : SailState) :

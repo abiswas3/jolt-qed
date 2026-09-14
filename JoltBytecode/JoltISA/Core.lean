@@ -1,3 +1,9 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
 import LeanRV64D
 
 /-!
@@ -7,6 +13,8 @@ This module defines the Jolt CPU in Lean: the embedded Sail state, the
 augmented `SailJoltState` (Sail + virtual register file), the `JoltMonad`
 effect type, and the lifting/projection machinery that bridges between Sail
 computations and Jolt computations.
+The linking between the control status registers in the virtual and sail reg 
+file is described in SystemProjection.lean
 
 Proof-side facts about this embedding live in the instruction-equivalence
 support modules that use them.

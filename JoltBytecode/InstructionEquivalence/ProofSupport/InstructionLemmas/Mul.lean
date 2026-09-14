@@ -29,28 +29,6 @@ theorem mul_run_vreg_vreg_vreg (vd lhs rhs : VReg) (js : SailJoltState)
     get, getThe, MonadStateOf.get, EStateM.get]
   exact writeVReg_retire_run_of_writable vd (js.vregs lhs * js.vregs rhs) js hvd
 
-/-- `MUL` from two virtual sources to a virtual destination, packaged as an
-instruction step from known virtual-source values. -/
-theorem exists_state_after_mul_run_vreg_vreg_vreg
-    (vd lhs rhs : VReg) (js : SailJoltState) (x y : BitVec 64)
-    (h_lhs : js.vregs lhs = x)
-    (h_rhs : js.vregs rhs = y)
-    (hvd : WritableVReg vd) :
-    ∃ js',
-      js'.sail = js.sail ∧
-      js'.vregs vd = x * y ∧
-      (∀ r, r ≠ vd → js'.vregs r = js.vregs r) ∧
-      (execInstr (.MUL (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
-        .ok RETIRE_SUCCESS js' := by
-  let js' : SailJoltState :=
-    { sail := js.sail
-      vregs := fun r => if r = vd then js.vregs lhs * js.vregs rhs
-        else js.vregs r }
-  refine ⟨js', rfl, ?_, ?_, ?_⟩
-  · simp [js', h_lhs, h_rhs]
-  · intro r hne
-    simp [js', hne]
-  · simpa only [js'] using mul_run_vreg_vreg_vreg vd lhs rhs js hvd
 
 /-- `MUL` from a virtual source and a real source to a virtual destination reads
 the real source through Sail, writes the low product to the virtual destination,
@@ -173,40 +151,6 @@ theorem exists_state_after_mul_run_xreg_xreg_vreg_of_value
     exists_state_after_mul_run_xreg_xreg_vreg rd rs1 vs2 js x h_read_current
   refine ⟨js', h_read_again, ?_, h_mul_succeeds⟩
   rw [h_sail_after_mul, h_sail, h_value]
-
-/-- `MUL` from two real sources to a real destination reads both architectural
-sources and writes the low product through Sail. -/
-theorem mul_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
-    (js : SailJoltState) (x y : BitVec 64) (s' : SailState)
-    (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
-    (h₂ : rX_bits rs2 js.sail = .ok y js.sail)
-    (hw : wX_bits rd (x * y) js.sail = .ok () s') :
-    (execInstr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
-      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
-  unfold execInstr readSrc writeDst liftSail
-  simp only [h₁, h₂, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
-
-/-- `MUL` from two real sources to a real destination, with the output Sail
-state exposed as the architectural write performed by the instruction. -/
-theorem exists_state_after_mul_run_xreg_xreg_xreg (rd rs1 rs2 : regidx)
-    (js : SailJoltState) (x y : BitVec 64)
-    (h₁ : rX_bits rs1 js.sail = .ok x js.sail)
-    (h₂ : rX_bits rs2 js.sail = .ok y js.sail) :
-    ∃ js',
-      rX_bits rs1 js.sail = .ok x js.sail ∧
-      rX_bits rs2 js.sail = .ok y js.sail ∧
-      js'.sail = stateAfterWrite js.sail rd (x * y) ∧
-      (execInstr (.MUL (.xreg rd) (.xreg rs1) (.xreg rs2))).run js =
-        .ok RETIRE_SUCCESS js' := by
-  obtain ⟨s', hw⟩ := wX_shape rd (x * y) js.sail
-  have h_sail_after_mul :
-      s' = stateAfterWrite js.sail rd (x * y) :=
-    wX_bits_eq_stateAfterWrite rd (x * y) js.sail s' hw
-  exact ⟨{ sail := s', vregs := js.vregs },
-    h₁,
-    h₂,
-    h_sail_after_mul,
-    mul_run_xreg_xreg_xreg rd rs1 rs2 js x y s' h₁ h₂ hw⟩
 
 /-- Existential single-write post-state for `MUL` on virtual registers. -/
 theorem mul_run_vreg_vreg_vreg_ex (vd vs1 vs2 : VReg) (js : SailJoltState)

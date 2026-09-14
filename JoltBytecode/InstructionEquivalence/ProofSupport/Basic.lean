@@ -42,55 +42,12 @@ def ProgramMatchesSailWithProtectedFrame
     ∀ vr, JoltISA.IsProtectedJoltRegister vr →
       js'.vregs vr = js.vregs vr
 
-theorem protectedFrame_of_success
-    {js js' : SailJoltState}
-    {jres : EStateM.Result (Error exception) SailJoltState α}
-    {result : α}
-    (hrun : jres = .ok result js')
-    (hframe : ∀ vr, JoltISA.IsProtectedJoltRegister vr →
-      js'.vregs vr = js.vregs vr) :
-    ∀ result' js'',
-      jres = .ok result' js'' →
-      ∀ vr, JoltISA.IsProtectedJoltRegister vr →
-        js''.vregs vr = js.vregs vr := by
-  intro result' js'' hrun' vr hprotected
-  rw [hrun] at hrun'
-  cases hrun'
-  exact hframe vr hprotected
 
 namespace JoltISA
 
 def DstWritesNoProtectedVReg : Dst → Prop
   | .xreg _ => True
   | .vreg vr => ¬ IsProtectedJoltRegister vr
-
-@[simp] theorem loadDstFor_writesNoProtectedVReg (rd : regidx) :
-    DstWritesNoProtectedVReg (loadDstFor rd) := by
-  by_cases hx0 : isX0 rd = true
-  · simpa [loadDstFor, sideEffectingRdZeroDst, DstWritesNoProtectedVReg,
-      hx0, rdZeroRewriteVReg] using
-      (not_protected_of_instructionTmp (r := inlineTmp 0) (n := 0) rfl)
-  · simp [loadDstFor, sideEffectingRdZeroDst, DstWritesNoProtectedVReg, hx0]
-
-@[simp] theorem loadV0For_dstWritesNoProtectedVReg (rd : regidx) :
-    DstWritesNoProtectedVReg (.vreg (loadV0For rd)) := by
-  simp [DstWritesNoProtectedVReg]
-
-@[simp] theorem loadV1For_dstWritesNoProtectedVReg (rd : regidx) :
-    DstWritesNoProtectedVReg (.vreg (loadV1For rd)) := by
-  simp [DstWritesNoProtectedVReg]
-
-@[simp] theorem loadInlineTmpFor_dstWritesNoProtectedVReg (rd : regidx) :
-    DstWritesNoProtectedVReg (.vreg (loadInlineTmpFor rd)) := by
-  simp [DstWritesNoProtectedVReg]
-
-@[simp] theorem amoDstFor_writesNoProtectedVReg (rd : regidx) :
-    DstWritesNoProtectedVReg (amoDstFor rd) := by
-  by_cases hx0 : isX0 rd = true
-  · simpa [amoDstFor, sideEffectingRdZeroDst, DstWritesNoProtectedVReg,
-      hx0, rdZeroRewriteVReg] using
-      (not_protected_of_instructionTmp (r := inlineTmp 0) (n := 0) rfl)
-  · simp [amoDstFor, sideEffectingRdZeroDst, DstWritesNoProtectedVReg, hx0]
 
 private theorem inlineTmp_le6_not_protected (n : Nat) (h : n ≤ 6) :
     ¬ IsProtectedJoltRegister (inlineTmp n) := by
@@ -146,31 +103,6 @@ private theorem inlineTmp_le6_not_protected (n : Nat) (h : n ≤ 6) :
 @[simp] theorem amoInlineTmpVRegFor_not_protected (rd : regidx) :
     ¬ IsProtectedJoltRegister (amoInlineTmpVRegFor rd) := by
   unfold amoInlineTmpVRegFor amoVRegFor
-  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
-
-@[simp] theorem amoWordSwapMaskVRegFor_not_protected (rd : regidx) :
-    ¬ IsProtectedJoltRegister (amoWordSwapMaskVRegFor rd) := by
-  unfold amoWordSwapMaskVRegFor amoVRegFor
-  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
-
-@[simp] theorem amoWordSwapDwordVRegFor_not_protected (rd : regidx) :
-    ¬ IsProtectedJoltRegister (amoWordSwapDwordVRegFor rd) := by
-  unfold amoWordSwapDwordVRegFor amoVRegFor
-  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
-
-@[simp] theorem amoWordSwapShiftVRegFor_not_protected (rd : regidx) :
-    ¬ IsProtectedJoltRegister (amoWordSwapShiftVRegFor rd) := by
-  unfold amoWordSwapShiftVRegFor amoVRegFor
-  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
-
-@[simp] theorem amoWordSwapOldVRegFor_not_protected (rd : regidx) :
-    ¬ IsProtectedJoltRegister (amoWordSwapOldVRegFor rd) := by
-  unfold amoWordSwapOldVRegFor amoVRegFor
-  split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
-
-@[simp] theorem amoWordSwapInlineTmpVRegFor_not_protected (rd : regidx) :
-    ¬ IsProtectedJoltRegister (amoWordSwapInlineTmpVRegFor rd) := by
-  unfold amoWordSwapInlineTmpVRegFor amoVRegFor
   split <;> exact inlineTmp_le6_not_protected _ (by norm_num)
 
 @[simp] theorem amoWordSelectOldVRegFor_not_protected (rd : regidx) :
@@ -368,27 +300,6 @@ private theorem liftSail_preserves_vregs
       rw [hm] at hrun
       cases hrun
 
-private theorem writeVReg_preserves_protected
-    {scratch : VReg} {js js' : SailJoltState} {value : BitVec 64}
-    (hsafe : VRegWritesNoProtectedVReg scratch)
-    (hrun : (writeVReg scratch value).run js = .ok () js') :
-  ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
-  unfold VRegWritesNoProtectedVReg at hsafe
-  by_cases harch : scratch.toNat < 32
-  · unfold writeVReg at hrun
-    simp only [harch, ↓reduceIte, EStateM.run, throw, throwThe,
-      MonadExceptOf.throw, EStateM.throw] at hrun
-    cases hrun
-  unfold writeVReg at hrun
-  simp only [harch, ↓reduceIte, EStateM.run, modify, modifyGet,
-    MonadStateOf.modifyGet, EStateM.modifyGet] at hrun
-  cases hrun
-  intro vr hprotected
-  by_cases hEq : vr = scratch
-  · subst vr
-    exact False.elim (hsafe hprotected)
-  · simp only [hEq, ↓reduceIte]
-
 private theorem writeDst_preserves_protected
     {dst : Dst} {js js' : SailJoltState} {value : BitVec 64}
     (hsafe : DstWritesNoProtectedVReg dst)
@@ -444,53 +355,6 @@ private theorem dstWrite_preserves_protected
   | error e js_error =>
       change writeDst dst value js = .error e js_error at hwrite
       rw [hwrite] at hrun
-      simp only at hrun
-      cases hrun
-
-private theorem vregWrite_preserves_protected
-    {scratch : VReg} {js js' : SailJoltState}
-    {result : ExecutionResult} {value : BitVec 64}
-    (hsafe : VRegWritesNoProtectedVReg scratch)
-    (hrun : (do
-        writeVReg scratch value
-        pure RETIRE_SUCCESS : JoltMonad ExecutionResult).run js =
-      .ok result js') :
-    ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
-  simp only [EStateM.run, bind, EStateM.bind] at hrun
-  cases hwrite : (writeVReg scratch value).run js with
-  | ok u js_afterWrite =>
-      change writeVReg scratch value js = .ok u js_afterWrite at hwrite
-      rw [hwrite] at hrun
-      simp only [pure, EStateM.pure] at hrun
-      cases hrun
-      exact writeVReg_preserves_protected hsafe hwrite
-  | error e js_error =>
-      change writeVReg scratch value js = .error e js_error at hwrite
-      rw [hwrite] at hrun
-      simp only at hrun
-      cases hrun
-
-private theorem liftPure_preserves_protected
-    {m : SailM α} {js js' : SailJoltState}
-    {result : ExecutionResult} {f : α → ExecutionResult}
-    (hrun : (do
-        let x ← liftSail m
-        pure (f x) : JoltMonad ExecutionResult).run js =
-      .ok result js') :
-    ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
-  simp only [EStateM.run, bind, EStateM.bind] at hrun
-  cases hread : (liftSail m).run js with
-  | ok x js_afterRead =>
-      change liftSail m js = .ok x js_afterRead at hread
-      rw [hread] at hrun
-      simp only [pure, EStateM.pure] at hrun
-      cases hrun
-      have hread_frame := liftSail_preserves_vregs hread
-      intro vr hprotected
-      rw [hread_frame]
-  | error e js_error =>
-      change liftSail m js = .error e js_error at hread
-      rw [hread] at hrun
       simp only at hrun
       cases hrun
 
@@ -705,71 +569,6 @@ private theorem binaryReadIfThrowElsePure_preserves_protected
       rw [hread_lhs] at hrun
       simp only at hrun
       cases hrun
-
-private theorem liftLiftVRegWrite_preserves_protected
-    {m₁ m₂ : SailM (BitVec 64)} {scratch : VReg}
-    {js js' : SailJoltState} {result : ExecutionResult}
-    {f : BitVec 64 → BitVec 64 → BitVec 64}
-    (hsafe : VRegWritesNoProtectedVReg scratch)
-    (hrun : (do
-        let x ← liftSail m₁
-        let y ← liftSail m₂
-        writeVReg scratch (f x y)
-        pure RETIRE_SUCCESS : JoltMonad ExecutionResult).run js =
-      .ok result js') :
-    ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
-  simp only [EStateM.run, bind, EStateM.bind] at hrun
-  cases hread₁ : (liftSail m₁).run js with
-  | ok x js_afterFirst =>
-      change liftSail m₁ js = .ok x js_afterFirst at hread₁
-      rw [hread₁] at hrun
-      simp only at hrun
-      cases hread₂ : (liftSail m₂).run js_afterFirst with
-      | ok y js_afterSecond =>
-          change liftSail m₂ js_afterFirst = .ok y js_afterSecond at hread₂
-          rw [hread₂] at hrun
-          simp only at hrun
-          cases hwrite : (writeVReg scratch (f x y)).run js_afterSecond with
-          | ok u js_afterWrite =>
-              change writeVReg scratch (f x y) js_afterSecond = .ok u js_afterWrite at hwrite
-              rw [hwrite] at hrun
-              simp only [pure, EStateM.pure] at hrun
-              cases hrun
-              have hread₁_frame := liftSail_preserves_vregs hread₁
-              have hread₂_frame := liftSail_preserves_vregs hread₂
-              have hwrite_frame := writeVReg_preserves_protected hsafe hwrite
-              intro vr hprotected
-              rw [hwrite_frame vr hprotected, hread₂_frame, hread₁_frame]
-          | error e js_error =>
-              change writeVReg scratch (f x y) js_afterSecond = .error e js_error at hwrite
-              rw [hwrite] at hrun
-              simp only at hrun
-              cases hrun
-      | error e js_error =>
-          change liftSail m₂ js_afterFirst = .error e js_error at hread₂
-          rw [hread₂] at hrun
-          simp only at hrun
-          cases hrun
-  | error e js_error =>
-      change liftSail m₁ js = .error e js_error at hread₁
-      rw [hread₁] at hrun
-      simp only at hrun
-      cases hrun
-
-private theorem vregVregWrite_preserves_protected
-    {lhs rhs scratch : VReg}
-    {js js' : SailJoltState} {result : ExecutionResult}
-    {f : BitVec 64 → BitVec 64 → BitVec 64}
-    (hsafe : VRegWritesNoProtectedVReg scratch)
-    (hrun : (do
-        let x ← readVReg lhs
-        let y ← readVReg rhs
-        writeVReg scratch (f x y)
-        pure RETIRE_SUCCESS : JoltMonad ExecutionResult).run js =
-      .ok result js') :
-    ∀ vr, IsProtectedJoltRegister vr → js'.vregs vr = js.vregs vr := by
-  simp only [EStateM.run, bind, EStateM.bind, readVReg_run] at hrun
-  exact vregWrite_preserves_protected hsafe hrun
 
 private theorem ld_preserves_protected
     {faultClass : LoadFaultClass} {dst : Dst} {base : Src} {imm : BitVec 12}
@@ -1254,15 +1053,6 @@ theorem isX0_eq_false_of_ne_zero
       apply BitVec.eq_of_toNat_eq
       simpa using hbits
 
-/-- For `rd = x0`, pure-writeback trace dispatch uses the no-op replacement
-program. -/
-theorem pureWritebackTraceProgram_regidx_zero (normal : Program) :
-    pureWritebackTraceProgram (regidx.Regidx 0) normal =
-      pureWritebackRdZeroProgram := by
-  unfold pureWritebackTraceProgram
-  rw [isX0_regidx_zero]
-  simp only [↓reduceIte]
-
 /-- For `rd ≠ x0`, pure-writeback trace dispatch uses the ordinary inline
 sequence unchanged. -/
 theorem pureWritebackTraceProgram_of_ne_zero
@@ -1279,30 +1069,6 @@ theorem pureWritebackRdZeroProgram_writesNoProtected :
   simp [pureWritebackRdZeroProgram, ProgramWritesNoProtectedVReg,
     InstrWritesNoProtectedVReg, DstWritesNoProtectedVReg]
 
-theorem pureWritebackTraceProgram_writesNoProtected {rd : regidx}
-    {normal : Program}
-    (hnormal : ProgramWritesNoProtectedVReg normal) :
-    ProgramWritesNoProtectedVReg (pureWritebackTraceProgram rd normal) := by
-  unfold pureWritebackTraceProgram
-  split
-  · exact pureWritebackRdZeroProgram_writesNoProtected
-  · exact hnormal
-
 end JoltISA
-
-theorem programMatchesSailWithProtectedFrame_of_projectResult_eq
-    {program : JoltISA.Program}
-    {js : SailJoltState}
-    {sres : EStateM.Result (Error exception) SailState ExecutionResult}
-    (hproject :
-      projectResult ((JoltISA.execProgram program).run js) = sres)
-    (hsafe : JoltISA.ProgramWritesNoProtectedVReg program) :
-    ProgramMatchesSailWithProtectedFrame js
-      ((JoltISA.execProgram program).run js) sres := by
-  constructor
-  · exact hproject
-  · intro result js' hrun
-    exact JoltISA.execProgram_preserves_protected
-      (js := js) (js' := js') (result := result) hsafe hrun
 
 end

@@ -1,9 +1,20 @@
+/-
+Copyright (c) 2026 Ari. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Ari 
+-/
+
 import JoltBytecode.JoltISA.VirtualRegisters
 /-!
 # Jolt proof assumptions
 
 This file is the top-level index of primitive assumptions used by the
 instruction-equivalence proofs. 
+See: https://randomwalks.xyz/blog/jolt-qed/assumptions/
+for a detailed justification of these assumptions. 
+
+NOTE: The control status register assumptions could be tightened
+in the rust code. Till then, those assumptions are fine.
 -/
 
 set_option linter.unusedVariables false
@@ -21,27 +32,31 @@ namespace Assumptions
 -- Register assumptions
 -- ============================================================================
 
-/-- Integer register `r` is readable, with some value.
+/-- General purpose registers are readable, with some value.
+In Lean, as SAIL register file is a hashmap, we need this to 
+say that key exists in the hashmap.
 
-Rust source: `tracer/src/emulator/cpu.rs:166`,
-`tracer/src/emulator/cpu.rs:375-394`.
-
-Rust stores integer registers in `Cpu.x`; reads are total for decoded register
-indices and writes keep `x0` hardwired to zero. The Lean assumption is the Sail
-finite-map/readability side of the same pre-state.
+So we right two assumptions: 
+1. The key is in the hashmap. 
+2. The rx_bits api call returns the value in the register.
 -/
-structure XRegReadable (r : regidx) (s : SailState) : Prop where
-  exists_value : ∃ value : BitVec 64, rX_bits r s = .ok value s
-
 structure SailRegReadable (r : Register) (s : SailState) : Prop where
   exists_value : ∃ value : RegisterType r, s.regs.get? r = some value
 
-/-- Assumptions for an instruction that reads one architectural source register. -/
+structure XRegReadable (r : regidx) (s : SailState) : Prop where
+  exists_value : ∃ value : BitVec 64, rX_bits r s = .ok value s
+
+
+/-- Assumptions for an instruction that reads one architectural source register. 
+Instructions like ADDI will use only one source register.
+-/
 structure UnarySourceReadAssumptions (rs1 : regidx) (s : SailState) where
   rs1_val : BitVec 64
   rs1_read : rX_bits rs1 s = .ok rs1_val s
 
-/-- Assumptions for an instruction that reads two architectural source registers. -/
+/-- Assumptions for an instruction that reads two architectural source registers. 
+Instructions like ADD use two source registers.
+-/
 structure BinarySourceReadAssumptions
     (rs2 rs1 : regidx) (s : SailState) where
   rs1_val : BitVec 64
@@ -58,9 +73,11 @@ structure BinarySourceReadAssumptions
 Rust source: `tracer/src/emulator/memory.rs:38-63`,
 `tracer/src/emulator/memory.rs:136-196`.
 
-Rust memory is doubleword-backed and treats missing doublewords as
-zero-initialized. Lean's direct byte helpers use finite-map lookup; this
-assumption states that the single enclosing dword Jolt reads is populated.
+Much like the SAIL register file, we need to say keys are populated 
+in the hashmap. 
+Jolt's memory is just an array, and we can always read off values. 
+Furthermore, as the Jolt ISA only has the LD instruction, we must 
+always say that all 64 bits enclosing the addr are readable.
 -/
 structure DwordPresent (addr : BitVec 64) (s : SailState) : Prop where
   bytes :
@@ -69,10 +86,15 @@ structure DwordPresent (addr : BitVec 64) (s : SailState) : Prop where
 
 /-- Machine-mode PMP accepts a data load from `addr` for `width` bytes.
 
-Rust source: `tracer/src/emulator/mmu.rs:13-18`.
+The SAIL side models every decision that a memory load must make 
+before it actually reaches data bytes.
 
+Rust source: `tracer/src/emulator/mmu.rs:13-18`.
 Jolt's Rust MMU explicitly says memory protection is not implemented. This
 predicate constrains generated Sail to the corresponding no-PMP-fault path.
+
+We wnt to say this not only the data located at the addres + width, but the 
+entire d-word window.
 -/
 abbrev LoadPmpOk (addr : BitVec 64) (width : Nat) (s : SailState) : Prop :=
   phys_access_check (Load Data) Privilege.Machine
