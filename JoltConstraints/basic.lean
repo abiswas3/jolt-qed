@@ -16,7 +16,7 @@ namespace JoltConstraints
 
 universe u
 
-/-- A column with one value at each of `T` trace rows. -/
+/-- A vector of length T where coordinate has type α-/
 abbrev Column (T : Nat) (α : Type u) : Type u :=
   Fin T → α
 
@@ -26,16 +26,19 @@ abbrev Xlen : Nat := 64
 /-- Number of bits in Jolt's combined two-operand lookup address. -/
 abbrev InstructionLookupAddressBits : Nat := 2 * Xlen
 
-/-- Rust's unified architectural/virtual register-address domain. -/
+/-- Number of bits needed to index into Jolt Virtual Reg File -/
 abbrev RegisterAddressBits : Nat := 7
-
 abbrev RegisterAddressCount : Nat := 2 ^ RegisterAddressBits
-
 abbrev RegisterAddress : Type := Fin RegisterAddressCount
 
-/-- Rust switches from `(4, 16)` to `(8, 32)` one-hot chunks at this `logT`. -/
+/-- Rust switches from `(4, 16)` to `(8, 32)` one-hot chunks at this `logT`. 
+TODO: Find rust source code evidence
+-/
 abbrev OneHotChunkThresholdLogT : Nat := 25
 
+/--Parameters for the NP witnes
+TODO: Find Rust code source
+-/
 structure JoltWitnessParams where
   logT : Nat
   ramK : Nat
@@ -49,7 +52,10 @@ structure JoltWitnessParams where
   deriving DecidableEq, Repr
 
 /-- The three committed read-address chunk counts (`D`) in Rust's canonical
-instruction, bytecode, RAM order. -/
+instruction, bytecode, RAM order.
+TODO: <Link> to my blog writeup of this.
+TODO: Also link Rust source
+-/
 structure JoltRaPolynomialLayout where
   instructionD : Nat
   bytecodeD : Nat
@@ -58,13 +64,15 @@ structure JoltRaPolynomialLayout where
 
 namespace JoltRaPolynomialLayout
 
+/-- TODO: Find a better name eventually. Eegiot-/
 def total (layout : JoltRaPolynomialLayout) : Nat :=
   layout.instructionD + layout.bytecodeD + layout.ramD
 
 end JoltRaPolynomialLayout
 
 /-- Rust's `RaChunkSelector`, with the range check on `index` represented by
-the type.  Chunk zero is the most-significant chunk. -/
+the type.  Chunk zero is the most-significant chunk.
+TODO: Not a scooby what is going on here.-/
 structure JoltRaChunkSelector (chunks chunkBits : Nat) where
   index : Fin chunks
 
@@ -91,8 +99,7 @@ end JoltRaChunkSelector
 
 namespace JoltWitnessParams
 
-/-- The arithmetic notion used by Rust's `usize::is_power_of_two` checks.
-Unlike `Nat.nextPowerOfTwo`, this predicate excludes zero. -/
+/-- Unlike `Nat.nextPowerOfTwo`, this predicate excludes zero. -/
 def IsPowerOfTwo (value : Nat) : Prop :=
   ∃ logValue : Nat, value = 2 ^ logValue
 
@@ -110,13 +117,22 @@ def paddedTraceLength (unpaddedLength : Nat) : Nat :=
 def ceilDiv (n d : Nat) : Nat :=
   (n + d - 1) / d
 
+/--Show that n ≤ ⌈n/d⌉* d-/
 theorem le_ceilDiv_mul (n d : Nat) (dPositive : 0 < d) :
     n ≤ ceilDiv n d * d := by
-  have remainder_lt : (n + d - 1) % d < d :=
-    Nat.mod_lt _ dPositive
-  have decomposition := Nat.mod_add_div' (n + d - 1) d
-  unfold ceilDiv
-  omega
+  let q := (n + d - 1) / d 
+  let r := (n + d - 1) % d
+  have h_div_fact : (n + d - 1) = q * d + r := by 
+    simpa only [q, r] using (Nat.div_add_mod' (n + d - 1) d).symm
+  have h_rem_smaller_than_divisor : r < d := by 
+    simpa only [r] using Nat.mod_lt (n + d - 1) dPositive
+  rw [← Nat.le_sub_one_iff_lt dPositive] at h_rem_smaller_than_divisor
+  calc
+      n = n + d - 1 - (d - 1) := by omega
+      _ = q * d + r - (d - 1) := by rw [h_div_fact]
+      _ ≤ q * d + r - r := by gcongr
+      _ = q * d := by omega
+      _ = ceilDiv n d * d := by rfl
 
 def committedChunkSize (params : JoltWitnessParams) : Nat :=
   2 ^ params.committedChunkBits
@@ -441,7 +457,9 @@ structure JoltTraceRowMetadata where
   isCompressed : Bool
 
 /-- Stable identity of every final instruction in Rust's base Jolt profile.
-Unlike `JoltISA.Instr`, this deliberately contains no execution-time values. -/
+Unlike `JoltISA.Instr`, this deliberately contains no execution-time values.
+TODO: This should not be there. It should use the ISA.
+-/
 inductive JoltInstructionKind where
   | NoOp
   | ADDI | ANDI | ORI | XORI | SLTI | SLTIU | LUI | AUIPC | JAL | JALR
