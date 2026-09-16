@@ -1,3 +1,44 @@
+# Non-negotiable: NEVER re-create instruction semantics
+
+- Instruction execution MUST use `JoltISA.execInstr`. Never introduce a second interpreter or implement instruction behavior in `JoltConstraints`.
+- Instruction semantics and semantic helpers MUST live in `JoltBytecode/JoltISA`. Witness construction, tracing, and metadata code MUST NOT duplicate operand comparisons, arithmetic behavior, jump decisions, or other instruction semantics.
+- When witness extraction needs a semantic calculation already performed by execution, reuse the ISA implementation. If necessary, extract that calculation into a shared helper in `JoltBytecode/JoltISA/semantic_helpers.lean` and make BOTH `execInstr` and witness extraction call it. Merely placing a duplicate helper in the ISA directory is NOT sufficient: execution must actually use the same helper.
+- Rust is the reference for witness encoding, not permission to create an alternative Lean execution semantics. Reading ISA pre/post states, encoding values into fields, padding, and indexing witness arrays belong to witness construction; reimplementing instruction behavior does not.
+- This prohibition concerns duplicated executable semantics, not the mathematical statements of constraints or correctness theorems. An equivalence proof is not a substitute for sharing the implementation.
+- Preserve ISA behavior when extracting helpers; check the existing equivalence proofs and build. Do not expand to unrelated instructions or change the state type without approval.
+
+## Concrete mistake and correction: `ShouldBranch`
+
+BAD: we implemented `HonestWitness.branchDecision` in `JoltConstraints/witness_helpers/branch.lean` with its own comparisons, for example:
+
+```lean
+| .BEQ lhs rhs _ => do
+    return (← JoltISA.readSrc lhs) == (← JoltISA.readSrc rhs)
+```
+
+At the same time, `JoltISA.execInstr` separately read those operands and compared them in its BEQ case. Calling ISA register-read helpers did NOT make this acceptable: the branch decision itself was duplicated. Matching Rust or proving that read errors propagate did NOT remove that duplication.
+
+FIX: move the comparisons into the single ISA-owned `JoltISA.branchDecision` in `JoltBytecode/JoltISA/semantic_helpers.lean`. It covers `BEQ`, `BNE`, `BLT`, `BGE`, `BLTU`, and `BGEU`. Each corresponding `execInstr` case calls it, for example:
+
+```lean
+| .BEQ lhs rhs imm => do
+    if ← branchDecision (.BEQ lhs rhs imm) then
+      let pc ← liftSail (Sail.readReg Register.PC)
+      liftSail (jump_to (pc + sign_extend (m := 64) imm))
+    else
+      pure RETIRE_SUCCESS
+```
+
+`HonestWitness.ShouldBranch` calls that SAME helper on the recorded pre-state:
+
+```lean
+JoltISA.branchDecision program.expandedBytecode[row.rowIndex].instruction row.preState
+```
+
+The witness code only encodes the returned Boolean as field `1` or `0`, handles padding, and proves the error case impossible using the row's successful ISA execution. There is NO witness-side branch comparison. The read-only predicate is evaluated again, but its semantics are defined only once; the instruction is not executed again.
+
+Do NOT replace this with a PC-change heuristic: a taken branch can target the normal fallthrough address, so the PC transition alone does not always reveal whether its condition held.
+
 # Modelling Jolt Sumchecks as Explicit Constraints
 
 For this project the PCS is out of scope. We will treat polynomial openings as exact.
