@@ -41,7 +41,7 @@ noncomputable def JoltProgram.honestWitness {F : Type} [Field F] (p : WitnessPar
     NextIsVirtual := HonestWitness.NextIsVirtual p program initialState
     NextIsFirstInSequence := HonestWitness.NextIsFirstInSequence p program initialState
     NextIsNoop := HonestWitness.NextIsNoop p program initialState
-    OpFlags := HonestWitness.OpFlags p program initialState
+    OpFlags := HonestWitness.OpFlags p program executionTrace
     InstructionFlags := HonestWitness.InstructionFlags p program initialState
     LookupTableFlag := HonestWitness.LookupTableFlag p program initialState
     InstructionRafFlag := HonestWitness.InstructionRafFlag p program initialState

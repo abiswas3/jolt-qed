@@ -3,6 +3,7 @@ import JoltConstraints.witness
 import JoltConstraints.trace
 import JoltConstraints.metadata
 import JoltConstraints.witness_helpers.branch
+import JoltConstraints.witness_helpers.op_flags
 
 set_option autoImplicit false
 
@@ -121,11 +122,6 @@ noncomputable def NextIsFirstInSequence [Field F] (_program : JoltProgram)
 -- Rust: crates/jolt-witness/src/witnesses/flags.rs::NextIsNoop.
 noncomputable def NextIsNoop [Field F] (_program : JoltProgram)
     (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/flags.rs::OpFlag.
-noncomputable def OpFlags [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : CircuitFlags → Fin p.traceLength → F := by
   sorry
 
 -- Rust: crates/jolt-witness/src/witnesses/flags.rs::InstructionFlag.
