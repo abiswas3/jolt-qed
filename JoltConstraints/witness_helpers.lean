@@ -2,6 +2,7 @@ import Mathlib.Algebra.Field.Defs
 import JoltConstraints.witness
 import JoltConstraints.trace
 import JoltConstraints.metadata
+import JoltConstraints.witness_helpers.branch
 
 set_option autoImplicit false
 
@@ -222,54 +223,5 @@ noncomputable def InstructionRa [Field F] (_program : JoltProgram)
     (_initialState : SailJoltState) :
     Fin p.virtualInstructionChunks → Fin (2 ^ p.virtualChunkBits) → Fin p.traceLength → F := by
   sorry
-
--- Rust: crates/jolt-lookup-tables/src/instructions/riscv/{beq,bne,blt,bge,bltu,bgeu}.rs::to_lookup_output.
--- ISA: JoltBytecode/JoltISA/Semantics.lean::execInstr uses these same operand reads and comparisons.
-noncomputable def branchDecision (instruction : JoltISA.Instr) : JoltMonad Bool :=
-  match instruction with
-  | .BEQ lhs rhs _ => do
-      return (← JoltISA.readSrc lhs) == (← JoltISA.readSrc rhs)
-  | .BNE lhs rhs _ => do
-      return (← JoltISA.readSrc lhs) != (← JoltISA.readSrc rhs)
-  | .BLT lhs rhs _ => do
-      return LeanRV64D.Functions.zopz0zI_s (← JoltISA.readSrc lhs) (← JoltISA.readSrc rhs)
-  | .BGE lhs rhs _ => do
-      return LeanRV64D.Functions.zopz0zKzJ_s (← JoltISA.readSrc lhs) (← JoltISA.readSrc rhs)
-  | .BLTU lhs rhs _ => do
-      return LeanRV64D.Functions.zopz0zI_u (← JoltISA.readSrc lhs) (← JoltISA.readSrc rhs)
-  | .BGEU lhs rhs _ => do
-      return LeanRV64D.Functions.zopz0zKzJ_u (← JoltISA.readSrc lhs) (← JoltISA.readSrc rhs)
-  | _ => pure false
-
--- ISA: JoltBytecode/JoltISA/Semantics.lean::execInstr propagates branch-operand read failures.
-theorem branchDecision_error (instruction : JoltISA.Instr) (preState postState : SailJoltState)
-    (error : Sail.Error exception)
-    (failed : branchDecision instruction preState = .error error postState) :
-    JoltISA.execInstr instruction preState = .error error postState := by
-  cases instruction <;>
-    simp [branchDecision, bind, EStateM.bind, pure, EStateM.pure] at failed
-  all_goals
-    simp only [JoltISA.execInstr, bind, EStateM.bind]
-    split at failed
-    · split at failed
-      · cases failed
-      · cases failed
-        rfl
-    · cases failed
-      rfl
-
--- Rust: crates/jolt-witness/src/witnesses/flags.rs::ShouldBranch::{extract, to_field}.
-noncomputable def ShouldBranch [Field F] (program : JoltProgram)
-    (executionTrace : Array (JoltTraceRow program)) : Fin p.traceLength → F :=
-  fun t =>
-    if inBounds : t.val < executionTrace.size then
-      let row := executionTrace[t.val]
-      match decision : branchDecision program.expandedBytecode[row.rowIndex].instruction row.preState with
-      | .ok taken _ => if taken then 1 else 0
-      | .error error state => False.elim (by
-          have failed := branchDecision_error _ _ state error decision
-          rw [row.executes] at failed
-          cases failed)
-    else 0
 
 end HonestWitness

@@ -6,6 +6,7 @@ Authors: Ari
 import JoltBytecode.JoltISA.Instruction
 import JoltBytecode.JoltISA.RegisterAccess
 import JoltBytecode.JoltISA.Values
+import JoltBytecode.JoltISA.semantic_helpers
 
 /-!
 # Jolt ISA semantics
@@ -87,49 +88,37 @@ def execInstr : Instr → JoltMonad ExecutionResult
           pure RETIRE_SUCCESS
       | other => pure other
   | .BEQ lhs rhs imm => do
-      let x ← readSrc lhs
-      let y ← readSrc rhs
-      if x = y then
+      if ← branchDecision (.BEQ lhs rhs imm) then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BNE lhs rhs imm => do
-      let x ← readSrc lhs
-      let y ← readSrc rhs
-      if x ≠ y then
+      if ← branchDecision (.BNE lhs rhs imm) then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BLT lhs rhs imm => do
-      let x ← readSrc lhs
-      let y ← readSrc rhs
-      if zopz0zI_s x y then
+      if ← branchDecision (.BLT lhs rhs imm) then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BGE lhs rhs imm => do
-      let x ← readSrc lhs
-      let y ← readSrc rhs
-      if zopz0zKzJ_s x y then
+      if ← branchDecision (.BGE lhs rhs imm) then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BLTU lhs rhs imm => do
-      let x ← readSrc lhs
-      let y ← readSrc rhs
-      if zopz0zI_u x y then
+      if ← branchDecision (.BLTU lhs rhs imm) then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BGEU lhs rhs imm => do
-      let x ← readSrc lhs
-      let y ← readSrc rhs
-      if zopz0zKzJ_u x y then
+      if ← branchDecision (.BGEU lhs rhs imm) then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
