@@ -1,9 +1,5 @@
 import JoltConstraints.trace
-import JoltConstraints.stage1
-import JoltConstraints.stage2
-import JoltConstraints.stage3
-import JoltConstraints.stage4
-import JoltConstraints.stage5
-import JoltConstraints.stage6
-import JoltConstraints.and_constraints
-import JoltConstraints.ConstraintCompleteness
+import JoltConstraints.witness
+import JoltConstraints.metadata
+import JoltConstraints.witness_helpers
+import JoltConstraints.honest_witness
