@@ -5,6 +5,7 @@ import JoltConstraints.metadata
 import JoltConstraints.witness_helpers.branch
 import JoltConstraints.witness_helpers.op_flags
 import JoltConstraints.witness_helpers.instruction_flags
+import JoltConstraints.witness_helpers.instruction_raf_flag
 
 set_option autoImplicit false
 
@@ -128,11 +129,6 @@ noncomputable def NextIsNoop [Field F] (_program : JoltProgram)
 -- Rust: crates/jolt-witness/src/witnesses/flags.rs::LookupTableFlag.
 noncomputable def LookupTableFlag [Field F] (_program : JoltProgram)
     (_initialState : SailJoltState) : LookupTableKind → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/flags.rs::InstructionRafFlag.
-noncomputable def InstructionRafFlag [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
   sorry
 
 -- Rust: crates/jolt-witness/src/witnesses/increments.rs::RdInc.

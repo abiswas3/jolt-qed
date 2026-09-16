@@ -44,7 +44,7 @@ noncomputable def JoltProgram.honestWitness {F : Type} [Field F] (p : WitnessPar
     OpFlags := HonestWitness.OpFlags p program executionTrace
     InstructionFlags := HonestWitness.InstructionFlags p program executionTrace
     LookupTableFlag := HonestWitness.LookupTableFlag p program initialState
-    InstructionRafFlag := HonestWitness.InstructionRafFlag p program initialState
+    InstructionRafFlag := HonestWitness.InstructionRafFlag p program executionTrace
     RdInc := HonestWitness.RdInc p program initialState
     RamInc := HonestWitness.RamInc p program initialState
     RamHammingWeight := HonestWitness.RamHammingWeight p program initialState
