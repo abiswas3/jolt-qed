@@ -5,6 +5,44 @@ set_option autoImplicit false
 
 namespace JoltMetadata
 
+-- Rust: [format normalization](/Users/ari.biswas/Work-with-A16z/jolt/tracer/src/instruction/format).
+-- Rust: [decoded operands](/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-program/src/image/decode.rs:399).
+-- Preserve the normalized row immediate, including fields ignored by execution.
+-- I/U/J and alignment formats widen a u64 to i128. Loads/stores and branches
+-- retain a signed offset. AdviceLoad carries its byte count, not its loaded value.
+def immediate (instruction : JoltISA.Instr) : Int :=
+  match instruction with
+  | .ADDI _ _ imm | .ADDIW _ _ imm | .ANDI _ _ imm | .ORI _ _ imm | .XORI _ _ imm
+  | .SLTI _ _ imm | .SLTIU _ _ imm | .JALR _ _ imm | .VirtualAlignAddr _ _ imm
+  | .VirtualWindowMaskB _ _ imm | .VirtualWindowMaskH _ _ imm | .VirtualWindowMaskW _ _ imm
+  | .VirtualAssertHalfwordAlignment _ imm _ | .VirtualAssertWordAlignment _ imm _ =>
+      (imm.signExtend 64).toNat
+  | .JAL _ imm => (imm.signExtend 64).toNat
+  | .AUIPC _ imm => ((imm ++ (0 : BitVec 12)).signExtend 64).toNat
+  | .LUI _ imm | .VirtualMULI _ _ imm | .VirtualMULIW _ _ imm
+  | .VirtualPow2 _ _ imm | .VirtualPow2W _ _ imm | .VirtualShiftRightBitmask _ _ imm
+  | .VirtualShiftRightBitmaskW _ _ imm | .VirtualRev8W _ _ imm
+  | .VirtualSignExtendWord _ _ imm | .VirtualZeroExtendWord _ _ imm
+  | .VirtualMovsign _ _ imm | .VirtualAdvice _ _ imm | .VirtualAdviceLoad _ imm
+  | .VirtualAdviceLen _ _ imm | .VirtualHostIO _ _ imm => imm.toNat
+  | .VirtualPow2I _ imm | .VirtualPow2IW _ imm | .VirtualShiftRightBitmaskI _ imm
+  | .VirtualSRLI _ _ imm | .VirtualSRAI _ _ imm | .VirtualSRLIW _ _ imm
+  | .VirtualSRAIW _ _ imm | .VirtualROTRI _ _ imm | .VirtualROTRIW _ _ imm =>
+      (BitVec.ofNat 64 imm).toNat
+  | .LD _ _ _ imm | .SD _ _ imm => imm.toInt
+  | .BEQ _ _ imm | .BNE _ _ imm | .BLT _ _ imm | .BGE _ _ imm
+  | .BLTU _ _ imm | .BGEU _ _ imm | .VirtualAssertEQ _ _ imm => imm.toInt
+  | .VirtualAssertValidDiv0 _ _ imm | .VirtualAssertValidUnsignedRemainder _ _ imm
+  | .VirtualAssertMulUNoOverflow _ _ imm | .VirtualAssertLTE _ _ imm => imm.toInt
+  | .FENCE | .ADD .. | .ADDW .. | .SUB .. | .SUBW .. | .MUL .. | .MULW ..
+  | .MULHU .. | .ANDN .. | .VirtualSRL .. | .VirtualSRA .. | .VirtualSRLW .. | .VirtualSRAW ..
+  | .VirtualXORROT32 .. | .VirtualXORROT24 .. | .VirtualXORROT16 .. | .VirtualXORROT63 ..
+  | .VirtualXORROTW16 .. | .VirtualXORROTW12 .. | .VirtualXORROTW8 .. | .VirtualXORROTW7 ..
+  | .VirtualXORROTW22 .. | .VirtualXORROTW19 .. | .VirtualXORROTW6 ..
+  | .OR .. | .XOR .. | .AND .. | .SLT .. | .SLTU .. | .VirtualPext .. | .VirtualPextSigned ..
+  | .VirtualShiftDataB .. | .VirtualShiftDataH .. | .VirtualShiftDataW ..
+  | .VirtualNegateIf .. => 0
+
 -- Rust: crates/jolt-riscv/src/instructions/{i,m,virt,assert}/*.rs (instruction flags).
 -- Rust: crates/jolt-riscv/src/lib.rs::jolt_instruction.
 -- We want to know if the Jolt Instruction flips a particular flag on.
@@ -150,6 +188,13 @@ def opcodeFlag (instruction : JoltISA.Instr) (flag : CircuitFlags) : Bool :=
   | .IsCompressed => false
   | .IsFirstInSequence => false
   | .IsLastInSequence => false
+
+-- Rust: [LookupQuery operand packing](/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-lookup-tables/src/traits.rs:93).
+-- These flags select a single combined lookup operand: (0, lookup index).
+-- All remaining instructions pass their two instruction inputs through.
+def hasCombinedLookupOperands (instruction : JoltISA.Instr) : Bool :=
+  opcodeFlag instruction .AddOperands || opcodeFlag instruction .SubtractOperands ||
+    opcodeFlag instruction .MultiplyOperands || opcodeFlag instruction .Advice
 
 -- Rust: crates/jolt-riscv/src/lib.rs::jolt_instruction (row-dependent circuit flags).
 -- TODO: Bit confusing why we have done it twice

@@ -7,55 +7,54 @@ set_option autoImplicit false
 
 -- Rust paths are relative to /Users/ari.biswas/Work-with-A16z/jolt.
 
--- Rust: crates/jolt-witness/src/backend/trace/oracle.rs::oracle_table.
--- Rust: crates/jolt-program/src/execution/trace.rs::JoltProgram::trace_with and TraceInputs.
--- ISA: JoltBytecode/JoltISA/Core.lean::SailJoltState.
+-- Rust: [oracle_table](/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-witness/src/backend/trace/oracle.rs).
+-- Each helper receives the same successful, linked trace and can access
+-- its rows and program.initialState.
+-- Helpers fill p.traceLength witness positions, padding beyond trace.rows.size.
+-- ramFits certifies that every nonzero RAM access is representable in p.ramSize.
+-- TODO: Require trace.rows.size ≤ p.traceLength so execution rows cannot be omitted.
 -- TODO: Eventually name it params and not p but its not a major issue for now
 noncomputable def JoltProgram.honestWitness {F : Type} [Field F] (p : WitnessParams)
-    (program : JoltProgram) (initialState : SailJoltState)
-    (succeeds : (program.execute initialState p.traceLength).isOk = true) : WitnessType F p :=
-  let executionTrace :=
-    match result : program.execute initialState p.traceLength with
-    | .ok rows => rows
-    | .error _ => False.elim (by simp [result, Except.isOk, Except.toBool] at succeeds)
+    {program : JoltProgram} (trace : JoltTrace program)
+    (ramFits : p.RamFits trace) : WitnessType F p :=
   {
-    PC := HonestWitness.PC p program initialState
-    UnexpandedPC := HonestWitness.UnexpandedPC p program initialState
-    Imm := HonestWitness.Imm p program initialState
-    Rs1Value := HonestWitness.Rs1Value p program initialState
-    Rs2Value := HonestWitness.Rs2Value p program initialState
-    RdWriteValue := HonestWitness.RdWriteValue p program initialState
-    RamAddress := HonestWitness.RamAddress p program initialState
-    RamReadValue := HonestWitness.RamReadValue p program initialState
-    RamWriteValue := HonestWitness.RamWriteValue p program initialState
-    LeftInstructionInput := HonestWitness.LeftInstructionInput p program initialState
-    RightInstructionInput := HonestWitness.RightInstructionInput p program initialState
-    LeftLookupOperand := HonestWitness.LeftLookupOperand p program initialState
-    RightLookupOperand := HonestWitness.RightLookupOperand p program initialState
-    LookupOutput := HonestWitness.LookupOutput p program initialState
-    Product := HonestWitness.Product p program initialState
-    ShouldBranch := HonestWitness.ShouldBranch p program executionTrace
-    ShouldJump := HonestWitness.ShouldJump p program initialState
-    NextUnexpandedPC := HonestWitness.NextUnexpandedPC p program initialState
-    NextPC := HonestWitness.NextPC p program initialState
-    NextIsVirtual := HonestWitness.NextIsVirtual p program initialState
-    NextIsFirstInSequence := HonestWitness.NextIsFirstInSequence p program initialState
-    NextIsNoop := HonestWitness.NextIsNoop p program initialState
-    OpFlags := HonestWitness.OpFlags p program executionTrace
-    InstructionFlags := HonestWitness.InstructionFlags p program executionTrace
-    LookupTableFlag := HonestWitness.LookupTableFlag p program initialState
-    InstructionRafFlag := HonestWitness.InstructionRafFlag p program executionTrace
-    RdInc := HonestWitness.RdInc p program initialState
-    RamInc := HonestWitness.RamInc p program initialState
-    RamHammingWeight := HonestWitness.RamHammingWeight p program initialState
-    Rs1Ra := HonestWitness.Rs1Ra p program initialState
-    Rs2Ra := HonestWitness.Rs2Ra p program initialState
-    RdWa := HonestWitness.RdWa p program initialState
-    RegistersVal := HonestWitness.RegistersVal p program initialState
-    RamRa := HonestWitness.RamRa p program initialState
-    RamVal := HonestWitness.RamVal p program initialState
-    RamValFinal := HonestWitness.RamValFinal p program initialState
-    InstructionRaChunk := HonestWitness.InstructionRaChunk p program initialState
-    BytecodeRaChunk := HonestWitness.BytecodeRaChunk p program initialState
-    RamRaChunk := HonestWitness.RamRaChunk p program initialState
-    InstructionRa := HonestWitness.InstructionRa p program initialState }
+    PC := HonestWitness.PC p trace
+    UnexpandedPC := HonestWitness.UnexpandedPC p trace
+    Imm := HonestWitness.Imm p trace
+    Rs1Value := HonestWitness.Rs1Value p trace
+    Rs2Value := HonestWitness.Rs2Value p trace
+    RdWriteValue := HonestWitness.RdWriteValue p trace
+    RamAddress := HonestWitness.RamAddress p trace
+    RamReadValue := HonestWitness.RamReadValue p trace
+    RamWriteValue := HonestWitness.RamWriteValue p trace
+    LeftInstructionInput := HonestWitness.LeftInstructionInput p trace
+    RightInstructionInput := HonestWitness.RightInstructionInput p trace
+    LeftLookupOperand := HonestWitness.LeftLookupOperand p trace
+    RightLookupOperand := HonestWitness.RightLookupOperand p trace
+    LookupOutput := HonestWitness.LookupOutput p trace
+    Product := HonestWitness.Product p trace
+    ShouldBranch := HonestWitness.ShouldBranch p trace
+    ShouldJump := HonestWitness.ShouldJump p trace
+    NextUnexpandedPC := HonestWitness.NextUnexpandedPC p trace
+    NextPC := HonestWitness.NextPC p trace
+    NextIsVirtual := HonestWitness.NextIsVirtual p trace
+    NextIsFirstInSequence := HonestWitness.NextIsFirstInSequence p trace
+    NextIsNoop := HonestWitness.NextIsNoop p trace
+    OpFlags := HonestWitness.OpFlags p trace
+    InstructionFlags := HonestWitness.InstructionFlags p trace
+    LookupTableFlag := HonestWitness.LookupTableFlag p trace
+    InstructionRafFlag := HonestWitness.InstructionRafFlag p trace
+    RdInc := HonestWitness.RdInc p trace
+    RamInc := HonestWitness.RamInc p trace
+    RamHammingWeight := HonestWitness.RamHammingWeight p trace
+    Rs1Ra := HonestWitness.Rs1Ra p trace
+    Rs2Ra := HonestWitness.Rs2Ra p trace
+    RdWa := HonestWitness.RdWa p trace
+    RegistersVal := HonestWitness.RegistersVal p trace
+    RamRa := HonestWitness.RamRa p trace ramFits
+    RamVal := HonestWitness.RamVal p trace ramFits
+    RamValFinal := HonestWitness.RamValFinal p trace
+    InstructionRaChunk := HonestWitness.InstructionRaChunk p trace
+    BytecodeRaChunk := HonestWitness.BytecodeRaChunk p trace
+    RamRaChunk := HonestWitness.RamRaChunk p trace
+    InstructionRa := HonestWitness.InstructionRa p trace }

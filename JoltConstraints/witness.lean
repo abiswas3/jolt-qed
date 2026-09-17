@@ -85,6 +85,7 @@ inductive LookupTableKind where
 -- Rust: crates/jolt-claims/src/protocols/jolt/geometry/dimensions.rs::JoltOneHotDimensions.
 structure WitnessParams where
   -- Rust: crates/jolt-claims/src/protocols/jolt/geometry/dimensions.rs::TraceDimensions::log_t.
+  -- Base-two logarithm of the padded witness length; actual execution may be shorter.
   logT : Nat
   -- Rust: crates/jolt-claims/src/protocols/jolt/geometry/dimensions.rs::ReadWriteDimensions::log_k.
   logRamK : Nat
@@ -100,7 +101,11 @@ structure WitnessParams where
   chunkBits_dvd_virtual : chunkBits ∣ virtualChunkBits
   virtualChunkBits_dvd_lookup : virtualChunkBits ∣ 128
 
--- Rust: crates/jolt-witness/src/backend/trace/cycle.rs::walk_cycles.
+/-- Number of witness positions, including padding, always a power of two.
+`trace.rows.size` counts actual execution steps and may be smaller: for example,
+six execution steps can occupy an eight-position witness, with two padding positions.
+Rust: [walk_cycles](/Users/ari.biswas/Work-with-A16z/jolt/crates/jolt-witness/src/backend/trace/cycle.rs:107).
+-/
 def WitnessParams.traceLength (p : WitnessParams) : Nat := 2 ^ p.logT
 
 -- Rust: crates/jolt-witness/src/backend/trace/mod.rs::ram_log_k.
@@ -126,6 +131,8 @@ def WitnessParams.virtualInstructionChunks (p : WitnessParams) : Nat :=
 -- TODO: constraints.md variable families; this aggregate is a Lean representation.
 -- Rust: crates/jolt-witness/src/backend/trace/oracle.rs::shape_of and oracle_table.
 -- TODO: Value representation remains a parameter; constraints and the honest construction are separate.
+-- Every `Fin p.traceLength` index ranges over the padded witness positions.
+-- Positions beyond the execution trace use the padding value for that column.
 structure WitnessType (Value : Type) (p : WitnessParams) where
   -- Rust: crates/jolt-witness/src/witnesses/pc.rs::Pc.
   PC : Fin p.traceLength → Value

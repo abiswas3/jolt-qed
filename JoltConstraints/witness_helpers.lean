@@ -6,210 +6,42 @@ import JoltConstraints.witness_helpers.branch
 import JoltConstraints.witness_helpers.op_flags
 import JoltConstraints.witness_helpers.instruction_flags
 import JoltConstraints.witness_helpers.instruction_raf_flag
+import JoltConstraints.witness_helpers.lookup_table_flag
+import JoltConstraints.witness_helpers.rs1_value
+import JoltConstraints.witness_helpers.rs2_value
+import JoltConstraints.witness_helpers.rd_write_value
+import JoltConstraints.witness_helpers.pc
+import JoltConstraints.witness_helpers.unexpanded_pc
+import JoltConstraints.witness_helpers.next_pc
+import JoltConstraints.witness_helpers.next_unexpanded_pc
+import JoltConstraints.witness_helpers.next_is_virtual
+import JoltConstraints.witness_helpers.next_is_first_in_sequence
+import JoltConstraints.witness_helpers.next_is_noop
+import JoltConstraints.witness_helpers.ram_address
+import JoltConstraints.witness_helpers.ram_hamming_weight
+import JoltConstraints.witness_helpers.ram_read_value
+import JoltConstraints.witness_helpers.ram_write_value
+import JoltConstraints.witness_helpers.rd_inc
+import JoltConstraints.witness_helpers.ram_inc
 
-set_option autoImplicit false
+import JoltConstraints.witness_helpers.instruction_ra_chunk
+import JoltConstraints.witness_helpers.bytecode_ra_chunk
+import JoltConstraints.witness_helpers.ram_ra_chunk
+import JoltConstraints.witness_helpers.instruction_ra
+import JoltConstraints.witness_helpers.rs1_ra
+import JoltConstraints.witness_helpers.rs2_ra
+import JoltConstraints.witness_helpers.rd_wa
+import JoltConstraints.witness_helpers.ram_ra
+import JoltConstraints.witness_helpers.left_instruction_input
+import JoltConstraints.witness_helpers.right_instruction_input
+import JoltConstraints.witness_helpers.imm
 
--- Rust paths are relative to /Users/ari.biswas/Work-with-A16z/jolt.
+import JoltConstraints.witness_helpers.left_lookup_operand
+import JoltConstraints.witness_helpers.right_lookup_operand
+import JoltConstraints.witness_helpers.lookup_output
+import JoltConstraints.witness_helpers.product
+import JoltConstraints.witness_helpers.should_jump
 
-namespace HonestWitness
-
-variable {F : Type} (p : WitnessParams)
-
--- Rust: crates/jolt-witness/src/witnesses/pc.rs::Pc.
-noncomputable def PC [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/pc.rs::UnexpandedPc.
-noncomputable def UnexpandedPC [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/operands.rs::Imm.
-noncomputable def Imm [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/registers.rs::Rs1Value.
-noncomputable def Rs1Value [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/registers.rs::Rs2Value.
-noncomputable def Rs2Value [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/registers.rs::RdWriteValue.
-noncomputable def RdWriteValue [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/ram.rs::RamAddress.
-noncomputable def RamAddress [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/ram.rs::RamReadValue.
-noncomputable def RamReadValue [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/ram.rs::RamWriteValue.
-noncomputable def RamWriteValue [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/operands.rs::LeftInstructionInput.
-noncomputable def LeftInstructionInput [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/operands.rs::RightInstructionInput.
-noncomputable def RightInstructionInput [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/operands.rs::LeftLookupOperand.
-noncomputable def LeftLookupOperand [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/operands.rs::RightLookupOperand.
-noncomputable def RightLookupOperand [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/lookups.rs::LookupOutput.
-noncomputable def LookupOutput [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/operands.rs::Product.
-noncomputable def Product [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/flags.rs::ShouldJump.
-noncomputable def ShouldJump [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/pc.rs::NextUnexpandedPc.
-noncomputable def NextUnexpandedPC [Field F] (program : JoltProgram)
-    (initialState : SailJoltState) : Fin p.traceLength → F :=
-  fun t =>
-    if nextInBounds : t.val + 1 < p.traceLength then
-      UnexpandedPC p program initialState ⟨t.val + 1, nextInBounds⟩
-    else 0
-
--- Rust: crates/jolt-witness/src/witnesses/pc.rs::NextPc.
-noncomputable def NextPC [Field F] (program : JoltProgram)
-    (initialState : SailJoltState) : Fin p.traceLength → F :=
-  fun t =>
-    if nextInBounds : t.val + 1 < p.traceLength then
-      PC p program initialState ⟨t.val + 1, nextInBounds⟩
-    else 0
-
--- Rust: crates/jolt-witness/src/witnesses/flags.rs::NextIsVirtual.
-noncomputable def NextIsVirtual [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/flags.rs::NextIsFirstInSequence.
-noncomputable def NextIsFirstInSequence [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/flags.rs::NextIsNoop.
-noncomputable def NextIsNoop [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/flags.rs::LookupTableFlag.
-noncomputable def LookupTableFlag [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : LookupTableKind → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/increments.rs::RdInc.
-noncomputable def RdInc [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/increments.rs::RamInc.
-noncomputable def RamInc [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/ram.rs::RamHammingWeight.
-noncomputable def RamHammingWeight [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/backend/trace/registers.rs::materialize_register_read_write_virtual.
--- Rust: common/src/constants.rs::REGISTER_COUNT = 128.
-noncomputable def Rs1Ra [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin 128 → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/backend/trace/registers.rs::materialize_register_read_write_virtual.
--- Rust: common/src/constants.rs::REGISTER_COUNT = 128.
-noncomputable def Rs2Ra [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin 128 → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/backend/trace/registers.rs::materialize_register_read_write_virtual.
--- Rust: common/src/constants.rs::REGISTER_COUNT = 128.
-noncomputable def RdWa [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin 128 → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/backend/trace/registers.rs::materialize_register_read_write_virtual.
--- Rust: common/src/constants.rs::REGISTER_COUNT = 128.
-noncomputable def RegistersVal [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin 128 → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/backend/trace/ram.rs::materialize_ram_ra.
-noncomputable def RamRa [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.ramSize → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/backend/trace/ram.rs::materialize_ram_val.
-noncomputable def RamVal [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.ramSize → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/backend/trace/ram.rs::materialize_ram_val_final.
-noncomputable def RamValFinal [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) : Fin p.ramSize → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/one_hot.rs::InstructionRaChunk.
--- Rust: crates/jolt-witness/src/backend/trace/cycle.rs::materialize_one_hot.
-noncomputable def InstructionRaChunk [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) :
-    Fin p.instructionChunks → Fin (2 ^ p.chunkBits) → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/one_hot.rs::BytecodeRaChunk.
--- Rust: crates/jolt-witness/src/backend/trace/cycle.rs::materialize_one_hot.
-noncomputable def BytecodeRaChunk [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) :
-    Fin p.bytecodeChunks → Fin (2 ^ p.chunkBits) → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/witnesses/one_hot.rs::RamRaChunk.
--- Rust: crates/jolt-witness/src/backend/trace/cycle.rs::materialize_one_hot.
-noncomputable def RamRaChunk [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) :
-    Fin p.ramChunks → Fin (2 ^ p.chunkBits) → Fin p.traceLength → F := by
-  sorry
-
--- Rust: crates/jolt-witness/src/backend/trace/oracle.rs::oracle_table (InstructionRa).
-noncomputable def InstructionRa [Field F] (_program : JoltProgram)
-    (_initialState : SailJoltState) :
-    Fin p.virtualInstructionChunks → Fin (2 ^ p.virtualChunkBits) → Fin p.traceLength → F := by
-  sorry
-
-end HonestWitness
+import JoltConstraints.witness_helpers.registers_val
+import JoltConstraints.witness_helpers.ram_val
+import JoltConstraints.witness_helpers.ram_val_final

@@ -1,5 +1,2 @@
 import JoltConstraints.trace
-import JoltConstraints.witness
-import JoltConstraints.metadata
-import JoltConstraints.witness_helpers
 import JoltConstraints.honest_witness
