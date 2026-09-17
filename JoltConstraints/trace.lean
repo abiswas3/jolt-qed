@@ -49,6 +49,7 @@ inductive JoltTraceError where
 -- Rust: crates/jolt-program/src/preprocess/bytecode.rs::BytecodePCMapper::{try_new, validate_run,
 -- try_get_index}; crates/jolt-program/src/expand/metadata.rs::stamp_sequence_metadata;
 -- common/src/constants.rs::{RAM_START_ADDRESS, ALIGNMENT_FACTOR_BYTECODE}.
+-- TODO: is legal valid code, we will get to this later.
 def JoltProgram.validateBytecode (program : JoltProgram) : Except JoltTraceError Unit := do
   let mut seen : List (BitVec 64) := []
   let mut expected : Option (BitVec 64 × Nat) := none

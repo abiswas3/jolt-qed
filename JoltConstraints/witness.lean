@@ -6,6 +6,8 @@ set_option autoImplicit false
 -- Rust paths below are relative to /Users/ari.biswas/Work-with-A16z/jolt.
 
 -- Rust: crates/jolt-riscv/src/flags.rs::CircuitFlags.
+-- TODO: For each constructor write a simple english description
+-- of what it means.
 inductive CircuitFlags where
   | AddOperands | SubtractOperands | MultiplyOperands
   | Load | Store | Jump | WriteLookupOutputToRD

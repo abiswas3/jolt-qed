@@ -7,12 +7,15 @@ namespace JoltMetadata
 
 -- Rust: crates/jolt-riscv/src/instructions/{i,m,virt,assert}/*.rs (instruction flags).
 -- Rust: crates/jolt-riscv/src/lib.rs::jolt_instruction.
+-- We want to know if the Jolt Instruction flips a particular flag on.
 def instructionFlag (instruction : JoltISA.Instr) (flag : InstructionFlags) : Bool :=
   match flag with
+  -- All the instructions for which the left operand (first source) is the program counter
   | .LeftOperandIsPC =>
       match instruction with
       | .AUIPC .. | .JAL .. => true
       | _ => false
+  -- The right operand (second source) is an immediate value (large class of instructions)
   | .RightOperandIsImm =>
       match instruction with
       | .ADDI .. | .ADDIW .. | .ANDI .. | .ORI .. | .XORI .. | .SLTI .. | .SLTIU ..
@@ -23,6 +26,7 @@ def instructionFlag (instruction : JoltISA.Instr) (flag : InstructionFlags) : Bo
       | .VirtualWindowMaskH .. | .VirtualWindowMaskW .. | .VirtualMovsign ..
       | .VirtualAssertHalfwordAlignment .. | .VirtualAssertWordAlignment .. => true
       | _ => false
+  -- The left operand (first source) is a general purpose xreg
   | .LeftOperandIsRs1Value =>
       match instruction with
       | .ADDI .. | .ADDIW .. | .ANDI .. | .ORI .. | .XORI .. | .SLTI .. | .SLTIU ..
@@ -45,6 +49,7 @@ def instructionFlag (instruction : JoltISA.Instr) (flag : InstructionFlags) : Bo
       | .VirtualNegateIf .. | .VirtualAssertValidUnsignedRemainder ..
       | .VirtualAssertMulUNoOverflow .. | .VirtualAssertLTE .. => true
       | _ => false
+  --  The right operand (second source) is a general purpose xreg
   | .RightOperandIsRs2Value =>
       match instruction with
       | .BEQ .. | .BNE .. | .BLT .. | .BGE .. | .BLTU .. | .BGEU .. | .ADD .. | .ADDW ..
@@ -60,16 +65,20 @@ def instructionFlag (instruction : JoltISA.Instr) (flag : InstructionFlags) : Bo
       | .VirtualAssertValidUnsignedRemainder .. | .VirtualAssertMulUNoOverflow ..
       | .VirtualAssertLTE .. => true
       | _ => false
+  -- All instructions the branch
   | .Branch =>
       match instruction with
       | .BEQ .. | .BNE .. | .BLT .. | .BGE .. | .BLTU .. | .BGEU .. => true
       | _ => false
+  -- No instruction is a No op flag (TODO: double check this)
   | .IsNoop => false
 
 -- Rust: crates/jolt-riscv/src/instructions/{i,m,virt,assert}/*.rs (circuit flags).
 -- Rust: crates/jolt-riscv/src/lib.rs::jolt_instruction.
+-- Same business as above, but instead with circuit flags
 def opcodeFlag (instruction : JoltISA.Instr) (flag : CircuitFlags) : Bool :=
   match flag with
+  -- TODO: Why is this virtual shit flipping off Add operands? Double check with rust code
   | .AddOperands =>
       match instruction with
       | .ADDI .. | .ADDIW .. | .LUI .. | .AUIPC .. | .JAL .. | .JALR .. | .ADD .. | .ADDW ..
@@ -122,7 +131,9 @@ def opcodeFlag (instruction : JoltISA.Instr) (flag : CircuitFlags) : Bool :=
       | .VirtualAdvice .. | .VirtualAdviceLoad .. | .VirtualAdviceLen ..
       | .VirtualNegateIf .. => true
       | _ => false
+  -- TODO: There is no Virtual Instruction?
   | .VirtualInstruction => false
+  -- Instructions that panic the verifier.
   | .Assert =>
       match instruction with
       | .VirtualAssertHalfwordAlignment .. | .VirtualAssertWordAlignment ..
@@ -130,6 +141,7 @@ def opcodeFlag (instruction : JoltISA.Instr) (flag : CircuitFlags) : Bool :=
       | .VirtualAssertValidUnsignedRemainder .. | .VirtualAssertMulUNoOverflow ..
       | .VirtualAssertLTE .. => true
       | _ => false
+  -- TODO: Check this
   | .DoNotUpdateUnexpandedPC => false
   | .Advice =>
       match instruction with
@@ -140,6 +152,8 @@ def opcodeFlag (instruction : JoltISA.Instr) (flag : CircuitFlags) : Bool :=
   | .IsLastInSequence => false
 
 -- Rust: crates/jolt-riscv/src/lib.rs::jolt_instruction (row-dependent circuit flags).
+-- TODO: Bit confusing why we have done it twice
+-- This maps JoltProgramRow instead of JoltInstruction like the rest of the project (not sure if needed yet)
 def circuitFlag (row : JoltProgramRow) (flag : CircuitFlags) : Bool :=
   match flag with
   | .VirtualInstruction => row.virtualSequenceRemaining.isSome
@@ -150,6 +164,7 @@ def circuitFlag (row : JoltProgramRow) (flag : CircuitFlags) : Bool :=
   | _ => opcodeFlag row.instruction flag
 
 -- Rust: crates/jolt-lookup-tables/src/instructions/{riscv,virt}/::impl_lookup_table.
+-- Map from instruction to Lookup tables (TODO: double check this connection)
 def lookupTable (instruction : JoltISA.Instr) : Option LookupTableKind :=
   match instruction with
   | .ADDI .. | .LUI .. | .AUIPC .. | .JAL .. | .ADD .. | .SUB .. | .MUL ..

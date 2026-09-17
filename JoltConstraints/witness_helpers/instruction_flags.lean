@@ -17,6 +17,7 @@ variable {F : Type} (p : WitnessParams)
 noncomputable def InstructionFlags [Field F] (program : JoltProgram)
     (executionTrace : Array (JoltTraceRow program)) : _root_.InstructionFlags → Fin p.traceLength → F :=
   fun flag t =>
+   --- TODO: There should never be an else no? Wey have p.traceLength and Array -- the size should be the same 
     if inBounds : t.val < executionTrace.size then
       let row := executionTrace[t.val]
       if JoltMetadata.instructionFlag program.expandedBytecode[row.rowIndex].instruction flag then

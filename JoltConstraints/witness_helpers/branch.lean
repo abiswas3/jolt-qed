@@ -11,30 +11,27 @@ namespace HonestWitness
 
 variable {F : Type} (p : WitnessParams)
 
--- ISA: JoltBytecode/JoltISA/Semantics.lean::execInstr propagates branch-operand read failures.
-theorem branchDecision_error (instruction : JoltISA.Instr) (preState postState : SailJoltState)
-    (error : Sail.Error exception)
-    (branchDecisionFailed : JoltISA.branchDecision instruction preState = .error error postState) :
-    JoltISA.execInstr instruction preState = .error error postState := by
-  cases instruction <;>
-    simp only [JoltISA.execInstr, bind, EStateM.bind, branchDecisionFailed]
-  all_goals
-    simp [JoltISA.branchDecision, pure, EStateM.pure] at branchDecisionFailed
+-- Review TODOs from the previous implementation, retained pending approval.
+-- TODO: What the fuck is this theorem even proving?
+-- TODO: Does this have to be a monad? Can it be a pure function and we can rid of this
+-- monadic business? Discuss, we name it branchDecisionPure
+-- TODO: Understand what is happening under the False.elim world
+-- We might not need it at all.
 
 -- Rust: crates/jolt-witness/src/witnesses/flags.rs::ShouldBranch::{extract, to_field}.
 noncomputable def ShouldBranch [Field F] (program : JoltProgram)
     (executionTrace : Array (JoltTraceRow program)) : Fin p.traceLength → F :=
   fun t =>
     if inBounds : t.val < executionTrace.size then
-      let row := executionTrace[t.val]
-      match decision :
-          JoltISA.branchDecision program.expandedBytecode[row.rowIndex].instruction row.preState with
-      | .ok taken _ => if taken then 1 else 0
-      -- TODO: Understand what is happening under the False.elim world
-      | .error error state => False.elim (by
-          have execInstrFailed := branchDecision_error _ _ state error decision
-          rw [row.executes] at execInstrFailed
-          cases execInstrFailed)
+      let row : JoltTraceRow program := executionTrace[t.val]
+      let instruction := program.expandedBytecode[row.rowIndex].instruction
+      match instruction with
+      | .BEQ lhs rhs _ | .BNE lhs rhs _ | .BLT lhs rhs _
+      | .BGE lhs rhs _ | .BLTU lhs rhs _ | .BGEU lhs rhs _ =>
+          let rs1val := JoltISA.sourceValue lhs row.preState
+          let rs2val := JoltISA.sourceValue rhs row.preState
+          if JoltISA.branchDecisionPure instruction rs1val rs2val then 1 else 0
+      | _ => 0
     else 0
 
 end HonestWitness
