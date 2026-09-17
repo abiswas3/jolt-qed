@@ -11,20 +11,16 @@ namespace HonestWitness
 
 variable {F : Type} (p : WitnessParams)
 
--- Review TODOs from the previous implementation, retained pending approval.
--- TODO: What the fuck is this theorem even proving?
--- TODO: Does this have to be a monad? Can it be a pure function and we can rid of this
--- monadic business? Discuss, we name it branchDecisionPure
--- TODO: Understand what is happening under the False.elim world
--- We might not need it at all.
-
 -- Rust: crates/jolt-witness/src/witnesses/flags.rs::ShouldBranch::{extract, to_field}.
-noncomputable def ShouldBranch [Field F] (program : JoltProgram)
-    (executionTrace : Array (JoltTraceRow program)) : Fin p.traceLength → F :=
+-- Branch-taken bit for each padded witness position; padding contributes zero.
+noncomputable def ShouldBranch [Field F] {program : JoltProgram}
+    (trace : JoltTrace program) : Fin p.traceLength → F :=
   fun t =>
-    if inBounds : t.val < executionTrace.size then
-      let row : JoltTraceRow program := executionTrace[t.val]
-      let instruction := program.expandedBytecode[row.rowIndex].instruction
+    -- A witness index may point past the execution rows, into padding.
+    if inBounds : t.val < trace.rows.size then
+      let row : JoltTraceRow program := getElem trace.rows t.val inBounds
+      let instruction :=
+        (getElem program.expandedBytecode row.rowIndex.val row.rowIndex.isLt).instruction
       match instruction with
       | .BEQ lhs rhs _ | .BNE lhs rhs _ | .BLT lhs rhs _
       | .BGE lhs rhs _ | .BLTU lhs rhs _ | .BGEU lhs rhs _ =>

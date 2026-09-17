@@ -14,13 +14,17 @@ variable {F : Type} (p : WitnessParams)
 -- Rust: crates/jolt-witness/src/witnesses/flags.rs::InstructionFlag::{extract_indexed, to_field}.
 -- Rust: crates/jolt-witness/src/backend/trace/cycle.rs::walk_cycles;
 -- crates/jolt-riscv/src/instructions/i/noop.rs (padding sets only IsNoop).
-noncomputable def InstructionFlags [Field F] (program : JoltProgram)
-    (executionTrace : Array (JoltTraceRow program)) : _root_.InstructionFlags → Fin p.traceLength → F :=
+-- Instruction-flag bits over the padded witness; padding sets only IsNoop to one.
+noncomputable def InstructionFlags [Field F] {program : JoltProgram}
+    (trace : JoltTrace program) : _root_.InstructionFlags → Fin p.traceLength → F :=
   fun flag t =>
-   --- TODO: There should never be an else no? Wey have p.traceLength and Array -- the size should be the same 
-    if inBounds : t.val < executionTrace.size then
-      let row := executionTrace[t.val]
-      if JoltMetadata.instructionFlag program.expandedBytecode[row.rowIndex].instruction flag then
+    -- t indexes the padded witness; the else branch represents a padding position.
+    -- inBounds supplies the proof needed to read an actual execution row.
+    if inBounds : t.val < trace.rows.size then
+      let row := getElem trace.rows t.val inBounds
+      let instruction :=
+        (getElem program.expandedBytecode row.rowIndex.val row.rowIndex.isLt).instruction
+      if JoltMetadata.instructionFlag instruction flag then
         1
       else 0
     else
