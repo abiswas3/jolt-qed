@@ -100,6 +100,7 @@ theorem amo_dword_ld_xreg_misaligned_run
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst liftSail
     writeVReg
   simp only [bind, EStateM.bind, pure, EStateM.run, hrs1]
+  simp only [Memory.effectiveAddr12]
   rw [haddr0]
   rw [if_neg (by simpa using h_align)]
   rfl
@@ -152,7 +153,8 @@ theorem amo_dword_ld_old_run_into
     (hload :
       vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false js.sail =
         .ok (Ok oldVal) js.sail)
-    (holdReg : WritableVReg oldReg) :
+    (holdReg : WritableVReg oldReg)
+    (h_ram : JoltISA.ramStartAddress ≤ addr.toNat) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
         (.LD .amo (.vreg oldReg) (.xreg rs1) (0 : BitVec 12))).run js =
@@ -185,7 +187,7 @@ theorem amo_dword_ld_old_run_into
     exact
       JoltISA.ld_run_vreg_xreg_from_memory_read
         oldReg rs1 (0 : BitVec 12) js addr oldVal hrs1 hld_align hread
-        holdReg
+        holdReg (by simpa only [haddr0] using h_ram)
   · rfl
   · change (if oldReg = oldReg then oldVal else js.vregs oldReg) = oldVal
     rw [if_pos rfl]
@@ -198,7 +200,8 @@ theorem amo_dword_ld_old_run
     (h_align : addr &&& (7 : BitVec 64) = 0)
     (hload :
       vmem_read_addr (Virtaddr addr) 0 8 (Load Data) false false false js.sail =
-        .ok (Ok oldVal) js.sail) :
+        .ok (Ok oldVal) js.sail)
+    (h_ram : JoltISA.ramStartAddress ≤ addr.toNat) :
     ∃ js_afterLoad : SailJoltState,
       (JoltISA.execInstr
         (.LD .amo (.vreg JoltISA.amoOldVReg) (.xreg rs1) (0 : BitVec 12))).run js =
@@ -207,7 +210,7 @@ theorem amo_dword_ld_old_run
       js_afterLoad.vregs JoltISA.amoOldVReg = oldVal := by
   exact amo_dword_ld_old_run_into JoltISA.amoOldVReg
     rs1 js addr oldVal hrs1 h_align hload
-    (by unfold WritableVReg; decide)
+    (by unfold WritableVReg; decide) h_ram
 
 /-- `SD rs2, 0(rs1)` writes the AMO result dword and preserves virtual
 registers. -/
@@ -221,7 +224,8 @@ theorem amo_dword_sd_result_run
       vmem_write_addr (Virtaddr addr) 8 result
         (Store Data) false false false js_afterLoad.sail =
         .ok (Ok true)
-          (state_after_dword_store js_afterLoad.sail addr result)) :
+          (state_after_dword_store js_afterLoad.sail addr result))
+    (h_ram : JoltISA.ramStartAddress ≤ addr.toNat) :
     ∃ js_afterStore : SailJoltState,
       (JoltISA.execInstr
         (.SD (.xreg rs1) (.xreg rs2) (0 : BitVec 12))).run js_afterLoad =
@@ -255,7 +259,7 @@ theorem amo_dword_sd_result_run
       JoltISA.execInstr_sd_xreg_xreg_run_of_write
         rs1 rs2 (0 : BitVec 12) js_afterLoad addr result
         (state_after_dword_store js_afterLoad.sail addr result)
-        hrs1 hrs2 hsd_align hwrite'
+        hrs1 hrs2 hsd_align hwrite' (by simpa only [haddr0] using h_ram)
   · rfl
   · rfl
 
@@ -271,13 +275,15 @@ theorem amo_dword_sd_xreg_vreg_run_of_write
     (hwrite :
       vmem_write_addr (Virtaddr (baseValue + sign_extend (m := 64) imm)) 8
         stored (Store Data) false false false js.sail =
-        .ok (Ok true) s') :
+        .ok (Ok true) s')
+    (h_ram : JoltISA.ramStartAddress ≤ (baseValue + sign_extend (m := 64) imm).toNat) :
     (JoltISA.execInstr (.SD (.xreg base) (.vreg value) imm)).run js =
       .ok RETIRE_SUCCESS { js with sail := s' } := by
   unfold JoltISA.execInstr JoltISA.readSrc JoltISA.writeDst readVReg liftSail
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get, hbase, hvalue]
-  rw [if_pos h_align]
+  rw [if_pos h_align, JoltISA.writeMemoryWord_ram _ _ h_ram]
+  unfold liftSail
   simp [EStateM.bind, hwrite]
   rfl
 
@@ -293,7 +299,8 @@ theorem amo_dword_sd_vreg_result_run
       vmem_write_addr (Virtaddr addr) 8 result
         (Store Data) false false false js.sail =
         .ok (Ok true)
-          (state_after_dword_store js.sail addr result)) :
+          (state_after_dword_store js.sail addr result))
+    (h_ram : JoltISA.ramStartAddress ≤ addr.toNat) :
     ∃ js_afterStore : SailJoltState,
       (JoltISA.execInstr
         (.SD (.xreg rs1) (.vreg valueReg) (0 : BitVec 12))).run js =
@@ -327,7 +334,7 @@ theorem amo_dword_sd_vreg_result_run
       amo_dword_sd_xreg_vreg_run_of_write
         rs1 valueReg (0 : BitVec 12) js addr result
         (state_after_dword_store js.sail addr result)
-        hrs1 hvalue hsd_align hwrite'
+        hrs1 hvalue hsd_align hwrite' (by simpa only [haddr0] using h_ram)
   · rfl
   · rfl
 
@@ -431,7 +438,7 @@ theorem amo_dword_load_old_aligned_run_into
   exact
     amo_dword_ld_old_run_into oldReg rs1 js addr
       (loaded_dword_at js.sail addr hbytes haligned.no_ovf)
-      hrs1 h_align hload holdReg
+      hrs1 h_align hload holdReg hread_mmio.ram
 
 /-- The aligned AMO expansion load reads the old dword into `amoOldVReg`. -/
 theorem amo_dword_load_old_aligned_run
@@ -501,7 +508,7 @@ theorem amo_dword_store_xreg_result_after_load_aligned_run
     exact hwrite
   exact
     amo_dword_sd_result_run rs2 rs1 js_afterLoad addr result
-      hrs1_afterLoad hrs2_afterLoad h_align hwrite_afterLoad
+      hrs1_afterLoad hrs2_afterLoad h_align hwrite_afterLoad hwrite_mmio.ram
 
 /-- Shape produced by the pure middle instruction in a dword AMO binop
 expansion.
@@ -2562,7 +2569,7 @@ theorem amo_dword_store_vreg_result_after_middle_aligned_run_from
     exact hwrite
   exact
     amo_dword_sd_vreg_result_run rs1 valueReg js_afterMiddle
-      addr result hrs1_afterMiddle hmiddle_result h_align hwrite_afterMiddle
+      addr result hrs1_afterMiddle hmiddle_result h_align hwrite_afterMiddle hwrite_mmio.ram
 
 /-- After a pure AMO middle instruction, `SD amoNewVReg, 0(rs1)` writes the
 computed dword result. -/
@@ -2821,7 +2828,7 @@ theorem amo_dword_checked_mem_read_eq_loaded_dword
       (physaddr.Physaddr addr) 8 false false true false s =
     .ok (Ok (loaded_dword_at s addr hbytes h_no_ovf, default_meta)) s := by
   unfold checked_mem_read
-  simp only [bind, EStateM.bind, pure, EStateM.pure, hatomic_pmp, hread_mmio,
+  simp only [bind, EStateM.bind, pure, EStateM.pure, hatomic_pmp, hread_mmio.sail,
     Bool.false_eq_true, if_false]
   unfold read_kind_of_flags
   simp only [pure, EStateM.pure]
@@ -2947,7 +2954,7 @@ theorem amo_dword_mem_write_value_eq_state_after_dword_store
       (fun result => EStateM.pure result)) s =
     .ok (Ok true) (state_after_dword_store s addr data)
   simp only [EStateM.bind, hatomic_pmp]
-  simp only [hwrite_mmio]
+  simp only [hwrite_mmio.sail]
   simp only [Bool.false_eq_true, if_false]
   unfold write_kind_of_flags
   simp only [EStateM.bind, pure, EStateM.pure]

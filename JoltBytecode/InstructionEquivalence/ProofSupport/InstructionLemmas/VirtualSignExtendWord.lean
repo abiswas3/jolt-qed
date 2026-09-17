@@ -15,6 +15,15 @@ noncomputable section
 
 namespace JoltISA
 
+-- execInstr now calls the shared pure value. Relate it to the unchanged Sail
+-- expression in the existing run lemmas; their statements and assumptions stay
+-- the same.
+private theorem shared_sign_extend_word_eq_sail (x : BitVec 64) :
+    jolt_virtual_sign_extend_word_value x =
+      sign_extend (m := 64) (Sail.BitVec.extractLsb x 31 0) := by
+  unfold jolt_virtual_sign_extend_word_value sign_extend Sail.BitVec.signExtend
+  congr 1
+
 def jolt_virtual_sign_extend_word (rd : regidx) : JoltMonad Unit := do
   let v ← liftSail (rX_bits rd)
   liftSail (wX_bits rd (sign_extend (m := 64) (Sail.BitVec.extractLsb v 31 0)))
@@ -34,6 +43,7 @@ theorem virtual_sign_extend_word_run_vreg_xreg (vd : VReg) (rs : regidx)
             else js.vregs r } := by
   unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst liftSail writeVReg
+  simp only [shared_sign_extend_word_eq_sail]
   simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
     EStateM.modifyGet]
@@ -49,6 +59,7 @@ theorem virtual_sign_extend_word_run_vreg_vreg (vd vs : VReg) (js : SailJoltStat
             else js.vregs r } := by
   unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg writeVReg
+  simp only [shared_sign_extend_word_eq_sail]
   simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
     hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
@@ -63,6 +74,7 @@ theorem virtual_sign_extend_word_run_xreg_vreg (rd : regidx) (vs : VReg)
     (execInstr (.VirtualSignExtendWord (.xreg rd) (.vreg vs))).run js =
       .ok RETIRE_SUCCESS { js with sail := s' } := by
   unfold execInstr readSrc writeDst readVReg liftSail
+  simp only [shared_sign_extend_word_eq_sail]
   simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
 

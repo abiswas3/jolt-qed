@@ -714,6 +714,7 @@ theorem amo_word_rust_select_sd_spliced_dword_run
     JoltISA.execInstr_sd_vreg_run_of_write
       JoltISA.amoWordSelectMaskVReg JoltISA.amoWordSelectDwordVReg (0 : BitVec 12)
       js (state_after_dword_store s (amoWordBase addr) dwordNew) hsd_align hwrite_current
+      (by rw [h_base, amo_word_zero_offset_addr]; exact hwrite_mmio.ram)
   refine ⟨js', rfl, ?_, ?_⟩
   · exact h_old
   · intro tail
@@ -1360,6 +1361,7 @@ theorem amo_word_rust_select_sd_spliced_dword_run_for
       maskReg dwordReg (0 : BitVec 12)
       js (state_after_dword_store s (amoWordBase addr) dwordNew)
       hsd_align hwrite_current
+      (by rw [h_base, amo_word_zero_offset_addr]; exact hwrite_mmio.ram)
   refine ⟨js', rfl, ?_, ?_⟩
   · exact h_old
   · intro tail

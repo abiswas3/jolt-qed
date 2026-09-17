@@ -79,6 +79,8 @@ theorem sdJolt_reduces_to_vmem_write_addr
         .ok (Ok true) (state_after_dword_store js.sail ea h.rs2_val) := by
       simpa [ea, load_effective_address, Memory.effectiveAddr12] using hwrite
     simp only [halign, if_true]
+    rw [JoltISA.writeMemoryWord_ram _ _ hstore_access.write_mmio.ram]
+    unfold liftSail
     unfold System.systemProjectResult
     simp only [hwrite_raw, EStateM.bind, EStateM.pure]
     rw [h_project_final]

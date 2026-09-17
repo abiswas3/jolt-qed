@@ -99,7 +99,7 @@ theorem mul_run_xreg_xreg_vreg (rd rs1 : regidx) (vs2 : VReg)
     (execInstr (.MUL (.xreg rd) (.xreg rs1) (.vreg vs2))).run js =
       .ok RETIRE_SUCCESS { js with sail := s' } := by
   unfold execInstr readSrc writeDst readVReg liftSail
-  simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+  simp only [mulWide_low, h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
 
 /-- `MUL` from a real source and a virtual source to a real destination, with

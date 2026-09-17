@@ -486,7 +486,7 @@ theorem amo_word_checked_mem_read_eq_loaded_word
       (physaddr.Physaddr addr) 4 false false true false s =
     .ok (Ok (loaded_word_at s addr hbytes h_no_ovf, default_meta)) s := by
   unfold checked_mem_read
-  simp only [bind, EStateM.bind, pure, EStateM.pure, hatomic_pmp, hread_mmio,
+  simp only [bind, EStateM.bind, pure, EStateM.pure, hatomic_pmp, hread_mmio.sail,
     Bool.false_eq_true, if_false]
   unfold read_kind_of_flags
   simp only [pure, EStateM.pure]
@@ -612,7 +612,7 @@ theorem amo_word_mem_write_value_eq_state_after_word_store
       (fun result => EStateM.pure result)) s =
     .ok (Ok true) (state_after_word_store s addr data)
   simp only [EStateM.bind, hatomic_pmp]
-  simp only [hwrite_mmio]
+  simp only [hwrite_mmio.sail]
   simp only [Bool.false_eq_true, if_false]
   unfold write_kind_of_flags
   simp only [EStateM.bind, pure, EStateM.pure]
@@ -3656,6 +3656,7 @@ theorem amo_word_sd_spliced_dword_run
     JoltISA.execInstr_sd_vreg_run_of_write
       JoltISA.amoMaskVReg JoltISA.amoDwordVReg (0 : BitVec 12)
       js (state_after_dword_store s (amoWordBase addr) dwordNew) hsd_align hwrite_current
+      (by rw [h_base, amo_word_zero_offset_addr]; exact hwrite_mmio.ram)
   refine ⟨js', rfl, ?_, ?_⟩
   · exact h_old
   · intro tail
@@ -3717,6 +3718,7 @@ theorem amo_word_sd_spliced_dword_run_for
       maskReg dwordReg (0 : BitVec 12)
       js (state_after_dword_store s (amoWordBase addr) dwordNew)
       hsd_align hwrite_current
+      (by rw [h_base, amo_word_zero_offset_addr]; exact hwrite_mmio.ram)
   refine ⟨js', rfl, ?_, ?_⟩
   · exact h_old
   · intro tail

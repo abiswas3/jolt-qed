@@ -26,7 +26,7 @@ theorem sub_run_vreg_vreg_vreg (vd lhs rhs : VReg) (js : SailJoltState)
             else js.vregs r } := by
   unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg writeVReg
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+  simp only [subWide_low, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
     hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
     EStateM.modifyGet]
@@ -42,7 +42,7 @@ theorem sub_run_vreg_xreg_vreg (vd : VReg) (lhs : regidx) (rhs : VReg)
           vregs := fun r => if r = vd then x - js.vregs rhs else js.vregs r } := by
   unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg liftSail writeVReg
-  simp only [h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+  simp only [subWide_low, h, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
     hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
     EStateM.modifyGet]

@@ -26,7 +26,7 @@ theorem add_run_vreg_vreg_vreg (vd lhs rhs : VReg)
           vregs := fun r => if r = vd then js.vregs lhs + js.vregs rhs else js.vregs r } := by
   unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg writeVReg
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+  simp only [addWide_low, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get,
     hvd, ↓reduceIte, modify, modifyGet, MonadStateOf.modifyGet,
     EStateM.modifyGet]
@@ -61,7 +61,7 @@ theorem add_run_xreg_vreg_vreg (rd : regidx) (lhs rhs : VReg)
     (execInstr (.ADD (.xreg rd) (.vreg lhs) (.vreg rhs))).run js =
       .ok RETIRE_SUCCESS { js with sail := s' } := by
   unfold execInstr readSrc writeDst readVReg liftSail
-  simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
+  simp only [addWide_low, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get, h]
 
 /-- `ADD` from two virtual sources to a real destination, packaged from known

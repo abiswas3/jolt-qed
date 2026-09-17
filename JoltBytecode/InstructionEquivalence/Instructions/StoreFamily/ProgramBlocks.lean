@@ -589,7 +589,8 @@ theorem setupBlock (rest : JoltISA.Program)
     simpa [js_load, dword] using
       (JoltISA.ld_run_vreg_vreg_from_memory_read JoltISA.inlineTmp2 JoltISA.inlineTmp1
         (0 : BitVec 12) js1 dword hld_align hld_read
-        (by unfold WritableVReg; decide))
+        (by unfold WritableVReg; decide)
+        (by simpa [js1, base, sign_extend, Sail.BitVec.signExtend] using hmmio.ram))
   refine ⟨js_load, ?_, rfl, ?_, ?_, ?_⟩
   · rw [JoltISA.execProgram_instr_run_retire _ _ js js0 haddi]
     rw [JoltISA.execProgram_instr_run_retire _ _ js0 js1 handi]
@@ -1798,7 +1799,8 @@ theorem sdWriteBlock (rest : JoltISA.Program)
     (hwrite :
       vmem_write_addr (Virtaddr base) 8 dword_new
         (Store Data) false false false js_store.sail =
-      .ok (Ok true) s') :
+      .ok (Ok true) s')
+    (h_ram : JoltISA.ramStartAddress ≤ base.toNat) :
     ∃ js_write : SailJoltState,
       (JoltISA.execProgram (.instr (.SD (.vreg JoltISA.inlineTmp1) (.vreg JoltISA.inlineTmp2) 0) rest)).run js_store =
         (JoltISA.execProgram rest).run js_write ∧
@@ -1828,7 +1830,8 @@ theorem sdWriteBlock (rest : JoltISA.Program)
         .ok RETIRE_SUCCESS js_write := by
     simpa [js_write] using
       (JoltISA.execInstr_sd_vreg_run_of_write
-        JoltISA.inlineTmp1 JoltISA.inlineTmp2 (0 : BitVec 12) js_store s' hsd_align hwrite')
+        JoltISA.inlineTmp1 JoltISA.inlineTmp2 (0 : BitVec 12) js_store s' hsd_align hwrite'
+        (by simpa only [haddr] using h_ram))
   refine ⟨js_write, ?_, rfl, rfl⟩
   rw [JoltISA.execProgram_instr_run_retire _ _ js_store js_write hsd]
 
