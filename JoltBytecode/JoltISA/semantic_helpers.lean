@@ -9,21 +9,15 @@ namespace JoltISA
 
 -- Rust: tracer/src/instruction/{beq,bne,blt,bge,bltu,bgeu}.rs::exec.
 -- Rust: crates/jolt-lookup-tables/src/instructions/riscv/{beq,bne,blt,bge,bltu,bgeu}.rs::to_lookup_output.
-/-- Based on the contents of the decision we make a decision -/
-noncomputable def branchDecision (instruction : Instr) : JoltMonad Bool :=
+/-- Evaluate a branch condition on operand values. Non-branch instructions return `false`. -/
+def branchDecisionPure (instruction : Instr) (lhs rhs : BitVec 64) : Bool :=
   match instruction with
-  | .BEQ lhs rhs _ => do
-      return (← readSrc lhs) == (← readSrc rhs)
-  | .BNE lhs rhs _ => do
-      return (← readSrc lhs) != (← readSrc rhs)
-  | .BLT lhs rhs _ => do
-      return zopz0zI_s (← readSrc lhs) (← readSrc rhs)
-  | .BGE lhs rhs _ => do
-      return zopz0zKzJ_s (← readSrc lhs) (← readSrc rhs)
-  | .BLTU lhs rhs _ => do
-      return zopz0zI_u (← readSrc lhs) (← readSrc rhs)
-  | .BGEU lhs rhs _ => do
-      return zopz0zKzJ_u (← readSrc lhs) (← readSrc rhs)
-  | _ => pure false
+  | .BEQ _ _ _ => lhs == rhs
+  | .BNE _ _ _ => lhs != rhs
+  | .BLT _ _ _ => zopz0zI_s lhs rhs
+  | .BGE _ _ _ => zopz0zKzJ_s lhs rhs
+  | .BLTU _ _ _ => zopz0zI_u lhs rhs
+  | .BGEU _ _ _ => zopz0zKzJ_u lhs rhs
+  | _ => false
 
 end JoltISA

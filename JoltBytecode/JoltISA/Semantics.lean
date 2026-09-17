@@ -88,37 +88,49 @@ def execInstr : Instr → JoltMonad ExecutionResult
           pure RETIRE_SUCCESS
       | other => pure other
   | .BEQ lhs rhs imm => do
-      if ← branchDecision (.BEQ lhs rhs imm) then
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      if branchDecisionPure (.BEQ lhs rhs imm) x y then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BNE lhs rhs imm => do
-      if ← branchDecision (.BNE lhs rhs imm) then
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      if branchDecisionPure (.BNE lhs rhs imm) x y then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BLT lhs rhs imm => do
-      if ← branchDecision (.BLT lhs rhs imm) then
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      if branchDecisionPure (.BLT lhs rhs imm) x y then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BGE lhs rhs imm => do
-      if ← branchDecision (.BGE lhs rhs imm) then
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      if branchDecisionPure (.BGE lhs rhs imm) x y then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BLTU lhs rhs imm => do
-      if ← branchDecision (.BLTU lhs rhs imm) then
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      if branchDecisionPure (.BLTU lhs rhs imm) x y then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
         pure RETIRE_SUCCESS
   | .BGEU lhs rhs imm => do
-      if ← branchDecision (.BGEU lhs rhs imm) then
+      let x ← readSrc lhs
+      let y ← readSrc rhs
+      if branchDecisionPure (.BGEU lhs rhs imm) x y then
         let pc ← liftSail (Sail.readReg Register.PC)
         liftSail (jump_to (pc + sign_extend (m := 64) imm))
       else
