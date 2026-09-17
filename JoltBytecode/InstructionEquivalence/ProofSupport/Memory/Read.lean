@@ -529,7 +529,7 @@ theorem vreg_LD_run_of_aligned_dword_phys
     (hmmio : Assumptions.NotReadableMmio addr 8 js.sail)
     (hvd : WritableVReg vd) :
     (JoltISA.execInstr (.LD faultClass (.vreg vd) (.vreg vs1) 0)).run js = .ok RETIRE_SUCCESS
-      { sail := js.sail
+      { js with
         vregs := fun r =>
           if r = vd then loaded_dword_at js.sail addr hbytes haligned.no_ovf else js.vregs r } := by
   have hread :

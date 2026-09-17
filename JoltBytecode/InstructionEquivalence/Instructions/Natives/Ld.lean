@@ -134,7 +134,7 @@ private theorem ldJolt_aligned_reduces (imm : BitVec 12) (rs1 rd : regidx)
           JoltISA.Dst.vreg JoltISA.rdZeroRewriteVReg := by
       simp [JoltISA.sideEffectingDst, JoltISA.sideEffectingRdZeroDst, hx0]
     let js' : SailJoltState :=
-      { sail := js.sail
+      { js with
         vregs := fun r =>
           if r = JoltISA.rdZeroRewriteVReg then loaded else js.vregs r }
     have hprojected : Projection.ProjectedVRegsPreserved js js' := by
@@ -151,7 +151,7 @@ private theorem ldJolt_aligned_reduces (imm : BitVec 12) (rs1 rd : regidx)
           js js' hregs hprojected hlinked
     have hwrite_vreg :
         writeVReg JoltISA.rdZeroRewriteVReg loaded
-          ({ sail := js.sail, vregs := js.vregs } : SailJoltState) =
+          ({ js with vregs := js.vregs } : SailJoltState) =
         .ok () js' := by
       unfold writeVReg js' JoltISA.rdZeroRewriteVReg JoltISA.inlineTmp
         JoltISA.inlineRegisterBase JoltISA.riscvRegisterBase

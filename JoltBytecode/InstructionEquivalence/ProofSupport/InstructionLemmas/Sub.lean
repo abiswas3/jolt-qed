@@ -21,7 +21,7 @@ theorem sub_run_vreg_vreg_vreg (vd lhs rhs : VReg) (js : SailJoltState)
     (hvd : WritableVReg vd) :
     (execInstr (.SUB (.vreg vd) (.vreg lhs) (.vreg rhs))).run js =
       .ok RETIRE_SUCCESS
-        { sail := js.sail
+        { js with
           vregs := fun r => if r = vd then js.vregs lhs - js.vregs rhs
             else js.vregs r } := by
   unfold WritableVReg at hvd
@@ -38,7 +38,7 @@ theorem sub_run_vreg_xreg_vreg (vd : VReg) (lhs : regidx) (rhs : VReg)
     (hvd : WritableVReg vd) :
     (execInstr (.SUB (.vreg vd) (.xreg lhs) (.vreg rhs))).run js =
       .ok RETIRE_SUCCESS
-        { sail := js.sail
+        { js with
           vregs := fun r => if r = vd then x - js.vregs rhs else js.vregs r } := by
   unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg liftSail writeVReg

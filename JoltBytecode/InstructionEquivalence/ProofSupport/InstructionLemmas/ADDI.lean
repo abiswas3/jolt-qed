@@ -23,7 +23,7 @@ theorem addi_run_vreg_xreg (vd : VReg) (rs : regidx)
     (hvd : WritableVReg vd) :
     (execInstr (.ADDI (.vreg vd) (.xreg rs) imm)).run js =
       .ok RETIRE_SUCCESS
-        { sail := js.sail
+        { js with
           vregs := fun r =>
             if r = vd then x + sign_extend (m := 64) imm else js.vregs r } := by
   unfold WritableVReg at hvd
@@ -39,7 +39,7 @@ theorem addi_run_vreg_vreg (vd vs : VReg)
     (hvd : WritableVReg vd) :
     (execInstr (.ADDI (.vreg vd) (.vreg vs) imm)).run js =
       .ok RETIRE_SUCCESS
-        { sail := js.sail
+        { js with
           vregs := fun r =>
             if r = vd then js.vregs vs + sign_extend (m := 64) imm
               else js.vregs r } := by
@@ -54,7 +54,7 @@ theorem addi_run_xreg_vreg (rd : regidx) (vs : VReg) (imm : BitVec 12)
     (js : SailJoltState) (s' : SailState)
     (hw : wX_bits rd (js.vregs vs + sign_extend (m := 64) imm) js.sail = .ok () s') :
     (execInstr (.ADDI (.xreg rd) (.vreg vs) imm)).run js =
-      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+      .ok RETIRE_SUCCESS { js with sail := s' } := by
   unfold execInstr readSrc writeDst readVReg liftSail
   simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run,
     get, getThe, MonadStateOf.get, EStateM.get]
@@ -66,7 +66,7 @@ theorem addi_run_xreg_xreg (rd rs1 : regidx) (imm : BitVec 12)
     (h : rX_bits rs1 js.sail = .ok x js.sail)
     (hw : wX_bits rd (x + sign_extend (m := 64) imm) js.sail = .ok () s') :
     (execInstr (.ADDI (.xreg rd) (.xreg rs1) imm)).run js =
-      .ok RETIRE_SUCCESS { sail := s', vregs := js.vregs } := by
+      .ok RETIRE_SUCCESS { js with sail := s' } := by
   unfold execInstr readSrc writeDst liftSail
   simp only [h, hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
 

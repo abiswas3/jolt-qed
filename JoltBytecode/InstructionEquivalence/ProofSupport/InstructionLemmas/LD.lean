@@ -30,7 +30,7 @@ theorem ld_run_vreg_vreg_from_memory_read {faultClass : LoadFaultClass}
     (hvd : WritableVReg vd) :
     (execInstr (.LD faultClass (.vreg vd) (.vreg base) imm)).run js =
       .ok RETIRE_SUCCESS
-        { sail := js.sail
+        { js with
           vregs := fun r => if r = vd then value else js.vregs r } := by
   unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst readVReg liftSail
@@ -55,7 +55,7 @@ theorem ld_run_vreg_xreg_from_memory_read {faultClass : LoadFaultClass}
     (hvd : WritableVReg vd) :
     (execInstr (.LD faultClass (.vreg vd) (.xreg base) imm)).run js =
       .ok RETIRE_SUCCESS
-        { sail := js.sail
+        { js with
           vregs := fun r => if r = vd then value else js.vregs r } := by
   unfold WritableVReg at hvd
   unfold execInstr readSrc writeDst liftSail
