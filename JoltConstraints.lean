@@ -1,2 +1,3 @@
 import JoltConstraints.trace
 import JoltConstraints.honest_witness
+import JoltConstraints.Constraints.ProductEqLeftInputMulRightInput
