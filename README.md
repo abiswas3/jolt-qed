@@ -41,7 +41,7 @@ Details about why the remaining seven instructions were unprovable is given in S
 
 ## AI Usage And Miscellany
 
-s is the case for most projects in present times, AI agents assisted us in writing several proofs.
+As is the case for most projects in present times, AI agents assisted us in writing several proofs.
 We did not any use any particular skill or MCP server so far (perhaps there are better ways to do this).
 Our process so far has involved opening two panes, one with an editor equipped with a Lean Language Server (LSP), and the other pane with Codex or Claude.
 The chats were free form.
