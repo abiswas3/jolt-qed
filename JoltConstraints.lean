@@ -1,3 +1,5 @@
 import JoltConstraints.trace
 import JoltConstraints.honest_witness
+import JoltConstraints.lookup_table
 import JoltConstraints.Constraints.ProductEqLeftInputMulRightInput
+import JoltConstraints.Constraints.LookupOutputEqInstructionReadRaf
