@@ -1,7 +1,9 @@
 # Jolt Qed: Formally Verifying The Jolt Zk-VM
 
 This repository contains proofs written using the Lean theorem proving assistant, towards formally verifying the completeness and soundness of the [Jolt zk-VM](https://github.com/a16z/jolt).
-The project is _still on-going_, and as Jolt is relatively complex, we logically decompose the task of formally verifying Jolt into the components shown below.
+The project is still _on-going_ and the code will be subject to a large number of changes.
+As Jolt is relatively complex, we logically decompose the task of formally verifying Jolt into the components shown below.
+
 Blocks in green are complete. 
 Blocks in yellow are in-progress and, greyed out boxes are not yet started.
 Explicit details about each component, trust assumptions, and current progress can be found [here](https://randomwalks.xyz/blog/jolt-qed/). 
@@ -33,21 +35,22 @@ Loosely, it says given a RISC-V instruction, here is
 3. Here is the proof for the above theorem statement. 
 
 There were 67 expandable RISC-V instructions. 
-Only 60 of them were proven. Details about why the remaining seven instructions were unprovable is given in Section 7 of the pre-print.
+Only 60 of them were proven. 
+Details about why the remaining seven instructions were unprovable is given in Section 7 of the pre-print, and the blog.
 
 
 ## AI Usage And Miscellany
 
-As is the case for most projects in present times, AI agents assisted us in writing several proofs.
-We did not any use any particular skills or MCP servers so far (perhaps there are better ways to do this).
+s is the case for most projects in present times, AI agents assisted us in writing several proofs.
+We did not any use any particular skill or MCP server so far (perhaps there are better ways to do this).
 Our process so far has involved opening two panes, one with an editor equipped with a Lean Language Server (LSP), and the other pane with Codex or Claude.
 The chats were free form.
 
-The most frequently used pattern was the following.
-A lot of the theorems in the bytecode expansion project are very similar. 
+The most successful pattern was the following.
+A large number of theorems in the bytecode expansion project have similar proofs.
 For instance the work done to prove equivalence of `LBU` and `LB` RISC-V instructions is nearly identical. 
 They differ in the last step in the application of sign vs unsigned extension. 
-In this case, we carefully prove `LB` with guiding comments, and make the proof easily readable (see `LB_main.lean` for example). 
+In this case, we carefully prove `LB` with guiding comments, and make the proof easily readable (still with AI assistance, but it involves a fair amount of back and forth). 
 Then, we tell the AI agent to complete the proof for `LBU` following the exact principles and style. 
 It seemed to be able to close the theorems with very limited guidance. 
 We still skim the proof for `LBU`, but do not read it as thoroughly.
@@ -59,6 +62,8 @@ So for the Jolt-ISA definition, almost all of it was written by hand, then the A
 As an effort to enforce human eyes on all critical components of the code, all comments and documentation about the ISA are hand-written.
 We found AI agents were particularly bad at writing clear documentation. 
 
+### Cleaner and More Re-usable Proofs
+
 This project was completed over a span of two and a half months, during which we learned a great deal about Lean. 
 Different proofs were written at different phases.
 This means that some theorems are simpler and easier to follow than others (though all pass, so this does not a security concern).
@@ -67,4 +72,6 @@ Often we let an AI agent loose to close the theorem by whatever means necessary.
 Then, we explored the output and made proofs simpler, and more readable (akin to how one would proof things on paper, though this is not always possible).
 This process shrunk the code base significantly, and led to greater re-use of theorems.
 We would eventually like to do this for all proofs, but in the interest of time, we have not yet done this.
-Contributions which make proofs shorter, more general and simple are **always** welcome.
+
+Contributions do not always have to prove new theorem.
+We welcome contributions which make proofs shorter, more general and re-usable.
