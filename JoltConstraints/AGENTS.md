@@ -61,6 +61,16 @@ The sum-checks and all other mallarkey is simply a randomised test for this cons
 
 So far read the above, and we will have a discussion, and then we will further discuss. 
 
+## Constraint organization
+
+Each constraint is a predicate over `WitnessType`. Keep its definition and its
+honest-witness completeness lemma together in one file under `Constraints/`.
+
+Later, `constraints.lean` will define a structure called `JoltConstraints` whose
+fields assert all the individual constraints. `completeness.lean` will prove
+that the honest witness satisfies this structure, using `constructor` and the
+individual completeness lemmas.
+
 ## Validation
 
 Run commands from `/Users/ari.biswas/Lean/lz-qed`:
@@ -73,6 +83,5 @@ Both `JoltBytecode` and `JoltConstraints` are default targets in
 `lakefile.toml`, so the bare build includes the complete constraint suite.
 
 For a focused change, first compile the edited leaf file with
-`lake env lean JoltConstraints/<file>.lean`, then compile the importing theorem
-file or run `lake build JoltConstraints.ConstraintCompleteness`. Keep imports
+`lake env lean JoltConstraints/<file>.lean`, then run `lake build`. Keep imports
 explicit and preserve the package's `autoImplicit := false` discipline.
