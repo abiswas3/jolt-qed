@@ -62,7 +62,7 @@ So for the Jolt-ISA definition, almost all of it was written by hand, then the A
 As an effort to enforce human eyes on all critical components of the code, all comments and documentation about the ISA are hand-written.
 We found AI agents were particularly bad at writing clear documentation. 
 
-### Cleaner and More Re-usable Proofs
+## Cleaner and More Re-usable Proofs
 
 This project was completed over a span of two and a half months, during which we learned a great deal about Lean. 
 Different proofs were written at different phases.
