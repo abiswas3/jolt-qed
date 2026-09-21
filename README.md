@@ -73,5 +73,5 @@ Then, we explored the output and made proofs simpler, and more readable (akin to
 This process shrunk the code base significantly, and led to greater re-use of theorems.
 We would eventually like to do this for all proofs, but in the interest of time, we have not yet done this.
 
-Contributions do not always have to prove new theorem.
+Contributions do not always have to prove new theorems, or fix bugs.
 We welcome contributions which make proofs shorter, more general and re-usable.
