@@ -41,9 +41,9 @@ def instruction (dst : JoltISA.Dst) : JoltISA.Instr :=
 
 def bytecodeRow (dst : JoltISA.Dst)
     (canonical : JoltRegisterEncoding.destinationIsCanonical dst = true) : JoltProgramRow :=
-  { instruction := instruction dst
+  { inputInstruction := instruction dst
     registerOperandsCanonical := by
-      simpa [instruction, JoltRegisterEncoding.instructionIsCanonical,
+      simpa [finalProgramRowInstruction, instruction, JoltRegisterEncoding.instructionIsCanonical,
         JoltRegisterEncoding.sourceIsCanonical, JoltISA.joltRegisterSlot] using canonical
     isBytecodeTemplate := True.intro
     address := 0x80000000

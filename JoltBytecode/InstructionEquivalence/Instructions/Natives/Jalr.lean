@@ -227,8 +227,9 @@ theorem jalrInstr_eq_sail
   unfold jalrInstrEqSailStatement
   have hUpdate := updateELP_noop rs1 js.sail h.zicfilp_disabled
   have hExec :
-      (JoltISA.execInstr (JoltISA.Encoded.JALR (.xreg rd) (.xreg rs1) imm)).run js =
-    (liftSail (execute_JALR imm rs1 rd)) js := by
+      System.systemProjectResult
+        ((JoltISA.execInstr (JoltISA.Encoded.JALR (.xreg rd) (.xreg rs1) imm)).run js) =
+      System.systemProjectResult ((liftSail (execute_JALR imm rs1 rd)) js) := by
     unfold JoltISA.execInstr execute_JALR JoltISA.readSrc JoltISA.writeDst liftSail
     simp only [jolt_jalr_target64, jolt_jalr_target, JoltISA.addWide_low]
     simp only [hUpdate, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
@@ -254,11 +255,13 @@ theorem jalrInstr_eq_sail
                     simp only [bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
                     cases hw : wX_bits rd link s3 with
                     | ok _ _ =>
-                        simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+                        simp only [hw, bind, EStateM.bind, pure, EStateM.pure,
+                          EStateM.run]
                         unfold RETIRE_SUCCESS
                         rfl
                     | error _ _ =>
-                        simp only [hw, bind, EStateM.bind, pure, EStateM.pure, EStateM.run]
+                        simp only [hw, bind, EStateM.bind, pure, EStateM.pure,
+                          EStateM.run]
                 | ExecuteAs instr =>
                     simp only [hlink, hread, hjump, bind, EStateM.bind, pure, EStateM.pure,
                       EStateM.run]

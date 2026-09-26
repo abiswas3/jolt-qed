@@ -12,7 +12,7 @@ namespace FinalOperandChecks
 -- https://github.com/abiswas3/jolt/blob/e012da54c3bb26a6436b5ca74e86c19bb39695ad/crates/jolt-program/src/expand/inline.rs#L204-L218
 -- These cases were also executed with Rust's ADDI::execute.
 def addiRow (imm : BitVec 64) : JoltProgramRow :=
-  { instruction := .ADDI (.vreg 40) (.vreg 41) imm
+  { inputInstruction := .ADDI (.vreg 40) (.vreg 41) imm
     registerOperandsCanonical := rfl
     isBytecodeTemplate := True.intro
     address := 0x80000000
@@ -35,8 +35,8 @@ noncomputable def addiVisit (state : SailJoltState) (imm : BitVec 64) :
 
 example (state : SailJoltState) :
     HonestWitness.rowLookupOutput (addiVisit { state with vregs := fun _ => 10 } 4096) = 4106 ∧
-    JoltMetadata.immediate (addiRow 4096).instruction = 4096 ∧
-    HonestWitness.instructionLookupIndex (addiRow 4096).instruction 0x80000000
+    JoltMetadata.immediate (addiRow 4096).expandedInstruction = 4096 ∧
+    HonestWitness.instructionLookupIndex (addiRow 4096).expandedInstruction 0x80000000
       { state with vregs := fun _ => 10 } state = 4106 := by
   exact ⟨rfl, rfl, rfl⟩
 

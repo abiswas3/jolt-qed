@@ -16,7 +16,7 @@ example {program : JoltProgram} (trace : JoltTrace program)
 
 -- A compressed source expands into two rows: only its last row is compressed.
 def virtualFirst : JoltProgramRow :=
-  { instruction := .FENCE
+  { inputInstruction := .FENCE
     registerOperandsCanonical := rfl
     isBytecodeTemplate := True.intro
     address := 8
@@ -25,7 +25,7 @@ def virtualFirst : JoltProgramRow :=
     isCompressed := false }
 
 def virtualLast : JoltProgramRow :=
-  { instruction := .FENCE
+  { inputInstruction := .FENCE
     registerOperandsCanonical := rfl
     isBytecodeTemplate := True.intro
     address := 8

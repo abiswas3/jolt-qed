@@ -41,11 +41,12 @@ theorem jalInstr_eq_sail
     unfold liftSail
     rw [readReg_eq_of_get? Register.PC js.sail instructionAddress hPC]
   simp only [hReadInstructionAddress]
-  -- Rust first writes the old cpu.pc to rd; writing x0 leaves the state unchanged.
-  let afterDst : SailJoltState := { js with sail := stateAfterWrite js.sail rd rustPC }
-  have hWriteDst : JoltISA.writeDst (.xreg rd) rustPC js = .ok () afterDst := by
-    simp only [JoltISA.writeDst, liftSail, wX_bits_stateAfterWrite]
-    rfl
+  let afterDst : SailJoltState :=
+    { js with sail := stateAfterWrite js.sail rd rustPC }
+  have hWriteDst :
+      JoltISA.writeDst (.xreg rd) rustPC js =
+        .ok () afterDst := by
+    simp only [JoltISA.writeDst_xreg, liftSail, wX_bits_stateAfterWrite, afterDst]
   simp only [hWriteDst]
   -- After writing the destination register, we write Rust's cpu.pc to the jump target.
   -- In this representation that updates Sail nextPC; Sail PC retains self.address.
@@ -76,11 +77,8 @@ theorem jalInstr_eq_sail
   -- The projected Jolt state is consequently equal to the Sail state.
   simp only [System.systemProjectResult, EStateM.Result.ok.injEq, true_and]
   exact Projection.systemProject_eq_sail_of_preservesSystemProjectRegs js _ h.linkedCSRs
-    -- Combine CSR preservation across the two writes.
     (Projection.preservesSystemProjectRegs_trans
-      -- Writing rd preserves the six CSRs.
       (Projection.stateAfterWrite_preservesSystemProjectRegs js.sail rd rustPC)
-      -- Writing nextPC also preserves the six CSRs.
       (Projection.setNextPCState_preservesSystemProjectRegs _ _))
 
 end Natives

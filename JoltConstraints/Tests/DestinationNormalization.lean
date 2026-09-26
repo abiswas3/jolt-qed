@@ -1,16 +1,47 @@
 import JoltConstraints.metadata
 import JoltConstraints.witness_helpers.lookup_output
 import JoltConstraints.witness_helpers.rd_value
+import JoltConstraints.Constraints.BytecodeReadSelectors
+import JoltBytecode.JoltISA.Expansions.System
 import Mathlib.Data.Rat.Defs
 
 set_option autoImplicit false
 
 namespace DestinationNormalizationChecks
 
--- This is emitted by the built-in Rust CSRRS x0,mstatus,x0 expansion.
--- It remains representable: the model must preserve the emitted instruction.
+private def zeroDst : JoltISA.Dst := .xreg (.Regidx 0)
+
+example : HonestWitness.capturedDestination (.JAL zeroDst 0) zeroDst =
+    .vreg JoltISA.rdZeroRewriteVReg := rfl
+
+example : HonestWitness.capturedDestination (.JALR zeroDst (.xreg (.Regidx 1)) 0) zeroDst =
+    .vreg JoltISA.rdZeroRewriteVReg := rfl
+
+example : HonestWitness.capturedDestination (.LD .normal zeroDst (.xreg (.Regidx 1)) 0)
+    zeroDst = .vreg JoltISA.rdZeroRewriteVReg := rfl
+
+example : HonestWitness.capturedDestination (.VirtualAdviceLoad zeroDst 0) zeroDst =
+    .vreg JoltISA.rdZeroRewriteVReg := rfl
+
+example (state : SailJoltState) :
+    (HonestWitness.rdValue (.JAL zeroDst 0) state : ℚ) =
+      (state.vregs JoltISA.rdZeroRewriteVReg).toNat := rfl
+
+example : HonestWitness.capturedDestination (.ADDI zeroDst (.xreg (.Regidx 0)) 0) zeroDst =
+    zeroDst := rfl
+
+example : JoltConstraints.bytecodeRdRegister (.JAL zeroDst 0) =
+    some (HonestWitness.destinationRegisterAddress (.vreg JoltISA.rdZeroRewriteVReg)) := rfl
+
+example : JoltConstraints.bytecodeRdRegister (.ADDI zeroDst (.xreg (.Regidx 0)) 0) =
+    some (HonestWitness.destinationRegisterAddress zeroDst) := rfl
+
+example : JoltISA.csrrsProgram .mstatus (.Regidx 0) (.Regidx 0) =
+    JoltISA.pureWritebackRdZeroProgram := rfl
+
+-- This synthetic row remains representable by the unrestricted program model.
 def csrReadDiscarded : JoltProgramRow :=
-  { instruction := JoltISA.Encoded.ADDI (.xreg (.Regidx 0)) (.vreg 39) 0
+  { inputInstruction := JoltISA.Encoded.ADDI (.xreg (.Regidx 0)) (.vreg 39) 0
     registerOperandsCanonical := rfl
     isBytecodeTemplate := True.intro
     address := 0x80000000
@@ -30,12 +61,12 @@ noncomputable def visit (state : SailJoltState) : JoltTraceRow (program state) :
     executes := rfl
     storeMemoryPresent := True.intro }
 
--- Same concrete values as the Rust tracer check: lookup 9, captured rd 0.
--- This falsifies the WriteLookupOutputToRD equation for this actual expanded row.
+-- Lookup 9 and captured rd 0 falsify the WriteLookupOutputToRD equation for
+-- this synthetic row.
 example (state : SailJoltState) :
     HonestWitness.rowLookupOutput (visit { state with vregs := fun _ => 9 }) = 9 ∧
-    (HonestWitness.rdValue csrReadDiscarded.instruction state : ℚ) = 0 ∧
-    JoltMetadata.opcodeFlag csrReadDiscarded.instruction .WriteLookupOutputToRD = true :=
+    (HonestWitness.rdValue csrReadDiscarded.expandedInstruction state : ℚ) = 0 ∧
+    JoltMetadata.opcodeFlag csrReadDiscarded.expandedInstruction .WriteLookupOutputToRD = true :=
   ⟨rfl, rfl, rfl⟩
 
 -- The ordinary source-rewrite no-op has zero result on both sides, even with arbitrary state.

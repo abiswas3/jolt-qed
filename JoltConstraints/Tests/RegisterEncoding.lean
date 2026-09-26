@@ -27,9 +27,10 @@ example : ∀ address : Fin 128,
 
 -- The new certificate rules out a previously admissible bytecode instruction.
 example (row : JoltProgramRow) :
-    row.instruction ≠ JoltISA.Encoded.ADDI (.vreg 40) (.vreg 5) 0 := by
+    row.expandedInstruction ≠ JoltISA.Encoded.ADDI (.vreg 40) (.vreg 5) 0 := by
   intro wrongEncoding
   have canonical := row.registerOperandsCanonical
+  change instructionIsCanonical row.expandedInstruction = true at canonical
   rw [wrongEncoding] at canonical
   exact Bool.noConfusion canonical
 
@@ -49,7 +50,7 @@ example (instruction : JoltISA.Instr) (advice : instruction.RuntimeAdvice) :
 -- Rust ADDI v40, x0, 7. Raw virtual slot zero deliberately contains 99;
 -- the mapped operand still reads x0=0, and both execution and lookup produce 7.
 def bytecodeRow : JoltProgramRow :=
-  { instruction := JoltISA.Encoded.ADDI (destination 40) (source 0) 7
+  { inputInstruction := JoltISA.Encoded.ADDI (destination 40) (source 0) 7
     registerOperandsCanonical := rfl
     isBytecodeTemplate := True.intro
     address := 0x80000000
@@ -76,7 +77,7 @@ noncomputable def visit (state : SailJoltState) : JoltTraceRow (program state) :
 example (state : SailJoltState) :
     (visit state).postState.vregs 40 = 7 ∧
     HonestWitness.rowLookupOutput (visit state) = 7 ∧
-    HonestWitness.instructionLookupIndex bytecodeRow.instruction bytecodeRow.address
+    HonestWitness.instructionLookupIndex bytecodeRow.expandedInstruction bytecodeRow.address
       (visit state).preState (visit state).postState = 7 := ⟨rfl, rfl, rfl⟩
 
 -- A genuinely virtual source retains its ordinary ISA meaning.

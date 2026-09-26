@@ -9,7 +9,7 @@ namespace RuntimeAdviceChecks
 -- One fixed bytecode slot, like a quotient-advice slot in a DIVU expansion.
 -- The nonzero immediate deliberately distinguishes it from the runtime payload.
 def adviceTemplate : JoltProgramRow :=
-  { instruction := .VirtualAdvice (.vreg 40) 0 7
+  { inputInstruction := .VirtualAdvice (.vreg 40) 0 7
     registerOperandsCanonical := rfl
     isBytecodeTemplate := rfl
     address := 0x80000000
@@ -45,16 +45,16 @@ example (state : SailJoltState) :
   exact ⟨rfl, rfl⟩
 
 example (state : SailJoltState) (advice : BitVec 64) :
-    HonestWitness.instructionLookupIndex adviceTemplate.instruction adviceTemplate.address
+    HonestWitness.instructionLookupIndex adviceTemplate.expandedInstruction adviceTemplate.address
       state (visit state advice).postState = advice.setWidth 128 := by
   rfl
 
 -- Supplying advice cannot replace the bytecode immediate, destination, or flags.
 example (advice : BitVec 64) :
-    adviceTemplate.instruction.withRuntimeAdvice advice =
+    adviceTemplate.expandedInstruction.withRuntimeAdvice advice =
       .VirtualAdvice (.vreg 40) advice 7 ∧
-    JoltMetadata.immediate (adviceTemplate.instruction.withRuntimeAdvice advice) = 7 ∧
-    JoltMetadata.opcodeFlag (adviceTemplate.instruction.withRuntimeAdvice advice) .Advice = true := by
+    JoltMetadata.immediate (adviceTemplate.expandedInstruction.withRuntimeAdvice advice) = 7 ∧
+    JoltMetadata.opcodeFlag (adviceTemplate.expandedInstruction.withRuntimeAdvice advice) .Advice = true := by
   exact ⟨rfl, rfl, rfl⟩
 
 -- Non-advice rows have only Unit as their runtime input and execute unchanged.

@@ -13,7 +13,7 @@ def WitnessParams.RamFits (p : WitnessParams) {program : JoltProgram}
   ∀ (i : Fin trace.rows.size),
     let row := getElem trace.rows i.val i.isLt
     let instruction :=
-      (getElem program.expandedBytecode row.rowIndex.val row.rowIndex.isLt).instruction
+      (getElem program.expandedBytecode row.rowIndex.val row.rowIndex.isLt).expandedInstruction
     match HonestWitness.ramAccessAddress instruction row.preState with
     | none => True
     | some rawAddress =>
@@ -30,7 +30,7 @@ theorem WitnessParams.remappedRamAddress_lt (p : WitnessParams)
   split_ifs at hb with ht
   · let row := getElem trace.rows t.val ht
     let instruction :=
-      (getElem program.expandedBytecode row.rowIndex.val row.rowIndex.isLt).instruction
+      (getElem program.expandedBytecode row.rowIndex.val row.rowIndex.isLt).expandedInstruction
     have hf := ramFits ⟨t.val, ht⟩
     change (HonestWitness.ramAccessAddress instruction row.preState).bind
       (HonestWitness.remapRamAddress program.initialState.io.layout) = some b at hb
