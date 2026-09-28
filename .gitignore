@@ -6,5 +6,4 @@
 *.ilean
 *.trace
 lake-packages/
-/JoltConstraints/model_review.md
 /notes/shift.md
