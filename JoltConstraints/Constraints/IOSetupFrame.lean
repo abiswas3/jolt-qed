@@ -18,23 +18,6 @@ namespace JoltConstraints
 
 open JoltIOSetupFrame
 
-/-- Every recorded pre-state has the program's initial device setup. -/
-theorem trace_preState_ioSame {joltInstance : JoltInstance SourceInstruction} {privateInputs : JoltPrivateInputs} (trace : HonestTrace joltInstance privateInputs)
-    (i : Nat) (hi : i < trace.rows.size) :
-    Same trace.initialState.jolt_device (getElem trace.rows i hi).preState.jolt_device := by
-  induction i with
-  | zero =>
-    rw [trace.startsAtInitial (by omega)]
-    exact Same.refl _
-  | succ i ih =>
-    have hprev := ih (by omega)
-    have hexec := execInstr_rule _ _ _ _ (getElem trace.rows i (by omega)).executes
-    have hlink := trace.linkedState i (by omega) hi
-    rw [hlink]
-    split
-    · exact hprev.trans hexec
-    · exact hprev.trans hexec
-
 /-- The final recorded state has the program's initial device setup. -/
 theorem finalTraceState_ioSame {joltInstance : JoltInstance SourceInstruction} {privateInputs : JoltPrivateInputs} (trace : HonestTrace joltInstance privateInputs) :
     Same trace.initialState.jolt_device (HonestWitness.finalTraceState trace).jolt_device := by

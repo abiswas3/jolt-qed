@@ -2,6 +2,7 @@ import Mathlib.Algebra.Field.Defs
 import JoltConstraints.witness
 import JoltConstraints.honest_trace
 import JoltConstraints.execution_facts
+import JoltConstraints.memory_facts
 import JoltConstraints.witness_helpers.rd_value
 
 set_option autoImplicit false
@@ -30,7 +31,7 @@ noncomputable def RamReadValue [Field F] {joltInstance : JoltInstance SourceInst
           let word := (JoltISA.trace_doubleword? row.preState address).get
              -- The old word is present before the store (store_word_present);
              -- Rust also reads the old word when recording a store.
-            (row.store_word_present base value imm hInstr)
+            (trace.store_word_present t.val inBounds base value imm hInstr)
           (word.toNat : F)
       | _ => 0
     else 0
